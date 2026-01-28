@@ -206,7 +206,7 @@ export const INITIAL_VIEW_DATA = {
             statusBadge: { text: "Active", tone: "success" },
             meta: [
                 { label: "DOT:", badge: { text: "Active", tone: "success" } },
-                { label: "CVOR/IRIN/NSC:", badge: { text: "Valid", tone: "success" } },
+                { label: "CVOR/RIN/NSC:", badge: { text: "Valid", tone: "success" } },
                 { label: "Location:", text: "Wilmington, DE" }
             ],
             actions: [{ key: "exportPdf", label: "Export PDF", icon: "FileDown" }]

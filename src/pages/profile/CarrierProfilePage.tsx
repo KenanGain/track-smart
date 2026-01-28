@@ -4,7 +4,7 @@ import {
     BadgeCheck, Globe, Users, Package, Edit3, Plus, ChevronDown, Copy,
     X, Check, Save, Phone, Calendar, CalendarX, Shield, FileUp, SquarePen
 } from 'lucide-react';
-import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA } from './carrier-dashboard.data';
+import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA } from './carrier-profile.data';
 import { useAppData } from '@/context/AppDataContext';
 import { CATEGORIES } from '@/data/key-numbers-mock-data';
 
@@ -350,8 +350,8 @@ const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
     );
 };
 
-// Main Dashboard Component
-export function CarrierDashboardPage() {
+// Main Profile Component
+export function CarrierProfilePage() {
     const { keyNumbers, keyNumberValues, updateKeyNumberValue } = useAppData();
     const [viewData] = useState(INITIAL_VIEW_DATA);
     const [formConfig, setFormConfig] = useState(UI_DATA);
@@ -569,4 +569,4 @@ export function CarrierDashboardPage() {
     );
 }
 
-export default CarrierDashboardPage;
+export default CarrierProfilePage;
