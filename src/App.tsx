@@ -10,7 +10,7 @@ function App() {
     // Simple state for navigation simulation since we might not have a full router set up
     // or the user might want to test without it initially.
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
-    const [path, setPath] = useState("/dashboard")
+    const [path, setPath] = useState("/account/profile")
 
     const handleNavigate = (newPath: string) => {
         setPath(newPath)
@@ -19,7 +19,7 @@ function App() {
 
     // Render the appropriate page based on currentPath
     const renderPage = () => {
-        if (path === "/dashboard") {
+        if (path === "/account/profile") {
             return <CarrierDashboardPage />
         }
         if (path === "/settings/key-numbers") {

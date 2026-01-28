@@ -19,12 +19,6 @@ import type { SidebarNode } from "@/types/sidebar";
 
 export const SIDEBAR_NODES: SidebarNode[] = [
     {
-        key: "dashboard",
-        label: "Dashboard",
-        icon: LayoutDashboard,
-        path: "/dashboard",
-    },
-    {
         key: "account",
         label: "Account",
         icon: Building2,
