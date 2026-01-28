@@ -36,6 +36,7 @@ export function KeyNumbersPage() {
         numberTypeName: "",
         category: CATEGORIES[0],
         entityType: "Carrier",
+        numberRequired: true,
         hasExpiry: false,
         documentRequired: false,
         requiredDocumentTypeId: "",
@@ -72,7 +73,7 @@ export function KeyNumbersPage() {
     }, [documents, addFormData.entityType])
 
     // Handlers
-    const handleToggleChange = (id: string, field: "hasExpiry" | "documentRequired") => {
+    const handleToggleChange = (id: string, field: "numberRequired" | "hasExpiry" | "documentRequired") => {
         setKeyNumbers(prev =>
             prev.map(number =>
                 number.id === id
@@ -89,6 +90,7 @@ export function KeyNumbersPage() {
             numberTypeName: "",
             category,
             entityType: "Carrier",
+            numberRequired: true,
             hasExpiry: false,
             documentRequired: false,
             requiredDocumentTypeId: "",
@@ -105,6 +107,7 @@ export function KeyNumbersPage() {
             numberTypeName: number.numberTypeName,
             category: number.category,
             entityType: number.entityType,
+            numberRequired: number.numberRequired ?? true,
             hasExpiry: number.hasExpiry,
             documentRequired: number.documentRequired,
             requiredDocumentTypeId: number.requiredDocumentTypeId || "",
@@ -131,6 +134,7 @@ export function KeyNumbersPage() {
                             // For simplicity, we keep original description unless we want to allow editing it. 
                             // The user didn't ask to edit description, just "edit button should be working".
                             // But since we are reusing the form which has fewer fields than the content, we just update the specific fields.
+                            numberRequired: addFormData.numberRequired,
                             hasExpiry: addFormData.hasExpiry,
                             documentRequired: addFormData.documentRequired,
                             requiredDocumentTypeId: addFormData.documentRequired ? addFormData.requiredDocumentTypeId : undefined,
@@ -150,6 +154,7 @@ export function KeyNumbersPage() {
                 numberTypeDescription: "Custom number type",
                 category: addFormData.category,
                 entityType: addFormData.entityType,
+                numberRequired: addFormData.numberRequired,
                 hasExpiry: addFormData.hasExpiry,
                 documentRequired: addFormData.documentRequired,
                 requiredDocumentTypeId: addFormData.documentRequired ? addFormData.requiredDocumentTypeId : undefined,
@@ -284,6 +289,9 @@ export function KeyNumbersPage() {
                                                 Related To
                                             </th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                                Number Required
+                                            </th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
                                                 Has Expiry
                                             </th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
@@ -300,7 +308,7 @@ export function KeyNumbersPage() {
                                     <tbody className="bg-white divide-y divide-slate-200">
                                         {filteredNumbers.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">
+                                                <td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-500">
                                                     {searchQuery
                                                         ? "No numbers found matching your search."
                                                         : "No numbers configured in this category yet."}
@@ -325,6 +333,16 @@ export function KeyNumbersPage() {
                                                             {number.entityType === "Asset" && <Truck className="h-4 w-4 text-slate-400" />}
                                                             {number.entityType === "Driver" && <User className="h-4 w-4 text-slate-400" />}
                                                             <span className="text-sm text-slate-600">{number.entityType}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center align-middle">
+                                                        <div className="flex justify-center">
+                                                            <Toggle
+                                                                checked={number.numberRequired ?? true}
+                                                                onCheckedChange={() =>
+                                                                    handleToggleChange(number.id, "numberRequired")
+                                                                }
+                                                            />
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center align-middle">
@@ -461,6 +479,20 @@ export function KeyNumbersPage() {
                                     setAddFormData(prev => ({ ...prev, numberTypeName: e.target.value }))
                                 }
                                 placeholder="Enter number name (e.g. DOT Number)"
+                            />
+                        </div>
+
+                        {/* Number Required */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <label className="text-sm font-medium">Number Required?</label>
+                                <p className="text-xs text-slate-500">Makes this number mandatory for the entity</p>
+                            </div>
+                            <Toggle
+                                checked={addFormData.numberRequired}
+                                onCheckedChange={(checked) =>
+                                    setAddFormData(prev => ({ ...prev, numberRequired: checked }))
+                                }
                             />
                         </div>
 

@@ -15,16 +15,15 @@ import {
 import { DocumentTagsManager } from './tags/DocumentTagsManager';
 import { CreateSectionModal } from './tags/TagComponents';
 
-// Shared UI wrappers removed (moved to DocumentTypeEditor)
 // StatusBadge kept as it might be used in list view
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
     const styles: Record<string, string> = {
-        Active: 'bg-green-100 text-green-800 ring-green-600/20',
-        Draft: 'bg-gray-100 text-gray-700 ring-gray-600/20',
-        Inactive: 'bg-red-100 text-red-700 ring-red-600/20',
+        Active: 'bg-green-100 text-green-700 border-green-300',
+        Draft: 'bg-gray-100 text-gray-600 border-gray-300',
+        Inactive: 'bg-gray-100 text-gray-600 border-gray-300',
     };
     return (
-        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${styles[status] || styles.Draft}`}>
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${styles[status] || styles.Draft}`}>
             {status}
         </span>
     );

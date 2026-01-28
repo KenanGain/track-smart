@@ -5,6 +5,7 @@ import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
 import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
+import { LocationsPage } from '@/pages/account/LocationsPage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -39,6 +40,9 @@ function App() {
         }
         if (path === "/account/profile") {
             return <CarrierProfilePage />
+        }
+        if (path === "/account/locations") {
+            return <LocationsPage />
         }
         if (path === "/settings/key-numbers") {
             return <KeyNumbersPage />

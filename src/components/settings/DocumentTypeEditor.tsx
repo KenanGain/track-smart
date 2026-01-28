@@ -9,7 +9,9 @@ import {
     Info,
     Search,
     Tag as TagIcon,
-    Check
+    Check,
+    X,
+    FolderPlus
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import {
@@ -163,6 +165,10 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     const [reminders, setReminders] = useState(initialData?.monitoring?.reminders || { d90: true, d60: true, d30: true, d7: false });
     const [channels, setChannels] = useState(initialData?.monitoring?.channels || { email: true, inapp: true, sms: false });
 
+    // Add Folder Modal
+    const [isAddFolderModalOpen, setIsAddFolderModalOpen] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+
     // Update internal state if initialData changes
     useEffect(() => {
         if (initialData) {
@@ -189,7 +195,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
         }
     }, [initialData, defaultRelatedTo]);
 
-    const { folderTree, tagSections, addTagToSection } = useAppData();
+    const { folderTree, tagSections, addTagToSection, addFolder } = useAppData();
 
     // Tag Handlers
     const handleTagToggle = (sectionId: string, tagId: string, multiSelect: boolean) => {
@@ -588,6 +594,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         setSelectedFolderId(id);
                                         setSelectedFolderName(name);
                                     }}
+                                    onAddFolder={() => setIsAddFolderModalOpen(true)}
                                 />
                             )}
                         </div>
@@ -629,6 +636,72 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                 onAddCustomTag={handleAddCustomTag}
                 onSelectAll={handleSectionSelectAll}
             />
+
+            {/* ADD FOLDER MODAL */}
+            {isAddFolderModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                                    <FolderPlus className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-900">Add New Folder</h3>
+                                    <p className="text-sm text-slate-500">Create a folder in the selected location</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsAddFolderModalOpen(false)} className="text-slate-400 hover:text-slate-700 p-1">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">Folder Name <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    value={newFolderName}
+                                    onChange={(e) => setNewFolderName(e.target.value)}
+                                    placeholder="Enter folder name..."
+                                    className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    autoFocus
+                                />
+                            </div>
+                            {selectedFolderId && (
+                                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                    <p className="text-xs text-slate-500">Will be created inside:</p>
+                                    <p className="text-sm font-medium text-slate-700 mt-0.5">{selectedFolderName || 'Selected folder'}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                            <button
+                                onClick={() => { setIsAddFolderModalOpen(false); setNewFolderName(''); }}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg bg-white hover:bg-slate-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (newFolderName.trim() && selectedFolderId && addFolder) {
+                                        addFolder(selectedFolderId, newFolderName.trim());
+                                        setNewFolderName('');
+                                        setIsAddFolderModalOpen(false);
+                                    } else if (!selectedFolderId) {
+                                        alert('Please select a parent folder first');
+                                    } else if (!newFolderName.trim()) {
+                                        alert('Please enter a folder name');
+                                    }
+                                }}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2"
+                            >
+                                <FolderPlus className="w-4 h-4" />
+                                Create Folder
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

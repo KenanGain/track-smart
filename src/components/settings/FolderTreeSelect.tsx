@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Folder, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, Check, FolderPlus } from 'lucide-react';
 
 // --- TREE COMPONENT ---
 interface TreeItemProps {
@@ -47,9 +47,10 @@ interface FolderTreeSelectProps {
     data: any[];
     selectedFolderId: string | null;
     onSelect: (id: string, name: string) => void;
+    onAddFolder?: () => void;
 }
 
-export const FolderTreeSelect: React.FC<FolderTreeSelectProps> = ({ data, selectedFolderId, onSelect }) => {
+export const FolderTreeSelect: React.FC<FolderTreeSelectProps> = ({ data, selectedFolderId, onSelect, onAddFolder }) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['root_company', 'carrier_root', 'assets_root', 'driver_root']));
     const toggleExpand = (id: string) => {
         const next = new Set(expandedIds);
@@ -60,6 +61,15 @@ export const FolderTreeSelect: React.FC<FolderTreeSelectProps> = ({ data, select
         <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
             <div className="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Directory Structure</span>
+                {onAddFolder && (
+                    <button
+                        onClick={onAddFolder}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors"
+                    >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        Add Folder
+                    </button>
+                )}
             </div>
             <div className="p-2 max-h-[300px] overflow-y-auto">
                 {data.map((node: any) => (

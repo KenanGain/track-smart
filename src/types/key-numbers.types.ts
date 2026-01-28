@@ -21,6 +21,7 @@ export interface KeyNumberConfig {
     numberTypeDescription: string;
     category: Category;
     entityType: EntityType;
+    numberRequired?: boolean; // defaults to true if not specified
     hasExpiry: boolean;
     documentRequired: boolean;
     requiredDocumentTypeId?: string;
@@ -31,6 +32,7 @@ export interface AddNumberFormData {
     numberTypeName: string;
     category: Category;
     entityType: EntityType;
+    numberRequired: boolean;
     hasExpiry: boolean;
     documentRequired: boolean;
     requiredDocumentTypeId?: string;
