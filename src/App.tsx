@@ -6,6 +6,7 @@ import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
 import { LocationsPage } from '@/pages/account/LocationsPage'
+import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -55,6 +56,9 @@ function App() {
         }
         if (path === "/settings/maintenance") {
             return <MaintenancePage />
+        }
+        if (path === "/assets/directory") {
+            return <AssetDirectoryPage />
         }
 
         // Default page for other routes
