@@ -318,9 +318,16 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                 <table className="w-full text-left border-collapse min-w-[1000px]">
                     <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
-                            {LOCATIONS_UI.locationsPage.table.columns.map((col, idx) => (
-                                <th key={idx} className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{col}</th>
-                            ))}
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">LOCATION NAME</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">ADDRESS</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">FENCED</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">GATED</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">CAMERAS</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">GUARD</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">RESTRICTED</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">SCORE</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">STATUS</th>
+                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -356,7 +363,7 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                                                     {loc.security[k] ? <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mx-auto"><Check className="w-3.5 h-3.5" /></div> : <span className="text-slate-300 font-bold text-lg">—</span>}
                                                 </td>
                                             ))}
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 text-center">
                                                 <Badge
                                                     text={loc.score.toString()}
                                                     tone={loc.score >= 90 ? 'blue' : loc.score >= 70 ? 'yellow' : 'gray'}
@@ -370,10 +377,10 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-400 text-right">
+                                            <td className="px-6 py-4 text-center">
                                                 <button
                                                     onClick={() => onEditLocation(loc)}
-                                                    className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                                    className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded text-slate-400 inline-block"
                                                 >
                                                     <Edit3 className="w-4 h-4" />
                                                 </button>
