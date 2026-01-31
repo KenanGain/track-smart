@@ -244,3 +244,53 @@ export const INITIAL_VIEW_DATA = {
         }
     }
 };
+
+// --- COMPLIANCE NUMBERS DATA STRUCTURE ---
+export const COMPLIANCE_NUMBERS = {
+    groups: [
+        {
+            key: "regulatory",
+            label: "REGULATORY AND SAFETY NUMBERS",
+            items: [
+                { type: "USDOT Number", value: "3920192", status: "Active", expiry: "-", docStatus: "Uploaded" },
+                { type: "MC Number", value: "Not entered", status: "Missing", expiry: "-", docStatus: "N/A" },
+                { type: "USDOT Legal Name", value: "Acme Trucking Inc.", status: "Active", expiry: "-", docStatus: "Uploaded" },
+                { type: "Safety Fitness Rating", value: "Satisfactory", status: "Active", expiry: "2024-12-01", docStatus: "Uploaded" },
+                { type: "CVOR Level", value: "Not entered", status: "Missing", expiry: "Not set", docStatus: "N/A" },
+            ]
+        },
+        {
+            key: "tax",
+            label: "TAX AND BUSINESS IDENTIFICATION NUMBERS",
+            items: [
+                { type: "EIN", value: "88-1234567", status: "Incomplete", expiry: "-", docStatus: "Missing" },
+                { type: "DUNS Number", value: "Not entered", status: "Missing", expiry: "-", docStatus: "N/A" },
+                { type: "IFTA License", value: "IFTA-9902", status: "Expiring Soon", expiry: "2024-02-28", docStatus: "Uploaded" },
+                { type: "State Tax ID", value: "Not entered", status: "Missing", expiry: "-", docStatus: "N/A" },
+            ]
+        },
+        {
+            key: "carrier",
+            label: "CARRIER & INDUSTRY CODES",
+            items: [
+                { type: "SCAC Code", value: "ACME", status: "Active", expiry: "2026-06-30", docStatus: "Uploaded" },
+                { type: "Carrier Code", value: "Not entered", status: "Missing", expiry: "-", docStatus: "N/A" },
+            ]
+        },
+        {
+            key: "bond",
+            label: "BOND AND REGISTRATION NUMBERS",
+            items: [
+                { type: "Surety Bond", value: "SB-998877", status: "Expired", expiry: "2023-12-31", docStatus: "Uploaded" },
+                { type: "Cargo Insurance", value: "POL-555", status: "Incomplete", expiry: "-", docStatus: "Missing" },
+            ]
+        },
+        {
+            key: "other",
+            label: "OTHER",
+            items: [
+                { type: "Company Registration", value: "Not entered", status: "Missing", expiry: "-", docStatus: "N/A" },
+            ]
+        }
+    ]
+};

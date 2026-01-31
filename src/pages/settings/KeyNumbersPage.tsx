@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { Search, Edit, ChevronDown, Building2, Truck, User } from "lucide-react"
+import { Search, Edit, ChevronDown, Building2, Truck, User, Bell } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -32,7 +32,13 @@ export function KeyNumbersPage() {
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState<Category | null>(null)
     const [editingId, setEditingId] = useState<string | null>(null)
-    const [addFormData, setAddFormData] = useState<AddNumberFormData>({
+    const [addFormData, setAddFormData] = useState<AddNumberFormData & {
+        monitoringEnabled: boolean;
+        monitorBasedOn: 'expiry' | 'issue';
+        reminderDays: { 90: boolean; 60: boolean; 30: boolean; 7: boolean };
+        renewalRecurrence: 'annually' | 'biannually' | 'quarterly' | 'monthly' | 'none';
+        notificationChannels: { email: boolean; inApp: boolean; sms: boolean };
+    }>({
         numberTypeName: "",
         category: CATEGORIES[0],
         entityType: "Carrier",
@@ -41,6 +47,11 @@ export function KeyNumbersPage() {
         documentRequired: false,
         requiredDocumentTypeId: "",
         status: "Active",
+        monitoringEnabled: false,
+        monitorBasedOn: 'expiry',
+        reminderDays: { 90: true, 60: true, 30: true, 7: false },
+        renewalRecurrence: 'annually',
+        notificationChannels: { email: true, inApp: true, sms: false },
     })
 
     const { documents, addDocument } = useAppData()
@@ -95,6 +106,11 @@ export function KeyNumbersPage() {
             documentRequired: false,
             requiredDocumentTypeId: "",
             status: "Active",
+            monitoringEnabled: false,
+            monitorBasedOn: 'expiry',
+            reminderDays: { 90: true, 60: true, 30: true, 7: false },
+            renewalRecurrence: 'annually',
+            notificationChannels: { email: true, inApp: true, sms: false },
         })
         setShowCategoryDropdown(false)
         setShowAddModal(true)
@@ -112,6 +128,11 @@ export function KeyNumbersPage() {
             documentRequired: number.documentRequired,
             requiredDocumentTypeId: number.requiredDocumentTypeId || "",
             status: number.status,
+            monitoringEnabled: (number as any).monitoringEnabled ?? false,
+            monitorBasedOn: (number as any).monitorBasedOn ?? 'expiry',
+            reminderDays: (number as any).reminderDays ?? { 90: true, 60: true, 30: true, 7: false },
+            renewalRecurrence: (number as any).renewalRecurrence ?? 'annually',
+            notificationChannels: (number as any).notificationChannels ?? { email: true, inApp: true, sms: false },
         })
         setShowAddModal(true)
     }
@@ -563,6 +584,171 @@ export function KeyNumbersPage() {
                                 <RadioGroupItem value="Inactive">Inactive</RadioGroupItem>
                             </RadioGroup>
                         </div>
+
+                        {/* Monitoring & Notifications Section */}
+                        {addFormData.hasExpiry && (
+                            <div className="border-l-4 border-blue-500 bg-slate-50 rounded-lg p-5 space-y-5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Bell className="w-5 h-5 text-blue-600" />
+                                        <span className="text-sm font-semibold text-slate-800">Monitoring & Notifications</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-500">Enabled</span>
+                                        <Toggle
+                                            checked={addFormData.monitoringEnabled}
+                                            onCheckedChange={(checked) =>
+                                                setAddFormData(prev => ({ ...prev, monitoringEnabled: checked }))
+                                            }
+                                        />
+                                    </div>
+                                </div>
+
+                                {addFormData.monitoringEnabled && (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-6">
+                                            {/* Left Column */}
+                                            <div className="space-y-4">
+                                                {/* Monitor Based On */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Monitor Based On</label>
+                                                    <div className="flex items-center gap-4">
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="radio"
+                                                                name="monitorBasedOn"
+                                                                checked={addFormData.monitorBasedOn === 'expiry'}
+                                                                onChange={() => setAddFormData(prev => ({ ...prev, monitorBasedOn: 'expiry' }))}
+                                                                className="w-4 h-4 text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">Expiry Date</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="radio"
+                                                                name="monitorBasedOn"
+                                                                checked={addFormData.monitorBasedOn === 'issue'}
+                                                                onChange={() => setAddFormData(prev => ({ ...prev, monitorBasedOn: 'issue' }))}
+                                                                className="w-4 h-4 text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">Issue Date</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                {/* Renewal Recurrence */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Renewal Recurrence</label>
+                                                    <select
+                                                        value={addFormData.renewalRecurrence}
+                                                        onChange={(e) => setAddFormData(prev => ({ ...prev, renewalRecurrence: e.target.value as any }))}
+                                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    >
+                                                        <option value="annually">Annually (Every 1 Year)</option>
+                                                        <option value="biannually">Biannually (Every 2 Years)</option>
+                                                        <option value="quarterly">Quarterly (Every 3 Months)</option>
+                                                        <option value="monthly">Monthly</option>
+                                                        <option value="none">No Recurrence</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {/* Right Column */}
+                                            <div className="space-y-4">
+                                                {/* Notification Reminders */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Notification Reminders</label>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.reminderDays[90]}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 90: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">90 Days Before</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.reminderDays[60]}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 60: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">60 Days Before</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.reminderDays[30]}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 30: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">30 Days Before</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.reminderDays[7]}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 7: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">7 Days Before</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                {/* Notification Channels */}
+                                                <div>
+                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Notification Channels</label>
+                                                    <div className="flex items-center gap-4">
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.notificationChannels.email}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, notificationChannels: { ...prev.notificationChannels, email: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">Email</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.notificationChannels.inApp}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, notificationChannels: { ...prev.notificationChannels, inApp: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">In-App</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={addFormData.notificationChannels.sms}
+                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, notificationChannels: { ...prev.notificationChannels, sms: e.target.checked } }))}
+                                                                className="w-4 h-4 rounded text-blue-600"
+                                                            />
+                                                            <span className="text-sm text-slate-700">SMS</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Projected Notification Schedule */}
+                                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-3">
+                                            <Bell className="w-5 h-5 text-blue-500 mt-0.5" />
+                                            <div>
+                                                <p className="text-sm font-semibold text-slate-800">Projected Notification Schedule</p>
+                                                <p className="text-xs text-slate-600">
+                                                    Monitor {addFormData.monitorBasedOn === 'expiry' ? 'Expiry Date' : 'Issue Date'}.
+                                                    Reminders at {[90, 60, 30, 7].filter(d => addFormData.reminderDays[d as keyof typeof addFormData.reminderDays]).map(d => `${d} days`).join(', ') || 'none'} before.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     <DialogFooter>

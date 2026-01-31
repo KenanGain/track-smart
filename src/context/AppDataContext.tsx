@@ -8,7 +8,7 @@ import {
     type TagSection
 } from '@/data/mock-app-data';
 import { INITIAL_KEY_NUMBERS } from '@/data/key-numbers-mock-data';
-import type { KeyNumberConfig, KeyNumberValue } from '@/types/key-numbers.types';
+import type { KeyNumberConfig, KeyNumberValue, UploadedDocument } from '@/types/key-numbers.types';
 
 // --- TYPES ---
 interface AppDataContextType {
@@ -18,7 +18,8 @@ interface AppDataContextType {
     // Key Numbers
     keyNumbers: KeyNumberConfig[];
     keyNumberValues: Record<string, KeyNumberValue>;
-    updateKeyNumberValue: (id: string, value: string, expiryDate?: string, documentFileName?: string) => void;
+    updateKeyNumberValue: (id: string, value: string, expiryDate?: string, documents?: UploadedDocument[]) => void;
+    getDocumentTypeById: (id: string) => DocumentType | undefined;
     // Document Actions
     addDocument: (doc: DocumentType) => void;
     updateDocument: (id: string, updates: Partial<DocumentType>) => void;
@@ -94,12 +95,16 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
 
     // --- ACTIONS ---
 
-    const updateKeyNumberValue = useCallback((id: string, value: string, expiryDate?: string, documentFileName?: string) => {
+    const updateKeyNumberValue = useCallback((id: string, value: string, expiryDate?: string, documents?: UploadedDocument[]) => {
         setKeyNumberValues(prev => ({
             ...prev,
-            [id]: { value, expiryDate, documentFileName }
+            [id]: { value, expiryDate, documents }
         }));
     }, []);
+
+    const getDocumentTypeById = useCallback((id: string) => {
+        return documents.find(doc => doc.id === id);
+    }, [documents]);
 
     const addDocument = useCallback((doc: DocumentType) => {
         setDocuments(prev => [...prev, doc]);
@@ -230,6 +235,7 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
         keyNumbers,
         keyNumberValues,
         updateKeyNumberValue,
+        getDocumentTypeById,
         addDocument,
         updateDocument,
         assignDocumentToFolder,

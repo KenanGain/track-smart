@@ -44,6 +44,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         children: [
             { key: "asset-directory", label: "Asset Directory", icon: Folder, path: "/assets/directory" },
             { key: "asset-dashboard", label: "Asset Dashboard", icon: LayoutDashboard, path: "/assets/dashboard" },
+            { key: "asset-maintenance", label: "Maintenance", icon: Wrench, path: "/assets/maintenance" },
         ],
     },
     {

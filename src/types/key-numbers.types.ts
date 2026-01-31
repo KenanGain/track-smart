@@ -39,9 +39,26 @@ export interface AddNumberFormData {
     status: "Active" | "Inactive";
 }
 
+// Stores an uploaded document associated with a key number
+export interface UploadedDocument {
+    id: string;
+    fileName: string;
+    fileSize?: number;              // File size in bytes
+    uploadedAt: string;
+    expiryDate?: string;            // Can differ from key number expiry
+    issueDate?: string;
+    selectedTags?: Record<string, string[]>;  // sectionId -> array of tagIds
+    notes?: string;
+}
+
 // Stores the actual entered values for a key number in the dashboard
 export interface KeyNumberValue {
+    keyNumberConfigId?: string;     // Reference to KeyNumberConfig
     value: string;
     expiryDate?: string;
-    documentFileName?: string; // Stores the name of uploaded document (PDF/DOCX)
+    issueDate?: string;
+    tags?: string[];                // Union of selected tags (tag IDs)
+    documents?: UploadedDocument[];
 }
+
+

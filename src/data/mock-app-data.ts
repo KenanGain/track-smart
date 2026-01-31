@@ -154,7 +154,22 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
     // Carrier Docs
     { id: '1', name: 'CVOR Level 2', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
     { id: '2', name: 'Safety Fitness Certificate', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '3', name: 'Liability Insurance', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
+    {
+        id: '3',
+        name: 'Liability Insurance',
+        relatedTo: 'carrier',
+        expiryRequired: true,
+        issueDateRequired: false,
+        status: 'Active',
+        selectedTags: {
+            'sec_insurance': [
+                { id: 'ins_cargo', required: false },
+                { id: 'ins_liability', required: false },
+                { id: 'ins_physical', required: false }
+            ]
+        },
+        requirementLevel: 'required'
+    },
     { id: '4', name: 'Operating Authority', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Draft', selectedTags: {}, requirementLevel: 'optional' },
     { id: '5', name: 'IFTA License', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
     // Asset Docs
