@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-    Plus, Search, Filter, CheckCircle2, Clock, PlayCircle, AlertCircle, XCircle, ChevronDown, ChevronRight,
-    Calendar, LayoutGrid, ClipboardList, PenTool, Wrench, MoreHorizontal,
-    Briefcase, User, SkipForward, Trash2, List, Truck, Edit, CheckSquare, Lock,
+    Plus, Search, Filter, AlertCircle, XCircle,
+    Calendar, LayoutGrid, ClipboardList, Wrench, MoreHorizontal,
+    Briefcase, SkipForward, Trash2, List, Truck, Edit, CheckSquare, Lock,
     X, Check, FileText, Eye
 } from "lucide-react";
 import { CreateScheduleForm } from "./CreateScheduleForm";
@@ -973,7 +973,7 @@ const CompleteOrderModal = ({ isOpen, onClose, onComplete, order, tasks }: any) 
 
         for (const assetId of selectedAssetIds) {
             const data = breakdowns[assetId];
-            const assetTasks = tasksByAsset[assetId];
+
             const isOdoRequired = order.meta?.odometerRequired;
             const isHoursRequired = order.meta?.engineHoursRequired;
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
     Check, X, Search, User, Info, AlertCircle
 } from 'lucide-react';
