@@ -14,7 +14,7 @@ import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-number
 export interface DetailedAsset extends Asset {
     image?: string;
     location?: string;
-    odometer?: string;
+    odometer?: number;
     riskScore?: number;
     health?: string;
     compliance?: string;
@@ -559,7 +559,7 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                       <div className="space-y-1.5">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Odometer</span>
                         <div className="flex items-center gap-1.5 text-slate-900 font-bold text-lg leading-none">
-                          {currentVehicle.odometer || '0'} <span className="text-xs font-medium text-slate-400 mt-1">mi</span>
+                          {currentVehicle.odometer ? currentVehicle.odometer.toLocaleString() : '0'} <span className="text-xs font-medium text-slate-400 mt-1">{currentVehicle.odometerUnit || 'mi'}</span>
                         </div>
                       </div>
                     </div>
@@ -582,12 +582,26 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
               </div>
 
               {/* Metadata Row */}
-              <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 md:grid-cols-5 gap-6">
+              <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-y-8 gap-x-6">
                 <MetadataItem label="Unit #" value={currentVehicle.unitNumber} copyable={true} />
                 <MetadataItem label="VIN #" value={currentVehicle.vin} copyable={true} />
                 <MetadataItem label="Plate #" value={currentVehicle.plateNumber || '—'} copyable={true} />
                 <MetadataItem label="Plate State" value={currentVehicle.plateJurisdiction || '—'} />
                 <MetadataItem label="Plate Expiry" value={currentVehicle.registrationExpiryDate || '—'} warning={getStatus(currentVehicle.registrationExpiryDate) !== 'Active'} />
+                
+                <MetadataItem label="Gross Weight" value={currentVehicle.grossWeight ? `${currentVehicle.grossWeight.toLocaleString()} ${currentVehicle.grossWeightUnit}` : '—'} />
+                <MetadataItem label="Unloaded Weight" value={currentVehicle.unloadedWeight ? `${currentVehicle.unloadedWeight.toLocaleString()} ${currentVehicle.unloadedWeightUnit}` : '—'} />
+                <MetadataItem label="Ownership" value={currentVehicle.financialStructure} />
+                <MetadataItem label="Market Value" value={currentVehicle.marketValue ? `$${currentVehicle.marketValue.toLocaleString()}` : '—'} />
+                
+                {currentVehicle.financialStructure === 'Leased' && currentVehicle.lessorCompanyName && (
+                    <MetadataItem label="Lessor" value={currentVehicle.lessorCompanyName} />
+                )}
+                {currentVehicle.financialStructure === 'Financed' && currentVehicle.lienHolderName && (
+                    <MetadataItem label="Lien Holder" value={currentVehicle.lienHolderName} />
+                )}
+                
+                 <MetadataItem label="Date Added" value={currentVehicle.dateAdded || '—'} />
               </div>
             </div>
           </Card>

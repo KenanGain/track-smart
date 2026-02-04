@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import {
     X, Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
-    Plus, Trash, Clock, Fingerprint, KeyRound, Landmark, Shield,
+    Plus, Trash, Clock, Fingerprint, KeyRound, Shield,
     AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
-    UploadCloud, FileText, Trash2
+    UploadCloud, FileText, Trash2, Gauge
 } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -89,10 +89,22 @@ const assetSchema = z.object({
     model: z.string().min(1, 'Required'),
     year: z.number().min(1900).max(new Date().getFullYear() + 2),
     color: z.string().optional(),
-    gcwr: z.number().optional(),
+    
+    // Weights
     grossWeight: z.number().optional(),
+    grossWeightUnit: z.enum(['lbs', 'kg']).default('lbs'),
     unloadedWeight: z.number().optional(),
+    unloadedWeightUnit: z.enum(['lbs', 'kg']).default('lbs'),
 
+    // Odometer
+    odometer: z.number().optional(),
+    odometerUnit: z.enum(['mi', 'km']).default('mi'),
+
+    // Metadata
+    marketValue: z.number().min(0).optional(),
+    dateAdded: z.string().min(1, 'Required').default(new Date().toISOString().split('T')[0]),
+    notes: z.string().max(2000).optional(),
+    
     transponderNumber: z.string().optional(),
     transponderIssueDate: z.string().optional(),
     transponderExpiryDate: z.string().optional(),
@@ -115,9 +127,8 @@ const assetSchema = z.object({
     plateReminderSchedule: z.array(z.number()).default([90, 60, 30]),
     plateNotificationChannels: z.array(z.string()).default(['email', 'in_app']),
 
-    marketValue: z.number().min(0).optional(),
-    notes: z.string().max(2000).optional(),
-    driverAssignments: z.array(driverAssignmentSchema).default([]),
+    // Moved marketValue, notes up
+    driverAssignments: z.array(driverAssignmentSchema).max(2, 'Maximum 2 drivers allowed').default([]),
     yardId: z.string().optional(),
     operationalStatus: z.enum(['Active', 'Deactivated', 'Maintenance', 'OutOfService', 'Drafted']).default('Active'),
     insuranceAddedDate: z.string().optional(),
@@ -459,9 +470,49 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                             <FormInput label="Model" required><Input {...register('model')} placeholder="Cascadia" /></FormInput>
                             <FormInput label="Year"><Input type="number" {...register('year', { valueAsNumber: true })} /></FormInput>
                             <FormInput label="Color"><Input {...register('color')} placeholder="e.g. White" /></FormInput>
-                            <FormInput label="GCWR (kg)"><div className="relative"><Scale size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input type="number" {...register('gcwr', { valueAsNumber: true })} className="pl-9" /></div></FormInput>
-                            <FormInput label="Gross Weight (lbs)"><div className="relative"><Scale size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input type="number" {...register('grossWeight', { valueAsNumber: true })} className="pl-9" placeholder="0" /></div></FormInput>
-                            <FormInput label="Unloaded Weight (lbs)"><div className="relative"><Scale size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input type="number" {...register('unloadedWeight', { valueAsNumber: true })} className="pl-9" placeholder="0" /></div></FormInput>
+                            
+                            <FormInput label="Date Added to Fleet" required><Input type="date" {...register('dateAdded')} /></FormInput>
+                            
+                            {opStatus === 'Active' && (
+                                <FormInput label="Current Odometer" required>
+                                    <div className="flex gap-2">
+                                        <div className="relative flex-1">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
+                                            <Input type="number" {...register('odometer', { valueAsNumber: true })} className="pl-9" placeholder="0" />
+                                        </div>
+                                        <select {...register('odometerUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                            <option value="mi">mi</option>
+                                            <option value="km">km</option>
+                                        </select>
+                                    </div>
+                                </FormInput>
+                            )}
+                            
+                            <FormInput label="Gross Weight (Loaded)">
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Scale size={14} /></div>
+                                        <Input type="number" {...register('grossWeight', { valueAsNumber: true })} className="pl-9" placeholder="0" />
+                                    </div>
+                                    <select {...register('grossWeightUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                        <option value="lbs">lbs</option>
+                                        <option value="kg">kg</option>
+                                    </select>
+                                </div>
+                            </FormInput>
+
+                            <FormInput label="Unloaded Weight">
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Scale size={14} /></div>
+                                        <Input type="number" {...register('unloadedWeight', { valueAsNumber: true })} className="pl-9" placeholder="0" />
+                                    </div>
+                                    <select {...register('unloadedWeightUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                        <option value="lbs">lbs</option>
+                                        <option value="kg">kg</option>
+                                    </select>
+                                </div>
+                            </FormInput>
                         </FormSection>
 
                         {/* 3. Plate */}
@@ -502,10 +553,11 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     type="button"
                                     variant="outline"
                                     size="xs"
-                                    className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
-                                    onClick={() => appendDriver({ driverId: '', startDate: '' })}
+                                    disabled={driverFields.length >= 2}
+                                    className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => appendDriver({ driverId: '', startDate: new Date().toISOString().split('T')[0] })}
                                 >
-                                    <Plus size={14} /> Assign Driver
+                                    <Plus size={14} /> Assign Driver {driverFields.length}/2
                                 </Button>
                             </div>
 
@@ -547,8 +599,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                                 </select>
                                             </FormInput>
                                             <div className="grid grid-cols-2 gap-4">
-                                                <FormInput label="Start Date" required><Input type="date" {...register(`driverAssignments.${index}.startDate`)} /></FormInput>
-                                                <FormInput label="End Date (Optional)"><Input type="date" {...register(`driverAssignments.${index}.endDate`)} /></FormInput>
+                                                <FormInput label="Assignment Date" required><Input type="date" {...register(`driverAssignments.${index}.startDate`)} /></FormInput>
+                                                <FormInput label="Date Monitoring / End Date"><Input type="date" {...register(`driverAssignments.${index}.endDate`)} /></FormInput>
                                             </div>
                                         </div>
                                     ))}
@@ -572,9 +624,9 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                             <MonitoringBlock title="Transponder Monitoring" prefix="transponder" watch={watch} register={register} setValue={setValue} monitorOptions={[{ label: 'Expiry Date', value: 'expiry_date' }, { label: 'Issue Date', value: 'issue_date' }]} />
                         </FormSection>
 
-                        {/* 7. Ownership type */}
-                        <FormSection title="Ownership & Financial" icon={KeyRound}>
-                            <FormInput label="Ownership Type">
+                        {/* 7. Ownership & Financial Profile */}
+                        <FormSection title="Ownership & Financial Profile" icon={KeyRound}>
+                            <FormInput label="Ownership Structure">
                                 <select {...register('financialStructure')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">
                                     <option value="Owned">Owned</option>
                                     <option value="Leased">Leased</option>
@@ -582,17 +634,45 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     <option value="Financed">Financed</option>
                                 </select>
                             </FormInput>
+
+                            <FormInput label="Current Market Value ($)">
+                                <div className="relative">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
+                                    <Input type="number" {...register('marketValue', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
+                                </div>
+                            </FormInput>
+
                             <div className="col-span-full border-t border-slate-100 pt-6 mt-2">
-                                {financial === 'Leased' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"><FormInput label="Leasing Name"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput><FormInput label="Lessor Company Name"><Input {...register('lessorCompanyName')} /></FormInput><AddressSection register={register} watch={watch} /></div>}
-                                {financial === 'Rented' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"><FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput><AddressSection register={register} watch={watch} /></div>}
-                                {financial === 'Financed' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"><FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} /></FormInput><FormInput label="Lien Holder Name"><Input {...register('lienHolderName')} /></FormInput><AddressSection register={register} watch={watch} /></div>}
-                                {financial === 'Owned' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"><FormInput label="Owner Name"><Input {...register('ownerName')} placeholder="Company Legal Name" /></FormInput></div>}
+                                {financial === 'Leased' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
+                                        <FormInput label="Lessor Company Name"><Input {...register('lessorCompanyName')} /></FormInput>
+                                        <AddressSection register={register} watch={watch} />
+                                    </div>
+                                )}
+                                {financial === 'Rented' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <FormInput label="Rental Agency Name"><Input {...register('rentalAgencyName')} placeholder="e.g. Enterprise" /></FormInput>
+                                        <AddressSection register={register} watch={watch} />
+                                    </div>
+                                )}
+                                {financial === 'Financed' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} /></FormInput>
+                                        <FormInput label="Lien Holder Name"><Input {...register('lienHolderName')} /></FormInput>
+                                        <AddressSection register={register} watch={watch} />
+                                    </div>
+                                )}
+                                {financial === 'Owned' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <FormInput label="Owner Name"><Input {...register('ownerName')} placeholder="Company Legal Name" /></FormInput>
+                                    </div>
+                                )}
                             </div>
                         </FormSection>
 
-                        {/* 8. Valuation and Notes */}
-                        <FormSection title="Valuation & Notes" icon={Landmark}>
-                            <FormInput label="Market Value ($)"><div className="relative"><DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input type="number" {...register('marketValue', { valueAsNumber: true })} className="pl-9" placeholder="0.00" /></div></FormInput>
+                        {/* 8. Notes */}
+                        <FormSection title="Additional Notes" icon={FileText}>
                             <div className="col-span-full">
                                 <FormInput label="Notes (Max 2000 Chars)">
                                     <textarea {...register('notes')} className="w-full h-32 p-3 text-sm rounded-lg border border-slate-200 focus:outline-none focus:border-blue-500" placeholder="Enter additional asset details..." />

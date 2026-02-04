@@ -47,9 +47,17 @@ export interface Asset {
     transponderNotificationChannels?: string[];
 
     // Weights
-    gcwr?: number;
     grossWeight?: number;
+    grossWeightUnit?: 'lbs' | 'kg';
     unloadedWeight?: number;
+    unloadedWeightUnit?: 'lbs' | 'kg';
+
+    // Odometer
+    odometer?: number;
+    odometerUnit?: 'mi' | 'km';
+    
+    // Status Metadata
+    dateAdded: string;
 
     // Financial
     marketValue?: number;
@@ -108,6 +116,7 @@ export const MOCK_YARDS = [
 ];
 
 // --- Mock Assets Data ---
+// --- Mock Assets Data ---
 export const INITIAL_ASSETS: Asset[] = [
     {
         id: "a1",
@@ -132,7 +141,15 @@ export const INITIAL_ASSETS: Asset[] = [
         plateReminderSchedule: [90, 60, 30],
         plateNotificationChannels: ["email", "in_app"],
         permits: [],
-        driverAssignments: []
+        driverAssignments: [],
+        dateAdded: "2021-06-01",
+        grossWeight: 80000,
+        grossWeightUnit: "lbs",
+        unloadedWeight: 18000,
+        unloadedWeightUnit: "lbs",
+        odometer: 245000,
+        odometerUnit: "mi",
+        marketValue: 85000
     },
     {
         id: "a2",
@@ -159,7 +176,15 @@ export const INITIAL_ASSETS: Asset[] = [
         plateReminderSchedule: [90, 60, 30],
         plateNotificationChannels: ["email", "in_app"],
         permits: [],
-        driverAssignments: []
+        driverAssignments: [],
+        dateAdded: "2023-01-05",
+        grossWeight: 65000,
+        grossWeightUnit: "kg",
+        unloadedWeight: 15000,
+        unloadedWeightUnit: "kg",
+        odometer: 120000,
+        odometerUnit: "km",
+        marketValue: 110000
     },
     {
         id: "a3",
@@ -186,7 +211,15 @@ export const INITIAL_ASSETS: Asset[] = [
         plateReminderSchedule: [90, 60, 30],
         plateNotificationChannels: ["email", "in_app"],
         permits: [],
-        driverAssignments: []
+        driverAssignments: [],
+        dateAdded: "2020-03-01",
+        grossWeight: 54000,
+        grossWeightUnit: "lbs",
+        unloadedWeight: 22000,
+        unloadedWeightUnit: "lbs",
+        odometer: 310000,
+        odometerUnit: "mi",
+        marketValue: 75000
     },
     {
         id: "a4",
@@ -212,7 +245,15 @@ export const INITIAL_ASSETS: Asset[] = [
         plateReminderSchedule: [90, 60, 30],
         plateNotificationChannels: ["email", "in_app"],
         permits: [],
-        driverAssignments: []
+        driverAssignments: [],
+        dateAdded: "2019-05-01",
+        grossWeight: 7000,
+        grossWeightUnit: "lbs",
+        unloadedWeight: 5000,
+        unloadedWeightUnit: "lbs",
+        odometer: 85000,
+        odometerUnit: "mi",
+        marketValue: 35000
     },
     {
         id: "a5",
@@ -238,7 +279,15 @@ export const INITIAL_ASSETS: Asset[] = [
         plateReminderSchedule: [90, 60, 30],
         plateNotificationChannels: ["email", "in_app"],
         permits: [],
-        driverAssignments: []
+        driverAssignments: [],
+        dateAdded: "2022-06-01",
+        grossWeight: 60000,
+        grossWeightUnit: "lbs",
+        unloadedWeight: 14000,
+        unloadedWeightUnit: "lbs",
+        odometer: 0,
+        odometerUnit: "mi",
+        marketValue: 0
     },
     {
         id: "a6",
@@ -262,7 +311,15 @@ export const INITIAL_ASSETS: Asset[] = [
         ownerName: "TrackSmart Logistics Inc.",
         plateMonitoringEnabled: false,
         permits: [],
-        driverAssignments: []
+        driverAssignments: [],
+        dateAdded: "2018-09-01",
+        grossWeight: 68000,
+        grossWeightUnit: "lbs",
+        unloadedWeight: 26000,
+        unloadedWeightUnit: "lbs",
+        odometer: 450000,
+        odometerUnit: "mi",
+        marketValue: 65000
     }
 ];
 
