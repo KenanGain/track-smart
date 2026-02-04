@@ -14,7 +14,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { CATEGORIES, INITIAL_KEY_NUMBERS } from "@/data/key-numbers-mock-data"
+import { CATEGORIES } from "@/data/key-numbers-mock-data"
 import type { KeyNumberConfig, Category, AddNumberFormData } from "@/types/key-numbers.types"
 import { useAppData } from "@/context/AppDataContext"
 import { Combobox } from "@/components/ui/combobox"

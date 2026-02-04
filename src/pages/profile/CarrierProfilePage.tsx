@@ -46,7 +46,7 @@ import { LocationViewModal } from '../../components/locations/LocationViewModal'
 import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS } from './carrier-profile.data';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
-import type { DocumentType, TagSection, ColorTheme } from '@/data/mock-app-data';
+import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { LocationsPage } from '@/pages/account/LocationsPage';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
