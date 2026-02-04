@@ -17,8 +17,9 @@ interface AppDataContextType {
     tagSections: TagSection[];
     // Key Numbers
     keyNumbers: KeyNumberConfig[];
+    setKeyNumbers: React.Dispatch<React.SetStateAction<KeyNumberConfig[]>>;
     keyNumberValues: Record<string, KeyNumberValue>;
-    updateKeyNumberValue: (id: string, value: string, expiryDate?: string, documents?: UploadedDocument[]) => void;
+    updateKeyNumberValue: (id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[]) => void;
     getDocumentTypeById: (id: string) => DocumentType | undefined;
     // Document Actions
     addDocument: (doc: DocumentType) => void;
@@ -90,15 +91,15 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
     const [documents, setDocuments] = useState<DocumentType[]>(MOCK_DOCUMENTS);
     const [folderTree, setFolderTree] = useState<FolderNode>(MOCK_FOLDER_TREE);
     const [tagSections, setTagSections] = useState<TagSection[]>(INITIAL_TAG_SECTIONS);
-    const [keyNumbers] = useState<KeyNumberConfig[]>(INITIAL_KEY_NUMBERS);
+    const [keyNumbers, setKeyNumbers] = useState<KeyNumberConfig[]>(INITIAL_KEY_NUMBERS);
     const [keyNumberValues, setKeyNumberValues] = useState<Record<string, KeyNumberValue>>({});
 
     // --- ACTIONS ---
 
-    const updateKeyNumberValue = useCallback((id: string, value: string, expiryDate?: string, documents?: UploadedDocument[]) => {
+    const updateKeyNumberValue = useCallback((id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[]) => {
         setKeyNumberValues(prev => ({
             ...prev,
-            [id]: { value, expiryDate, documents }
+            [id]: { value, expiryDate, issueDate, tags, documents }
         }));
     }, []);
 
@@ -233,6 +234,7 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
         folderTree,
         tagSections,
         keyNumbers,
+        setKeyNumbers,
         keyNumberValues,
         updateKeyNumberValue,
         getDocumentTypeById,

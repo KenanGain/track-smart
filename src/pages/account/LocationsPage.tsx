@@ -1,27 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-    Search,
-    Plus,
-    ChevronDown,
-    Check,
-    Edit3,
-    X,
-    Building2,
-    Grid,
-    DoorClosed,
-    Camera,
-    UserCircle,
-    Lock,
-    UploadCloud,
-    FileText,
-    Map
-} from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Plus, Building2, Edit3, ChevronDown, Check, X, Grid, DoorClosed, Camera, UserCircle, Lock, Trash2 } from 'lucide-react';
 import {
     LOCATIONS_UI,
     INITIAL_LOCATIONS_DATA,
     type Location,
     type LocationsTableData
 } from './locations.data';
+import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
+import { LocationViewModal } from '../../components/locations/LocationViewModal';
 
 // --- HELPER COMPONENTS ---
 
@@ -58,276 +44,56 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
     );
 };
 
-// --- ADD/EDIT LOCATION MODAL ---
-
-interface AddLocationDialogProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (data: any) => void;
-    initialData: Location | null;
-}
-
-const AddLocationDialog: React.FC<AddLocationDialogProps> = ({ isOpen, onClose, onSave, initialData }) => {
-    const [formData, setFormData] = useState(LOCATIONS_UI.addLocationModal.newLocationDefaults);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const calculateScore = () => {
-        let score = 40; // Base
-        if (formData.cctv) score += 25;
-        if (formData.fenced && formData.gated) score += 17;
-        else if (formData.fenced || formData.gated) score += 8;
-        if (formData.restricted) score += 10;
-        if (formData.guard) score += 8;
-        return Math.min(100, score);
-    };
-
-    const score = calculateScore();
-    let scoreTone = "gray";
-    let scoreLabel = "LOW";
-    if (score >= 90) { scoreTone = "blue"; scoreLabel = "EXCELLENT"; }
-    else if (score >= 75) { scoreTone = "green"; scoreLabel = "GOOD"; }
-    else if (score >= 60) { scoreTone = "yellow"; scoreLabel = "FAIR"; }
-
-    useEffect(() => {
-        if (isOpen) {
-            if (initialData) {
-                setFormData({
-                    name: initialData.name,
-                    locationId: initialData.id,
-                    type: initialData.type as "Yard" | "Office",
-                    street: initialData.address.street,
-                    city: initialData.address.city,
-                    state: initialData.address.state,
-                    zip: initialData.address.zip,
-                    timezone: "EST (UTC-5)",
-                    initialStatus: initialData.status as "Active" | "Maintenance",
-                    fenced: initialData.security.fenced,
-                    gated: initialData.security.gated,
-                    cctv: initialData.security.cctv,
-                    guard: initialData.security.guard,
-                    restricted: initialData.security.restricted,
-                    mapPin: { lat: null, lng: null },
-                    certificates: []
-                });
-            } else {
-                setFormData(LOCATIONS_UI.addLocationModal.newLocationDefaults);
-            }
-        }
-    }, [isOpen, initialData]);
-
-    const handleToggle = (key: string) => {
-        setFormData((prev) => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
-    };
-
-    const handleInputChange = (key: string, val: string) => {
-        setFormData((prev) => ({ ...prev, [key]: val }));
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setFormData((prev) => ({
-                ...prev,
-                certificates: [...prev.certificates, { name: file.name, size: (file.size / 1024 / 1024).toFixed(2) + " MB" }]
-            }));
-        }
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl w-full max-w-6xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-                <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h3 className="text-xl font-bold text-slate-900">{initialData ? "Edit Location" : LOCATIONS_UI.addLocationModal.title}</h3>
-                    <button onClick={onClose}><X className="w-6 h-6 text-slate-400 hover:text-slate-700" /></button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* Column 1: Basic & Address */}
-                        <div className="space-y-6">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">BASIC & ADDRESS</h4>
-
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Location Name</label>
-                                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="e.g. West Coast Distribution" value={formData.name} onChange={e => handleInputChange('name', e.target.value)} />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Location ID</label>
-                                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="LOC-####" value={formData.locationId} onChange={e => handleInputChange('locationId', e.target.value)} />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Type</label>
-                                <div className="flex bg-slate-100 p-1 rounded-lg">
-                                    {(["Yard", "Office"] as const).map(t => (
-                                        <button key={t} onClick={() => handleInputChange('type', t)}
-                                            className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-all ${formData.type === t ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
-                                            {t}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Address</label>
-                                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Street Address" value={formData.street} onChange={e => handleInputChange('street', e.target.value)} />
-                                <div className="grid grid-cols-3 gap-2">
-                                    <input type="text" className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="City" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} />
-                                    <input type="text" className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="State" value={formData.state} onChange={e => handleInputChange('state', e.target.value)} />
-                                    <input type="text" className="border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Zip" value={formData.zip} onChange={e => handleInputChange('zip', e.target.value)} />
-                                </div>
-                            </div>
-
-                            <div className="border-2 border-dashed border-slate-300 rounded-xl h-32 flex flex-col items-center justify-center text-slate-400 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
-                                <Map className="w-6 h-6 mb-2" />
-                                <span className="text-sm font-semibold">Set Map Pin</span>
-                            </div>
-                        </div>
-
-                        {/* Column 2: Schedule & Security */}
-                        <div className="space-y-6">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">SCHEDULE & SECURITY</h4>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-1">Timezone</label>
-                                    <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none bg-white" value={formData.timezone} onChange={e => handleInputChange('timezone', e.target.value)}>
-                                        <option>EST (UTC-5)</option><option>CST (UTC-6)</option><option>MST (UTC-7)</option><option>PST (UTC-8)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-1">Initial Status</label>
-                                    <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none bg-white" value={formData.initialStatus} onChange={e => handleInputChange('initialStatus', e.target.value)}>
-                                        <option>Active</option><option>Maintenance</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                {[
-                                    { key: 'fenced', label: 'Fenced Perimeter', desc: 'Physical fencing around property', icon: Grid },
-                                    { key: 'gated', label: 'Gated Entry', desc: 'Controlled entry/exit points', icon: DoorClosed },
-                                    { key: 'cctv', label: 'CCTV Surveillance', desc: '24/7 Video monitoring', icon: Camera },
-                                    { key: 'guard', label: 'Security Guard', desc: 'On-premise personnel', icon: UserCircle },
-                                    { key: 'restricted', label: 'Restricted Areas', desc: 'Special access zones defined', icon: Lock },
-                                ].map((item) => (
-                                    <div key={item.key} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg bg-white shadow-sm">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-full ${formData[item.key as keyof typeof formData] ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
-                                                <item.icon className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-900">{item.label}</div>
-                                                <div className="text-xs text-slate-500">{item.desc}</div>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleToggle(item.key)}
-                                            className={`w-10 h-6 rounded-full p-1 transition-colors ${formData[item.key as keyof typeof formData] ? 'bg-blue-600' : 'bg-slate-300'}`}
-                                        >
-                                            <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${formData[item.key as keyof typeof formData] ? 'translate-x-4' : 'translate-x-0'}`} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Column 3: Score & Advanced */}
-                        <div className="space-y-6">
-                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">SCORE & ADVANCED</h4>
-
-                            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col items-center text-center">
-                                <div className="text-4xl font-black text-slate-900 mb-1">{score} <span className="text-lg text-slate-400 font-medium">/ 100</span></div>
-                                <Badge text={scoreLabel} tone={scoreTone} className="mb-6" />
-
-                                <div className="w-full space-y-2 text-sm">
-                                    <div className="flex justify-between text-slate-600"><span>Base Security</span><span className="font-bold text-slate-900">+40 pts</span></div>
-                                    <div className="flex justify-between text-slate-600"><span>Monitoring</span><span className={`font-bold ${formData.cctv ? 'text-slate-900' : 'text-slate-300'}`}>+25 pts</span></div>
-                                    <div className="flex justify-between text-slate-600"><span>Access Control</span><span className={`font-bold ${formData.fenced || formData.gated ? 'text-slate-900' : 'text-slate-300'}`}>+{formData.fenced && formData.gated ? 17 : (formData.fenced || formData.gated ? 8 : 0)} pts</span></div>
-                                </div>
-                            </div>
-
-                            <div
-                                className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors bg-white"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <input type="file" ref={fileInputRef} className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileChange} />
-                                <div className="bg-blue-50 p-3 rounded-full mb-3"><UploadCloud className="w-6 h-6 text-blue-600" /></div>
-                                <p className="text-sm font-semibold text-slate-700">Click to upload</p>
-                                <p className="text-xs text-slate-400">PDF, PNG, JPG up to 10MB</p>
-                                {formData.certificates.length > 0 && (
-                                    <div className="mt-4 w-full space-y-2">
-                                        {formData.certificates.map((file, idx) => (
-                                            <div key={idx} className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded text-xs font-medium text-slate-700">
-                                                <FileText className="w-3 h-3" /> <span className="truncate flex-1">{file.name}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-
-                <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-end gap-3">
-                    <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg">Cancel</button>
-                    <button onClick={() => { onSave({ ...formData, score }); onClose(); }} className="px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm">Save Location</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 // --- LOCATIONS TABLE COMPONENT ---
 
 interface LocationsTableProps {
     locationsData: LocationsTableData;
-    filters: { search: string; type: string; status: string; security: string };
+    filters: { search: string; status: string; security: string };
     onEditLocation: (loc: Location) => void;
+    onViewLocation: (loc: Location) => void;
+    onDeleteLocation: (loc: Location) => void;
 }
 
-const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters, onEditLocation }) => {
+const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters, onEditLocation, onViewLocation, onDeleteLocation }) => {
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
     const toggleGroup = (key: string) => {
         setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const filterItem = (item: Location) => {
-        if (filters.search && !item.name.toLowerCase().includes(filters.search.toLowerCase()) && !item.id.toLowerCase().includes(filters.search.toLowerCase()) && !item.address.street.toLowerCase().includes(filters.search.toLowerCase())) return false;
-        if (filters.type !== "All" && item.type !== filters.type) return false;
-        if (filters.status !== "All" && item.status !== filters.status) return false;
+    const filterItem = (loc: Location) => {
+        const matchesSearch = loc.name.toLowerCase().includes(filters.search.toLowerCase()) ||
+            loc.id.toLowerCase().includes(filters.search.toLowerCase());
+        const matchesStatus = filters.status === "All" || loc.status === filters.status;
+
+        let matchesSecurity = true;
         if (filters.security !== "All") {
-            if (filters.security === "High (90+)" && item.score < 90) return false;
-            if (filters.security === "Medium (70-89)" && (item.score < 70 || item.score >= 90)) return false;
-            if (filters.security === "Low (<70)" && item.score >= 70) return false;
+            // Simple mapping logic based on UI dropdown usually
+            if (filters.security === "Fenced") matchesSecurity = loc.security.fenced;
+            if (filters.security === "Gated") matchesSecurity = loc.security.gated;
+            if (filters.security === "CCTV") matchesSecurity = loc.security.cctv;
+            if (filters.security === "Guarded") matchesSecurity = loc.security.guard;
         }
-        return true;
+
+        return matchesSearch && matchesStatus && matchesSecurity;
     };
 
     return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[1000px]">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">LOCATION NAME</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">ADDRESS</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">FENCED</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">GATED</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">CAMERAS</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">GUARD</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">RESTRICTED</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">SCORE</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">STATUS</th>
-                            <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">ACTIONS</th>
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider">Location Name / ID</th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider">Address</th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center" title="Fenced"><Grid className="w-4 h-4 mx-auto" /></th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center" title="Gated"><DoorClosed className="w-4 h-4 mx-auto" /></th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center" title="CCTV"><Camera className="w-4 h-4 mx-auto" /></th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center" title="Guard"><UserCircle className="w-4 h-4 mx-auto" /></th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center" title="Restricted"><Lock className="w-4 h-4 mx-auto" /></th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center">Score</th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center">Status</th>
+                            <th className="px-6 py-4 font-bold text-slate-500 text-xs uppercase tracking-wider text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -349,9 +115,13 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                                         </td>
                                     </tr>
                                     {!collapsedGroups[group.key] && visibleItems.map((loc) => (
-                                        <tr key={loc.id} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors group">
+                                        <tr
+                                            key={loc.id}
+                                            className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                                            onClick={() => onViewLocation(loc)}
+                                        >
                                             <td className="px-6 py-4">
-                                                <div className="font-bold text-slate-900 text-sm">{loc.name}</div>
+                                                <div className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">{loc.name}</div>
                                                 <div className="text-xs text-slate-400 mt-0.5">{loc.id}</div>
                                             </td>
                                             <td className="px-6 py-4">
@@ -378,12 +148,22 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <button
-                                                    onClick={() => onEditLocation(loc)}
-                                                    className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded text-slate-400 inline-block"
-                                                >
-                                                    <Edit3 className="w-4 h-4" />
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); onEditLocation(loc); }}
+                                                        className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded text-slate-400 transition-colors"
+                                                        title="Edit"
+                                                    >
+                                                        <Edit3 className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); onDeleteLocation(loc); }}
+                                                        className="p-1 hover:text-red-600 hover:bg-red-50 rounded text-slate-400 transition-colors"
+                                                        title="Delete"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -399,11 +179,13 @@ const LocationsTable: React.FC<LocationsTableProps> = ({ locationsData, filters,
 
 // --- MAIN PAGE COMPONENT ---
 
-export function LocationsPage() {
+export function LocationsPage({ hideBreadcrumb = false }: { hideBreadcrumb?: boolean }) {
     const [locationsData, setLocationsData] = useState<LocationsTableData>(INITIAL_LOCATIONS_DATA);
-    const [filters, setFilters] = useState({ search: "", type: "All", status: "All", security: "All" });
+    const [filters, setFilters] = useState({ search: "", status: "All", security: "All" });
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+    const [viewingLocation, setViewingLocation] = useState<Location | null>(null);
     const [toast, setToast] = useState({ visible: false, message: "" });
 
     const showToast = (msg: string) => {
@@ -424,7 +206,6 @@ export function LocationsPage() {
     const handleSaveLocation = (newLoc: any) => {
         const locationEntry: Location = {
             id: newLoc.locationId,
-            type: newLoc.type,
             name: newLoc.name,
             address: { street: newLoc.street, city: newLoc.city, state: newLoc.state, zip: newLoc.zip },
             security: {
@@ -438,7 +219,7 @@ export function LocationsPage() {
             status: newLoc.initialStatus
         };
 
-        const targetGroupKey = newLoc.type === "Office" ? "office" : "yard_terminal";
+        const targetGroupKey = "yard_terminal";
 
         setLocationsData(prev => {
             let groups = prev.groups;
@@ -466,15 +247,30 @@ export function LocationsPage() {
         setEditingLocation(null);
     };
 
+    const handleDeleteLocation = (loc: Location) => {
+        if (confirm(`Are you sure you want to remove ${loc.name}?`)) {
+            setLocationsData(prev => ({
+                ...prev,
+                groups: prev.groups.map(g => ({
+                    ...g,
+                    items: g.items.filter(i => i.id !== loc.id)
+                }))
+            }));
+            showToast("Location removed successfully");
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-slate-50 p-4 lg:p-8">
+        <div className={hideBreadcrumb ? "bg-slate-50" : "min-h-screen bg-slate-50 p-4 lg:p-8"}>
             {/* Breadcrumb */}
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
-                <Building2 className="w-4 h-4" />
-                <span>Account</span>
-                <span className="text-slate-300">/</span>
-                <span className="font-semibold text-slate-900">Locations</span>
-            </div>
+            {!hideBreadcrumb && (
+                <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
+                    <Building2 className="w-4 h-4" />
+                    <span>Account</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="font-semibold text-slate-900">Locations</span>
+                </div>
+            )}
 
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -500,18 +296,28 @@ export function LocationsPage() {
                     />
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-1">
-                    {(['type', 'status', 'security'] as const).map(key => (
-                        <div key={key} className="relative min-w-[140px]">
-                            <select
-                                className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none pr-8"
-                                value={filters[key]}
-                                onChange={(e) => setFilters(prev => ({ ...prev, [key]: e.target.value }))}
-                            >
-                                {LOCATIONS_UI.locationsPage.filters[key].options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
-                        </div>
-                    ))}
+                    <div className="relative min-w-[140px]">
+                        <select className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none pr-8"
+                            value={filters.status}
+                            onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                        >
+                            {LOCATIONS_UI.locationsPage.filters.status.options.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
+                    </div>
+                    <div className="relative min-w-[140px]">
+                        <select className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none pr-8"
+                            value={filters.security}
+                            onChange={(e) => setFilters(prev => ({ ...prev, security: e.target.value }))}
+                        >
+                            {LOCATIONS_UI.locationsPage.filters.security.options.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
+                    </div>
                 </div>
             </div>
 
@@ -520,14 +326,28 @@ export function LocationsPage() {
                 locationsData={locationsData}
                 filters={filters}
                 onEditLocation={handleOpenEditLocation}
+                onViewLocation={(loc) => { setViewingLocation(loc); setIsViewModalOpen(true); }}
+                onDeleteLocation={handleDeleteLocation}
             />
 
-            {/* Modal */}
-            <AddLocationDialog
+            {/* Modals */}
+            <LocationEditorModal
+                type="yard"
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSave={handleSaveLocation}
                 initialData={editingLocation}
+            />
+
+            <LocationViewModal
+                type="yard"
+                data={viewingLocation}
+                isOpen={isViewModalOpen}
+                onClose={() => setIsViewModalOpen(false)}
+                onEdit={() => {
+                    setIsViewModalOpen(false);
+                    if (viewingLocation) handleOpenEditLocation(viewingLocation);
+                }}
             />
 
             {/* Toast */}

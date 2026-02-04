@@ -28,3 +28,77 @@
         --radius: 0.5rem;
     }
 }
+
+@layer base {
+    * {
+        border-color: hsl(var(--border));
+    }
+
+    body {
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+        font-family: "Inter", sans-serif;
+        font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        font-weight: 400;
+        /* Regular for body */
+        font-size: 14px;
+        /* Dashboard standard */
+        line-height: normal;
+        /* "Compact" */
+    }
+
+    /* Typography Hierarchy */
+    h1,
+    .h1 {
+        font-weight: 600;
+        /* 600 */
+        font-size: 20px;
+        letter-spacing: -0.02em;
+    }
+
+    h2,
+    .h2 {
+        font-weight: 500;
+        /* 500 */
+        font-size: 16px;
+        letter-spacing: -0.01em;
+    }
+
+    h3,
+    .h3,
+    h4,
+    .h4 {
+        font-weight: 500;
+        font-size: 14px;
+    }
+
+    /* Force elements to follow rules */
+    label,
+    .label {
+        font-weight: 400;
+        /* Regular */
+        font-size: 13px;
+    }
+
+    table,
+    .table {
+        font-size: 13px;
+    }
+
+    /* Reduce bold spam */
+    strong,
+    b {
+        font-weight: 500;
+    }
+}
+
+@layer utilities {
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+}

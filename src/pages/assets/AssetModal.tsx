@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import {
     X, Save, RotateCcw, IdCard, ShieldCheck, Globe, Warehouse, Users,
     Plus, Trash, Clock, Fingerprint, KeyRound, Landmark, Shield,
-    AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell
+    AlertCircle, Scale, DollarSign, MapPin as MapPinIcon, Info, Bell,
+    UploadCloud, FileText, Trash2
 } from 'lucide-react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -100,6 +101,7 @@ const assetSchema = z.object({
     transponderRenewalRecurrence: z.enum(['annually', 'quarterly', 'custom']).default('annually'),
     transponderReminderSchedule: z.array(z.number()).default([90, 60, 30]),
     transponderNotificationChannels: z.array(z.string()).default(['email', 'in_app']),
+    transponderDocument: z.any().optional(),
 
     plateNumber: z.string().optional(),
     plateType: z.string().optional(),
@@ -158,6 +160,102 @@ const FormInput = ({ label, error, children, className, required }: { label: str
         {error && <span className="text-[10px] text-red-500 font-semibold flex items-center gap-1 mt-1"><AlertCircle size={10} /> {error}</span>}
     </div>
 );
+
+const DocumentUploadInput = ({ label, description, files = [], onFilesChange, error, required }: { label: string; description?: string; files?: any[]; onFilesChange: (files: any[]) => void; error?: string; required?: boolean }) => {
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const newFiles = Array.from(e.target.files).map(file => ({
+                id: `doc-${Date.now()}-${Math.random()}`,
+                fileName: file.name,
+                fileSize: file.size,
+                uploadedAt: new Date().toISOString(),
+                file: file // Store actual file object
+            }));
+            onFilesChange([...files, ...newFiles]);
+        }
+    };
+
+    const removeFile = (id: string) => {
+        onFilesChange(files.filter(f => f.id !== id));
+    };
+
+    return (
+        <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-700 tracking-tight uppercase flex items-center gap-1">
+                    {label}
+                    {required && <span className="text-red-500">*</span>}
+                </label>
+                {files.length > 0 && (
+                     <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md transition-colors"
+                    >
+                        <Plus size={12} /> Add
+                    </button>
+                )}
+            </div>
+            
+            <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                multiple
+                onChange={handleFileChange}
+            />
+
+            {files.length === 0 ? (
+                <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={cn(
+                        "border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors bg-white",
+                        error ? "border-red-300 bg-red-50" : "border-slate-200 hover:bg-slate-50 hover:border-blue-200"
+                    )}
+                >
+                    <div className="bg-blue-50 p-2.5 rounded-full mb-2">
+                        <UploadCloud className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <p className="text-xs font-semibold text-slate-700">Click to upload or drag & drop</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{description || "PDF, DOC, DOCX up to 10MB"}</p>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    {files.map((doc: any) => (
+                        <div key={doc.id} className="flex items-center justify-between p-2.5 border border-slate-200 rounded-lg bg-white group hover:border-blue-200 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-red-50 p-2 rounded-lg">
+                                    <FileText className="w-4 h-4 text-red-500" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs font-medium text-slate-700 truncate max-w-[180px]">{doc.fileName}</p>
+                                    <p className="text-[10px] text-slate-400">{doc.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : 'Unknown'} • {new Date(doc.uploadedAt || Date.now()).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => removeFile(doc.id)}
+                                className="text-slate-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                    <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-slate-200 rounded-lg p-2 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors"
+                    >
+                        <Plus size={14} />
+                        <span className="text-xs font-medium">Upload another</span>
+                    </div>
+                </div>
+            )}
+            {error && <span className="text-[10px] text-red-500 font-semibold flex items-center gap-1 mt-1"><AlertCircle size={10} /> {error}</span>}
+        </div>
+    );
+};
 
 function MonitoringBlock({ title, prefix, watch, register, setValue, monitorOptions }: { title: string; prefix: string; watch: any; register: any; setValue: any; monitorOptions: { label: string; value: string }[] }) {
     const isEnabled = watch(`${prefix}MonitoringEnabled`);
@@ -374,6 +472,14 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                             <FormInput label="Plate State/Province"><select {...register('plateJurisdiction')} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm bg-white">{(plateCountry === 'USA' ? USA_STATES : CANADA_PROVINCES).map(s => <option key={s} value={s}>{s}</option>)}</select></FormInput>
                             <FormInput label="Issue Date"><Input type="date" {...register('registrationIssueDate')} /></FormInput>
                             <FormInput label="Expiry Date"><Input type="date" {...register('registrationExpiryDate')} /></FormInput>
+                            <div className="col-span-full">
+                                <DocumentUploadInput
+                                    label="Registration Document"
+                                    description="Upload current registration card (PDF, JPG, PNG)"
+                                    files={watch('plateDocument') || []}
+                                    onFilesChange={(files) => setValue('plateDocument', files, { shouldDirty: true })}
+                                />
+                            </div>
                             <MonitoringBlock title="Plate / Registration Expiry Monitoring" prefix="plate" watch={watch} register={register} setValue={setValue} monitorOptions={[{ label: 'Expiry Date', value: 'expiry_date' }, { label: 'Issue Date', value: 'issue_date' }]} />
                         </FormSection>
 
@@ -455,6 +561,14 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                             <FormInput label="Transponder Number"><Input {...register('transponderNumber')} placeholder="TX-882193" /></FormInput>
                             <FormInput label="Issue Date"><Input type="date" {...register('transponderIssueDate')} /></FormInput>
                             <FormInput label="Expiry Date"><Input type="date" {...register('transponderExpiryDate')} /></FormInput>
+                            <div className="col-span-full">
+                                <DocumentUploadInput
+                                    label="Transponder Document"
+                                    description="Upload transponder assignment or receipt"
+                                    files={watch('transponderDocument') || []}
+                                    onFilesChange={(files) => setValue('transponderDocument', files, { shouldDirty: true })}
+                                />
+                            </div>
                             <MonitoringBlock title="Transponder Monitoring" prefix="transponder" watch={watch} register={register} setValue={setValue} monitorOptions={[{ label: 'Expiry Date', value: 'expiry_date' }, { label: 'Issue Date', value: 'issue_date' }]} />
                         </FormSection>
 

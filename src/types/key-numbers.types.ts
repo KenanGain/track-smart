@@ -26,6 +26,7 @@ export interface KeyNumberConfig {
     documentRequired: boolean;
     requiredDocumentTypeId?: string;
     status: "Active" | "Inactive";
+    isSystem?: boolean;
 }
 
 export interface AddNumberFormData {

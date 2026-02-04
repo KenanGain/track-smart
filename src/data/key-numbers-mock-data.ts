@@ -14,6 +14,7 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         documentRequired: true,
         requiredDocumentTypeId: "12",
         status: "Active",
+        isSystem: true,
     },
     {
         id: "kn-mc",
@@ -48,6 +49,18 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         hasExpiry: false,
         documentRequired: false,
         status: "Active",
+    },
+    {
+        id: "kn-transponder",
+        numberTypeId: "transponder-id",
+        numberTypeName: "Transponder ID",
+        numberTypeDescription: "Toll or Weigh Station Transponder ID",
+        category: "Regulatory and Safety Numbers",
+        entityType: "Asset",
+        hasExpiry: true,
+        documentRequired: true,
+        status: "Active",
+        isSystem: true,
     },
     {
         id: "kn-mx",
@@ -481,6 +494,18 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         status: "Active",
     },
     {
+        id: "kn-vin",
+        numberTypeId: "vin-number",
+        numberTypeName: "VIN",
+        numberTypeDescription: "Vehicle Identification Number",
+        category: "Bond and Registration Numbers",
+        entityType: "Asset",
+        hasExpiry: false,
+        documentRequired: false,
+        status: "Active",
+        isSystem: true,
+    },
+    {
         id: "kn-plate",
         numberTypeId: "plate-number",
         numberTypeName: "Plate #",
@@ -491,6 +516,7 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         documentRequired: true,
         requiredDocumentTypeId: "6",
         status: "Active",
+        isSystem: true,
     },
     {
         id: "kn-cvsa",

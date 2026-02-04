@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { Search, Edit, ChevronDown, Building2, Truck, User, Bell } from "lucide-react"
+import { Search, Edit, ChevronDown, Building2, Truck, User, Bell, Trash2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +23,7 @@ import { DocumentTypeEditor } from "@/components/settings/DocumentTypeEditor"
 
 export function KeyNumbersPage() {
     // State management
-    const [keyNumbers, setKeyNumbers] = useState<KeyNumberConfig[]>(INITIAL_KEY_NUMBERS)
+    const { keyNumbers, setKeyNumbers, documents, addDocument } = useAppData()
     const [searchQuery, setSearchQuery] = useState("")
     const [activeCategory, setActiveCategory] = useState<Category>(CATEGORIES[0])
 
@@ -54,7 +54,6 @@ export function KeyNumbersPage() {
         notificationChannels: { email: true, inApp: true, sms: false },
     })
 
-    const { documents, addDocument } = useAppData()
 
     // Quick Create Doc Type State
     const [showQuickCreateDoc, setShowQuickCreateDoc] = useState(false)
@@ -214,6 +213,12 @@ export function KeyNumbersPage() {
         // Reset and close
         setShowQuickCreateDoc(false)
     }
+
+    const handleDeleteNumber = (id: string) => {
+        if (confirm("Are you sure you want to delete this key number?")) {
+            setKeyNumbers(prev => prev.filter(n => n.id !== id));
+        }
+    };
 
     return (
         <div className="flex flex-col h-full bg-white">
@@ -396,10 +401,20 @@ export function KeyNumbersPage() {
                                                     <td className="px-6 py-4 text-center align-middle">
                                                         <button
                                                             onClick={() => handleEditNumber(number)}
-                                                            className="text-slate-600 hover:text-slate-900 transition-colors inline-block"
+                                                            className="text-slate-600 hover:text-slate-900 transition-colors inline-block mr-2"
+                                                            title="Edit"
                                                         >
                                                             <Edit className="h-4 w-4" />
                                                         </button>
+                                                        {!number.isSystem && (
+                                                            <button
+                                                                onClick={() => handleDeleteNumber(number.id)}
+                                                                className="text-rose-400 hover:text-rose-600 transition-colors inline-block"
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))

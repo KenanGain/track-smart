@@ -161,6 +161,21 @@ export const UI_DATA = {
             ],
             layout: [["operationClassification"], ["carrierOperation"], ["fmcsaAuthorityType"]],
             values: { operationClassification: "Authorized for Hire", carrierOperation: "Intrastate Only (Non-Hazmat)", fmcsaAuthorityType: "Motor Carrier of Property" }
+        },
+        addOfficeLocation: {
+            id: "addOfficeLocation",
+            title: "Add Office Location",
+            subtitle: "Enter the details for the new corporate office.",
+            icon: "MapPin",
+            saveLabel: "Add Location",
+            fields: [
+                { key: "label", label: "Location Label", type: "text", required: true, placeholder: "e.g. Phoenix Branch" },
+                { key: "address", label: "Full Address", type: "text", required: true, placeholder: "123 Main St, Phoenix, AZ 85001" },
+                { key: "contact", label: "Contact Person", type: "text", required: true, placeholder: "Manager Name" },
+                { key: "phone", label: "Phone Number", type: "tel", required: true, placeholder: "+1 (555) 000-0000" }
+            ],
+            layout: [["label"], ["address"], ["contact", "phone"]],
+            values: { label: "", address: "", contact: "", phone: "" }
         }
     },
     cargoEditor: {
@@ -294,3 +309,31 @@ export const COMPLIANCE_NUMBERS = {
         }
     ]
 };
+
+// --- OFFICE LOCATIONS DATA ---
+export const OFFICE_LOCATIONS = [
+    {
+        id: "LOC-2001",
+        label: "Corporate HQ - Wilmington",
+        address: "1200 North Dupont Hwy, Wilmington, DE 19801",
+        contact: "Head Office",
+        phone: "+1 (555) 123-4567",
+        operatingHours: [
+            { day: "Mon - Fri", hours: "08:00 - 18:00" },
+            { day: "Sat", hours: "10:00 - 14:00" },
+            { day: "Sun", hours: "Closed" }
+        ]
+    },
+    {
+        id: "LOC-2002",
+        label: "Denver Regional Office",
+        address: "101 Broadway, Denver, CO 80203",
+        contact: "Regional Manager",
+        phone: "+1 (303) 555-0199",
+        operatingHours: [
+            { day: "Mon - Fri", hours: "09:00 - 17:00" },
+            { day: "Sat", hours: "Closed" },
+            { day: "Sun", hours: "Closed" }
+        ]
+    }
+];
