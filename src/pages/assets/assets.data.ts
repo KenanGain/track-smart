@@ -58,9 +58,11 @@ export interface Asset {
     
     // Status Metadata
     dateAdded: string;
+    dateRemoved?: string; // New: Date removed from fleet
 
     // Financial
     marketValue?: number;
+    marketValueCurrency?: 'USD' | 'CAD'; // New: Currency for market value
     notes?: string;
     ownerName?: string;
     leasingName?: string;
@@ -149,7 +151,8 @@ export const INITIAL_ASSETS: Asset[] = [
         unloadedWeightUnit: "lbs",
         odometer: 245000,
         odometerUnit: "mi",
-        marketValue: 85000
+        marketValue: 85000,
+        marketValueCurrency: 'USD'
     },
     {
         id: "a2",

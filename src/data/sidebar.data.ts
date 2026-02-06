@@ -1,18 +1,16 @@
 import {
     LayoutDashboard,
     Building2,
-    User,
-    MapPin,
     CheckSquare,
     AlertTriangle,
     FileText,
-    Truck,
     Shield,
     Settings,
     KeyRound,
     Wrench,
     Layers,
     Folder,
+    DollarSign,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -28,24 +26,20 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         key: "account",
         label: "Account",
         icon: Building2,
-        defaultOpen: true,
-        children: [
-            { key: "profile", label: "Profile", icon: User, path: "/account/profile" },
-            { key: "locations", label: "Locations", icon: MapPin, path: "/account/locations" },
-            { key: "tasks", label: "Tasks", icon: CheckSquare, path: "/account/tasks" },
-            { key: "alerts", label: "Alerts", icon: AlertTriangle, path: "/account/alerts" },
-            { key: "documents", label: "Documents", icon: FileText, path: "/account/documents" },
-        ],
+        path: "/account/profile",
+    },
+
+    {
+        key: "compliance",
+        label: "Compliance & Documents",
+        icon: FileText,
+        path: "/compliance",
     },
     {
-        key: "assets",
-        label: "Assets",
-        icon: Truck,
-        children: [
-            { key: "asset-directory", label: "Asset Directory", icon: Folder, path: "/assets/directory" },
-            { key: "asset-dashboard", label: "Asset Dashboard", icon: LayoutDashboard, path: "/assets/dashboard" },
-            { key: "asset-maintenance", label: "Maintenance", icon: Wrench, path: "/assets/maintenance" },
-        ],
+        key: "fleet-maintenance",
+        label: "Maintenance",
+        icon: Wrench,
+        path: "/maintenance",
     },
     {
         key: "safety",
@@ -53,6 +47,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: Shield,
         path: "/safety",
     },
+
     {
         key: "accidents",
         label: "Accidents",
@@ -71,6 +66,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "services", label: "Services", icon: Layers, path: "/settings/services" },
             { key: "document-types", label: "Document Types", icon: FileText, path: "/settings/document-types" },
             { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders" },
+            { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" }
         ],
     },

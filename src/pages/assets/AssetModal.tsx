@@ -102,7 +102,12 @@ const assetSchema = z.object({
 
     // Metadata
     marketValue: z.number().min(0).optional(),
+    marketValueCurrency: z.enum(['USD', 'CAD']).default('USD'),
+    
+    // Status Fields
     dateAdded: z.string().min(1, 'Required').default(new Date().toISOString().split('T')[0]),
+    dateRemoved: z.string().optional(),
+    
     notes: z.string().max(2000).optional(),
     
     transponderNumber: z.string().optional(),
@@ -136,10 +141,8 @@ const assetSchema = z.object({
     financialStructure: z.enum(['Owned', 'Rented', 'Leased', 'Financed']).default('Owned'),
     ownerName: z.string().optional(),
     leasingName: z.string().optional(),
-    lessorCompanyName: z.string().optional(),
     rentalAgencyName: z.string().optional(),
     lienHolderBusiness: z.string().optional(),
-    lienHolderName: z.string().optional(),
 
     streetAddress: z.string().optional(),
     city: z.string().optional(),
@@ -471,23 +474,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                             <FormInput label="Year"><Input type="number" {...register('year', { valueAsNumber: true })} /></FormInput>
                             <FormInput label="Color"><Input {...register('color')} placeholder="e.g. White" /></FormInput>
                             
-                            <FormInput label="Date Added to Fleet" required><Input type="date" {...register('dateAdded')} /></FormInput>
-                            
-                            {opStatus === 'Active' && (
-                                <FormInput label="Current Odometer" required>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
-                                            <Input type="number" {...register('odometer', { valueAsNumber: true })} className="pl-9" placeholder="0" />
-                                        </div>
-                                        <select {...register('odometerUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
-                                            <option value="mi">mi</option>
-                                            <option value="km">km</option>
-                                        </select>
-                                    </div>
-                                </FormInput>
-                            )}
-                            
                             <FormInput label="Gross Weight (Loaded)">
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
@@ -635,10 +621,16 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 </select>
                             </FormInput>
 
-                            <FormInput label="Current Market Value ($)">
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
-                                    <Input type="number" {...register('marketValue', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
+                            <FormInput label="Current Market Value">
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><DollarSign size={14} /></div>
+                                        <Input type="number" {...register('marketValue', { valueAsNumber: true })} className="pl-9" placeholder="0.00" />
+                                    </div>
+                                    <select {...register('marketValueCurrency')} className="w-24 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                        <option value="USD">USD</option>
+                                        <option value="CAD">CAD</option>
+                                    </select>
                                 </div>
                             </FormInput>
 
@@ -646,7 +638,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 {financial === 'Leased' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                         <FormInput label="Leasing Company"><Input {...register('leasingName')} placeholder="e.g. Ryder" /></FormInput>
-                                        <FormInput label="Lessor Company Name"><Input {...register('lessorCompanyName')} /></FormInput>
                                         <AddressSection register={register} watch={watch} />
                                     </div>
                                 )}
@@ -659,7 +650,6 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                 {financial === 'Financed' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                         <FormInput label="Lien Holder Business"><Input {...register('lienHolderBusiness')} /></FormInput>
-                                        <FormInput label="Lien Holder Name"><Input {...register('lienHolderName')} /></FormInput>
                                         <AddressSection register={register} watch={watch} />
                                     </div>
                                 )}
@@ -691,9 +681,45 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                     <option value="Drafted">Draft</option>
                                 </select>
                             </FormInput>
-                            <div className="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {['Active', 'Deactivated', 'Maintenance', 'OutOfService'].includes(opStatus || '') && <div><FormInput label="Date Added to Insurance" required={opStatus === 'Active' || opStatus === 'Deactivated'}><Input type="date" {...register('insuranceAddedDate')} /></FormInput></div>}
-                                {(opStatus === 'Deactivated' || opStatus === 'OutOfService') && <div><FormInput label="Date Removed from Insurance" required={opStatus === 'Deactivated'}><Input type="date" {...register('insuranceRemovedDate')} className={cn(opStatus === 'Deactivated' && "border-rose-200 bg-rose-50/20")} /></FormInput></div>}
+                            
+                            <div className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+                                {/* ACTIVE / MAINTENANCE Fields */}
+                                {['Active', 'Maintenance'].includes(opStatus || '') && (
+                                    <>
+                                        <FormInput label="Date Added to Fleet" required><Input type="date" {...register('dateAdded')} /></FormInput>
+                                        <FormInput label="Date Added to Insurance" required={opStatus === 'Active'}><Input type="date" {...register('insuranceAddedDate')} /></FormInput>
+                                        
+                                        {opStatus === 'Active' && (
+                                            <FormInput label="Odometer" required>
+                                                <div className="flex gap-2">
+                                                    <div className="relative flex-1">
+                                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Gauge size={14} /></div>
+                                                        <Input type="number" {...register('odometer', { valueAsNumber: true })} className="pl-9" placeholder="0" />
+                                                    </div>
+                                                    <select {...register('odometerUnit')} className="w-20 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold px-2 text-slate-700">
+                                                        <option value="mi">mi</option>
+                                                        <option value="km">km</option>
+                                                    </select>
+                                                </div>
+                                            </FormInput>
+                                        )}
+                                    </>
+                                )}
+
+                                {/* DEACTIVATED Fields */}
+                                {opStatus === 'Deactivated' && (
+                                    <>
+                                        <FormInput label="Date Removed from Fleet" required><Input type="date" {...register('dateRemoved')} className="border-rose-200 bg-rose-50/20" /></FormInput>
+                                        <FormInput label="Date Removed from Insurance"><Input type="date" {...register('insuranceRemovedDate')} className="border-rose-200 bg-rose-50/20" /></FormInput>
+                                    </>
+                                )}
+
+                                {/* OOS Fields */}
+                                {opStatus === 'OutOfService' && (
+                                     <div className="col-span-full p-4 bg-amber-50 border border-amber-100 rounded-xl text-amber-800 text-sm font-medium flex items-center gap-2">
+                                         <AlertCircle size={16} /> Asset is marked Out of Service. No additional fleet dates required.
+                                     </div>
+                                )}
                             </div>
                         </FormSection>
                     </form>

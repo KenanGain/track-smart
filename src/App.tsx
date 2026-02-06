@@ -8,6 +8,8 @@ import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
 import { LocationsPage } from '@/pages/account/LocationsPage'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
+import { ExpenseTypesPage } from '@/pages/settings/ExpenseTypesPage'
+import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -40,6 +42,9 @@ function App() {
                 </div>
             )
         }
+        if (path === "/compliance") {
+            return <ComplianceDocumentsPage />
+        }
         if (path === "/account/profile") {
             return <CarrierProfilePage />
         }
@@ -58,11 +63,22 @@ function App() {
         if (path === "/settings/maintenance") {
             return <MaintenancePage />
         }
+        if (path === "/settings/expenses") {
+            return <ExpenseTypesPage />
+        }
         if (path === "/assets/directory") {
             return <AssetDirectoryPage />
         }
-        if (path === "/assets/maintenance") {
+        if (path === "/maintenance") {
             return <AssetMaintenancePage />
+        }
+        if (path === "/compliance") {
+            return (
+                <div className="p-8">
+                    <h1 className="text-3xl font-bold mb-4 text-slate-900">Compliance & Documents</h1>
+                    <p className="text-slate-600">Manage fleet compliance, permits, and document repositories here.</p>
+                </div>
+            )
         }
 
         // Default page for other routes

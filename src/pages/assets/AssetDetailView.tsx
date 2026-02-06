@@ -3,12 +3,20 @@ import {
   Plus, ChevronRight, Edit2, Copy, Truck, 
   AlertCircle, FileText,
   ShieldCheck, Hash, Clock, 
-  Settings, Box, Wrench, MapPin, ChevronDown 
+  Settings, MapPin, ChevronDown, Wrench, Trash2
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { Asset } from './assets.data';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
+import { CreateScheduleForm } from './CreateScheduleForm';
+import { CreateOrderModal } from './CreateOrderModal';
+import { AddExpenseModal } from './AddExpenseModal';
+import { INITIAL_TASKS, INITIAL_ORDERS, INITIAL_SERVICE_TYPES } from './maintenance.data';
+import type { TaskOrder } from './maintenance.data';
+import { INITIAL_VENDORS } from '@/data/vendors.data';
+import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense, type ExpenseCategory } from '@/pages/settings/expenses.data';
+import { DollarSign } from 'lucide-react';
 
 // --- Types for Rich Data (extending base Asset) ---
 export interface DetailedAsset extends Asset {
@@ -26,6 +34,7 @@ export interface DetailedAsset extends Asset {
     drivers?: { name: string; initials: string; color: string }[];
     tasks?: { title: string; statusLabel: string; statusColor: string; subLabel: string; isCritical?: boolean }[];
     history?: { date: string; type: string; vendor: string; cost: string; status: string }[];
+    schedules?: { id: string; name: string; frequency: string; nextDue: string; status: string }[];
     cvsaNumber?: string;
     cvsaExpiryDate?: string;
     iftaDecalNumber?: string;
@@ -168,51 +177,7 @@ const RiskScoreWidget = ({ score }: { score: number }) => {
   );
 };
 
-const MaintenanceRow = ({ date, type, vendor, cost, status }: { date: string; type: string; vendor: string; cost: string; status: string }) => {
-  const getStatusVariant = (s: string) => {
-    switch(s.toLowerCase()) {
-      case 'completed': return 'success';
-      case 'pending': return 'pending';
-      case 'overdue': return 'danger';
-      case 'scheduled': return 'blue';
-      default: return 'neutral';
-    }
-  };
 
-  return (
-    <tr className="hover:bg-slate-50/80 transition-colors border-b border-slate-100 last:border-0 group">
-      <td className="px-6 py-4 text-sm text-slate-900 font-medium whitespace-nowrap">{date}</td>
-      <td className="px-6 py-4 text-sm text-slate-600">
-        <div className="font-medium text-slate-900">{type.split('(')[0].trim()}</div>
-        {type.includes('(') && <div className="text-xs text-slate-400 mt-0.5">{type.split('(')[1].replace(')', '')}</div>}
-      </td>
-      <td className="px-6 py-4 text-sm text-slate-600">{vendor}</td>
-      <td className="px-6 py-4 text-sm text-slate-900 font-medium">{cost}</td>
-      <td className="px-6 py-4"><Badge variant={getStatusVariant(status)}>{status}</Badge></td>
-      <td className="px-6 py-4 text-right">
-        <button className="p-1.5 hover:bg-slate-100 rounded-md text-slate-400 hover:text-slate-600 transition-colors">
-          <ChevronRight size={16} />
-        </button>
-      </td>
-    </tr>
-  );
-};
-
-const TaskItem = ({ title, statusLabel, statusColor, subLabel, isCritical }: { title: string; statusLabel: string; statusColor: string; subLabel?: string; isCritical?: boolean }) => (
-  <div className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer group border border-transparent hover:border-slate-200">
-    <div className="flex items-start gap-3">
-      <div className={`mt-1.5 h-2 w-2 rounded-full flex-shrink-0 ${isCritical ? 'bg-rose-500' : 'bg-slate-300'}`} />
-      <div>
-        <h4 className="text-sm font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{title}</h4>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-          <Badge variant={statusColor} className="text-[10px] px-1.5 py-0 h-5">{statusLabel}</Badge>
-          <span className="text-xs text-slate-500">{subLabel}</span>
-        </div>
-      </div>
-    </div>
-    <ChevronRight size={16} className="text-slate-300 group-hover:text-slate-500" />
-  </div>
-);
 
 const MetadataItem = ({ label, value, sub, warning, copyable }: { label: string; value: string; sub?: string; warning?: boolean; copyable?: boolean }) => {
   const handleCopy = () => {
@@ -256,11 +221,12 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
     { name: 'Notifications', count: 3, alert: true },
     { name: 'Violations', count: 0 },
     { name: 'Maintenance', count: 0 },
-    { name: 'Repair & Expenses', count: 0 },
+    { name: 'Expenses', count: 0 },
     { name: 'Documents', count: 0 },
   ];
 
   const [currentVehicle, setCurrentVehicle] = useState(asset);
+  const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   useEffect(() => { setCurrentVehicle(asset); }, [asset]);
 
   // Modal State
@@ -477,6 +443,123 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
      return { total, expired, expiring, missingNumber, missingExpiry, missingDoc: 0 }; 
   }, [keyNumbers, currentVehicle]);
 
+  // --- Maintenance Logic ---
+  const [assetTasks, setAssetTasks] = useState(() => INITIAL_TASKS.filter(t => t.assetId === asset.id));
+  const [assetOrders, setAssetOrders] = useState(() => INITIAL_ORDERS.filter(o => {
+     // Naive check: if any task in order belongs to this asset
+     // We need to resolve tasks from INITIAL_TASKS to check assetId
+     // Note: In a real app backend would filter. Here we join manually.
+     const taskIds = o.taskIds;
+     const relatedTasks = INITIAL_TASKS.filter(t => taskIds.includes(t.id));
+     return relatedTasks.some(t => t.assetId === asset.id);
+  }));
+
+  // --- Expense Logic ---
+  const [manualExpenses, setManualExpenses] = useState<AssetExpense[]>(() => 
+      INITIAL_ASSET_EXPENSES.filter(e => e.assetId === asset.id)
+  );
+
+  const mergedExpenses = useMemo(() => {
+      // 1. Map Work Orders to "System" Expenses
+      const systemExpenses: AssetExpense[] = assetOrders.map(order => {
+          // Calculate total cost and determine currency (assume mix logic or take first)
+          let totalCost = 0;
+          let currency: "USD" | "CAD" = "USD";
+
+          if (order.completions) {
+              order.completions.forEach(c => {
+                  if (c.currency) currency = c.currency; 
+                  const assetBreakdown = c.assetBreakdowns?.find(b => b.assetId === asset.id);
+                  totalCost += (assetBreakdown?.costs?.totalPaid || 0);
+              });
+          }
+
+          return {
+              id: `sys_${order.id}`,
+              assetId: asset.id,
+              expenseTypeId: 'exp_maint', // Links to Maintenance type
+              amount: totalCost,
+              currency,
+              date: order.createdAt,
+              isRecurring: false,
+              source: 'maintenance',
+              referenceId: order.id,
+              notes: `Work Order #${order.id} - ${order.status}`
+          };
+      });
+
+      // 2. Merge and Sort
+      return [...manualExpenses, ...systemExpenses].sort((a,b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+  }, [manualExpenses, assetOrders, asset.id]);
+
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<AssetExpense | null>(null);
+
+  const handleSaveExpense = (expense: AssetExpense) => {
+      if (editingExpense) {
+          setManualExpenses(prev => prev.map(e => e.id === expense.id ? expense : e));
+      } else {
+          setManualExpenses(prev => [expense, ...prev]);
+      }
+      setIsExpenseModalOpen(false);
+      setEditingExpense(null);
+  };
+
+
+
+  // Update local state when asset prop changes
+  useEffect(() => {
+    setAssetTasks(INITIAL_TASKS.filter(t => t.assetId === asset.id));
+    setAssetOrders(INITIAL_ORDERS.filter(o => {
+         const orderTaskObjects = INITIAL_TASKS.filter(t => o.taskIds.includes(t.id));
+         return orderTaskObjects.some(t => t.assetId === asset.id);
+    }));
+  }, [asset.id]);
+
+  const [isCreateOrderModalOpen, setIsCreateOrderModalOpen] = useState(false);
+  const [vendors, setVendors] = useState(INITIAL_VENDORS);
+
+  const handleCreateOrder = (orderData: any) => {
+      const newOrder: TaskOrder = {
+          id: `wo_new_${Math.random().toString(36).substr(2, 9)}`,
+          taskIds: orderData.taskIds || [], // CreateOrderModal should pass taskIds, but currently passes meta/vendorId. We need to associate tasks.
+          // Wait, CreateOrderModal logic: "onCreate" passes { vendorId, createDate... meta }.
+          // It DOES NOT pass taskIds in the `onCreate` arg?
+          // Let's check CreateOrderModal.tsx call: `onCreate({ ... })`. It assumes parent knows which tasks were selected.
+          // Correct, `CreateOrderModal` takes `selectedTasks`.
+          // But here in AssetDetailView, what tasks are selected?
+          // "Log Maintenance" button usually implies creating an order for *pending* tasks or *new* tasks?
+          // The prompt said: "Log Maintenance button that triggers a pre-filtered modal for work order creation".
+          // If I click "Log Maintenance" generally, do I select tasks inside?
+          // CreateOrderModal has `selectedTasks` prop.
+          // If I pass *all* upcoming tasks for this asset, the user can see them in the "Tasks in Order" summary.
+          // But CreateOrderModal is designed to receive *already selected* tasks?
+          // Let's look at `CreateOrderModal.tsx`:
+          // `const uniqueAssetIds = [...new Set(selectedTasks.map((t: any) => t.assetId))];`
+          // It displays them. It doesn't seem to have a "Select Tasks" UI *inside* it.
+          // It assumes you selected tasks on the main screen and clicked "Generic Create Order".
+          // User Objective: "Log Maintenance button that triggers a pre-filtered modal".
+          // Maybe I should pass *ALL* active tasks for this asset as `selectedTasks`?
+          // OR, if the modal doesn't allow deselection, this might be wrong.
+          // Assuming for now we pass all "Due/Upcoming/Overdue" tasks as candidates.
+          vendorId: orderData.vendorId,
+          status: 'open',
+          createdAt: orderData.createDate,
+          dueDate: orderData.dueDate,
+          completions: []
+      } as TaskOrder; // Cast for now
+      
+      console.log("Creating Order:", newOrder);
+      setAssetOrders(prev => [newOrder, ...prev]);
+      setIsCreateOrderModalOpen(false);
+  };
+
+  const handleAddVendor = (newVendor: any) => {
+      setVendors(prev => [...prev, newVendor]);
+  };
+
   return (
     <div className="font-sans text-slate-900 flex flex-col h-full bg-slate-50">
       <main className="flex-1 min-w-0 pb-12 overflow-y-auto">
@@ -592,16 +675,17 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                 <MetadataItem label="Gross Weight" value={currentVehicle.grossWeight ? `${currentVehicle.grossWeight.toLocaleString()} ${currentVehicle.grossWeightUnit}` : '—'} />
                 <MetadataItem label="Unloaded Weight" value={currentVehicle.unloadedWeight ? `${currentVehicle.unloadedWeight.toLocaleString()} ${currentVehicle.unloadedWeightUnit}` : '—'} />
                 <MetadataItem label="Ownership" value={currentVehicle.financialStructure} />
-                <MetadataItem label="Market Value" value={currentVehicle.marketValue ? `$${currentVehicle.marketValue.toLocaleString()}` : '—'} />
+                <MetadataItem label="Market Value" value={currentVehicle.marketValue ? `$${currentVehicle.marketValue.toLocaleString()} ${currentVehicle.marketValueCurrency || 'USD'}` : '—'} />
                 
-                {currentVehicle.financialStructure === 'Leased' && currentVehicle.lessorCompanyName && (
-                    <MetadataItem label="Lessor" value={currentVehicle.lessorCompanyName} />
+                {currentVehicle.financialStructure === 'Leased' && currentVehicle.leasingName && (
+                    <MetadataItem label="Leasing Co." value={currentVehicle.leasingName} />
                 )}
-                {currentVehicle.financialStructure === 'Financed' && currentVehicle.lienHolderName && (
-                    <MetadataItem label="Lien Holder" value={currentVehicle.lienHolderName} />
+                {currentVehicle.financialStructure === 'Financed' && currentVehicle.lienHolderBusiness && (
+                    <MetadataItem label="Lien Holder" value={currentVehicle.lienHolderBusiness} />
                 )}
                 
                  <MetadataItem label="Date Added" value={currentVehicle.dateAdded || '—'} />
+                 {currentVehicle.dateRemoved && <MetadataItem label="Date Removed" value={currentVehicle.dateRemoved} warning />}
               </div>
             </div>
           </Card>
@@ -755,89 +839,284 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
               </div>
             )}
 
+
+
+            {/* Maintenance Content */}
             {/* Maintenance Content */}
             {activeTab === 'Maintenance' && (
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="xl:col-span-1 space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card className="p-5 flex flex-col justify-between h-[140px] relative overflow-hidden group">
-                      <div className="absolute -right-4 -top-4 p-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity rotate-12">
-                        <Box size={100} className="text-blue-900" />
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider z-10">YTD Cost</span>
-                      <div className="z-10">
-                        <div className="flex items-baseline gap-2 relative">
-                          <span className="text-2xl font-bold text-slate-900 tracking-tight">{currentVehicle.ytdCost || '$0.00'}</span>
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Metrics Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                     <Card className="p-4 flex flex-col justify-between relative overflow-hidden group">
+                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider z-10">YTD Maintenance</span>
+                       <div className="z-10 mt-1">
+                         <div className="flex items-baseline gap-2">
+                           <span className="text-xl font-bold text-slate-900">{currentVehicle.ytdCost || '$0.00'}</span>
+                         </div>
+                         <div className="text-[10px] text-slate-500 mt-1">
+                            <span className="text-emerald-600 font-bold">{currentVehicle.ytdChange || '0%'}</span> vs last year
+                         </div>
+                       </div>
+                     </Card>
+                     <Card className="p-4 flex flex-col justify-between relative overflow-hidden group">
+                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider z-10">Open Orders</span>
+                       <div className="z-10 mt-1 leading-none">
+                            <span className="text-xl font-bold text-slate-900">{currentVehicle.openWorkOrders || 0}</span>
+                       </div>
+                       <div className="mt-2">
+                            <Badge variant={(currentVehicle.openWorkOrders || 0) > 0 ? 'warning' : 'success'}>
+                                {(currentVehicle.openWorkOrders || 0) > 0 ? 'Action Needed' : 'All Clear'}
+                            </Badge>
+                       </div>
+                     </Card>
+                     <Card className="p-4 flex flex-col justify-between bg-blue-50/50 border-blue-100">
+                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Next Service</span>
+                        <div className="mt-1">
+                             {assetTasks.find(t => t.status === 'upcoming' || t.status === 'due') ? (
+                                 <>
+                                    <div className="text-sm font-bold text-blue-900 truncate">
+                                        {INITIAL_SERVICE_TYPES.find(s => s.id === assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.serviceTypeIds[0])?.name || 'Service'}
+                                    </div>
+                                    <div className="text-xs text-blue-600 mt-1">
+                                        Due in {assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.dueRule.upcomingThreshold} {assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.dueRule.unit}
+                                    </div>
+                                 </>
+                             ) : (
+                                 <span className="text-sm text-blue-400 font-medium">No upcoming service</span>
+                             )}
                         </div>
-                        <div className={`mt-2 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full border ${(currentVehicle.ytdChange || '').startsWith('+') ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-blue-700 bg-blue-50 border-blue-100'}`}>
-                          <span className="font-bold">{currentVehicle.ytdChange || '0%'}</span>
-                        </div>
-                      </div>
-                    </Card>
-                    
-                    <Card className="p-5 flex flex-col justify-between h-[140px] relative overflow-hidden group">
-                      <div className="absolute -right-4 -top-4 p-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity rotate-12">
-                        <Wrench size={100} className="text-amber-900" />
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider z-10">Open Work Orders</span>
-                      <div className="z-10 relative">
-                        <span className="text-2xl font-bold text-slate-900 tracking-tight">{currentVehicle.openWorkOrders || 0}</span>
-                        <div className="mt-2 flex items-center gap-1">
-                          <Badge variant={(currentVehicle.openWorkOrders || 0) > 0 ? 'warning' : 'success'} className="px-2 py-1 border border-amber-100">
-                              {(currentVehicle.openWorkOrders || 0) > 0 ? currentVehicle.woStatus : 'Healthy'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
-
-                  <Card className="flex flex-col">
-                    <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 rounded-t-2xl">
-                      <h3 className="font-semibold text-slate-900 flex items-center gap-2 text-sm">Upcoming Tasks</h3>
-                    </div>
-                    <div className="divide-y divide-slate-50">
-                      {currentVehicle.tasks?.map((task, i) => <TaskItem key={i} {...task} />) || (
-                        <div className="p-8 text-center text-slate-400 text-sm">No upcoming tasks scheduled.</div>
-                      )}
-                    </div>
-                  </Card>
+                     </Card>
                 </div>
 
-                <div className="xl:col-span-2">
-                  <Card className="h-full flex flex-col">
-                    <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div>
-                        <h3 className="font-bold text-slate-900 text-base">Service History</h3>
-                        <p className="text-xs font-medium text-slate-400 mt-1">Recent maintenance records and work orders</p>
-                      </div>
-                      <Button size="sm" className="gap-2"><Plus size={16}/> Log Maintenance</Button>
+                {/* Split View */}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+                    {/* Left: Tasks */}
+                    <Card className="flex flex-col h-[600px] overflow-hidden border-slate-200 shadow-sm">
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                             <div className="flex items-center gap-2">
+                                <Wrench size={16} className="text-slate-400" />
+                                <h3 className="font-bold text-slate-800 text-sm">Maintenance Tasks</h3>
+                                <Badge variant="neutral" className="ml-2">{assetTasks.length}</Badge>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-slate-500">Filter</Button>
+                                <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="h-7 text-xs gap-1.5 bg-white border-slate-200 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => setIsCreatingSchedule(true)}
+                                >
+                                    <Plus size={12} /> Schedule
+                                </Button>
+                             </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-0 bg-white">
+                            {assetTasks.length > 0 ? (
+                                <div className="divide-y divide-slate-50">
+                                    {assetTasks.map(task => {
+                                        const serviceName = INITIAL_SERVICE_TYPES.find(s => s.id === task.serviceTypeIds[0])?.name || 'Service';
+                                        return (
+                                            <div key={task.id} className="p-4 hover:bg-slate-50 transition-colors group">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="font-semibold text-slate-800 text-sm">{serviceName}</span>
+                                                    <Badge 
+                                                        variant={
+                                                            task.status === 'overdue' ? 'danger' : 
+                                                            task.status === 'due' ? 'warning' : 
+                                                            task.status === 'completed' ? 'success' : 'neutral'
+                                                        }
+                                                    >
+                                                        {task.status}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                                                    <div className="flex items-center gap-1">
+                                                        <Clock size={12} className="text-slate-400" />
+                                                        <span>
+                                                            {task.dueRule.unit === 'miles' ? `${task.dueRule.dueAtOdometer?.toLocaleString()} mi` : 
+                                                             task.dueRule.dueAtDate ? new Date(task.dueRule.dueAtDate!).toLocaleDateString() : '—'}
+                                                        </span>
+                                                    </div>
+                                                    <span>•</span>
+                                                    <span>ID: {task.id}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                    <ShieldCheck size={48} className="mb-3 opacity-20" />
+                                    <span className="text-sm font-medium">No tasks found</span>
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+
+                    {/* Right: Work Orders */}
+                    <Card className="flex flex-col h-[600px] overflow-hidden border-slate-200 shadow-sm">
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                             <div className="flex items-center gap-2">
+                                <FileText size={16} className="text-slate-400" />
+                                <h3 className="font-bold text-slate-800 text-sm">Work Orders</h3>
+                                <Badge variant="neutral" className="ml-2">{assetOrders.length}</Badge>
+                             </div>
+                             <Button 
+                                size="sm" 
+                                onClick={() => setIsCreateOrderModalOpen(true)} 
+                                className="gap-2 h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200"
+                             >
+                                <Plus size={14}/> Add Work Order
+                             </Button>
+                        </div>
+                         <div className="flex-1 overflow-y-auto p-0 bg-white">
+                            {assetOrders.length > 0 ? (
+                                <div className="divide-y divide-slate-50">
+                                    {assetOrders.map(order => (
+                                        <div key={order.id} className="p-4 hover:bg-slate-50 transition-colors group">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-slate-900 text-sm">#{order.id}</span>
+                                                    <span className="text-xs text-slate-500">{vendors.find((v:any) => v.id === order.vendorId)?.companyName || 'Unknown Vendor'}</span>
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <Badge variant={order.status === 'completed' ? 'success' : 'Drafted'}>{order.status}</Badge>
+                                                    <span className="text-[10px] text-slate-400 mt-1">{new Date(order.createdAt).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 flex items-center gap-2 overflow-hidden">
+                                                {order.taskIds.map(tid => {
+                                                    const task = INITIAL_TASKS.find(t => t.id === tid);
+                                                    const sName = INITIAL_SERVICE_TYPES.find(s => s.id === task?.serviceTypeIds[0])?.name;
+                                                    if (!sName) return null;
+                                                    return (
+                                                        <span key={tid} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded font-medium truncate max-w-[150px]">
+                                                            {sName}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                    <FileText size={48} className="mb-3 opacity-20" />
+                                    <span className="text-sm font-medium">No work orders</span>
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+                </div>
+              </div>
+            )}
+
+            {/* Expenses Content */}
+            {activeTab === 'Expenses' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">Expense History</h3>
+                      <p className="text-xs font-medium text-slate-500">Track operating costs, recurring fees, and maintenance expenses</p>
                     </div>
-                    
-                    <div className="overflow-x-auto flex-1">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50/50 border-b border-slate-100">
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Service Type</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vendor</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cost</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                    <Button onClick={() => { setIsExpenseModalOpen(true); setEditingExpense(null); }} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200">
+                       <Plus size={14} /> Add Expense
+                    </Button>
+                  </div>
+
+                  <Card className="overflow-hidden border-slate-200 shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
+                          <tr>
+                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4">Expense Type</th>
+                            <th className="px-6 py-4">Category</th>
+                            <th className="px-6 py-4">Amount</th>
+                            <th className="px-6 py-4">Recurrence</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50 bg-white">
-                          {currentVehicle.history?.map((service, index) => <MaintenanceRow key={index} {...service} />) || (
-                            <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400 text-sm">No service history available</td></tr>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {mergedExpenses.length > 0 ? mergedExpenses.map((expense) => {
+                             const type = INITIAL_EXPENSE_TYPES.find(t => t.id === expense.expenseTypeId);
+                             return (
+                               <tr key={expense.id} className="hover:bg-slate-50/50 transition-colors">
+                                 <td className="px-6 py-4 font-medium text-slate-900">
+                                   {new Date(expense.date).toLocaleDateString()}
+                                 </td>
+                                 <td className="px-6 py-4">
+                                   <div className="flex items-center gap-2">
+                                     {expense.source === 'maintenance' ? (
+                                        <Badge variant="Maintenance">Maintenance</Badge>
+                                     ) : (
+                                        <span className="font-semibold text-slate-700">{type?.name || 'Unknown'}</span>
+                                     )}
+                                   </div>
+                                   {expense.notes && <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[200px]">{expense.notes}</p>}
+                                 </td>
+                                 <td className="px-6 py-4 text-slate-500">
+                                    {type?.category || '-'}
+                                 </td>
+                                 <td className="px-6 py-4 font-bold text-slate-900">
+                                   {new Intl.NumberFormat('en-US', { style: 'currency', currency: expense.currency || 'USD' }).format(expense.amount)}
+                                 </td>
+                                 <td className="px-6 py-4 text-slate-500 text-xs">
+                                   {expense.isRecurring ? (
+                                      <div className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-1.5 text-purple-600 font-medium">
+                                            <Clock size={12} /> {expense.frequency}
+                                          </div>
+                                          {expense.recurrenceEndDate && (
+                                              <span className="text-[10px] text-purple-400">Ends: {new Date(expense.recurrenceEndDate).toLocaleDateString()}</span>
+                                          )}
+                                      </div>
+                                   ) : '-'}
+                                 </td>
+                                 <td className="px-6 py-4 text-right">
+                                   {expense.source === 'maintenance' ? (
+                                      <Button variant="ghost" size="xs" className="h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                                        View Order
+                                      </Button>
+                                   ) : (
+                                      <div className="flex justify-end gap-1">
+                                         <button onClick={() => { setEditingExpense(expense); setIsExpenseModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                           <Edit2 size={14} />
+                                         </button>
+                                         <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                                           <Trash2 size={14} />
+                                         </button>
+                                      </div>
+                                   )}
+                                 </td>
+                               </tr>
+                             );
+                          }) : (
+                              <tr>
+                                <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <div className="p-3 bg-slate-50 rounded-full"><DollarSign size={24} className="opacity-30" /></div>
+                                    <span className="text-sm font-medium">No expenses recorded</span>
+                                  </div>
+                                </td>
+                              </tr>
                           )}
                         </tbody>
                       </table>
                     </div>
                   </Card>
-                </div>
               </div>
             )}
           </div>
         </div>
+
+        {/* Modals placed outside main layout */}
+        <AddExpenseModal 
+          isOpen={isExpenseModalOpen}
+          onClose={() => setIsExpenseModalOpen(false)}
+          onSave={handleSaveExpense}
+          assetId={asset?.id}
+        />
       </main>
       
       <KeyNumberModal
@@ -851,6 +1130,32 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
         tagSections={tagSections}
         getDocumentTypeById={getDocumentTypeById}
       />
+
+      {/* Create Order Modal */}
+      <CreateOrderModal 
+        isOpen={isCreateOrderModalOpen}
+        onClose={() => setIsCreateOrderModalOpen(false)}
+        onCreate={handleCreateOrder}
+        selectedTasks={assetTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')}
+        vendors={vendors}
+        onAddVendor={handleAddVendor}
+      />
+      
+      {/* Create Schedule Modal using generic container for full-screen form */}
+      {isCreatingSchedule && (
+        <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
+            <CreateScheduleForm
+                onSave={(schedule) => {
+                    console.log('Saved schedule:', schedule);
+                    setIsCreatingSchedule(false);
+                    // ideally refresh data here
+                }}
+                onCancel={() => setIsCreatingSchedule(false)}
+                initialAssetId={asset.id}
+                initialEntityType={asset.assetCategory === 'CMV' ? 'truck' : asset.assetCategory === 'Non-CMV' ? 'trailer' : undefined}
+            />
+        </div>
+      )}
     </div>
   );
 }

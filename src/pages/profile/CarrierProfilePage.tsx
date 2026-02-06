@@ -638,8 +638,7 @@ export function CarrierProfilePage() {
         { id: 'locations', label: 'Yard Terminals' },
         { id: 'assets', label: 'Assets' },
         { id: 'drivers', label: 'Drivers' },
-        { id: 'compliance', label: 'Carrier Compliance' },
-        { id: 'documents', label: 'Documents' }
+        { id: 'drivers', label: 'Drivers' }
     ];
 
     return (

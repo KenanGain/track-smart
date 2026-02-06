@@ -4,33 +4,35 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { INITIAL_SERVICE_TYPES } from '@/data/service-types.data';
-import type { ServiceGroup } from '@/types/service-types';
 
 import { INITIAL_ASSETS } from '../assets/assets.data';
 
 type EntityType = "truck" | "trailer" | "both";
-type FrequencyUnit = "miles" | "days" | "engine_hours";
+type FrequencyUnit = "miles" | "kilometers" | "days" | "engine_hours";
 
 interface CreateScheduleFormProps {
     onSave: (schedule: any) => void;
     onCancel: () => void;
+    initialAssetId?: string;
+    initialEntityType?: EntityType;
 }
 
-export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps) {
+export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEntityType }: CreateScheduleFormProps) {
     // --- State ---
 
     // Section 1: Schedule
-    const [entityType, setEntityType] = useState<EntityType>("truck");
+    const [entityType, setEntityType] = useState<EntityType>(initialEntityType || "truck");
     const [scheduleName, setScheduleName] = useState("");
     const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
-    const [activeServiceGroup, setActiveServiceGroup] = useState<"All" | ServiceGroup>("All");
+    const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+    const [activeServiceGroup, setActiveServiceGroup] = useState<string>("All");
     const [frequencyEvery, setFrequencyEvery] = useState<number>(0);
     const [frequencyUnit, setFrequencyUnit] = useState<FrequencyUnit>("miles");
     const [upcomingThreshold, setUpcomingThreshold] = useState<number>(0);
 
     // Section 2: Assets
     const [applyToAll, setApplyToAll] = useState(false);
-    const [assignedAssetIds, setAssignedAssetIds] = useState<string[]>([]);
+    const [assignedAssetIds, setAssignedAssetIds] = useState<string[]>(initialAssetId ? [initialAssetId] : []);
     const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
     const [assetSearchQuery, setAssetSearchQuery] = useState("");
 
@@ -39,27 +41,62 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
     const [alertReminders, setAlertReminders] = useState<string[]>([]);
     const [alertChannels, setAlertChannels] = useState<string[]>([]);
 
+    // Section 4: Per-Asset Details (New)
+    const [assetScheduleDetails, setAssetScheduleDetails] = useState<Record<string, { lastServiceValue: string | number | undefined, nextDueValue: string | number | undefined }>>({});
+
     // --- Derived State & Helpers ---
+
+    // Update Asset Detail Helper
+    const updateAssetDetail = (assetId: string, field: 'lastServiceValue' | 'nextDueValue', value: string | number) => {
+        setAssetScheduleDetails(prev => {
+            const current = prev[assetId] || {};
+            const updated = { ...current, [field]: value };
+
+            // Auto-calculate Next Due if Last Service changes
+            if (field === 'lastServiceValue' && value && frequencyEvery) {
+                if (frequencyUnit === 'days') {
+                    // Date calculation
+                    const date = new Date(value as string);
+                    if (!isNaN(date.getTime())) {
+                        date.setDate(date.getDate() + frequencyEvery);
+                        updated.nextDueValue = date.toISOString().split('T')[0];
+                    }
+                } else {
+                    // Numeric calculation (miles/km/hours)
+                    const numVal = parseInt(value as string) || 0;
+                    updated.nextDueValue = numVal + frequencyEvery;
+                }
+            }
+
+            return { ...prev, [assetId]: updated };
+        });
+    };
 
     // Filter Services based on Entity Type and Group
     const availableServices = useMemo(() => {
         return INITIAL_SERVICE_TYPES.filter(service => {
             // 1. Filter by Entity Type
             let matchesEntity = false;
+            // console.log("Filtering:", entityType, service.category); // Debug logging
+
             if (entityType === "truck") {
                 matchesEntity = service.category === "cmv_only" || service.category === "both_cmv_and_non_cmv";
             } else if (entityType === "trailer") {
                 matchesEntity = service.category === "non_cmv_only" || service.category === "both_cmv_and_non_cmv";
             } else {
-                matchesEntity = true; // Both
+                // For "Both", only show services applicable to BOTH (common services)
+                matchesEntity = service.category === "both_cmv_and_non_cmv";
             }
 
             // 2. Filter by Group
             const matchesGroup = activeServiceGroup === "All" || service.group === activeServiceGroup;
 
-            return matchesEntity && matchesGroup;
+            // 3. Filter by Search
+            const matchesSearch = service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase());
+
+            return matchesEntity && matchesGroup && matchesSearch;
         });
-    }, [entityType, activeServiceGroup]);
+    }, [entityType, activeServiceGroup, serviceSearchQuery]);
 
     // Filter Assets for Modal
     const availableAssets = useMemo(() => {
@@ -85,6 +122,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
         setSelectedServiceIds([]); // Clear services
         setAssignedAssetIds([]);   // Clear assets
         setApplyToAll(false);      // Reset Apply to All
+        setAssetScheduleDetails({}); // Clear details
     };
 
     // Toggle Service Selection
@@ -134,6 +172,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                 applyToAll,
                 entityIds: applyToAll ? [] : assignedAssetIds
             },
+            assetDetails: assetScheduleDetails, // Include detailed per-asset data
             alert: {
                 recipients: alertRecipients,
                 reminders: alertReminders,
@@ -180,17 +219,31 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
 
                     <div className="space-y-6 pl-11">
                         {/* Entity Type */}
+                        {/* Schedule Name */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Schedule Name <span className="text-red-500">*</span></label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Oil Change Every 10k"
+                                value={scheduleName}
+                                onChange={(e) => setScheduleName(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
+                            />
+                        </div>
+
                         {/* Entity Type */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Entity Type <span className="text-red-500">*</span></label>
                             <div className="inline-flex bg-slate-100 p-1 rounded-lg">
+                                {/* ... entity type buttons ... */}
                                 {(['truck', 'trailer', 'both'] as const).map((type) => (
                                     <button
                                         key={type}
-                                        onClick={() => handleEntityTypeChange(type)}
+                                        onClick={() => !initialEntityType && handleEntityTypeChange(type)}
+                                        disabled={!!initialEntityType}
                                         className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${entityType === type
                                             ? 'bg-white text-slate-900 shadow-sm ring-1 ring-black/5'
-                                            : 'text-slate-500 hover:text-slate-900'
+                                            : initialEntityType ? 'text-slate-400 cursor-not-allowed' : 'text-slate-500 hover:text-slate-900'
                                             }`}
                                     >
                                         {type === 'truck' ? 'CMV (Trucks)' : type === 'trailer' ? 'Non-CMV (Trailers)' : 'Both'}
@@ -202,12 +255,24 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Maintenance Type <span className="text-red-500">*</span></label>
 
+                            {/* Search Services */}
+                            <div className="relative mb-3">
+                                <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                                <input
+                                    type="text"
+                                    placeholder="Search services..."
+                                    value={serviceSearchQuery}
+                                    onChange={(e) => setServiceSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                                />
+                            </div>
+
                             {/* Group Tabs */}
                             <div className="flex border-b border-slate-200 mb-3 overflow-x-auto">
-                                {['All', 'Engine', 'Tires & Brakes', 'Inspections', 'General'].map((group) => (
+                                {['All', 'Safety Inspection', 'Intermediate Service', 'Comprehensive Service', 'Major Overhaul', 'Other'].map((group) => (
                                     <button
                                         key={group}
-                                        onClick={() => setActiveServiceGroup(group as any)}
+                                        onClick={() => setActiveServiceGroup(group)}
                                         className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeServiceGroup === group
                                             ? 'border-blue-500 text-blue-600'
                                             : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
@@ -250,17 +315,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                             </div>
                         </div>
 
-                        {/* Schedule Name */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Schedule Name <span className="text-red-500">*</span></label>
-                            <input
-                                type="text"
-                                placeholder="e.g. Oil Change Every 10k"
-                                value={scheduleName}
-                                onChange={(e) => setScheduleName(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-                            />
-                        </div>
+
 
                         {/* Frequency & Threshold */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -278,7 +333,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                                         className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
                                     />
                                     <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                                        {(['miles', 'days', 'engine_hours'] as const).map((unit) => (
+                                        {(['miles', 'kilometers', 'days', 'engine_hours'] as const).map((unit) => (
                                             <button
                                                 key={unit}
                                                 onClick={() => setFrequencyUnit(unit)}
@@ -287,7 +342,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                                                     : 'text-slate-500 hover:text-slate-900'
                                                     }`}
                                             >
-                                                {unit === 'engine_hours' ? 'Hrs' : unit.charAt(0).toUpperCase() + unit.slice(1)}
+                                                {unit === 'engine_hours' ? 'Hrs' : unit === 'kilometers' ? 'Km' : unit.charAt(0).toUpperCase() + unit.slice(1)}
                                             </button>
                                         ))}
                                     </div>
@@ -307,7 +362,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                                         className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
                                     />
                                     <span className="text-sm text-slate-500">
-                                        {frequencyUnit === 'miles' ? 'miles' : frequencyUnit === 'days' ? 'days' : 'hours'} before due
+                                        {frequencyUnit === 'miles' ? 'miles' : frequencyUnit === 'kilometers' ? 'km' : frequencyUnit === 'days' ? 'days' : 'hours'} before due
                                     </span>
                                 </div>
                             </div>
@@ -327,10 +382,12 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={() => {
+                                        if (initialAssetId) return;
                                         setApplyToAll(!applyToAll);
                                         if (!applyToAll) setAssignedAssetIds([]); // Clear individual if turning on
                                     }}
-                                    className={`w-11 h-6 rounded-full relative transition-colors ${applyToAll ? 'bg-blue-600' : 'bg-slate-200'}`}
+                                    disabled={!!initialAssetId}
+                                    className={`w-11 h-6 rounded-full relative transition-colors ${applyToAll ? 'bg-blue-600' : 'bg-slate-200'} ${initialAssetId ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${applyToAll ? 'left-6' : 'left-1'}`} />
                                 </button>
@@ -339,8 +396,8 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
 
                             <button
                                 onClick={() => setIsAssetModalOpen(true)}
-                                disabled={applyToAll}
-                                className={`text-sm font-medium px-3 py-1.5 rounded border transition-colors ${applyToAll
+                                disabled={applyToAll || !!initialAssetId}
+                                className={`text-sm font-medium px-3 py-1.5 rounded border transition-colors ${applyToAll || initialAssetId
                                     ? 'text-slate-300 border-slate-100 cursor-not-allowed'
                                     : 'text-blue-600 border-blue-200 hover:bg-blue-50'
                                     }`}
@@ -349,35 +406,108 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                             </button>
                         </div>
 
-                        {applyToAll ? (
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-center gap-3 text-blue-700">
-                                <Info size={18} />
-                                <span className="text-sm font-medium">Applied to All {entityType === 'truck' ? 'CMV Assets' : entityType === 'trailer' ? 'Non-CMV Assets' : 'Assets'}</span>
-                            </div>
-                        ) : (
-                            <div className="min-h-[100px]">
-                                {assignedAssetIds.length > 0 ? (
-                                    <div className="flex flex-wrap gap-2">
-                                        {assignedAssetIds.map(id => {
-                                            const asset = INITIAL_ASSETS.find(a => a.id === id);
-                                            return (
-                                                <div key={id} className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full pl-3 pr-1 py-1 shadow-sm">
-                                                    <span className="text-sm font-medium text-slate-700">{asset?.unitNumber}</span>
-                                                    <span className="text-xs text-slate-400 border-l border-slate-200 pl-2">VIN {asset?.vin.slice(-4)}</span>
-                                                    <button onClick={() => toggleAsset(id)} className="p-1 hover:bg-slate-100 rounded-full ml-1 text-slate-400 hover:text-red-500">
-                                                        <X size={14} />
-                                                    </button>
+                        {/* Asset List / Table */}
+                        <div className="min-h-[100px]">
+                            {(() => {
+                                // Determine which assets to show
+                                const assetsToDisplay = applyToAll 
+                                    ? availableAssets 
+                                    : assignedAssetIds.map(id => INITIAL_ASSETS.find(a => a.id === id)).filter(Boolean) as typeof INITIAL_ASSETS;
+                                
+                                if (assetsToDisplay.length > 0) {
+                                    return (
+                                        <div className="space-y-4">
+                                            {applyToAll && (
+                                                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center gap-3 text-blue-700">
+                                                    <Info size={18} />
+                                                    <span className="text-sm font-medium">Applied to All {assetsToDisplay.length} Eligible {entityType === 'truck' ? 'CMV' : entityType === 'trailer' ? 'Non-CMV' : ''} Assets. You can initialize their service data below.</span>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
+                                            )}
+
+                                            <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                                <table className="w-full text-left text-sm">
+                                                    <thead className="bg-slate-50 border-b border-slate-200 font-medium text-slate-500 text-xs uppercase tracking-wider">
+                                                        <tr>
+                                                            <th className="px-4 py-3">Vehicles - {assetsToDisplay.length} Total</th>
+                                                            <th className="px-4 py-3">Last Service ({frequencyUnit === 'days' ? 'Date' : frequencyUnit === 'miles' ? 'Mi' : frequencyUnit === 'kilometers' ? 'Km' : 'Hrs'})</th>
+                                                            <th className="px-4 py-3">Current ({frequencyUnit === 'days' ? 'Added Date' : frequencyUnit === 'miles' ? 'Odo (Mi)' : frequencyUnit === 'kilometers' ? 'Odo (Km)' : 'Hrs'})</th>
+                                                            <th className="px-4 py-3">Next Service Due ({frequencyUnit === 'days' ? 'Date' : frequencyUnit === 'miles' ? 'Mi' : frequencyUnit === 'kilometers' ? 'Km' : 'Hrs'})</th>
+                                                            <th className="px-4 py-3 w-10"></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {assetsToDisplay.map(asset => {
+                                                            const id = asset!.id;
+                                                            const details = assetScheduleDetails[id] || {};
+                                                            const isDateMode = frequencyUnit === 'days';
+        
+                                                            // Validation check
+                                                            let isOverdue = false;
+                                                            if (details.nextDueValue && asset) {
+                                                                if (!isDateMode && typeof details.nextDueValue === 'number' && asset.odometer) {
+                                                                    isOverdue = details.nextDueValue < asset.odometer;
+                                                                }
+                                                                // Date comparison could be added here
+                                                            }
+        
+                                                            return (
+                                                                <tr key={id} className="group hover:bg-slate-50 transition-colors">
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="font-semibold text-slate-900">{asset?.unitNumber}</div>
+                                                                        <div className="text-xs text-slate-500 uppercase">{asset?.year} {asset?.make} {asset?.model}</div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <input
+                                                                            type={isDateMode ? "date" : "number"}
+                                                                            value={details.lastServiceValue || ''}
+                                                                            onChange={(e) => updateAssetDetail(id, 'lastServiceValue', e.target.value)}
+                                                                            className="w-full max-w-[140px] px-2 py-1.5 bg-white border border-slate-200 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                                                            placeholder={isDateMode ? "Select Date" : "Enter Value"}
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600 font-medium">
+                                                                        {isDateMode ? (
+                                                                            asset?.dateAdded ? new Date(asset.dateAdded).toLocaleDateString() : 'N/A'
+                                                                        ) : (
+                                                                            (asset?.odometer || 0).toLocaleString()
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 relative">
+                                                                        <input
+                                                                            type={isDateMode ? "date" : "number"}
+                                                                            value={details.nextDueValue || ''}
+                                                                            onChange={(e) => updateAssetDetail(id, 'nextDueValue', e.target.value)}
+                                                                            className={`w-full max-w-[140px] px-2 py-1.5 bg-white border rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${isOverdue ? 'border-red-300 text-red-600' : 'border-slate-200'}`}
+                                                                        />
+                                                                        {isOverdue && (
+                                                                            <AlertCircle size={14} className="text-red-500 absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right">
+                                                                        {!initialAssetId && !applyToAll && (
+                                                                            <button onClick={() => toggleAsset(id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                                                                                <X size={16} />
+                                                                            </button>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                
+                                // Empty State
+                                return (
                                     <div className="border-2 border-dashed border-slate-200 rounded-lg h-24 flex items-center justify-center text-slate-400 text-sm">
-                                        Select assets (or turn on Apply to All).
+                                        {applyToAll ? 'No eligible assets found.' : 'Select assets (or turn on Apply to All).'}
                                     </div>
-                                )}
-                            </div>
-                        )}
+                                );
+                            })()}
+                        </div>
                     </div>
                 </section>
 
@@ -470,7 +600,7 @@ export function CreateScheduleForm({ onSave, onCancel }: CreateScheduleFormProps
                         <div>
                             <h4 className="text-sm font-bold">{frequencyUnit === 'days' ? 'Monitor Expiry Date' : 'Monitor Usage'}</h4>
                             <p className="text-sm text-blue-700 mt-1">
-                                System will track {frequencyUnit === 'miles' ? 'mileage' : frequencyUnit === 'engine_hours' ? 'engine hours' : 'calendar dates'} and trigger alerts
+                                System will track {frequencyUnit === 'miles' ? 'mileage' : frequencyUnit === 'kilometers' ? 'kilometers' : frequencyUnit === 'engine_hours' ? 'engine hours' : 'calendar dates'} and trigger alerts
                                 {alertChannels.length > 0 ? ` via ${alertChannels.join(', ')}` : ''}.
                             </p>
                         </div>

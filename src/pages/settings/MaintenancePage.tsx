@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Search, Edit, Trash2, Truck, Car, Layers, Building2, Phone, Mail, MapPin, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
 import {
     Dialog,
     DialogContent,
@@ -20,7 +21,7 @@ import {
 
 import { Label } from "@/components/ui/label";
 import { INITIAL_SERVICE_TYPES } from "@/data/service-types.data";
-import { type ServiceType, type ServiceCategory, type ServiceGroup, CATEGORY_LABELS } from "@/types/service-types";
+import { type ServiceType, type ServiceCategory, type ServiceComplexity, CATEGORY_LABELS } from "@/types/service-types";
 
 import { type Vendor, INITIAL_VENDORS } from "@/data/vendors.data";
 
@@ -42,6 +43,9 @@ export const CA_PROVINCES = [
     "Quebec", "Saskatchewan", "Yukon"
 ];
 
+const MAINTENANCE_CLASSES = ["Safety Inspection", "Intermediate Service", "Comprehensive Service", "Major Overhaul", "Other"];
+const COMPLEXITY_LEVELS: ServiceComplexity[] = ["Basic", "Moderate", "Extensive", "Intensive"];
+
 export function MaintenancePage() {
     // Active section tab
     const [activeSection, setActiveSection] = useState<"services" | "vendors">("services");
@@ -54,8 +58,19 @@ export function MaintenancePage() {
     const [formData, setFormData] = useState<Partial<ServiceType>>({
         name: "",
         category: "both_cmv_and_non_cmv",
-        group: "General"
+        group: "Safety Inspection",
+        complexity: "Basic",
+        description: ""
     });
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    // Filters State
+    const [filterClass, setFilterClass] = useState<string>("all");
+    const [filterApplicability, setFilterApplicability] = useState<ServiceCategory | "all">("all");
+    const [filterComplexity, setFilterComplexity] = useState<ServiceComplexity | "all">("all");
 
     // Vendor State
     const [vendors, setVendors] = useState<Vendor[]>(INITIAL_VENDORS);
@@ -77,9 +92,30 @@ export function MaintenancePage() {
         contacts: []
     });
 
-    // Service Types Filtering
-    const filteredServices = serviceTypes.filter((service) =>
-        service.name.toLowerCase().includes(searchQuery.toLowerCase())
+    // Helper to reset pagination when filters change
+    const handleFilterChange = (setter: (value: any) => void, value: any) => {
+        setter(value);
+        setCurrentPage(1);
+    };
+
+    // Service Types Filtering & Pagination Logic
+    const filteredServices = serviceTypes.filter((service) => {
+        const matchesSearch = 
+            service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            service.group.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (service.description && service.description.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        const matchesClass = filterClass === "all" || service.group === filterClass;
+        const matchesApplicability = filterApplicability === "all" || service.category === filterApplicability;
+        const matchesComplexity = filterComplexity === "all" || service.complexity === filterComplexity;
+
+        return matchesSearch && matchesClass && matchesApplicability && matchesComplexity;
+    });
+
+    const totalPages = Math.ceil(filteredServices.length / itemsPerPage);
+    const paginatedServices = filteredServices.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
     );
 
     // Vendor Filtering
@@ -92,22 +128,41 @@ export function MaintenancePage() {
     const handleOpenDialog = (service?: ServiceType) => {
         if (service) {
             setEditingService(service);
-            setFormData({ name: service.name, category: service.category, group: service.group });
+            setFormData({ 
+                name: service.name, 
+                category: service.category, 
+                group: service.group,
+                complexity: service.complexity,
+                description: service.description
+            });
         } else {
             setEditingService(null);
-            setFormData({ name: "", category: "both_cmv_and_non_cmv", group: "General" });
+            setFormData({ 
+                name: "", 
+                category: "both_cmv_and_non_cmv", 
+                group: "Safety Inspection",
+                complexity: "Basic",
+                description: ""
+            });
         }
         setIsDialogOpen(true);
     };
 
     const handleSave = () => {
-        if (!formData.name || !formData.category || !formData.group) return;
+        if (!formData.name || !formData.category || !formData.group || !formData.complexity) return;
 
         if (editingService) {
             setServiceTypes(
                 serviceTypes.map((s) =>
                     s.id === editingService.id
-                        ? { ...s, name: formData.name!, category: formData.category as ServiceCategory, group: formData.group as ServiceGroup }
+                        ? { 
+                            ...s, 
+                            name: formData.name!, 
+                            category: formData.category as ServiceCategory, 
+                            group: formData.group!,
+                            complexity: formData.complexity as ServiceComplexity,
+                            description: formData.description || ""
+                          }
                         : s
                 )
             );
@@ -116,7 +171,9 @@ export function MaintenancePage() {
                 id: crypto.randomUUID(),
                 name: formData.name!,
                 category: formData.category as ServiceCategory,
-                group: formData.group as ServiceGroup
+                group: formData.group!,
+                complexity: formData.complexity as ServiceComplexity,
+                description: formData.description || ""
             };
             setServiceTypes([...serviceTypes, newService]);
         }
@@ -129,7 +186,7 @@ export function MaintenancePage() {
         }
     };
 
-    // Vendor Handlers
+    // Vendor Handlers (unchanged)
     const handleOpenVendorDialog = (vendor?: Vendor) => {
         if (vendor) {
             setEditingVendor(vendor);
@@ -280,8 +337,8 @@ export function MaintenancePage() {
                 {/* Service Types Section */}
                 {activeSection === "services" && (
                     <div className="flex flex-col space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="relative w-80">
+                        <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:space-y-0 lg:gap-4">
+                            <div className="relative flex-1">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
                                 <Input
                                     placeholder="Search service types..."
@@ -290,18 +347,63 @@ export function MaintenancePage() {
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
+                            
+                            {/* Filters */}
+                            <div className="flex flex-wrap gap-2">
+                                <Select value={filterClass} onValueChange={(v) => handleFilterChange(setFilterClass, v)}>
+                                    <SelectTrigger className="w-[180px] bg-white">
+                                        <SelectValue placeholder="All Classes" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Classes</SelectItem>
+                                        {MAINTENANCE_CLASSES.map(cls => (
+                                            <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={filterApplicability} onValueChange={(v) => handleFilterChange(setFilterApplicability, v)}>
+                                    <SelectTrigger className="w-[160px] bg-white">
+                                        <SelectValue placeholder="All Vehicles" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Vehicles</SelectItem>
+                                        {Object.entries(CATEGORY_LABELS).map(([val, label]) => (
+                                            <SelectItem key={val} value={val}>{label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={filterComplexity} onValueChange={(v) => handleFilterChange(setFilterComplexity, v)}>
+                                    <SelectTrigger className="w-[150px] bg-white">
+                                        <SelectValue placeholder="All Complexity" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Complexity</SelectItem>
+                                        {COMPLEXITY_LEVELS.map(level => (
+                                            <SelectItem key={level} value={level}>{level}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
 
-                        <div className="rounded-lg border border-slate-200 overflow-hidden">
+                        <div className="rounded-lg border border-slate-200">
                             <div className="border border-slate-200 rounded-lg overflow-hidden">
                                 <table className="w-full">
                                     <thead className="bg-slate-50 border-b border-slate-200">
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Service Name
+                                                Maintenance Class
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                                Maintenance Type
                                             </th>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                                                 Applicability
+                                            </th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                                                Complexity
                                             </th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
                                                 Actions
@@ -309,19 +411,25 @@ export function MaintenancePage() {
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-200">
-                                        {filteredServices.length === 0 ? (
+                                        {paginatedServices.length === 0 ? (
                                             <tr>
-                                                <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
-                                                    No service types found.
+                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                                    No service types found matching your filters.
                                                 </td>
                                             </tr>
                                         ) : (
-                                            filteredServices.map((service) => (
+                                            paginatedServices.map((service) => (
                                                 <tr key={service.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-6 py-4 align-middle">
+                                                        <div className="text-sm font-semibold text-blue-900">
+                                                            {service.group}
+                                                        </div>
+                                                    </td>
                                                     <td className="px-6 py-4 align-middle">
                                                         <div className="text-sm font-medium text-slate-900">
                                                             {service.name}
                                                         </div>
+                                                        {service.description && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{service.description}</p>}
                                                     </td>
                                                     <td className="px-6 py-4 align-middle">
                                                         <div className="flex items-center gap-2">
@@ -330,6 +438,16 @@ export function MaintenancePage() {
                                                             {service.category === 'both_cmv_and_non_cmv' && <Layers className="h-4 w-4 text-slate-400" />}
                                                             <span className="text-sm text-slate-600">{CATEGORY_LABELS[service.category]}</span>
                                                         </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 align-middle">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                                            ${service.complexity === 'Basic' ? 'bg-green-100 text-green-800' : 
+                                                              service.complexity === 'Moderate' ? 'bg-blue-100 text-blue-800' :
+                                                              service.complexity === 'Extensive' ? 'bg-orange-100 text-orange-800' :
+                                                              'bg-red-100 text-red-800'
+                                                            }`}>
+                                                            {service.complexity}
+                                                        </span>
                                                     </td>
                                                     <td className="px-6 py-4 text-center align-middle">
                                                         <div className="flex items-center justify-center gap-2">
@@ -353,13 +471,60 @@ export function MaintenancePage() {
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {/* Pagination Footer */}
+                            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-sm text-slate-500">
+                                    <span>Rows per page:</span>
+                                    <Select
+                                        value={itemsPerPage.toString()}
+                                        onValueChange={(value) => {
+                                            setItemsPerPage(Number(value));
+                                            setCurrentPage(1);
+                                        }}
+                                    >
+                                        <SelectTrigger className="h-8 w-[70px]">
+                                            <SelectValue placeholder={itemsPerPage.toString()} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {[10, 25, 50].map((pageSize) => (
+                                                <SelectItem key={pageSize} value={pageSize.toString()}>
+                                                    {pageSize}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="ml-2">
+                                        Showing <span className="font-medium">{filteredServices.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-medium">{Math.min(currentPage * itemsPerPage, filteredServices.length)}</span> of <span className="font-medium">{filteredServices.length}</span> results
+                                    </span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                        disabled={currentPage === 1}
+                                    >
+                                        Previous
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                        disabled={currentPage === totalPages || totalPages === 0}
+                                    >
+                                        Next
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
 
+
                 {/* Vendor List Section */}
                 {activeSection === "vendors" && (
-                    <div className="flex flex-col space-y-4">
+                     <div className="flex flex-col space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="relative w-80">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
@@ -485,52 +650,83 @@ export function MaintenancePage() {
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="name">Service Name</Label>
-                            <Input
-                                id="name"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="e.g. Oil Change"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="category">Applicability</Label>
+                            <Label htmlFor="group">Maintenance Class</Label>
                             <Select
-                                value={formData.category}
+                                value={formData.group}
                                 onValueChange={(value) =>
-                                    setFormData({ ...formData, category: value as ServiceCategory })
+                                    setFormData({ ...formData, group: value })
                                 }
                             >
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select applicability" />
+                                    <SelectValue placeholder="Select class" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                                        <SelectItem key={value} value={value}>
-                                            {label}
-                                        </SelectItem>
+                                    {MAINTENANCE_CLASSES.map((cls) => (
+                                        <SelectItem key={cls} value={cls}>{cls}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="group">Group</Label>
-                            <Select
-                                value={formData.group}
-                                onValueChange={(value) =>
-                                    setFormData({ ...formData, group: value as ServiceGroup })
-                                }
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select group" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Engine">Engine</SelectItem>
-                                    <SelectItem value="Tires & Brakes">Tires & Brakes</SelectItem>
-                                    <SelectItem value="Inspections">Inspections</SelectItem>
-                                    <SelectItem value="General">General</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <Label htmlFor="name">Maintenance Type (Name)</Label>
+                            <Input
+                                id="name"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                placeholder="e.g. Brakes Inspection"
+                            />
+                        </div>
+                         
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="category">Applicability</Label>
+                                <Select
+                                    value={formData.category}
+                                    onValueChange={(value) =>
+                                        setFormData({ ...formData, category: value as ServiceCategory })
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select applicability" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                                            <SelectItem key={value} value={value}>
+                                                {label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="complexity">Complexity</Label>
+                                <Select
+                                    value={formData.complexity}
+                                    onValueChange={(value) =>
+                                        setFormData({ ...formData, complexity: value as ServiceComplexity })
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select complexity" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {COMPLEXITY_LEVELS.map((level) => (
+                                            <SelectItem key={level} value={level}>{level}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="description">Description</Label>
+                            <textarea
+                                id="description"
+                                className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Describe the service..."
+                            />
                         </div>
                     </div>
                     <DialogFooter>
@@ -543,6 +739,7 @@ export function MaintenancePage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
 
             {/* Vendor Dialog */}
             <Dialog open={isVendorDialogOpen} onOpenChange={setIsVendorDialogOpen}>

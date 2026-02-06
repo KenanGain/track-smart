@@ -1,29 +1,23 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-    Plus, Search, Filter, AlertCircle, XCircle,
+    Search, Filter, AlertCircle, XCircle,
     Calendar, LayoutGrid, ClipboardList, Wrench, MoreHorizontal,
     Briefcase, SkipForward, Trash2, List, Truck, Edit, CheckSquare, Lock,
     X, Check, FileText, Eye
 } from "lucide-react";
 import { CreateScheduleForm } from "./CreateScheduleForm";
 import { INITIAL_VENDORS } from "@/data/vendors.data";
-import { US_STATES, CA_PROVINCES } from "@/pages/settings/MaintenancePage";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+import { 
+    INITIAL_SERVICE_TYPES, INITIAL_TASKS, INITIAL_ORDERS
+} from "./maintenance.data";
+import type { 
+    MaintenanceTask, TaskOrder, OrderCompletionEvent, 
+    MaintenanceTaskStatus, AssetCostBreakdown 
+} from "./maintenance.data";
+import { CreateOrderModal } from "./CreateOrderModal";
 
 // --- Types & Interfaces ---
-
-type ServiceCategory = "cmv_only" | "non_cmv_only" | "both_cmv_and_non_cmv";
-
-type ServiceGroup = "Engine" | "Tires & Brakes" | "Inspections" | "General";
-
-type ServiceType = {
-    id: string;
-    name: string;
-    category: ServiceCategory;
-    group: ServiceGroup;
-};
-
-type FrequencyUnit = "miles" | "days" | "engine_hours";
 
 
 
@@ -38,100 +32,6 @@ type Asset = {
     drivers?: { name: string; initials: string; color: string }[];
     location: string;
 };
-
-
-
-
-
-type MaintenanceTaskStatus = "upcoming" | "due" | "overdue" | "in_progress" | "completed" | "cancelled";
-
-type MaintenanceTask = {
-    id: string;
-    assetId: string;
-    scheduleId: string;
-    serviceTypeIds: string[];
-    status: MaintenanceTaskStatus;
-    meterSnapshot: {
-        odometer: number;
-        engineHours: number;
-        capturedAt: string;
-    };
-    dueRule: {
-        unit: FrequencyUnit;
-        frequencyEvery: number;
-        upcomingThreshold: number;
-        dueAtOdometer?: number;
-        dueAtEngineHours?: number;
-        dueAtDate?: string;
-    };
-    cancelDetails?: {
-        reason: string;
-        cancelledAt: string;
-        cancelledBy: string;
-    };
-    createdAt: string;
-};
-
-
-
-// New types for Granular Completion
-type AssetCostBreakdown = {
-    assetId: string;
-    finalOdometer?: number;
-    finalEngineHours?: number;
-    costs: {
-        partsAndSupplies: number;
-        labour: number;
-        tax: number;
-        totalPaid: number;
-    };
-    remarks?: string;
-}
-
-type OrderCompletionEvent = {
-    id: string;
-    completedAt: string;
-    invoiceNumber?: string;
-    invoiceDate: string;
-    currency: "CAD" | "USD";
-    taskIds: string[]; // Tasks completed in this event
-    assetBreakdowns: AssetCostBreakdown[]; // Individual cost breakdown per asset
-};
-
-type TaskOrder = {
-    id: string;
-    taskIds: string[];
-    vendorId: string;
-    customVendor?: {
-        name: string;
-        email: string;
-        phone: string;
-    };
-    status: "open" | "completed" | "cancelled";
-    createdAt: string;
-    dueDate?: string;
-    meta?: {
-        odometerRequired: boolean;
-        odometer?: number;
-        odometerUnit: 'miles' | 'km';
-        engineHoursRequired: boolean;
-        engineHours?: number;
-    }
-    notes?: string;
-    completions: OrderCompletionEvent[];
-};
-
-// --- Seed Data ---
-
-const INITIAL_SERVICE_TYPES: ServiceType[] = [
-    { id: "oil_filter", name: "Oil & Filter Change", category: "both_cmv_and_non_cmv", group: "Engine" },
-    { id: "tire_rotation", name: "Tire Rotation", category: "both_cmv_and_non_cmv", group: "Tires & Brakes" },
-    { id: "brake_inspection", name: "Brake Inspection", category: "cmv_only", group: "Tires & Brakes" },
-    { id: "annual_inspection", name: "Annual Inspection", category: "cmv_only", group: "Inspections" },
-    { id: "wiper_fluid", name: "Wiper Fluid Top-up", category: "non_cmv_only", group: "General" },
-    { id: "reefer_service", name: "Reefer Unit Service", category: "non_cmv_only", group: "Engine" },
-    { id: "grease_fifth_wheel", name: "Grease Fifth Wheel", category: "cmv_only", group: "General" },
-];
 
 const INITIAL_ASSETS: Asset[] = [
     {
@@ -168,152 +68,10 @@ const INITIAL_ASSETS: Asset[] = [
 
 // Vendor data imported from global source
 
-const INITIAL_TASKS: MaintenanceTask[] = [
-    // --- UPCOMING ---
-    {
-        id: "task_1",
-        assetId: "veh_001",
-        scheduleId: "sch_1",
-        serviceTypeIds: ["oil_filter", "brake_inspection"],
-        status: "upcoming",
-        meterSnapshot: { odometer: 45231, engineHours: 8120, capturedAt: "2026-01-30T10:00:00Z" },
-        dueRule: { unit: "miles", frequencyEvery: 10000, upcomingThreshold: 3000, dueAtOdometer: 50000 },
-        createdAt: "2026-01-30T10:00:00Z"
-    },
-    {
-        id: "task_4",
-        assetId: "veh_004",
-        scheduleId: "sch_4",
-        serviceTypeIds: ["annual_inspection"],
-        status: "upcoming",
-        meterSnapshot: { odometer: 12000, engineHours: 500, capturedAt: "2026-01-25T10:00:00Z" },
-        dueRule: { unit: "days", frequencyEvery: 365, upcomingThreshold: 30, dueAtDate: "2026-02-15T10:00:00Z" },
-        createdAt: "2025-02-15T10:00:00Z"
-    },
-    {
-        id: "task_5",
-        assetId: "veh_005",
-        scheduleId: "sch_5",
-        serviceTypeIds: ["grease_fifth_wheel"],
-        status: "upcoming",
-        meterSnapshot: { odometer: 298000, engineHours: 18000, capturedAt: "2026-01-28T10:00:00Z" },
-        dueRule: { unit: "miles", frequencyEvery: 5000, upcomingThreshold: 1000, dueAtOdometer: 300000 },
-        createdAt: "2026-01-10T10:00:00Z"
-    },
 
-    // --- DUE ---
-    {
-        id: "task_2",
-        assetId: "veh_001",
-        scheduleId: "sch_2",
-        serviceTypeIds: ["tire_rotation"],
-        status: "due",
-        meterSnapshot: { odometer: 45200, engineHours: 8110, capturedAt: "2026-01-20T10:00:00Z" },
-        dueRule: { unit: "miles", frequencyEvery: 5000, upcomingThreshold: 1000, dueAtOdometer: 46000 },
-        createdAt: "2026-01-15T10:00:00Z"
-    },
-    {
-        id: "task_6",
-        assetId: "veh_006",
-        scheduleId: "sch_6",
-        serviceTypeIds: ["reefer_service"],
-        status: "due",
-        meterSnapshot: { odometer: 65000, engineHours: 4200, capturedAt: "2026-01-29T10:00:00Z" },
-        dueRule: { unit: "engine_hours", frequencyEvery: 1000, upcomingThreshold: 100, dueAtEngineHours: 4250 },
-        createdAt: "2025-08-15T10:00:00Z"
-    },
-
-    // --- OVERDUE ---
-    {
-        id: "task_3",
-        assetId: "veh_003",
-        scheduleId: "sch_1",
-        serviceTypeIds: ["oil_filter"],
-        status: "overdue",
-        meterSnapshot: { odometer: 152400, engineHours: 12500, capturedAt: "2026-01-30T10:00:00Z" },
-        dueRule: { unit: "miles", frequencyEvery: 15000, upcomingThreshold: 2000, dueAtOdometer: 152000 },
-        createdAt: "2025-10-01T10:00:00Z"
-    },
-    {
-        id: "task_7",
-        assetId: "veh_002",
-        scheduleId: "sch_7",
-        serviceTypeIds: ["annual_inspection"],
-        status: "overdue",
-        meterSnapshot: { odometer: 89210, engineHours: 2100, capturedAt: "2026-01-15T10:00:00Z" },
-        dueRule: { unit: "days", frequencyEvery: 365, upcomingThreshold: 30, dueAtDate: "2026-01-10T10:00:00Z" },
-        createdAt: "2025-01-10T10:00:00Z"
-    },
-
-    // --- CANCELLED ---
-    {
-        id: "task_8",
-        assetId: "veh_005",
-        scheduleId: "sch_8",
-        serviceTypeIds: ["wiper_fluid"],
-        status: "cancelled",
-        meterSnapshot: { odometer: 290000, engineHours: 17500, capturedAt: "2025-12-20T10:00:00Z" },
-        dueRule: { unit: "days", frequencyEvery: 30, upcomingThreshold: 5, dueAtDate: "2026-01-01T10:00:00Z" },
-        cancelDetails: { reason: "Driver performed top-up manually on road.", cancelledAt: "2025-12-28T14:00:00Z", cancelledBy: "Safety Manager" },
-        createdAt: "2025-12-01T10:00:00Z"
-    },
-
-    // --- COMPLETED ---
-    {
-        id: "task_9",
-        assetId: "veh_003",
-        scheduleId: "sch_2",
-        serviceTypeIds: ["tire_rotation"],
-        status: "completed",
-        meterSnapshot: { odometer: 145000, engineHours: 12000, capturedAt: "2025-11-15T10:00:00Z" },
-        dueRule: { unit: "miles", frequencyEvery: 5000, upcomingThreshold: 1000, dueAtOdometer: 146000 },
-        createdAt: "2025-11-01T10:00:00Z"
-    }
-];
 
 // --- Initial Work Orders ---
-const INITIAL_ORDERS: TaskOrder[] = [
-    {
-        id: "wo_001",
-        taskIds: ["task_2", "task_3"],
-        vendorId: "ven_1",
-        status: "open",
-        createdAt: "2026-01-28T10:00:00Z",
-        dueDate: "2026-02-05T10:00:00Z",
-        completions: []
-    },
-    {
-        id: "wo_002",
-        taskIds: ["task_6"],
-        vendorId: "ven_2",
-        status: "open",
-        createdAt: "2026-01-29T14:30:00Z",
-        dueDate: "2026-02-10T10:00:00Z",
-        completions: []
-    },
-    {
-        id: "wo_003",
-        taskIds: ["task_9"],
-        vendorId: "ven_3",
-        status: "completed",
-        createdAt: "2025-11-10T10:00:00Z",
-        dueDate: "2025-11-20T10:00:00Z",
-        completions: [{
-            id: "comp_001",
-            completedAt: "2025-11-18T09:00:00Z",
-            invoiceNumber: "INV-2025-1234",
-            invoiceDate: "2025-11-18",
-            currency: "USD",
-            taskIds: ["task_9"],
-            assetBreakdowns: [{
-                assetId: "veh_003",
-                finalOdometer: 145500,
-                finalEngineHours: 12050,
-                costs: { partsAndSupplies: 150, labour: 75, tax: 18, totalPaid: 243 }
-            }]
-        }]
-    }
-];
+
 
 
 // --- UI Components ---
@@ -373,19 +131,7 @@ const Checkbox = ({ checked, onChange }: any) => (
     </button>
 );
 
-const Switch = ({ checked, onCheckedChange }: any) => (
-    <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onCheckedChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${checked ? 'bg-blue-600' : 'bg-slate-200'}`}
-    >
-        <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`}
-        />
-    </button>
-);
+
 
 
 
@@ -563,344 +309,7 @@ const CancelTaskModal = ({ isOpen, onClose, onConfirm }: any) => {
     );
 };
 
-// --- Create Order Modal ---
-const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, vendors, onAddVendor }: any) => {
-    const [vendorId, setVendorId] = useState("");
-    const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
-    const [dueDate, setDueDate] = useState("");
-    const [requireOdometer, setRequireOdometer] = useState(false);
-    const [odometerUnit, setOdometerUnit] = useState<"miles" | "km">("miles");
-    const [requireEngineHours, setRequireEngineHours] = useState(false);
-    const [remarks, setRemarks] = useState("");
 
-    // Add Vendor State
-    const [isAddingVendor, setIsAddingVendor] = useState(false);
-    const [newVendor, setNewVendor] = useState({
-        companyName: "",
-        phone: "",
-        email: "",
-        address: {
-            street: "",
-            unit: "",
-            city: "",
-            stateProvince: "",
-            postalCode: "",
-            country: "USA"
-        }
-    });
-
-    // Reset state when modal opens
-    useEffect(() => {
-        if (isOpen) {
-            setVendorId("");
-            setCreateDate(new Date().toISOString().split('T')[0]);
-            setIsAddingVendor(false);
-            setNewVendor({
-                companyName: "",
-                phone: "",
-                email: "",
-                address: {
-                    street: "",
-                    unit: "",
-                    city: "",
-                    stateProvince: "",
-                    postalCode: "",
-                    country: "USA"
-                }
-            });
-        }
-    }, [isOpen]);
-
-    if (!isOpen) return null;
-
-    const uniqueAssetIds = [...new Set(selectedTasks.map((t: any) => t.assetId))];
-
-    const handleCreate = () => {
-        if (!vendorId && !isAddingVendor) {
-            alert("Please select a vendor");
-            return;
-        }
-
-        // If adding a vendor, ensure it's saved first or handle it here? 
-        // Better UX: require saving vendor first or auto-save. Let's require user to click "Save Vendor" or disable Create Order if inside Add Vendor mode?
-        // Let's assume if isAddingVendor is true, we try to create it first.
-
-        let finalVendorId = vendorId;
-
-        if (isAddingVendor) {
-            if (!newVendor.companyName) {
-                alert("Please enter a vendor name");
-                return;
-            }
-            const createdVendor = {
-                id: `v_new_${Math.random().toString(36).substr(2, 9)}`,
-                ...newVendor
-            };
-            onAddVendor(createdVendor);
-            finalVendorId = createdVendor.id;
-        }
-
-        onCreate({
-            vendorId: finalVendorId,
-            createDate,
-            dueDate,
-            meta: {
-                odometerRequired: requireOdometer,
-                odometerUnit,
-                engineHoursRequired: requireEngineHours
-            },
-            notes: remarks
-        });
-    };
-
-    const handleSaveNewVendor = () => {
-        if (!newVendor.companyName) return;
-        const createdVendor = {
-            id: `v_new_${Math.random().toString(36).substr(2, 9)}`,
-            ...newVendor
-        };
-        onAddVendor(createdVendor);
-        setVendorId(createdVendor.id);
-        setIsAddingVendor(false); // Switch back to select mode
-        setNewVendor({
-            companyName: "",
-            phone: "",
-            email: "",
-            address: {
-                street: "",
-                unit: "",
-                city: "",
-                stateProvince: "",
-                postalCode: "",
-                country: "USA"
-            }
-        });
-    }
-
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title="Create Task Order"
-            footer={
-                <>
-                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleCreate}>Create Order</Button>
-                </>
-            }
-        >
-            <div className="space-y-6">
-                {/* Tasks Summary */}
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                    <div className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Tasks in Order</div>
-                    <div className="space-y-3">
-                        {uniqueAssetIds.map(((assetId: any) => {
-                            const asset = INITIAL_ASSETS.find(a => a.id === assetId);
-                            const tasksForAsset = selectedTasks.filter((t: any) => t.assetId === assetId);
-                            const serviceNames = tasksForAsset.map((t: any) =>
-                                t.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).join(", ")
-                            ).join(", ");
-
-                            return (
-                                <div key={assetId} className="flex gap-3">
-                                    <div className="h-8 w-8 bg-white border border-slate-200 rounded flex items-center justify-center text-sm font-bold text-slate-700 shrink-0">
-                                        {tasksForAsset.length}
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-slate-900">{asset?.unitNumber}</div>
-                                        <div className="text-sm text-slate-500">{serviceNames}</div>
-                                    </div>
-                                </div>
-                            );
-                        }))}
-                    </div>
-                </div>
-
-                {/* Vendor Selection */}
-                <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <Label>Assign Vendor <span className="text-red-500">*</span></Label>
-                        {!isAddingVendor && (
-                            <button
-                                onClick={() => setIsAddingVendor(true)}
-                                className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1"
-                            >
-                                <Plus size={12} /> Add New
-                            </button>
-                        )}
-                    </div>
-
-                    {isAddingVendor ? (
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3 animate-in fade-in slide-in-from-top-2">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-xs font-bold text-slate-700 uppercase">New Vendor Details</span>
-                                <button onClick={() => setIsAddingVendor(false)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
-                            </div>
-                            <div>
-                                <Input
-                                    placeholder="Company Name *"
-                                    value={newVendor.companyName}
-                                    onChange={(e: any) => setNewVendor({ ...newVendor, companyName: e.target.value })}
-                                    className="bg-white mb-2"
-                                />
-
-                                {/* Address Section */}
-                                <div className="space-y-2 mb-2">
-                                    <Label className="text-xs text-slate-500">Address Details</Label>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        <div className="col-span-3">
-                                            <Input
-                                                placeholder="Street Address"
-                                                value={newVendor.address.street}
-                                                onChange={(e: any) => setNewVendor({ ...newVendor, address: { ...newVendor.address, street: e.target.value } })}
-                                                className="bg-white"
-                                            />
-                                        </div>
-                                        <div className="col-span-1">
-                                            <Input
-                                                placeholder="Unit/Apt"
-                                                value={newVendor.address.unit}
-                                                onChange={(e: any) => setNewVendor({ ...newVendor, address: { ...newVendor.address, unit: e.target.value } })}
-                                                className="bg-white"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <Input
-                                            placeholder="City"
-                                            value={newVendor.address.city}
-                                            onChange={(e: any) => setNewVendor({ ...newVendor, address: { ...newVendor.address, city: e.target.value } })}
-                                            className="bg-white"
-                                        />
-                                        <Select
-                                            value={newVendor.address.stateProvince}
-                                            onValueChange={(val) => setNewVendor({ ...newVendor, address: { ...newVendor.address, stateProvince: val } })}
-                                        >
-                                            <SelectTrigger className="bg-white h-9">
-                                                <SelectValue placeholder="State/Prov" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <div className="p-1">
-                                                    <div className="text-xs font-semibold text-slate-500 px-2 py-1">USA</div>
-                                                    {US_STATES.map(state => (
-                                                        <SelectItem key={state} value={state}>{state}</SelectItem>
-                                                    ))}
-                                                    <div className="text-xs font-semibold text-slate-500 px-2 py-1 mt-1 pt-1 border-t border-slate-100">Canada</div>
-                                                    {CA_PROVINCES.map(prov => (
-                                                        <SelectItem key={prov} value={prov}>{prov}</SelectItem>
-                                                    ))}
-                                                </div>
-                                            </SelectContent>
-                                        </Select>
-                                        <Input
-                                            placeholder="Zip/Postal"
-                                            value={newVendor.address.postalCode}
-                                            onChange={(e: any) => setNewVendor({ ...newVendor, address: { ...newVendor.address, postalCode: e.target.value } })}
-                                            className="bg-white"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Input
-                                        placeholder="Phone"
-                                        value={newVendor.phone}
-                                        onChange={(e: any) => setNewVendor({ ...newVendor, phone: e.target.value })}
-                                        className="bg-white"
-                                    />
-                                    <Input
-                                        placeholder="Email"
-                                        value={newVendor.email}
-                                        onChange={(e: any) => setNewVendor({ ...newVendor, email: e.target.value })}
-                                        className="bg-white"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end">
-                                <Button size="sm" onClick={handleSaveNewVendor} disabled={!newVendor.companyName} className="h-7 text-xs">
-                                    Save Vendor
-                                </Button>
-                            </div>
-                        </div>
-                    ) : (
-                        <Select value={vendorId} onValueChange={setVendorId}>
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select Vendor..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {vendors.map((vendor: any) => (
-                                    <SelectItem key={vendor.id} value={vendor.id}>{vendor.companyName}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                </div>
-
-                {/* Dates */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <Label className="mb-2 block">Create Date</Label>
-                        <Input
-                            type="date"
-                            value={createDate}
-                            onChange={(e: any) => setCreateDate(e.target.value)}
-                        />
-                    </div>
-                    <div>
-                        <Label className="mb-2 block">Order Due Date</Label>
-                        <Input
-                            type="date"
-                            value={dueDate}
-                            onChange={(e: any) => setDueDate(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="h-px bg-slate-100 my-2"></div>
-
-                {/* Requirements */}
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <Label>Require Odometer Reading?</Label>
-                        <div className="flex items-center gap-2">
-                            <div className="flex bg-slate-100 rounded-md p-0.5">
-                                <button
-                                    onClick={() => setOdometerUnit('miles')}
-                                    className={`px-2 py-0.5 text-xs rounded-sm transition-all ${odometerUnit === 'miles' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
-                                >
-                                    Miles
-                                </button>
-                                <button
-                                    onClick={() => setOdometerUnit('km')}
-                                    className={`px-2 py-0.5 text-xs rounded-sm transition-all ${odometerUnit === 'km' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
-                                >
-                                    KM
-                                </button>
-                            </div>
-                            <Switch checked={requireOdometer} onCheckedChange={setRequireOdometer} />
-                        </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                        <Label>Require Engine Hours?</Label>
-                        <Switch checked={requireEngineHours} onCheckedChange={setRequireEngineHours} />
-                    </div>
-                </div>
-
-                {/* Remarks */}
-                <div>
-                    <Label className="mb-2 block">Remarks</Label>
-                    <textarea
-                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 h-24 resize-none"
-                        placeholder="Enter remarks..."
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                    />
-                </div>
-            </div>
-        </Modal>
-    );
-};
 
 // --- Complete Order Modal ---
 const CompleteOrderModal = ({ isOpen, onClose, onComplete, order, tasks }: any) => {
@@ -1265,6 +674,8 @@ export function AssetMaintenancePage() {
     const [taskToSkip, setTaskToSkip] = useState<MaintenanceTask | null>(null);
     const [viewTask, setViewTask] = useState<MaintenanceTask | null>(null);
     const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
+    
+
 
     const getAsset = (id: string) => INITIAL_ASSETS.find((a) => a.id === id);
     const getServiceNames = (ids: string[]) => ids.map(id => INITIAL_SERVICE_TYPES.find(s => s.id === id)?.name).join(", ");
@@ -1347,6 +758,9 @@ export function AssetMaintenancePage() {
         return result;
     }, [tasks, assetFilter, statusFilter, searchQuery]);
 
+    // Grouping Logic for Tasks (REMOVED: User requested flat list view)
+    // We keep the logic for batchId in creation, but render individually here.
+    
     const getCount = (status: string) => {
         const base = assetFilter === 'all' ? tasks : tasks.filter((t) => {
             const asset = getAsset(t.assetId);
@@ -1373,27 +787,52 @@ export function AssetMaintenancePage() {
     };
 
     const handleCreateOrder = (orderData: any) => {
-        const newOrder: TaskOrder = {
-            id: `wo_${Math.random().toString(36).substr(2, 9)}`,
-            taskIds: selectedTaskIds,
-            vendorId: orderData.vendorId,
-            status: "open",
-            createdAt: orderData.createDate,
-            dueDate: orderData.dueDate,
-            notes: orderData.notes,
-            meta: orderData.meta,
-            completions: []
-        };
+        const batchId = `batch_${Math.random().toString(36).substr(2, 9)}`;
+        const newOrders: TaskOrder[] = [];
+        
+        // Use taskIds from orderData if present (new modal), otherwise fallback to selectedTaskIds (legacy/bulk)
+        const taskIdsToProcess = orderData.taskIds && orderData.taskIds.length > 0 
+            ? orderData.taskIds 
+            : selectedTaskIds;
+        
+        // Group selected tasks by Asset ID to create individual orders per asset
+        const tasksByAsset: Record<string, string[]> = {};
+        taskIdsToProcess.forEach((taskId: string) => {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                if (!tasksByAsset[task.assetId]) tasksByAsset[task.assetId] = [];
+                tasksByAsset[task.assetId].push(taskId);
+            }
+        });
 
-        setOrders([newOrder, ...orders]);
-        setTasks(tasks.map(t => selectedTaskIds.includes(t.id) ? { ...t, status: "in_progress" as MaintenanceTaskStatus } : t));
+        Object.values(tasksByAsset).forEach((assetTaskIds) => {
+            const newOrder: TaskOrder = {
+                id: `wo_${Math.random().toString(36).substr(2, 9)}`,
+                taskIds: assetTaskIds,
+                vendorId: orderData.vendorId,
+                status: "open",
+                createdAt: orderData.createDate,
+                dueDate: orderData.dueDate,
+                notes: orderData.notes,
+                meta: orderData.meta,
+                completions: [],
+                batchId: batchId // Link via batchId
+            };
+            newOrders.push(newOrder);
+        });
+
+        setOrders([...newOrders, ...orders]);
+        
+        // Update task statuses
+        setTasks(tasks.map(t => taskIdsToProcess.includes(t.id) ? { ...t, status: "in_progress" as MaintenanceTaskStatus } : t));
+        
         setSelectedTaskIds([]);
         setIsCreateOrderModalOpen(false);
         setActiveTab('orders');
     };
 
     const openCreateOrderModal = () => {
-        if (selectedTaskIds.length === 0) return;
+        // if (selectedTaskIds.length === 0) return; // Allow opening independent of selection
         setIsCreateOrderModalOpen(true);
     };
 
@@ -1429,6 +868,8 @@ export function AssetMaintenancePage() {
         });
     }, [orders, tasks, statusFilter]);
 
+
+
     const paginatedOrders = filteredOrders.slice((ordersPage - 1) * ORDERS_PER_PAGE, ordersPage * ORDERS_PER_PAGE);
     const totalOrderPages = Math.ceil(filteredOrders.length / ORDERS_PER_PAGE);
 
@@ -1441,7 +882,43 @@ export function AssetMaintenancePage() {
     };
 
     const handleSaveSchedule = (schedule: any) => {
-        console.log("Saving Schedule:", schedule);
+        // console.log("Saving Schedule:", schedule);
+        const newTasks: MaintenanceTask[] = [];
+        const isDateBased = schedule.frequency.unit === 'days';
+
+        schedule.assignment.entityIds.forEach((assetId: string) => {
+            const details = schedule.assetDetails?.[assetId] || {};
+            
+            // Determine due rule parameters based on specific asset details or defaults
+            const dueAtOdometer = !isDateBased && details.nextDueValue ? Number(details.nextDueValue) : undefined;
+            const dueAtDate = isDateBased && details.nextDueValue ? String(details.nextDueValue) : undefined;
+            const dueAtEngineHours = schedule.frequency.unit === 'engine_hours' && details.nextDueValue ? Number(details.nextDueValue) : undefined;
+
+            const newTask: MaintenanceTask = {
+                id: `task_${Math.random().toString(36).substr(2, 9)}`,
+                assetId: assetId,
+                scheduleId: schedule.id, // Serves as the grouping ID for tasks
+                serviceTypeIds: schedule.serviceTypeIds,
+                status: 'upcoming',
+                meterSnapshot: { 
+                    odometer: 0, // In real app, would fetch current asset meter
+                    engineHours: 0, 
+                    capturedAt: new Date().toISOString() 
+                },
+                dueRule: {
+                    unit: schedule.frequency.unit,
+                    frequencyEvery: schedule.frequency.every,
+                    upcomingThreshold: schedule.upcomingThreshold,
+                    dueAtOdometer,
+                    dueAtDate,
+                    dueAtEngineHours
+                },
+                createdAt: new Date().toISOString()
+            };
+            newTasks.push(newTask);
+        });
+
+        setTasks([...tasks, ...newTasks]);
         setIsCreatingSchedule(false);
     };
 
@@ -1512,6 +989,11 @@ export function AssetMaintenancePage() {
                                 <Calendar size={16} /> New Schedule
                             </Button>
                         )}
+                        {activeTab === 'orders' && (
+                            <Button variant="primary" onClick={() => setIsCreateOrderModalOpen(true)} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+                                <Briefcase size={16} /> Create Work Order
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -1578,7 +1060,7 @@ export function AssetMaintenancePage() {
                                     </Button>
                                     <Button size="sm" onClick={openCreateOrderModal} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 h-8 shadow-sm">
                                         <Briefcase size={14} />
-                                        <span>Create Task Order</span>
+                                        <span>Create Work Order</span>
                                     </Button>
                                 </div>
                             )}
@@ -1704,6 +1186,7 @@ export function AssetMaintenancePage() {
                                     </button>
                                 ))}
                             </div>
+
                         </div>
                         <table className="w-full text-sm text-left">
                             <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
@@ -1773,7 +1256,7 @@ export function AssetMaintenancePage() {
                                     </tr>
                                 )
                                 }
-                            </tbody >
+                            </tbody>
                         </table >
                     </div >
                 )}
@@ -1858,6 +1341,7 @@ export function AssetMaintenancePage() {
                 onClose={() => setIsCreateOrderModalOpen(false)}
                 onCreate={handleCreateOrder}
                 selectedTasks={tasks.filter(t => selectedTaskIds.includes(t.id))}
+                availableTasks={tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && !orders.some(o => o.taskIds.includes(t.id)))}
                 vendors={vendors}
                 onAddVendor={handleAddVendor}
             />
