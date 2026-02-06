@@ -637,7 +637,6 @@ export function CarrierProfilePage() {
         { id: 'fleet', label: 'Fleet Overview' },
         { id: 'locations', label: 'Yard Terminals' },
         { id: 'assets', label: 'Assets' },
-        { id: 'drivers', label: 'Drivers' },
         { id: 'drivers', label: 'Drivers' }
     ];
 

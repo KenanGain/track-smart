@@ -3,7 +3,8 @@ import {
   Plus, ChevronRight, Edit2, Copy, Truck, 
   AlertCircle, FileText,
   ShieldCheck, Hash, Clock, 
-  Settings, MapPin, ChevronDown, Wrench, Trash2
+  Settings, MapPin, ChevronDown, Wrench, Trash2,
+  X, UploadCloud, FileDown, FileKey
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
@@ -15,7 +16,7 @@ import { AddExpenseModal } from './AddExpenseModal';
 import { INITIAL_TASKS, INITIAL_ORDERS, INITIAL_SERVICE_TYPES } from './maintenance.data';
 import type { TaskOrder } from './maintenance.data';
 import { INITIAL_VENDORS } from '@/data/vendors.data';
-import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense, type ExpenseCategory } from '@/pages/settings/expenses.data';
+import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
 import { DollarSign } from 'lucide-react';
 
 // --- Types for Rich Data (extending base Asset) ---
@@ -250,7 +251,7 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
   const [activeComplianceFilter, setActiveComplianceFilter] = useState<string | null>(null);
 
-  const { keyNumbers, tagSections, getDocumentTypeById } = useAppData();
+  const { keyNumbers, tagSections, getDocumentTypeById, documents } = useAppData();
 
   // State for collapsible groups
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -505,6 +506,115 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
       }
       setIsExpenseModalOpen(false);
       setEditingExpense(null);
+  };
+
+  // --- Document Logic (Derived from Key Numbers) ---
+  const [editingDocument, setEditingDocument] = useState<any | null>(null);
+  const [viewingDocument, setViewingDocument] = useState<any | null>(null);
+
+  const assetDocuments = useMemo(() => {
+      // 1. Get Asset-related Document Types
+      const assetDocTypes = documents.filter((doc: any) => doc.relatedTo === 'asset');
+      
+      // 2. Map to display items
+      return assetDocTypes.map((docType: any) => {
+          // Find linked Key Number config
+          const linkedKn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === docType.id && k.entityType === 'Asset');
+          
+          let status = 'Missing';
+          let expiryDate = '—';
+          let hasUpload = false;
+          let dateUploaded = '—';
+          let documentName = '—';
+          
+          // Logic: Check if the Asset has a value/document for this requirement
+          if (linkedKn) {
+              // A. It's a Key Number Document (e.g. Registration linked to Plate)
+              // We need to look at specific fields on the asset based on the Key Number ID
+              
+              if (linkedKn.id === 'kn-plate') {
+                   // Plate / Registration
+                   if (currentVehicle.registrationExpiryDate) {
+                       expiryDate = currentVehicle.registrationExpiryDate;
+                       // Assume if we have expiry, we MIGHT have the doc, or check a separate "hasRegistrationDoc" flag if it existed
+                       // For now, we'll assume Active if valid dates, else Missing
+                       // In a real app, `currentVehicle` would have `documents: [{ typeId: '...', url: '...' }]`
+                       status = getStatus(currentVehicle.registrationExpiryDate);
+                       if (status === 'Active') {
+                           hasUpload = true; // Mock: If active, assume we have it
+                           documentName = 'Registration.pdf';
+                           dateUploaded = '2024-01-01'; 
+                       }
+                   }
+              } else if (linkedKn.id === 'kn-transponder') {
+                   if (currentVehicle.transponderExpiryDate) {
+                       expiryDate = currentVehicle.transponderExpiryDate;
+                       status = getStatus(currentVehicle.transponderExpiryDate);
+                       if (status === 'Active') {
+                           hasUpload = true;
+                           documentName = 'Transponder.pdf';
+                           dateUploaded = '2024-05-15';
+                       }
+                   }
+              } else if (linkedKn.id === 'kn-insurance') { // Hypothetical
+                   // Check permits/insurance array
+                   hasUpload = false; 
+              } else {
+                   // Generic Key Number check (Permits, etc.)
+                   const permit = currentVehicle.permits?.find(p => 
+                      p.permitType?.toLowerCase().includes(linkedKn.numberTypeName.toLowerCase()) || 
+                      linkedKn.numberTypeName.toLowerCase().includes(p.permitType?.toLowerCase() || '')
+                   );
+                   if (permit) {
+                       if (permit.expiryDate) expiryDate = permit.expiryDate;
+                       if (permit.expiryDate) status = getStatus(permit.expiryDate);
+                       // If we have a permit record, do we have the physical doc?
+                       // Mock: yes if active
+                       if (status === 'Active' || status === 'Expiring Soon') {
+                           hasUpload = true;
+                           documentName = `${linkedKn.numberTypeName}.pdf`;
+                           dateUploaded = '2024-02-20';
+                       }
+                   }
+              }
+
+              // Override status if mock says "Missing" but requirement is Optional
+              if (docType.requirementLevel === 'optional' && status === 'Missing') {
+                  status = 'Optional';
+              }
+          } else {
+              // B. Standalone Asset Document (not linked to a Key Number)
+              // e.g. "Maintenance Record", "Photo"
+              // We would check `currentVehicle.documents` array
+              // For now, default to Missing/Optional
+              if (docType.requirementLevel === 'optional') status = 'Optional';
+          }
+
+          return {
+              id: docType.id,
+              documentType: docType.name,
+              documentName: documentName,
+              folderPath: docType.category || 'Asset',
+              dateUploaded,
+              status,
+              expiryDate,
+              hasUpload,
+              requirementLevel: docType.requirementLevel,
+              linkedKeyNumber: linkedKn ? linkedKn.numberTypeName : null
+          };
+      }).sort((a: any, b: any) => {
+          // Sort: Required & Missing on top
+          if (a.requirementLevel === 'required' && b.requirementLevel !== 'required') return -1;
+          if (a.status === 'Missing' && b.status !== 'Missing') return -1;
+          return 0;
+      });
+  }, [documents, keyNumbers, currentVehicle]);
+
+  const handleSaveDocument = () => {
+      // Mock save
+      console.log('Saved document');
+      // In real app, we would update the asset's document list or Key Number value
+      setEditingDocument(null);
   };
 
 
@@ -1107,6 +1217,86 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                   </Card>
               </div>
             )}
+
+            {/* Documents Content */}
+            {activeTab === 'Documents' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">Asset Documents</h3>
+                      <p className="text-xs font-medium text-slate-500">Manage registration, insurance, and other asset-related files</p>
+                    </div>
+                     <Button onClick={() => { setEditingDocument({ id: 'new', documentType: '', documentName: '', hasUpload: false }); }} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200">
+                        <UploadCloud size={14} /> Upload Document
+                    </Button>
+                  </div>
+
+                  <Card className="overflow-hidden border-slate-200 shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
+                          <tr>
+                            <th className="px-6 py-4">Document Type</th>
+                            <th className="px-6 py-4">Name</th>
+                            <th className="px-6 py-4">Folder</th>
+                            <th className="px-6 py-4">Date Uploaded</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4">Expiry</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {assetDocuments.length > 0 ? assetDocuments.map((doc) => (
+                               <tr key={doc.id} className="hover:bg-slate-50/50 transition-colors">
+                                 <td className="px-6 py-4">
+                                     <div>
+                                         <div className="font-medium text-slate-900">{doc.documentType}</div>
+                                         {doc.linkedKeyNumber && (
+                                             <div className="text-xs text-blue-600 mt-0.5 flex items-center gap-1">
+                                                 <FileKey className="w-3 h-3" /> Related to: {doc.linkedKeyNumber}
+                                             </div>
+                                         )}
+                                     </div>
+                                 </td>
+                                 <td className="px-6 py-4 text-slate-700">{doc.documentName}</td>
+                                 <td className="px-6 py-4 text-slate-500 text-xs">{doc.folderPath}</td>
+                                 <td className="px-6 py-4 text-slate-500">{doc.dateUploaded}</td>
+                                 <td className="px-6 py-4">
+                                     <Badge variant={doc.status === 'Active' ? 'success' : doc.status === 'Expired' ? 'danger' : 'warning'}>{doc.status}</Badge>
+                                 </td>
+                                 <td className="px-6 py-4 text-slate-500">{doc.expiryDate}</td>
+                                 <td className="px-6 py-4 text-right">
+                                      <div className="flex justify-end gap-1">
+                                         {doc.hasUpload && (
+                                            <button onClick={() => setViewingDocument(doc)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="View">
+                                               <FileDown size={14} />
+                                            </button>
+                                         )}
+                                         <button onClick={() => setEditingDocument(doc)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit">
+                                           <Edit2 size={14} />
+                                         </button>
+                                         <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                                           <Trash2 size={14} />
+                                         </button>
+                                      </div>
+                                 </td>
+                               </tr>
+                          )) : (
+                              <tr>
+                                <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <div className="p-3 bg-slate-50 rounded-full"><FileText size={24} className="opacity-30" /></div>
+                                    <span className="text-sm font-medium">No documents uploaded</span>
+                                  </div>
+                                </td>
+                              </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1117,6 +1307,63 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
           onSave={handleSaveExpense}
           assetId={asset?.id}
         />
+
+        {/* Document Edit Modal */}
+        {editingDocument && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-900">{editingDocument.id === 'new' ? 'Upload Document' : 'Edit Document'}</h2>
+                            <p className="text-sm text-slate-500">{editingDocument.documentType || 'New Document'}</p>
+                        </div>
+                        <button onClick={() => setEditingDocument(null)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                            <X className="w-5 h-5 text-slate-400" />
+                        </button>
+                    </div>
+                    <div className="p-6 space-y-5 overflow-y-auto flex-1">
+                        <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Document Type</label>
+                                    <input type="text" defaultValue={editingDocument.documentType} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm" placeholder="e.g. Registration" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Expiry Date</label>
+                                    <input type="date" defaultValue={editingDocument.expiryDate !== 'Not set' ? editingDocument.expiryDate : ''} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm" />
+                                </div>
+                        </div>
+                        <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
+                            <UploadCloud className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                            <p className="text-sm font-medium text-slate-600">Click to upload</p>
+                            <p className="text-xs text-slate-400 mt-1">PDF, JPG, PNG up to 10MB</p>
+                        </div>
+                    </div>
+                    <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                        <button onClick={() => setEditingDocument(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white">Cancel</button>
+                        <button onClick={handleSaveDocument} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* View Document Modal */}
+        {viewingDocument && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+                        <div><h2 className="text-lg font-bold text-slate-900">View Document</h2><p className="text-sm text-slate-500">{viewingDocument.documentName}</p></div>
+                        <button onClick={() => setViewingDocument(null)} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5 text-slate-400" /></button>
+                    </div>
+                    <div className="flex-1 bg-slate-100 p-6 flex items-center justify-center min-h-[500px]">
+                        <div className="bg-white rounded-xl shadow-lg p-8 text-center max-w-md">
+                            <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                            <h3 className="text-lg font-semibold text-slate-700 mb-2">{viewingDocument.documentName}</h3>
+                            <p className="text-sm text-slate-500">Document Type: {viewingDocument.documentType}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
       </main>
       
       <KeyNumberModal

@@ -1,6 +1,4 @@
 
-import { INITIAL_VENDORS } from "@/data/vendors.data";
-
 // --- Types & Interfaces ---
 
 export type ServiceCategory = "cmv_only" | "non_cmv_only" | "both_cmv_and_non_cmv";

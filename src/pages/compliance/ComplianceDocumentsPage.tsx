@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
     FileText,
-    Search,
     FileDown,
     ShieldCheck,
     AlertTriangle,
@@ -10,7 +9,6 @@ import {
     FileWarning,
     X,
     FileKey,
-    Package,
     Edit3,
     UploadCloud,
     Plus,
@@ -600,10 +598,12 @@ export const ComplianceDocumentsPage = () => {
                      if (!docType?.selectedTags) return [];
                      const result: { sectionId: string; sectionTitle: string; tags: { id: string; label: string }[]; multiSelect: boolean; colorTheme: ColorTheme }[] = [];
                      for (const [sectionId, tags] of Object.entries(docType.selectedTags)) {
-                        const selectedTagsFromDoc = tags as string[];
+                        const selectedTagsFromDoc = tags as string[]; // In this mock data context, it seems to be strings based on usage elsewhere
                          const section = tagSections.find(s => s.id === sectionId);
                          if (section && selectedTagsFromDoc.length > 0) {
-                             const availableTags = section.tags.filter(t => selectedTagsFromDoc.some(st => st.id === t.id));
+                             // Fix: st is likely just the ID string if the data structure is simple, or we need to check how it's stored.
+                             // Assuming selectedTagsFromDoc contains tag IDs (strings) based on the error "Property 'id' does not exist on type 'string'".
+                             const availableTags = section.tags.filter(t => selectedTagsFromDoc.some(stId => stId === t.id));
                              if (availableTags.length > 0) {
                                  result.push({
                                      sectionId,
