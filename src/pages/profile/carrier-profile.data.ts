@@ -973,3 +973,38 @@ export const MOCK_DRIVERS: Driver[] = [
         certificates: []
     }
 ];
+
+export const MOCK_DRIVER_DETAILED_TEMPLATE: Driver = {
+    id: "",
+    name: "",
+    firstName: "",
+    lastName: "",
+    status: "Active",
+    avatarInitials: "",
+    phone: "",
+    email: "",
+    hiredDate: "",
+    dateAdded: "",
+    terminal: "",
+    carrierCode: "",
+    dob: "",
+    gender: "",
+    ssn: "",
+    citizenship: "USA",
+    authorizedToWork: true,
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    country: "USA",
+    licenseNumber: "",
+    licenseState: "",
+    licenseExpiry: "",
+    emergencyContacts: [],
+    previousResidences: [],
+    licenses: [],
+    employmentHistory: [],
+    keyNumbers: [],
+    documents: [],
+    certificates: []
+};

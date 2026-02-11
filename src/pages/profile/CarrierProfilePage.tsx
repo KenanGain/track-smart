@@ -47,7 +47,7 @@ import {
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { LocationViewModal } from '../../components/locations/LocationViewModal';
-import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS, MOCK_DRIVERS } from './carrier-profile.data';
+import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS, MOCK_DRIVERS, MOCK_DRIVER_DETAILED_TEMPLATE } from './carrier-profile.data';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
@@ -382,7 +382,7 @@ export function CarrierProfilePage() {
     const [selectedDriverData, setSelectedDriverData] = useState<any>(null); // State to hold detailed driver data
     const [isAddingDriver, setIsAddingDriver] = useState(false);
     const [editingDriverData, setEditingDriverData] = useState<any>(null);
-    const { appData, updateAppData } = useAppData();
+
     const [complianceFilter, setComplianceFilter] = useState('all');
     const [documentFilter, setDocumentFilter] = useState('all');
 

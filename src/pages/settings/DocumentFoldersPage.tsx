@@ -20,7 +20,7 @@ import {
     Save,
     ArrowRight,
 } from "lucide-react";
-import { type FolderNode, type FolderCounts } from "@/data/mock-app-data";
+import { type FolderNode, type FolderCounts, type DocumentType } from "@/data/mock-app-data";
 
 /**
  * ============================================================

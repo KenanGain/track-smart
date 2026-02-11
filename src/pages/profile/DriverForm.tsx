@@ -8,6 +8,7 @@ import { InputGroup, Toggle } from './DriverComponents';
 // --- Form Initial State ---
 const initialFormState = {
   general: {
+    driverType: "Company Driver",
     firstName: "", middleName: "", lastName: "", employeeNumber: "", gender: "Prefer not to say",
     dateOfBirth: "", citizenshipCountryCode: "", terminalOfficeId: "", fastId: "",
     mobileAppAccess: "No", aceId: "", cdrpNumber: "",
@@ -48,6 +49,7 @@ const mapDomainToForm = (domainData: any) => {
 
   return {
     general: {
+      driverType: domainData.driverType || "Company Driver",
       firstName: domainData.firstName || "",
       middleName: domainData.middleName || "",
       lastName: domainData.lastName || "",
@@ -141,6 +143,7 @@ const mapFormToDomain = (formData: any, initialDomainData: any = {}) => {
 
   return {
     ...initialDomainData, // Preserve original IDs and fields
+    driverType: formData.general.driverType,
     firstName: formData.general.firstName,
     middleName: formData.general.middleName,
     lastName: formData.general.lastName,
@@ -228,6 +231,22 @@ export const DriverForm = ({ initialData, onSave, onCancel, isEditing = false }:
       <div className="max-w-5xl mx-auto mt-8 px-4 sm:px-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             
+            {/* Driver Type Section */}
+            <div className="p-6 border-b border-gray-100 bg-blue-50/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                    <InputGroup
+                        label="Driver Type"
+                        options={['Company Driver', 'Owner Operator', 'Lease Operator', 'Long Haul Driver', 'Local Driver', 'Regional Driver']}
+                        value={formData.general.driverType}
+                        onChange={(e: any) => updateNested('general', 'driverType', e.target.value)}
+                        required
+                    />
+                    <div className="text-xs text-slate-600 italic">
+                        Select the primary driver classification for this profile
+                    </div>
+                </div>
+            </div>
+
             {/* 1. Personal Identification */}
             <div className="p-8 border-b border-gray-100">
                 <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-3">

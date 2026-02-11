@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { DRIVER_TYPES } from './carrier-profile.data';
 import {
   User, Phone, MapPin, Briefcase, 
   AlertTriangle, Edit, Edit3, Trash2, Mail, History, Award, 
-  UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Route, Ticket, Car, AlertCircle, DollarSign, AlertOctagon, Ban, FileKey, Hash, Clock, Plus,
+  UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Route, Ticket, Car, DollarSign, AlertOctagon, FileKey, Hash, Clock, Plus,
   CalendarX, FileWarning, Download, Eye, X, Construction
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 // Removed: import { Badge } from '../../components/ui/Badge';
-import { StatusBadge, SectionHeader, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge, calculateExperience } from './DriverComponents';
+import { StatusBadge, SectionHeader, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge } from './DriverComponents';
 
 // --- Individual Section Edit Modals ---
 
@@ -21,7 +20,6 @@ export const EditPersonalModal = ({ isOpen, onClose, data, onSave }: any) => {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edit Personal Identification" onSave={() => onSave(form)}>
       <div className="grid grid-cols-2 gap-4">
-        <InputGroup label="Driver Type" name="driverType" options={DRIVER_TYPES.map(d => d.name)} value={form.driverType} onChange={handleChange} required className="col-span-2" />
         <InputGroup label="First Name" name="firstName" value={form.firstName} onChange={handleChange} required />
         <InputGroup label="Middle Name" name="middleName" value={form.middleName} onChange={handleChange} />
         <InputGroup label="Last Name" name="lastName" value={form.lastName} onChange={handleChange} required className="col-span-2" />
@@ -234,7 +232,6 @@ const ProfileTab = ({ data, onEditPersonal, onEditAddress, onEditContacts, onEdi
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
           <SectionHeader icon={User} title="Personal Identification" onEdit={onEditPersonal} />
-          <ViewField label="Driver Type" value={data.driverType} fullWidth highlight />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
              <ViewField label="First Name" value={data.firstName} />
              <ViewField label="Middle Name" value={data.middleName} />
@@ -398,7 +395,7 @@ import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 
 // ... (existing helper components)
 
-const Card = ({ title, icon, children }: { title: string, icon: any, children: React.ReactNode }) => (
+const Card = ({ title, icon, rightAction, children }: { title: string, icon: any, rightAction?: React.ReactNode, children: React.ReactNode }) => (
   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
     <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div className="flex items-center gap-2">
@@ -407,6 +404,7 @@ const Card = ({ title, icon, children }: { title: string, icon: any, children: R
             </div>
             <h3 className="text-base font-bold text-slate-800">{title}</h3>
         </div>
+        {rightAction && <div>{rightAction}</div>}
     </div>
     <div className="p-6 flex-1">
         {children}
@@ -448,7 +446,7 @@ const Badge = ({ children, variant = 'default', className }: { children: React.R
   );
 };
 
-export const DriverProfileView = ({ driverId, onBack, initialDriverData, onEditProfile, onUpdate }: any) => {
+export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, onUpdate }: any) => {
   const [activeTab, setActiveTab] = useState('Overview'); // Default to Overview
   const [driverData, setDriverData] = useState(initialDriverData);
   const { keyNumbers, documents, tagSections, getDocumentTypeById } = useAppData();
@@ -502,10 +500,7 @@ export const DriverProfileView = ({ driverId, onBack, initialDriverData, onEditP
         setIsKeyNumberModalOpen(true);
     };
 
-    const handleSaveKeyNumber = (data: { configId: string; value: string; expiryDate?: string; issueDate?: string; tags?: string[]; documents?: any[] }) => {
-        // Find existing key number in driverData to update or add new
-        const existingIndex = driverData.keyNumbers?.findIndex((k: any) => k.configId === data.configId);
-    const handleSaveKeyNumber = (data: KeyNumberValue) => {
+    const handleSaveKeyNumber = (data: any) => {
         // console.log("Saving Key Number:", data);
         const newData = { ...driverData };
 
@@ -559,7 +554,7 @@ export const DriverProfileView = ({ driverId, onBack, initialDriverData, onEditP
         
         setDriverData(newData);
         setIsKeyNumberModalOpen(false);
-    };    setEditingKeyNumber(null);
+        setEditingKeyNumber(null);
     };
 
     // State for Compliance Filter
@@ -826,7 +821,10 @@ export const DriverProfileView = ({ driverId, onBack, initialDriverData, onEditP
                       {driverData.firstName?.[0]}{driverData.lastName?.[0]}
                    </div>
                    <div>
-                      <h1 className="text-2xl font-bold text-slate-900">{driverData.firstName} {driverData.lastName}</h1>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h1 className="text-2xl font-bold text-slate-900">{driverData.firstName} {driverData.lastName}</h1>
+                        <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-200">{driverData.driverType || 'Driver'}</span>
+                      </div>
                       <div className="flex items-center gap-3 text-xs font-medium text-slate-500 mt-1">
                           <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">ID: {driverData.id || driverData.legacyId}</span>
                           <span>•</span>

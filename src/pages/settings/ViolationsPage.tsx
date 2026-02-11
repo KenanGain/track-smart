@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, Search, Filter, AlertTriangle, Shield, Info, Activity, Plus, MoreVertical, Edit, Trash2, Eye, X, Globe, ChevronDown } from "lucide-react";
+import { Search, AlertTriangle, Shield, Info, Plus, Edit, Trash2, Eye, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VIOLATION_RISK_MATRIX } from "@/data/violations.data";
@@ -64,7 +64,7 @@ export function ViolationsPage() {
     const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
     const [editingViolation, setEditingViolation] = useState<Violation | null>(null);
     const [viewingViolation, setViewingViolation] = useState<Violation | null>(null);
-    const [localCategories, setLocalCategories] = useState<ViolationCategory[]>(VIOLATION_RISK_MATRIX.violationCategories);
+    const [localCategories] = useState<ViolationCategory[]>(VIOLATION_RISK_MATRIX.violationCategories);
 
     // Form State
     const [formData, setFormData] = useState<Partial<Violation>>({});
@@ -545,9 +545,8 @@ export function ViolationsPage() {
                                     <Select 
                                         value={selectedCategoryForAdd} 
                                         onValueChange={setSelectedCategoryForAdd}
-                                        disabled={!!editingViolation}
                                     >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectTrigger disabled={!!editingViolation}><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             {localCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                                         </SelectContent>
@@ -634,7 +633,7 @@ export function ViolationsPage() {
                                             </div>
 
                                             <div className="space-y-4">
-                                                {regForm.usa.map((item, index) => (
+                                                {regForm.usa.map((item) => (
                                                     <div key={item.id} className="grid gap-3 p-3 rounded-md border border-slate-100 bg-slate-50/50 hover:border-blue-100 transition-colors group relative">
                                                         <Button 
                                                             variant="ghost" 
@@ -693,7 +692,7 @@ export function ViolationsPage() {
                                             </div>
                                             
                                             <div className="space-y-4">
-                                                {regForm.canada.map((item, index) => (
+                                                {regForm.canada.map((item) => (
                                                     <div key={item.id} className="grid gap-3 p-3 rounded-md border border-slate-100 bg-slate-50/50 hover:border-red-100 transition-colors group relative">
                                                         <Button 
                                                             variant="ghost" 

@@ -18,16 +18,15 @@ import {
     Truck,
     User,
     Download,
-    Eye,
-    Search,
     Filter,
     RotateCcw,
     AlertCircle,
     XCircle,
     UserCheck,
+    Search,
+    Users,
     UserMinus,
     UserX,
-    Users
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
@@ -519,7 +518,7 @@ export const ComplianceDocumentsPage = () => {
                 id: doc.id,
                 documentType: doc.name,
                 documentName: uploadedDoc?.fileName || (knValue?.documents?.length ? 'scanned_doc.pdf' : '—'),
-                dateUploaded: uploadedDoc ? (uploadedDoc.uploadDate || new Date().toLocaleDateString()) : (knValue?.documents?.length ? new Date().toLocaleDateString() : '—'),
+                dateUploaded: uploadedDoc ? (uploadedDoc.uploadedAt || new Date().toLocaleDateString()) : (knValue?.documents?.length ? new Date().toLocaleDateString() : '—'),
                 status: getDocStatus(doc),
                 issueDate: knValue?.issueDate || '—',
                 expiryDate: knValue?.expiryDate || '—',
