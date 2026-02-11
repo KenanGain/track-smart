@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, X, UploadCloud, FileText, Trash2, Save } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Save, Bell } from 'lucide-react';
+import { Toggle } from '@/components/ui/toggle';
+import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig, UploadedDocument } from '@/types/key-numbers.types';
 import type { DocumentType, TagSection } from '@/data/mock-app-data';
 
@@ -10,19 +12,19 @@ export interface KeyNumberModalData {
     value: string;
     expiryDate: string;
     issueDate: string;
+    issuingState?: string;
+    issuingCountry?: string;
     tags: string[];
-    documents: UploadedDocument[];
+    documents?: UploadedDocument[];
     numberRequired: boolean;
     hasExpiry: boolean;
-    documentRequired: boolean;
-    requiredDocumentTypeId?: string;
-    linkedDocumentType?: DocumentType | null;
+    documentRequired?: boolean;
 }
 
 interface KeyNumberModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: { configId: string; value: string; expiryDate?: string; issueDate?: string; tags?: string[]; documents?: UploadedDocument[]; }) => void;
+    onSave: (data: { configId: string; value: string; expiryDate?: string; issueDate?: string; issuingState?: string; issuingCountry?: string; tags?: string[]; documents?: UploadedDocument[] }) => void;
     mode: 'add' | 'edit';
     entityType: 'Carrier' | 'Asset' | 'Driver';
     editData?: KeyNumberModalData | null;
@@ -36,10 +38,20 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
     const [formValue, setFormValue] = useState('');
     const [formExpiry, setFormExpiry] = useState('');
     const [formIssueDate, setFormIssueDate] = useState('');
+    const [formIssuingState, setFormIssuingState] = useState('');
+    const [formIssuingCountry, setFormIssuingCountry] = useState('');
     const [formTags, setFormTags] = useState<Record<string, string[]>>({});
-    const [formDocuments, setFormDocuments] = useState<UploadedDocument[]>([]);
+    
+    // Monitoring State (Edit Config on the fly)
+    const { setKeyNumbers } = useAppData();
+    const [monitoringEnabled, setMonitoringEnabled] = useState(false);
+    const [monitorBasedOn, setMonitorBasedOn] = useState<'expiry' | 'issue_date'>('expiry');
+    const [renewalRecurrence, setRenewalRecurrence] = useState<'annually' | 'biannually' | 'quarterly' | 'monthly' | 'none'>('annually');
+    const [reminderDays, setReminderDays] = useState<Record<number, boolean>>({ 90: true, 60: true, 30: true, 7: false });
+    const [notificationChannels, setNotificationChannels] = useState({ email: true, inApp: true, sms: false });
+
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const fileInputRef = useRef<HTMLInputElement>(null);
+
 
     const activeConfig = useMemo(() => {
         if (mode === 'edit' && editData?.configId) return availableKeyNumbers.find(kn => kn.id === editData.configId);
@@ -54,6 +66,8 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
                 setFormValue(editData.value === 'Not entered' ? '' : editData.value);
                 setFormExpiry(editData.expiryDate === 'Not set' || editData.expiryDate === '-' ? '' : editData.expiryDate);
                 setFormIssueDate(editData.issueDate || '');
+                setFormIssuingState(editData.issuingState || '');
+                setFormIssuingCountry(editData.issuingCountry || '');
                 const tagsRecord: Record<string, string[]> = {};
                 editData.tags?.forEach(tagId => {
                     for (const section of tagSections || []) {
@@ -64,14 +78,32 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
                     }
                 });
                 setFormTags(tagsRecord);
-                setFormDocuments(editData.documents || []);
+
+
+                // Load Monitoring Config
+                const config = availableKeyNumbers.find(kn => kn.id === editData.configId);
+                if (config) {
+                    setMonitoringEnabled(config.monitoringEnabled ?? false);
+                    setMonitorBasedOn(config.monitorBasedOn || 'expiry');
+                    setRenewalRecurrence((config.renewalRecurrence as any) || 'annually');
+                    setReminderDays(config.reminderDays || { 90: true, 60: true, 30: true, 7: false });
+                    setNotificationChannels(config.notificationChannels || { email: true, inApp: true, sms: false });
+                }
             } else {
                 setSelectedTypeId('');
                 setFormValue('');
                 setFormExpiry('');
                 setFormIssueDate('');
+                setFormIssuingState('');
+                setFormIssuingCountry('');
                 setFormTags({});
-                setFormDocuments([]);
+                
+                // Reset Monitoring defaults
+                setMonitoringEnabled(false);
+                setMonitorBasedOn('expiry');
+                setRenewalRecurrence('annually');
+                setReminderDays({ 90: true, 60: true, 30: true, 7: false });
+                setNotificationChannels({ email: true, inApp: true, sms: false });
             }
             setErrors({});
         }
@@ -87,10 +119,10 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
         if (activeConfig) {
             if (activeConfig.numberRequired !== false && !formValue.trim()) newErrors.value = 'Number value is required.';
             if (activeConfig.hasExpiry && !formExpiry) newErrors.expiry = 'Expiry date is required.';
-            if (activeConfig.documentRequired) {
-                // If mocked, we check formDocuments
-                if (formDocuments.length === 0) newErrors.documents = 'At least one document is required.';
-            }
+            if (activeConfig.issueDateRequired && !formIssueDate) newErrors.issueDate = 'Issue date is required.';
+            if (activeConfig.issueStateRequired && !formIssuingState.trim()) newErrors.issuingState = 'Issuing State is required.';
+            if (activeConfig.issueCountryRequired && !formIssuingCountry.trim()) newErrors.issuingCountry = 'Issuing Country is required.';
+
         }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -107,29 +139,31 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
             value: formValue,
             expiryDate: activeConfig.hasExpiry ? formExpiry : undefined,
             issueDate: formIssueDate || undefined,
+            issuingState: formIssuingState || undefined,
+            issuingCountry: formIssuingCountry || undefined,
             tags: tagsArray.length > 0 ? tagsArray : undefined,
-            documents: activeConfig.documentRequired ? formDocuments : undefined
+            documents: (mode === 'edit' && editData?.documents) ? editData.documents : []
         });
+
+        // Update Global Config with new monitoring settings
+        setKeyNumbers(prev => prev.map(k => {
+            if (k.id === activeConfig.id) {
+                return {
+                    ...k,
+                    monitoringEnabled,
+                    monitorBasedOn,
+                    renewalRecurrence,
+                    reminderDays,
+                    notificationChannels
+                };
+            }
+            return k;
+        }));
+
         onClose();
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const file = e.target.files[0];
-            const newDoc: UploadedDocument = {
-                id: `doc-${Date.now()}`,
-                fileName: file.name,
-                fileSize: file.size,
-                uploadedAt: new Date().toISOString()
-            };
-            setFormDocuments(prev => [...prev, newDoc]);
-            setErrors(prev => ({ ...prev, documents: '' })); // Clear error
-        }
-    };
 
-    const removeDocument = (id: string) => {
-        setFormDocuments(prev => prev.filter(d => d.id !== id));
-    };
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -196,83 +230,167 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
                                     </div>
                                 )}
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Issue Date <span className="text-slate-400 font-normal">(Optional)</span></label>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                        Issue Date {activeConfig.issueDateRequired ? <span className="text-red-500">*</span> : <span className="text-slate-400 font-normal">(Optional)</span>}
+                                    </label>
                                     <input 
                                         type="date" 
-                                        className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" 
+                                        className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${errors.issueDate ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
                                         value={formIssueDate} 
-                                        onChange={(e) => setFormIssueDate(e.target.value)} 
+                                        onChange={(e) => { setFormIssueDate(e.target.value); setErrors(prev => ({ ...prev, issueDate: '' })); }}
                                     />
+                                    {errors.issueDate && <p className="text-xs text-red-500 mt-1">{errors.issueDate}</p>}
                                 </div>
                             </div>
-
-                            {/* Supporting Documents */}
-                            {activeConfig.documentRequired && (
-                                <div className="pt-2 border-t border-slate-100">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div>
-                                            <label className="text-sm font-semibold text-slate-700">Supporting Documents <span className="text-red-500">*</span></label>
-                                            <p className="text-xs text-slate-500">Upload documents for {activeConfig.numberTypeName}</p>
-                                        </div>
-                                        <button 
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
-                                        >
-                                            <Plus className="w-4 h-4" /> Add Document
-                                        </button>
+                            
+                            {/* Issuing State & Country */}
+                            <div className="grid grid-cols-2 gap-4">
+                                {activeConfig.issueStateRequired && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                            Issuing State <span className="text-red-500">*</span>
+                                        </label>
                                         <input 
-                                            type="file" 
-                                            ref={fileInputRef} 
-                                            className="hidden" 
-                                            onChange={handleFileChange} 
+                                            type="text" 
+                                            placeholder="e.g. CA, NY, TX"
+                                            className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${errors.issuingState ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
+                                            value={formIssuingState} 
+                                            onChange={(e) => { setFormIssuingState(e.target.value); setErrors(prev => ({ ...prev, issuingState: '' })); }}
+                                        />
+                                        {errors.issuingState && <p className="text-xs text-red-500 mt-1">{errors.issuingState}</p>}
+                                    </div>
+                                )}
+                                {activeConfig.issueCountryRequired && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                            Issuing Country <span className="text-red-500">*</span>
+                                        </label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="e.g. USA, CAN, MEX"
+                                            className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${errors.issuingCountry ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
+                                            value={formIssuingCountry} 
+                                            onChange={(e) => { setFormIssuingCountry(e.target.value); setErrors(prev => ({ ...prev, issuingCountry: '' })); }}
+                                        />
+                                        {errors.issuingCountry && <p className="text-xs text-red-500 mt-1">{errors.issuingCountry}</p>}
+                                    </div>
+                                )}
+                            </div>
+                            {/* Monitoring & Notifications Card (Added to match KeyNumberEditor) */}
+                            <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-5 mt-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-6 w-1 bg-purple-600 rounded-full"></div>
+                                        <div>
+                                            <h2 className="text-base font-bold text-slate-900">Monitoring & Notifications</h2>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-slate-600">
+                                            {monitoringEnabled ? "Enabled" : "Disabled"}
+                                        </span>
+                                        <Toggle
+                                            checked={monitoringEnabled}
+                                            onCheckedChange={setMonitoringEnabled}
+                                            className="data-[state=on]:bg-purple-600 h-5 w-9"
                                         />
                                     </div>
-
-                                    {/* Upload Area / List */}
-                                    {formDocuments.length === 0 ? (
-                                        <div 
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors ${errors.documents ? 'border-red-300 bg-red-50' : 'border-slate-300 hover:bg-slate-50 bg-white'}`}
-                                        >
-                                            <div className="bg-blue-50 p-3 rounded-full mb-3">
-                                                <UploadCloud className="w-6 h-6 text-blue-600" />
-                                            </div>
-                                            <p className="text-sm font-semibold text-slate-700">Click to upload or drag & drop</p>
-                                            <p className="text-xs text-slate-400 mt-1">PDF, DOC, DOCX up to 10MB</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {formDocuments.map(doc => (
-                                                <div key={doc.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg bg-white group hover:border-blue-200 transition-colors">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="bg-red-50 p-2 rounded-lg">
-                                                            <FileText className="w-5 h-5 text-red-500" /> {/* Mock PDF Icon color */}
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-medium text-slate-700">{doc.fileName}</p>
-                                                            <p className="text-xs text-slate-400">{doc.fileSize ? `${(doc.fileSize / 1024).toFixed(0)} KB` : 'Unknown Size'} • {new Date(doc.uploadedAt).toLocaleDateString()}</p>
-                                                        </div>
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => removeDocument(doc.id)}
-                                                        className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <div 
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="border-2 border-dashed border-slate-200 rounded-lg p-3 flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors"
-                                            >
-                                                <Plus className="w-4 h-4" />
-                                                <span className="text-sm font-medium">Upload another</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {errors.documents && <p className="text-xs text-red-500 mt-2">{errors.documents}</p>}
                                 </div>
-                            )}
+
+                                {monitoringEnabled && (
+                                    <div className="grid grid-cols-1 gap-6 animate-in fade-in slide-in-from-top-1">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Monitor Based On</label>
+                                                <div className="flex gap-3">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="monitorBasedOn"
+                                                            checked={monitorBasedOn === 'expiry'}
+                                                            onChange={() => setMonitorBasedOn('expiry')}
+                                                            className="w-4 h-4 text-purple-600 focus:ring-purple-500 accent-purple-600"
+                                                        />
+                                                        <span className="text-sm text-slate-700">Expiry Date</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="monitorBasedOn"
+                                                            checked={monitorBasedOn === 'issue_date'}
+                                                            onChange={() => setMonitorBasedOn('issue_date')}
+                                                            className="w-4 h-4 text-purple-600 focus:ring-purple-500 accent-purple-600"
+                                                        />
+                                                        <span className="text-sm text-slate-700">Issue Date</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Renewal Recurrence</label>
+                                                <select
+                                                    value={renewalRecurrence}
+                                                    onChange={(e) => setRenewalRecurrence(e.target.value as any)}
+                                                    className="w-full h-9 px-2 rounded border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                                                >
+                                                    <option value="annually">Annually (Every 1 Year)</option>
+                                                    <option value="biannually">Biannually (Every 2 Years)</option>
+                                                    <option value="quarterly">Quarterly (Every 3 Months)</option>
+                                                    <option value="monthly">Monthly</option>
+                                                    <option value="none">No Recurrence</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Reminders</label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {[90, 60, 30, 7].map((days) => (
+                                                        <label key={days} className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={reminderDays[days]}
+                                                                onChange={(e) => setReminderDays({ ...reminderDays, [days]: e.target.checked })}
+                                                                className="w-3.5 h-3.5 rounded text-purple-600 border-slate-300 focus:ring-purple-500 accent-purple-600"
+                                                            />
+                                                            <span className="text-xs text-slate-600">{days} Days</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="space-y-2">
+                                                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Channels</label>
+                                                <div className="flex flex-col gap-2">
+                                                    {['email', 'inApp', 'sms'].map((channel) => (
+                                                        <label key={channel} className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={notificationChannels[channel as keyof typeof notificationChannels]}
+                                                                onChange={(e) => setNotificationChannels({ ...notificationChannels, [channel]: e.target.checked })}
+                                                                className="w-3.5 h-3.5 rounded text-purple-600 border-slate-300 focus:ring-purple-500 accent-purple-600"
+                                                            />
+                                                            <span className="text-xs text-slate-600 capitalize">{channel === 'inApp' ? 'In-App' : channel}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex gap-3">
+                                            <Bell className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                                            <div>
+                                                <h4 className="text-xs font-bold text-blue-900">Projected Notification Schedule</h4>
+                                                <p className="text-xs text-blue-700 mt-1 leading-snug">
+                                                    Monitor {monitorBasedOn === 'expiry' ? 'Expiry Date' : 'Issue Date'}. 
+                                                    Reminders at {Object.entries(reminderDays).filter(([_, v]) => v).map(([d]) => `${d} days`).join(', ')} before.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </>
                     )}
                 </div>

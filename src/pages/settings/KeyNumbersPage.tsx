@@ -1,63 +1,27 @@
 import { useState, useMemo } from "react"
-import { Search, Edit, ChevronDown, Building2, Truck, User, Bell, Trash2 } from "lucide-react"
+import { Search, Edit, ChevronDown, Building2, Truck, User, Trash2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Toggle } from "@/components/ui/toggle"
 import { Button } from "@/components/ui/button"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { CATEGORIES } from "@/data/key-numbers-mock-data"
 import type { KeyNumberConfig, Category, AddNumberFormData } from "@/types/key-numbers.types"
 import { useAppData } from "@/context/AppDataContext"
-import { Combobox } from "@/components/ui/combobox"
-import type { DocumentType } from "@/data/mock-app-data"
-import { DocumentTypeEditor } from "@/components/settings/DocumentTypeEditor"
+import { KeyNumberEditor } from "./KeyNumberEditor"
 
 export function KeyNumbersPage() {
     // State management
-    const { keyNumbers, setKeyNumbers, documents, addDocument } = useAppData()
+    const { keyNumbers, setKeyNumbers, updateDocument, documents } = useAppData()
     const [searchQuery, setSearchQuery] = useState("")
     const [activeCategory, setActiveCategory] = useState<Category>(CATEGORIES[0])
 
-    // Add Number modal state
-    const [showAddModal, setShowAddModal] = useState(false)
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState<Category | null>(null)
     const [editingId, setEditingId] = useState<string | null>(null)
-    const [addFormData, setAddFormData] = useState<AddNumberFormData & {
-        monitoringEnabled: boolean;
-        monitorBasedOn: 'expiry' | 'issue';
-        reminderDays: { 90: boolean; 60: boolean; 30: boolean; 7: boolean };
-        renewalRecurrence: 'annually' | 'biannually' | 'quarterly' | 'monthly' | 'none';
-        notificationChannels: { email: boolean; inApp: boolean; sms: boolean };
-    }>({
-        numberTypeName: "",
-        category: CATEGORIES[0],
-        entityType: "Carrier",
-        numberRequired: true,
-        hasExpiry: false,
-        documentRequired: false,
-        requiredDocumentTypeId: "",
-        status: "Active",
-        monitoringEnabled: false,
-        monitorBasedOn: 'expiry',
-        reminderDays: { 90: true, 60: true, 30: true, 7: false },
-        renewalRecurrence: 'annually',
-        notificationChannels: { email: true, inApp: true, sms: false },
-    })
-
-
-    // Quick Create Doc Type State
-    const [showQuickCreateDoc, setShowQuickCreateDoc] = useState(false)
-
+    
+    // View State
+    const [showEditor, setShowEditor] = useState(false)
 
     // Filter numbers by active category and search query
     const filteredNumbers = useMemo(() => {
@@ -70,20 +34,8 @@ export function KeyNumbersPage() {
         })
     }, [keyNumbers, activeCategory, searchQuery])
 
-    // Available Document Types based on selected Entity Type
-    const availableDocumentTypes = useMemo(() => {
-        const type = addFormData.entityType.toLowerCase() // "Carrier" -> "carrier"
-        return documents
-            .filter(doc => doc.relatedTo === type)
-            .map(doc => ({
-                value: doc.id,
-                label: doc.name,
-                description: doc.status !== 'Active' ? `(${doc.status})` : undefined
-            }))
-    }, [documents, addFormData.entityType])
-
     // Handlers
-    const handleToggleChange = (id: string, field: "numberRequired" | "hasExpiry" | "documentRequired") => {
+    const handleToggleChange = (id: string, field: "numberRequired" | "hasExpiry" | "issueDateRequired" | "issueStateRequired" | "issueCountryRequired" | "documentRequired") => {
         setKeyNumbers(prev =>
             prev.map(number =>
                 number.id === id
@@ -96,52 +48,17 @@ export function KeyNumbersPage() {
     const handleOpenAddModal = (category: Category) => {
         setEditingId(null)
         setSelectedCategoryForAdd(category)
-        setAddFormData({
-            numberTypeName: "",
-            category,
-            entityType: "Carrier",
-            numberRequired: true,
-            hasExpiry: false,
-            documentRequired: false,
-            requiredDocumentTypeId: "",
-            status: "Active",
-            monitoringEnabled: false,
-            monitorBasedOn: 'expiry',
-            reminderDays: { 90: true, 60: true, 30: true, 7: false },
-            renewalRecurrence: 'annually',
-            notificationChannels: { email: true, inApp: true, sms: false },
-        })
         setShowCategoryDropdown(false)
-        setShowAddModal(true)
+        setShowEditor(true)
     }
 
     const handleEditNumber = (number: KeyNumberConfig) => {
         setEditingId(number.id)
         setSelectedCategoryForAdd(number.category)
-        setAddFormData({
-            numberTypeName: number.numberTypeName,
-            category: number.category,
-            entityType: number.entityType,
-            numberRequired: number.numberRequired ?? true,
-            hasExpiry: number.hasExpiry,
-            documentRequired: number.documentRequired,
-            requiredDocumentTypeId: number.requiredDocumentTypeId || "",
-            status: number.status,
-            monitoringEnabled: (number as any).monitoringEnabled ?? false,
-            monitorBasedOn: (number as any).monitorBasedOn ?? 'expiry',
-            reminderDays: (number as any).reminderDays ?? { 90: true, 60: true, 30: true, 7: false },
-            renewalRecurrence: (number as any).renewalRecurrence ?? 'annually',
-            notificationChannels: (number as any).notificationChannels ?? { email: true, inApp: true, sms: false },
-        })
-        setShowAddModal(true)
+        setShowEditor(true)
     }
 
-    const handleSaveNumber = () => {
-        if (!addFormData.numberTypeName.trim()) {
-            alert("Please enter a number name")
-            return
-        }
-
+    const handleSaveNumber = (data: AddNumberFormData) => {
         if (editingId) {
             // Update existing
             setKeyNumbers(prev =>
@@ -149,18 +66,24 @@ export function KeyNumbersPage() {
                     n.id === editingId
                         ? {
                             ...n,
-                            numberTypeName: addFormData.numberTypeName,
-                            // Keep description if it exists, or use default if we were to change type? 
-                            // For simplicity, we keep original description unless we want to allow editing it. 
-                            // The user didn't ask to edit description, just "edit button should be working".
-                            // But since we are reusing the form which has fewer fields than the content, we just update the specific fields.
-                            numberRequired: addFormData.numberRequired,
-                            hasExpiry: addFormData.hasExpiry,
-                            documentRequired: addFormData.documentRequired,
-                            requiredDocumentTypeId: addFormData.documentRequired ? addFormData.requiredDocumentTypeId : undefined,
-                            status: addFormData.status,
-                            category: addFormData.category, // Allow category change? Usually nice.
-                            entityType: addFormData.entityType
+                            numberTypeName: data.numberTypeName,
+                            numberRequired: data.numberRequired,
+                            hasExpiry: data.hasExpiry,
+                            issueDateRequired: data.issueDateRequired,
+                            issueStateRequired: data.issueStateRequired,
+                            issueCountryRequired: data.issueCountryRequired,
+                            documentRequired: data.documentRequired,
+                            requiredDocumentTypeId: data.requiredDocumentTypeId,
+                            status: data.status,
+                            category: data.category, 
+                            entityType: data.entityType,
+                            description: data.description || n.description,
+                            // Monitoring
+                            monitoringEnabled: data.monitoringEnabled,
+                            monitorBasedOn: data.monitorBasedOn,
+                            renewalRecurrence: data.renewalRecurrence,
+                            reminderDays: data.reminderDays,
+                            notificationChannels: data.notificationChannels,
                         }
                         : n
                 )
@@ -170,48 +93,90 @@ export function KeyNumbersPage() {
             const newNumber: KeyNumberConfig = {
                 id: `kn-${Date.now()}`,
                 numberTypeId: `custom-${Date.now()}`,
-                numberTypeName: addFormData.numberTypeName,
+                numberTypeName: data.numberTypeName,
                 numberTypeDescription: "Custom number type",
-                category: addFormData.category,
-                entityType: addFormData.entityType,
-                numberRequired: addFormData.numberRequired,
-                hasExpiry: addFormData.hasExpiry,
-                documentRequired: addFormData.documentRequired,
-                requiredDocumentTypeId: addFormData.documentRequired ? addFormData.requiredDocumentTypeId : undefined,
-                status: addFormData.status,
+                description: data.description || "",
+                category: data.category,
+                entityType: data.entityType,
+                numberRequired: data.numberRequired,
+                hasExpiry: data.hasExpiry,
+                issueDateRequired: data.issueDateRequired,
+                issueStateRequired: data.issueStateRequired,
+                issueCountryRequired: data.issueCountryRequired,
+                status: data.status,
+                // Monitoring
+                monitoringEnabled: data.monitoringEnabled,
+                monitorBasedOn: data.monitorBasedOn,
+                renewalRecurrence: data.renewalRecurrence,
+                reminderDays: data.reminderDays,
+                notificationChannels: data.notificationChannels,
             }
             setKeyNumbers(prev => [...prev, newNumber])
-            setActiveCategory(addFormData.category)
+            setActiveCategory(data.category)
+
+            // Sync settings for new number
+            if (data.documentRequired && data.requiredDocumentTypeId) {
+                const linkedDoc = documents.find(d => d.id === data.requiredDocumentTypeId);
+                if (linkedDoc) {
+                    updateDocument(linkedDoc.id, {
+                        expiryRequired: data.hasExpiry,
+                        issueDateRequired: data.issueDateRequired,
+                        issueStateRequired: data.issueStateRequired,
+                        issueCountryRequired: data.issueCountryRequired,
+                        monitoring: {
+                            enabled: data.monitoringEnabled,
+                            basedOn: data.monitorBasedOn,
+                            recurrence: data.renewalRecurrence,
+                            reminders: {
+                                d90: data.reminderDays[90] || false,
+                                d60: data.reminderDays[60] || false,
+                                d30: data.reminderDays[30] || false,
+                                d7: data.reminderDays[7] || false,
+                            },
+                            channels: {
+                                email: data.notificationChannels.email,
+                                inapp: data.notificationChannels.inApp,
+                                sms: data.notificationChannels.sms,
+                            }
+                        }
+                    });
+                }
+            }
         }
 
-        setShowAddModal(false)
+        // Sync settings for existing number (outside the if/else to catch updates too)
+        if (editingId && data.documentRequired && data.requiredDocumentTypeId) {
+             const linkedDoc = documents.find(d => d.id === data.requiredDocumentTypeId);
+             if (linkedDoc) {
+                 updateDocument(linkedDoc.id, {
+                     expiryRequired: data.hasExpiry,
+                     issueDateRequired: data.issueDateRequired,
+                     issueStateRequired: data.issueStateRequired,
+                     issueCountryRequired: data.issueCountryRequired,
+                     monitoring: {
+                         enabled: data.monitoringEnabled,
+                         basedOn: data.monitorBasedOn,
+                         recurrence: data.renewalRecurrence,
+                         reminders: {
+                             d90: data.reminderDays[90] || false,
+                             d60: data.reminderDays[60] || false,
+                             d30: data.reminderDays[30] || false,
+                             d7: data.reminderDays[7] || false,
+                         },
+                         channels: {
+                             email: data.notificationChannels.email,
+                             inapp: data.notificationChannels.inApp,
+                             sms: data.notificationChannels.sms,
+                         }
+                     }
+                 });
+             }
+        }
+
+
+
+        setShowEditor(false)
         setEditingId(null)
-    }
-
-    const handleQuickCreateDocSave = (data: Partial<DocumentType>) => {
-        // Create full document
-        const newDoc: DocumentType = {
-            id: `dt-${Date.now()}`,
-            name: data.name || 'New Document',
-            relatedTo: data.relatedTo || addFormData.entityType.toLowerCase() as any,
-            expiryRequired: data.expiryRequired ?? true,
-            issueDateRequired: data.issueDateRequired ?? false,
-            status: data.status as any || 'Active',
-            selectedTags: data.selectedTags || {},
-            requirementLevel: data.requirementLevel || 'required',
-            destination: data.destination,
-            monitoring: data.monitoring,
-            // Fallback or override if needed
-            ...data
-        } as DocumentType; // Type assertion since some optional fields might be partial in data
-
-        addDocument(newDoc)
-
-        // Auto-select
-        setAddFormData(prev => ({ ...prev, requiredDocumentTypeId: newDoc.id }))
-
-        // Reset and close
-        setShowQuickCreateDoc(false)
     }
 
     const handleDeleteNumber = (id: string) => {
@@ -219,6 +184,20 @@ export function KeyNumbersPage() {
             setKeyNumbers(prev => prev.filter(n => n.id !== id));
         }
     };
+
+    if (showEditor) {
+        return (
+            <KeyNumberEditor
+                initialData={editingId ? keyNumbers.find(n => n.id === editingId) : null}
+                category={selectedCategoryForAdd || activeCategory}
+                onSave={handleSaveNumber}
+                onCancel={() => {
+                    setShowEditor(false)
+                    setEditingId(null)
+                }}
+            />
+        )
+    }
 
     return (
         <div className="flex flex-col h-full bg-white">
@@ -318,23 +297,20 @@ export function KeyNumbersPage() {
                                                 Number Required
                                             </th>
                                             <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Has Expiry
+                                                Doc. Req.
                                             </th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Document Required
-                                            </th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Status
-                                            </th>
-                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider">
-                                                Actions
-                                            </th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">Has Expiry</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 w-32">Issue Date Req.</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 w-32">Issue State Req.</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500 w-32">Issue Country Req.</th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">Status</th>
+                                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-200">
                                         {filteredNumbers.length === 0 ? (
                                             <tr>
-                                                <td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-500">
+                                                <td colSpan={10} className="px-6 py-12 text-center text-sm text-slate-500">
                                                     {searchQuery
                                                         ? "No numbers found matching your search."
                                                         : "No numbers configured in this category yet."}
@@ -374,6 +350,17 @@ export function KeyNumbersPage() {
                                                     <td className="px-6 py-4 text-center align-middle">
                                                         <div className="flex justify-center">
                                                             <Toggle
+                                                                checked={number.documentRequired ?? false}
+                                                                onCheckedChange={() =>
+                                                                    handleToggleChange(number.id, "documentRequired")
+                                                                }
+                                                                className={`data-[state=on]:bg-blue-100 data-[state=on]:text-blue-700 h-7 w-12 ${!number.documentRequired ? 'opacity-50 hover:opacity-100' : ''}`}
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center align-middle">
+                                                        <div className="flex justify-center">
+                                                            <Toggle
                                                                 checked={number.hasExpiry}
                                                                 onCheckedChange={() =>
                                                                     handleToggleChange(number.id, "hasExpiry")
@@ -384,10 +371,28 @@ export function KeyNumbersPage() {
                                                     <td className="px-6 py-4 text-center align-middle">
                                                         <div className="flex justify-center">
                                                             <Toggle
-                                                                checked={number.documentRequired}
+                                                                checked={number.issueDateRequired || false}
                                                                 onCheckedChange={() =>
-                                                                    handleToggleChange(number.id, "documentRequired")
+                                                                    handleToggleChange(number.id, "issueDateRequired")
                                                                 }
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center align-middle">
+                                                        <div className="flex items-center justify-center p-2 rounded-lg bg-slate-50">
+                                                            <Toggle
+                                                                checked={number.issueStateRequired ?? false}
+                                                                onCheckedChange={() => handleToggleChange(number.id, "issueStateRequired")}
+                                                                className={`data-[state=on]:bg-blue-100 data-[state=on]:text-blue-700 h-7 w-12 ${!number.issueStateRequired ? 'opacity-50 hover:opacity-100' : ''}`}
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 w-32">
+                                                        <div className="flex items-center justify-center p-2 rounded-lg bg-slate-50">
+                                                            <Toggle
+                                                                checked={number.issueCountryRequired}
+                                                                onCheckedChange={() => handleToggleChange(number.id, "issueCountryRequired")}
+                                                                className={`data-[state=on]:bg-blue-100 data-[state=on]:text-blue-700 h-7 w-12 ${!number.issueCountryRequired ? 'opacity-50 hover:opacity-100' : ''}`}
                                                             />
                                                         </div>
                                                     </td>
@@ -426,372 +431,6 @@ export function KeyNumbersPage() {
                     ))}
                 </Tabs>
             </div>
-
-            {/* Add/Edit Number Modal */}
-            <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-                <DialogContent className="sm:max-w-[600px]">
-                    <DialogHeader>
-                        <DialogTitle>{editingId ? "Edit Number" : "Add Number to Category"}</DialogTitle>
-                        <DialogDescription>
-                            {editingId
-                                ? "Update configuration for this key number"
-                                : `Configure number type and requirements for ${selectedCategoryForAdd}`
-                            }
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-8 py-4">
-                        {/* Related To Selection */}
-                        <div className="space-y-4">
-                            <label className="text-sm font-semibold text-slate-800 flex items-center gap-1">
-                                Related To <span className="text-red-500">*</span>
-                            </label>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div
-                                    onClick={() => setAddFormData(prev => ({ ...prev, entityType: "Carrier", requiredDocumentTypeId: "" }))}
-                                    className={`
-                                        cursor-pointer rounded-xl border p-4 flex flex-col items-center justify-center gap-3 transition-all
-                                        ${addFormData.entityType === "Carrier"
-                                            ? "border-blue-600 bg-blue-50/50 ring-1 ring-blue-600"
-                                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                                        }
-                                    `}
-                                >
-                                    <div className={`p-2 rounded-full ${addFormData.entityType === "Carrier" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"}`}>
-                                        <Building2 className="h-5 w-5" />
-                                    </div>
-                                    <span className={`text-sm font-medium ${addFormData.entityType === "Carrier" ? "text-blue-700" : "text-slate-600"}`}>
-                                        Carrier
-                                    </span>
-                                    {addFormData.entityType === "Carrier" && (
-                                        <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-600" />
-                                    )}
-                                </div>
-
-                                <div
-                                    onClick={() => setAddFormData(prev => ({ ...prev, entityType: "Asset", requiredDocumentTypeId: "" }))}
-                                    className={`
-                                        cursor-pointer rounded-xl border p-4 flex flex-col items-center justify-center gap-3 transition-all
-                                        ${addFormData.entityType === "Asset"
-                                            ? "border-blue-600 bg-blue-50/50 ring-1 ring-blue-600"
-                                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                                        }
-                                    `}
-                                >
-                                    <div className={`p-2 rounded-full ${addFormData.entityType === "Asset" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"}`}>
-                                        <Truck className="h-5 w-5" />
-                                    </div>
-                                    <span className={`text-sm font-medium ${addFormData.entityType === "Asset" ? "text-blue-700" : "text-slate-600"}`}>
-                                        Asset
-                                    </span>
-                                </div>
-
-                                <div
-                                    onClick={() => setAddFormData(prev => ({ ...prev, entityType: "Driver", requiredDocumentTypeId: "" }))}
-                                    className={`
-                                        cursor-pointer rounded-xl border p-4 flex flex-col items-center justify-center gap-3 transition-all
-                                        ${addFormData.entityType === "Driver"
-                                            ? "border-blue-600 bg-blue-50/50 ring-1 ring-blue-600"
-                                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                                        }
-                                    `}
-                                >
-                                    <div className={`p-2 rounded-full ${addFormData.entityType === "Driver" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"}`}>
-                                        <User className="h-5 w-5" />
-                                    </div>
-                                    <span className={`text-sm font-medium ${addFormData.entityType === "Driver" ? "text-blue-700" : "text-slate-600"}`}>
-                                        Driver
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Number Type Selection */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Number Type Name</label>
-                            <Input
-                                value={addFormData.numberTypeName}
-                                onChange={(e) =>
-                                    setAddFormData(prev => ({ ...prev, numberTypeName: e.target.value }))
-                                }
-                                placeholder="Enter number name (e.g. DOT Number)"
-                            />
-                        </div>
-
-                        {/* Number Required */}
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <label className="text-sm font-medium">Number Required?</label>
-                                <p className="text-xs text-slate-500">Makes this number mandatory for the entity</p>
-                            </div>
-                            <Toggle
-                                checked={addFormData.numberRequired}
-                                onCheckedChange={(checked) =>
-                                    setAddFormData(prev => ({ ...prev, numberRequired: checked }))
-                                }
-                            />
-                        </div>
-
-                        {/* Has Expiry */}
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <label className="text-sm font-medium">Has Expiry?</label>
-                                <p className="text-xs text-slate-500">Enables expiry & renewal tracking</p>
-                            </div>
-                            <Toggle
-                                checked={addFormData.hasExpiry}
-                                onCheckedChange={(checked) =>
-                                    setAddFormData(prev => ({ ...prev, hasExpiry: checked }))
-                                }
-                            />
-                        </div>
-
-                        {/* Document Required */}
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <label className="text-sm font-medium">Document Required?</label>
-                                <p className="text-xs text-slate-500">Users must upload supporting documents</p>
-                            </div>
-                            <Toggle
-                                checked={addFormData.documentRequired}
-                                onCheckedChange={(checked) =>
-                                    setAddFormData(prev => ({ ...prev, documentRequired: checked }))
-                                }
-                            />
-                        </div>
-
-                        {/* Document Type Selection (Conditional) */}
-                        {addFormData.documentRequired && (
-                            <div className="space-y-2 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                                <label className="text-sm font-medium flex items-center justify-between">
-                                    <span>Required Document Type <span className="text-red-500">*</span></span>
-                                    <button
-                                        onClick={() => setShowQuickCreateDoc(true)}
-                                        className="text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline"
-                                    >
-                                        + Create New
-                                    </button>
-                                </label>
-                                <Combobox
-                                    options={availableDocumentTypes}
-                                    value={addFormData.requiredDocumentTypeId}
-                                    onValueChange={(val) => setAddFormData(prev => ({ ...prev, requiredDocumentTypeId: val }))}
-                                    placeholder="Select a document type..."
-                                    searchPlaceholder="Search types..."
-                                />
-                                <p className="text-xs text-slate-500">
-                                    Select the specific document type that satisfies this requirement.
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Status */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Status</label>
-                            <RadioGroup
-                                value={addFormData.status}
-                                onValueChange={(value) =>
-                                    setAddFormData(prev => ({ ...prev, status: value as "Active" | "Inactive" }))
-                                }
-                                className="flex items-center gap-6"
-                            >
-                                <RadioGroupItem value="Active">Active</RadioGroupItem>
-                                <RadioGroupItem value="Inactive">Inactive</RadioGroupItem>
-                            </RadioGroup>
-                        </div>
-
-                        {/* Monitoring & Notifications Section */}
-                        {addFormData.hasExpiry && (
-                            <div className="border-l-4 border-blue-500 bg-slate-50 rounded-lg p-5 space-y-5">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Bell className="w-5 h-5 text-blue-600" />
-                                        <span className="text-sm font-semibold text-slate-800">Monitoring & Notifications</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-slate-500">Enabled</span>
-                                        <Toggle
-                                            checked={addFormData.monitoringEnabled}
-                                            onCheckedChange={(checked) =>
-                                                setAddFormData(prev => ({ ...prev, monitoringEnabled: checked }))
-                                            }
-                                        />
-                                    </div>
-                                </div>
-
-                                {addFormData.monitoringEnabled && (
-                                    <>
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Left Column */}
-                                            <div className="space-y-4">
-                                                {/* Monitor Based On */}
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Monitor Based On</label>
-                                                    <div className="flex items-center gap-4">
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="radio"
-                                                                name="monitorBasedOn"
-                                                                checked={addFormData.monitorBasedOn === 'expiry'}
-                                                                onChange={() => setAddFormData(prev => ({ ...prev, monitorBasedOn: 'expiry' }))}
-                                                                className="w-4 h-4 text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">Expiry Date</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="radio"
-                                                                name="monitorBasedOn"
-                                                                checked={addFormData.monitorBasedOn === 'issue'}
-                                                                onChange={() => setAddFormData(prev => ({ ...prev, monitorBasedOn: 'issue' }))}
-                                                                className="w-4 h-4 text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">Issue Date</span>
-                                                        </label>
-                                                    </div>
-                                                </div>
-
-                                                {/* Renewal Recurrence */}
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Renewal Recurrence</label>
-                                                    <select
-                                                        value={addFormData.renewalRecurrence}
-                                                        onChange={(e) => setAddFormData(prev => ({ ...prev, renewalRecurrence: e.target.value as any }))}
-                                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                    >
-                                                        <option value="annually">Annually (Every 1 Year)</option>
-                                                        <option value="biannually">Biannually (Every 2 Years)</option>
-                                                        <option value="quarterly">Quarterly (Every 3 Months)</option>
-                                                        <option value="monthly">Monthly</option>
-                                                        <option value="none">No Recurrence</option>
-                                                    </select>
-                                                </div>
-                                            </div>
-
-                                            {/* Right Column */}
-                                            <div className="space-y-4">
-                                                {/* Notification Reminders */}
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Notification Reminders</label>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.reminderDays[90]}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 90: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">90 Days Before</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.reminderDays[60]}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 60: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">60 Days Before</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.reminderDays[30]}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 30: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">30 Days Before</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.reminderDays[7]}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, reminderDays: { ...prev.reminderDays, 7: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">7 Days Before</span>
-                                                        </label>
-                                                    </div>
-                                                </div>
-
-                                                {/* Notification Channels */}
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-600 mb-2 block">Notification Channels</label>
-                                                    <div className="flex items-center gap-4">
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.notificationChannels.email}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, notificationChannels: { ...prev.notificationChannels, email: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">Email</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.notificationChannels.inApp}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, notificationChannels: { ...prev.notificationChannels, inApp: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">In-App</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={addFormData.notificationChannels.sms}
-                                                                onChange={(e) => setAddFormData(prev => ({ ...prev, notificationChannels: { ...prev.notificationChannels, sms: e.target.checked } }))}
-                                                                className="w-4 h-4 rounded text-blue-600"
-                                                            />
-                                                            <span className="text-sm text-slate-700">SMS</span>
-                                                        </label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Projected Notification Schedule */}
-                                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-3">
-                                            <Bell className="w-5 h-5 text-blue-500 mt-0.5" />
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-800">Projected Notification Schedule</p>
-                                                <p className="text-xs text-slate-600">
-                                                    Monitor {addFormData.monitorBasedOn === 'expiry' ? 'Expiry Date' : 'Issue Date'}.
-                                                    Reminders at {[90, 60, 30, 7].filter(d => addFormData.reminderDays[d as keyof typeof addFormData.reminderDays]).map(d => `${d} days`).join(', ') || 'none'} before.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowAddModal(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSaveNumber}
-                            className="bg-blue-600 text-white hover:bg-blue-700"
-                        >
-                            {editingId ? "Save Changes" : "Save & Add"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Quick Create Document Modal (Now using Full Editor) */}
-            <Dialog open={showQuickCreateDoc} onOpenChange={setShowQuickCreateDoc}>
-                <DialogContent className="max-w-5xl h-[90vh] p-0 overflow-hidden flex flex-col">
-                    <DocumentTypeEditor
-                        initialData={null}
-                        onSave={handleQuickCreateDocSave}
-                        onCancel={() => setShowQuickCreateDoc(false)}
-                        defaultRelatedTo={addFormData.entityType.toLowerCase() as any}
-                        showHeader={true}
-                    />
-                </DialogContent>
-            </Dialog>
         </div >
     )
 }

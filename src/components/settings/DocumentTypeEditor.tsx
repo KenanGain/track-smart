@@ -11,7 +11,8 @@ import {
     Tag as TagIcon,
     Check,
     X,
-    FolderPlus
+    FolderPlus,
+    AlertTriangle
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import {
@@ -21,6 +22,7 @@ import {
     type SelectedTag,
     MOCK_DRIVERS
 } from '@/data/mock-app-data';
+import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { TagSelectionModal } from '@/pages/settings/tags/TagComponents';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { FolderTreeSelect } from './FolderTreeSelect';
@@ -152,6 +154,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     // Config Rules
     const [expiryRequired, setExpiryRequired] = useState(initialData?.expiryRequired ?? true);
     const [issueDateRequired, setIssueDateRequired] = useState(initialData?.issueDateRequired ?? false);
+    const [issueStateRequired, setIssueStateRequired] = useState(initialData?.issueStateRequired ?? false);
+    const [issueCountryRequired, setIssueCountryRequired] = useState(initialData?.issueCountryRequired ?? false);
     const [status, setStatus] = useState<string>(initialData?.status || 'Active');
 
     // Tags
@@ -181,6 +185,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             setSelectedDriver(initialData.destination?.driverId || '');
             setExpiryRequired(initialData.expiryRequired);
             setIssueDateRequired(initialData.issueDateRequired);
+            setIssueStateRequired(initialData.issueStateRequired ?? false);
+            setIssueCountryRequired(initialData.issueCountryRequired ?? false);
             setStatus(initialData.status);
             setSelectedTags(initialData.selectedTags || {});
             if (initialData.monitoring) {
@@ -196,6 +202,28 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     }, [initialData, defaultRelatedTo]);
 
     const { folderTree, tagSections, addTagToSection, addFolder } = useAppData();
+
+    // Expense Type Inheritance Logic
+    const controllingExpenseType = useMemo(() => {
+        if (!initialData?.id) return undefined;
+        return INITIAL_EXPENSE_TYPES.find(et => et.documentTypeId === initialData.id);
+    }, [initialData?.id]);
+
+    const isLockedByExpenseType = !!controllingExpenseType;
+
+    // Sync state with Expense Type if locked
+    useEffect(() => {
+        if (controllingExpenseType) {
+            setRequirementLevel('required');
+            setMonitorEnabled(false);
+            setExpiryRequired(false);
+            setIssueStateRequired(false);
+            setIssueCountryRequired(false);
+            if (controllingExpenseType.dateRequired) {
+                setIssueDateRequired(true);
+            }
+        }
+    }, [controllingExpenseType]);
 
     // Tag Handlers
     const handleTagToggle = (sectionId: string, tagId: string, multiSelect: boolean) => {
@@ -261,6 +289,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             requirementLevel,
             expiryRequired,
             issueDateRequired,
+            issueStateRequired,
+            issueCountryRequired,
             status: status as Status,
             selectedTags,
             destination: {
@@ -303,29 +333,35 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     }, [reminders, monitorBasedOn]);
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
-            {/* Editor Header */}
+        <div className="flex flex-col h-full bg-slate-50/50">
+            {/* Header */}
             {showHeader && (
-                <header className="bg-white border-b border-slate-200 flex-shrink-0">
-                    <div className="px-6 py-4 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <button onClick={onCancel} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                                <ArrowLeft className="w-5 h-5 text-slate-600" />
-                            </button>
-                            <div>
-                                <h1 className="text-xl font-bold text-slate-900">{initialData ? 'Edit Document Type' : 'Create Document Type'}</h1>
-                                <p className="text-xs text-slate-500">{initialData ? `Editing: ${initialData.name}` : 'Configure a new document type'}</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-                            <Button variant="primary" onClick={handleSave} className="gap-2">
-                                <Save className="w-4 h-4" />
-                                Save Changes
-                            </Button>
+                <div className="px-6 py-4 bg-white border-b border-slate-200 flex items-center justify-between sticky top-0 z-10">
+                    <div className="flex items-center gap-4">
+                        <Button variant="ghost" onClick={onCancel} className="text-slate-500 hover:text-slate-900 w-10 p-0">
+                            <ArrowLeft className="h-5 w-5" />
+                        </Button>
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-900">{initialData ? 'Edit Document Type' : 'Create Document Type'}</h2>
                         </div>
                     </div>
-                </header>
+                    <div className="flex items-center gap-3">
+                        <Button variant="outline" onClick={onCancel}>Cancel</Button>
+                        <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                            <Save className="w-4 h-4" /> Save Document Type
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Locked Warning */}
+            {isLockedByExpenseType && (
+                <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-3 text-amber-800 text-sm">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <p>
+                        This document is managed by the "{controllingExpenseType.name}" expense type. Some settings are locked.
+                    </p>
+                </div>
             )}
 
             {/* Scrollable Form Content */}
@@ -351,7 +387,6 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         {relatedTo === 'asset' && <Truck className="w-6 h-6 text-slate-500" />}
                                         {relatedTo === 'driver' && <User className="w-6 h-6 text-slate-500" />}
                                         <span className="font-semibold text-sm text-slate-700 capitalize">{relatedTo}</span>
-                                        <span className="text-xs text-slate-500">(Locked from Key Number)</span>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
@@ -435,8 +470,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                 <Label>Document Requirement</Label>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
                                     <div
-                                        onClick={() => setRequirementLevel('required')}
-                                        className={`cursor-pointer rounded-lg border p-4 flex flex-col gap-2 transition-all ${requirementLevel === 'required' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'}`}
+                                        onClick={() => !isLockedByExpenseType && setRequirementLevel('required')}
+                                        className={`cursor-pointer rounded-lg border p-4 flex flex-col gap-2 transition-all ${requirementLevel === 'required' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'} ${isLockedByExpenseType && requirementLevel !== 'required' ? 'opacity-50 cursor-not-allowed' : ''} ${isLockedByExpenseType ? 'cursor-default' : ''}`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className={`font-semibold text-sm ${requirementLevel === 'required' ? 'text-blue-900' : 'text-slate-900'}`}>Required</span>
@@ -445,8 +480,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         <p className="text-xs text-slate-500">Document must be uploaded and valid.</p>
                                     </div>
                                     <div
-                                        onClick={() => setRequirementLevel('optional')}
-                                        className={`cursor-pointer rounded-lg border p-4 flex flex-col gap-2 transition-all ${requirementLevel === 'optional' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'}`}
+                                        onClick={() => !isLockedByExpenseType && setRequirementLevel('optional')}
+                                        className={`cursor-pointer rounded-lg border p-4 flex flex-col gap-2 transition-all ${requirementLevel === 'optional' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'} ${isLockedByExpenseType ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className={`font-semibold text-sm ${requirementLevel === 'optional' ? 'text-blue-900' : 'text-slate-900'}`}>Optional</span>
@@ -455,8 +490,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         <p className="text-xs text-slate-500">Document can be uploaded but is not mandatory.</p>
                                     </div>
                                     <div
-                                        onClick={() => setRequirementLevel('not_required')}
-                                        className={`cursor-pointer rounded-lg border p-4 flex flex-col gap-2 transition-all ${requirementLevel === 'not_required' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'}`}
+                                        onClick={() => !isLockedByExpenseType && setRequirementLevel('not_required')}
+                                        className={`cursor-pointer rounded-lg border p-4 flex flex-col gap-2 transition-all ${requirementLevel === 'not_required' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'} ${isLockedByExpenseType ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className={`font-semibold text-sm ${requirementLevel === 'not_required' ? 'text-blue-900' : 'text-slate-900'}`}>Not Required</span>
@@ -468,31 +503,70 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 ${isLockedByExpenseType ? 'opacity-60 grayscale' : ''}`}>
                                     <span className="text-sm font-medium text-slate-700">Expiry Date Input</span>
-                                    <Switch checked={expiryRequired} onCheckedChange={setExpiryRequired} />
+                                    <Switch checked={expiryRequired} onCheckedChange={!isLockedByExpenseType ? setExpiryRequired : () => {}} />
                                 </div>
-                                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                    <span className="text-sm font-medium text-slate-700">Issue Date Input</span>
-                                    <Switch checked={issueDateRequired} onCheckedChange={setIssueDateRequired} />
+                                <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 ${isLockedByExpenseType && controllingExpenseType!.dateRequired ? 'opacity-80' : ''}`}>
+                                    <div>
+                                        <span className="text-sm font-medium text-slate-700">Issue Date Input</span>
+                                        {isLockedByExpenseType && controllingExpenseType!.dateRequired && <p className="text-xs text-blue-600">Required by Expense Type</p>}
+                                    </div>
+                                    {isLockedByExpenseType && controllingExpenseType!.dateRequired ? (
+                                        <span className="text-xs font-bold text-blue-700">Required</span>
+                                    ) : (
+                                        <Switch checked={issueDateRequired} onCheckedChange={setIssueDateRequired} />
+                                    )}
+                                </div>
+                                <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 col-span-1 sm:col-span-2 ${isLockedByExpenseType ? 'opacity-60 grayscale' : ''}`}>
+                                    <div>
+                                        <span className="text-sm font-medium text-slate-700 block">Issue State Required?</span>
+                                        <span className="text-xs text-slate-500">Requires selection of issuing state/province</span>
+                                    </div>
+                                    <Switch checked={issueStateRequired} onCheckedChange={!isLockedByExpenseType ? setIssueStateRequired : () => {}} />
+                                </div>
+                                <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 col-span-1 sm:col-span-2 ${isLockedByExpenseType ? 'opacity-60 grayscale' : ''}`}>
+                                    <div>
+                                        <span className="text-sm font-medium text-slate-700 block">Issue Country Required?</span>
+                                        <span className="text-xs text-slate-500">Requires selection of issuing country</span>
+                                    </div>
+                                    <Switch checked={issueCountryRequired} onCheckedChange={!isLockedByExpenseType ? setIssueCountryRequired : () => {}} />
                                 </div>
                             </div>
                         </div>
                     </Card>
 
                     {/* 4. Monitoring */}
-                    <Card className="p-6">
-                        <div className="flex items-center justify-between mb-6">
+                    <Card className="p-6 relative overflow-hidden">
+                        {isLockedByExpenseType && (
+                             <div className="absolute top-0 left-0 right-0 bg-blue-50 border-b border-blue-100 px-6 py-2 flex items-center justify-between z-10">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center">
+                                        <Info className="w-3 h-3 text-blue-600" />
+                                    </div>
+                                    <p className="text-xs font-semibold text-blue-700">
+                                        Configuration managed by Expense Type: <span className="underline">{controllingExpenseType!.name}</span>
+                                    </p>
+                                </div>
+                                <span className="text-[10px] text-blue-500 font-medium bg-white/50 px-2 py-0.5 rounded-full">Read Only</span>
+                            </div>
+                        )}
+                        
+                        <div className={`flex items-center justify-between mb-6 ${isLockedByExpenseType ? 'mt-8' : ''}`}>
                             <div className="flex items-center gap-2">
-                                <div className="w-1 h-6 bg-purple-600 rounded-full" />
+                                <div className={`w-1 h-6 rounded-full ${isLockedByExpenseType ? 'bg-blue-600' : 'bg-blue-600'}`} />
                                 <h2 className="text-lg font-semibold text-slate-800">Monitoring & Notifications</h2>
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-slate-600">Enabled</span>
-                                <Switch checked={monitorEnabled} onCheckedChange={setMonitorEnabled} />
+                                {isLockedByExpenseType ? (
+                                     <span className={`text-sm font-bold ${monitorEnabled ? 'text-green-600' : 'text-slate-400'}`}>{monitorEnabled ? "Yes" : "No"}</span>
+                                ) : (
+                                     <Switch checked={monitorEnabled} onCheckedChange={setMonitorEnabled} />
+                                )}
                             </div>
                         </div>
-                        <div className={`space-y-8 transition-opacity duration-300 ${monitorEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                        <div className={`space-y-8 transition-opacity duration-300 ${monitorEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'} ${isLockedByExpenseType ? 'pointer-events-none opacity-80' : ''}`}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="space-y-6">
                                     <div>
@@ -500,7 +574,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         <div className="flex gap-4 mt-2">
                                             {['Expiry Date', 'Issue Date'].map(opt => (
                                                 <label key={opt} className="flex items-center gap-2 cursor-pointer">
-                                                    <input type="radio" name="monitorBasedOn" className="w-4 h-4 text-blue-600 border-slate-300" checked={monitorBasedOn === opt} onChange={() => setMonitorBasedOn(opt)} />
+                                                    <input type="radio" name="monitorBasedOn" className="w-4 h-4 text-blue-600 border-slate-300" checked={monitorBasedOn === opt} onChange={() => setMonitorBasedOn(opt)} disabled={isLockedByExpenseType} />
                                                     <span className="text-sm text-slate-700">{opt}</span>
                                                 </label>
                                             ))}
@@ -508,7 +582,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     </div>
                                     <div>
                                         <Label>Renewal Recurrence</Label>
-                                        <select className="mt-1 w-full h-10 rounded-md border border-slate-300 px-3 text-sm bg-white" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
+                                        <select disabled={isLockedByExpenseType} className="mt-1 w-full h-10 rounded-md border border-slate-300 px-3 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-500" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
                                             <option>Annually (Every 1 Year)</option>
                                             <option>Semi-Annually</option>
                                             <option>Quarterly</option>
@@ -536,7 +610,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 flex gap-4">
+                            <div className={`bg-blue-50/50 border border-blue-100 rounded-lg p-4 flex gap-4 ${isLockedByExpenseType ? 'grayscale opacity-75' : ''}`}>
                                 <Bell className="w-5 h-5 text-blue-500 mt-1" />
                                 <div className="flex-1">
                                     <h5 className="text-sm font-bold text-blue-900 mb-1">Projected Notification Schedule</h5>
@@ -613,18 +687,18 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                         </div>
                     </Card>
 
-                    {!showHeader && (
-                        <div className="flex justify-end pt-4">
-                            <Button variant="outline" onClick={onCancel} className="mr-3">Cancel</Button>
-                            <Button onClick={handleSave} className="gap-2">
-                                <Save className="w-4 h-4" />
-                                Save Document Type
-                            </Button>
-                        </div>
-                    )}
-
                 </div>
             </main>
+                        
+            {!showHeader && (
+                <div className="flex justify-end pt-4 px-6 pb-6">
+                    <Button variant="outline" onClick={onCancel} className="mr-3">Cancel</Button>
+                    <Button onClick={handleSave} className="gap-2">
+                        <Save className="w-4 h-4" />
+                        Save Document Type
+                    </Button>
+                </div>
+            )}
 
             {/* TAG SELECTION MODAL */}
             <TagSelectionModal

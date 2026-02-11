@@ -89,7 +89,7 @@ export function MaintenancePage() {
         },
         email: "",
         phone: "",
-        contacts: []
+        contactName: ""
     });
 
     // Helper to reset pagination when filters change
@@ -195,7 +195,7 @@ export function MaintenancePage() {
                 address: { ...vendor.address },
                 email: vendor.email,
                 phone: vendor.phone,
-                contacts: [...vendor.contacts]
+                contactName: vendor.contactName
             });
         } else {
             setEditingVendor(null);
@@ -211,7 +211,7 @@ export function MaintenancePage() {
                 },
                 email: "",
                 phone: "",
-                contacts: []
+                contactName: ""
             });
         }
         setIsVendorDialogOpen(true);
@@ -230,7 +230,7 @@ export function MaintenancePage() {
                             address: vendorFormData.address!,
                             email: vendorFormData.email!,
                             phone: vendorFormData.phone!,
-                            contacts: vendorFormData.contacts!
+                            contactName: vendorFormData.contactName || ""
                         }
                         : v
                 )
@@ -242,7 +242,7 @@ export function MaintenancePage() {
                 address: vendorFormData.address!,
                 email: vendorFormData.email || "",
                 phone: vendorFormData.phone || "",
-                contacts: vendorFormData.contacts || []
+                contactName: vendorFormData.contactName || ""
             };
             setVendors([...vendors, newVendor]);
         }
@@ -255,31 +255,7 @@ export function MaintenancePage() {
         }
     };
 
-    const handleAddContact = () => {
-        setVendorFormData(prev => ({
-            ...prev,
-            contacts: [
-                ...(prev.contacts || []),
-                { id: crypto.randomUUID(), firstName: "", lastName: "" }
-            ]
-        }));
-    };
-
-    const handleRemoveContact = (contactId: string) => {
-        setVendorFormData(prev => ({
-            ...prev,
-            contacts: (prev.contacts || []).filter(c => c.id !== contactId)
-        }));
-    };
-
-    const handleContactChange = (contactId: string, field: 'firstName' | 'lastName', value: string) => {
-        setVendorFormData(prev => ({
-            ...prev,
-            contacts: (prev.contacts || []).map(c =>
-                c.id === contactId ? { ...c, [field]: value } : c
-            )
-        }));
-    };
+    // Contact handlers removed (simplified to single contact name)
 
     return (
         <div className="flex flex-col h-full bg-white">
@@ -586,16 +562,13 @@ export function MaintenancePage() {
                                                 </td>
                                                 <td className="px-6 py-4 align-middle">
                                                     <div className="text-sm text-slate-600">
-                                                        {vendor.contacts.length > 0 ? (
+                                                        {vendor.contactName ? (
                                                             <div className="flex items-center gap-2">
                                                                 <User className="h-4 w-4 text-slate-400" />
-                                                                <span>{vendor.contacts[0].firstName} {vendor.contacts[0].lastName}</span>
-                                                                {vendor.contacts.length > 1 && (
-                                                                    <span className="text-xs text-slate-400">+{vendor.contacts.length - 1} more</span>
-                                                                )}
+                                                                <span>{vendor.contactName}</span>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-slate-400">No contacts</span>
+                                                            <span className="text-slate-400">No contact</span>
                                                         )}
                                                     </div>
                                                 </td>
@@ -769,6 +742,16 @@ export function MaintenancePage() {
                                     />
                                 </div>
 
+                                <div className="grid gap-2">
+                                    <Label htmlFor="contactName">Contact Name</Label>
+                                    <Input
+                                        id="contactName"
+                                        value={vendorFormData.contactName}
+                                        onChange={(e) => setVendorFormData({ ...vendorFormData, contactName: e.target.value })}
+                                        placeholder="e.g. John Doe"
+                                    />
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
                                         <Label htmlFor="email">Email</Label>
@@ -901,55 +884,7 @@ export function MaintenancePage() {
                             </div>
                         </div>
 
-                        {/* Contacts */}
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                                <h3 className="text-sm font-semibold text-slate-900">
-                                    Contacts
-                                </h3>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleAddContact}
-                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
-                                >
-                                    <Plus className="h-4 w-4" /> Add Contact
-                                </Button>
-                            </div>
 
-                            {(vendorFormData.contacts || []).length === 0 ? (
-                                <p className="text-sm text-slate-500 text-center py-4">
-                                    No contacts added. Click "Add Contact" to add one.
-                                </p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {(vendorFormData.contacts || []).map((contact) => (
-                                        <div key={contact.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                                            <div className="flex-1 grid grid-cols-2 gap-3">
-                                                <Input
-                                                    value={contact.firstName}
-                                                    onChange={(e) => handleContactChange(contact.id, 'firstName', e.target.value)}
-                                                    placeholder="First Name"
-                                                />
-                                                <Input
-                                                    value={contact.lastName}
-                                                    onChange={(e) => handleContactChange(contact.id, 'lastName', e.target.value)}
-                                                    placeholder="Last Name"
-                                                />
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveContact(contact.id)}
-                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsVendorDialogOpen(false)}>

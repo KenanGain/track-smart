@@ -18,6 +18,7 @@ import type { TaskOrder } from './maintenance.data';
 import { INITIAL_VENDORS } from '@/data/vendors.data';
 import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
 import { DollarSign } from 'lucide-react';
+import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 
 // --- Types for Rich Data (extending base Asset) ---
 export interface DetailedAsset extends Asset {
@@ -235,18 +236,7 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
   const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
   const [keyNumberModalMode, setKeyNumberModalMode] = useState<'add' | 'edit'>('edit');
 
-  // Helper to calculate status
-  const getStatus = (expiryDate: string | null | undefined) => {
-    if (!expiryDate) return 'Active';
-    const today = new Date();
-    const exp = new Date(expiryDate);
-    const diffTime = exp.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) return 'Expired';
-    if (diffDays <= 30) return 'Expiring Soon';
-    return 'Active';
-  };
+
 
 
   const [activeComplianceFilter, setActiveComplianceFilter] = useState<string | null>(null);
@@ -340,32 +330,19 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
             }
 
             // Sync Value if "Not entered" logic needed
-            const hasValue = value && value.trim() !== '' && value !== '—';
+            const hasValue = (!!value && value.trim() !== '' && value !== '—');
             
             // Calculate status
-            let status = 'Missing';
-             if (hasValue) {
-                if (kn.hasExpiry) {
-                    if (expiryDate) {
-                        const today = new Date();
-                        const exp = new Date(expiryDate);
-                        const diffTime = exp.getTime() - today.getTime();
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        
-                        if (diffDays < 0) status = 'Expired';
-                        else if (diffDays <= 30) status = 'Expiring Soon';
-                        else status = 'Active';
-                    } else {
-                        status = 'Incomplete'; // Has value but missing required expiry
-                    }
-                } else {
-                    status = 'Active';
-                }
-            } else {
-                // If it's system/critical like Plate/VIN, it's missing
-                if (kn.numberRequired) status = 'Missing';
-                else status = 'Optional'; // Or just empty state
-            }
+            const enabled = isMonitoringEnabled(kn);
+            const maxDays = getMaxReminderDays(kn);
+            const status = calculateComplianceStatus(
+                expiryDate,
+                enabled,
+                maxDays,
+                hasValue,
+                kn.hasExpiry,
+                kn.numberRequired ?? true
+            );
 
             return {
                 id: kn.id,
@@ -420,24 +397,23 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
             }
         }
 
-        const hasValue = value && value.trim() !== '' && value !== '—';
-        if (hasValue) {
-             if (kn.hasExpiry) {
-                if (expiryDate) {
-                    const today = new Date();
-                    const exp = new Date(expiryDate);
-                    const diffTime = exp.getTime() - today.getTime();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    if (diffDays < 0) expired++;
-                    else if (diffDays <= 30) expiring++;
-                } else {
-                    missingExpiry++;
-                }
-             }
-        } else {
-            if (kn.numberRequired) missingNumber++;
-        }
+        const hasValue = (!!value && value.trim() !== '' && value !== '—');
+        
+        const enabled = isMonitoringEnabled(kn);
+        const maxDays = getMaxReminderDays(kn);
+        const status = calculateComplianceStatus(
+            expiryDate,
+            enabled,
+            maxDays,
+            hasValue,
+            kn.hasExpiry,
+            kn.numberRequired ?? true
+        );
+
+        if (status === 'Expired') expired++;
+        else if (status === 'Expiring Soon') expiring++;
+        else if (status === 'Missing') missingNumber++;
+        else if (status === 'Incomplete') missingExpiry++;
         total++;
     });
 
@@ -529,6 +505,10 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
           
           // Logic: Check if the Asset has a value/document for this requirement
           if (linkedKn) {
+              const enabled = isMonitoringEnabled(linkedKn);
+              const maxDays = getMaxReminderDays(linkedKn);
+              const isRequired = linkedKn.numberRequired ?? true; // or documentRequired?
+
               // A. It's a Key Number Document (e.g. Registration linked to Plate)
               // We need to look at specific fields on the asset based on the Key Number ID
               
@@ -539,9 +519,10 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                        // Assume if we have expiry, we MIGHT have the doc, or check a separate "hasRegistrationDoc" flag if it existed
                        // For now, we'll assume Active if valid dates, else Missing
                        // In a real app, `currentVehicle` would have `documents: [{ typeId: '...', url: '...' }]`
-                       status = getStatus(currentVehicle.registrationExpiryDate);
-                       if (status === 'Active') {
-                           hasUpload = true; // Mock: If active, assume we have it
+                       status = calculateComplianceStatus(currentVehicle.registrationExpiryDate, enabled, maxDays, true, true, isRequired);
+                       
+                       if (status !== 'Missing' && status !== 'Expired' && status !== 'Incomplete') {
+                           hasUpload = true; // Mock: If active/expiring soon, assume we have it
                            documentName = 'Registration.pdf';
                            dateUploaded = '2024-01-01'; 
                        }
@@ -549,8 +530,8 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
               } else if (linkedKn.id === 'kn-transponder') {
                    if (currentVehicle.transponderExpiryDate) {
                        expiryDate = currentVehicle.transponderExpiryDate;
-                       status = getStatus(currentVehicle.transponderExpiryDate);
-                       if (status === 'Active') {
+                       status = calculateComplianceStatus(currentVehicle.transponderExpiryDate, enabled, maxDays, true, true, isRequired);
+                       if (status !== 'Missing' && status !== 'Expired' && status !== 'Incomplete') {
                            hasUpload = true;
                            documentName = 'Transponder.pdf';
                            dateUploaded = '2024-05-15';
@@ -567,7 +548,9 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                    );
                    if (permit) {
                        if (permit.expiryDate) expiryDate = permit.expiryDate;
-                       if (permit.expiryDate) status = getStatus(permit.expiryDate);
+                       if (permit.expiryDate) {
+                           status = calculateComplianceStatus(permit.expiryDate, enabled, maxDays, true, true, isRequired);
+                       }
                        // If we have a permit record, do we have the physical doc?
                        // Mock: yes if active
                        if (status === 'Active' || status === 'Expiring Soon') {
@@ -584,10 +567,14 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
               }
           } else {
               // B. Standalone Asset Document (not linked to a Key Number)
-              // e.g. "Maintenance Record", "Photo"
+              // Use Document Type settings
+              // const enabled = isMonitoringEnabled(docType);
+              // const maxDays = getMaxReminderDays(docType);
+              
               // We would check `currentVehicle.documents` array
               // For now, default to Missing/Optional
-              if (docType.requirementLevel === 'optional') status = 'Optional';
+              // status = calculateComplianceStatus(null, enabled, maxDays, false, docType.expiryRequired, docType.requirementLevel === 'required');
+               if (docType.requirementLevel === 'optional') status = 'Optional';
           }
 
           return {
@@ -780,7 +767,20 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                 <MetadataItem label="VIN #" value={currentVehicle.vin} copyable={true} />
                 <MetadataItem label="Plate #" value={currentVehicle.plateNumber || '—'} copyable={true} />
                 <MetadataItem label="Plate State" value={currentVehicle.plateJurisdiction || '—'} />
-                <MetadataItem label="Plate Expiry" value={currentVehicle.registrationExpiryDate || '—'} warning={getStatus(currentVehicle.registrationExpiryDate) !== 'Active'} />
+                <MetadataItem label="Plate Expiry" value={currentVehicle.registrationExpiryDate || '—'} warning={
+                    (() => {
+                        const plateKn = keyNumbers.find((k: KeyNumberConfig) => k.id === 'kn-plate');
+                        if (!currentVehicle.registrationExpiryDate) return false;
+                        const status = calculateComplianceStatus(
+                            currentVehicle.registrationExpiryDate, 
+                            isMonitoringEnabled(plateKn), 
+                            getMaxReminderDays(plateKn), 
+                            true, 
+                            true
+                        );
+                        return status === 'Expiring Soon' || status === 'Expired';
+                    })()
+                } />
                 
                 <MetadataItem label="Gross Weight" value={currentVehicle.grossWeight ? `${currentVehicle.grossWeight.toLocaleString()} ${currentVehicle.grossWeightUnit}` : '—'} />
                 <MetadataItem label="Unloaded Weight" value={currentVehicle.unloadedWeight ? `${currentVehicle.unloadedWeight.toLocaleString()} ${currentVehicle.unloadedWeightUnit}` : '—'} />

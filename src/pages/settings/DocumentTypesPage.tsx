@@ -10,8 +10,8 @@ import { useAppData } from '@/context/AppDataContext';
 import {
     type DocumentType,
     type Status,
-    type RelatedTo
 } from '@/data/mock-app-data';
+import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { DocumentTagsManager } from './tags/DocumentTagsManager';
 import { CreateSectionModal } from './tags/TagComponents';
 
@@ -41,21 +41,20 @@ const DocumentTypesPage: React.FC = () => {
     const [pageMode, setPageMode] = useState<'types' | 'tags'>('types');
     const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
 
-    const [activeTab, setActiveTab] = useState('Carrier Documents');
+    const [activeTab, setActiveTab] = useState('All');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isCreateSectionModalOpen, setIsCreateSectionModalOpen] = useState(false);
 
-    const { documents, addDocument, updateDocument, addTagSection } = useAppData();
+    const { documents, addDocument, updateDocument, addTagSection, keyNumbers } = useAppData();
 
-    const tabs = ['Carrier Documents', 'Asset Documents', 'Driver Documents'];
+    const tabs = ['All', 'Carrier', 'Asset', 'Driver'];
 
-    const getTabCategory = (tab: string): RelatedTo => {
-        if (tab.includes('Asset')) return 'asset';
-        if (tab.includes('Driver')) return 'driver';
-        return 'carrier';
-    };
-
-    const filteredDocuments = documents.filter(doc => doc.relatedTo === getTabCategory(activeTab));
+    const filteredDocuments = documents.filter(doc => {
+        if (activeTab === 'All') return true;
+        if (activeTab === 'Asset') return doc.relatedTo === 'asset';
+        if (activeTab === 'Driver') return doc.relatedTo === 'driver';
+        return doc.relatedTo === 'carrier';
+    });
 
     const handleAddNew = () => { setEditingId(null); setViewMode('editor'); };
     const handleEdit = (id: string) => { setEditingId(id); setViewMode('editor'); };
@@ -69,7 +68,9 @@ const DocumentTypesPage: React.FC = () => {
                 name: data.name || 'New Document',
                 relatedTo: data.relatedTo || 'carrier',
                 expiryRequired: data.expiryRequired ?? true,
-                issueDateRequired: false,
+                issueDateRequired: data.issueDateRequired ?? false,
+                issueStateRequired: data.issueStateRequired ?? false,
+                issueCountryRequired: data.issueCountryRequired ?? false,
                 status: data.status as Status || 'Active',
                 selectedTags: {},
                 requirementLevel: data.requirementLevel || 'required',
@@ -212,6 +213,9 @@ const DocumentTypesPage: React.FC = () => {
                                         <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 sm:pl-6">Document Name</th>
                                         <th scope="col" className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Category</th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Expiry Req.</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Issue Date Req.</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Issue State Req.</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Issue Country Req.</th>
                                         <th scope="col" className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
                                         <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6"><span className="sr-only">Actions</span></th>
                                     </tr>
@@ -220,17 +224,55 @@ const DocumentTypesPage: React.FC = () => {
                                     {filteredDocuments.map((doc) => (
                                         <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
                                             <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                                                        <FileCheck className="w-5 h-5" />
+                                                <div>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                                            <FileCheck className="w-5 h-5" />
+                                                        </div>
+                                                        {doc.name}
                                                     </div>
-                                                    {doc.name}
+                                                    {(() => {
+                                                        const linkedKn = keyNumbers.find(kn => kn.requiredDocumentTypeId === doc.id);
+                                                        if (linkedKn) {
+                                                            return (
+                                                                <div className="ml-12 mt-1 text-xs text-blue-600 font-normal flex items-center gap-1">
+                                                                    Linked to: {linkedKn.numberTypeName}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        
+                                                        const linkedExpense = INITIAL_EXPENSE_TYPES.find(exp => exp.documentTypeId === doc.id);
+                                                        if (linkedExpense) {
+                                                            return (
+                                                                <div className="ml-12 mt-1 text-xs text-emerald-600 font-normal flex items-center gap-1">
+                                                                    Linked to Expense: {linkedExpense.name}
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        return null;
+                                                    })()}
                                                 </div>
                                             </td>
                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 capitalize">{doc.relatedTo}</td>
                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-center">
                                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${doc.expiryRequired ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
                                                     {doc.expiryRequired ? 'Required' : 'Optional'}
+                                                </span>
+                                            </td>
+                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-center">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${doc.issueDateRequired ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {doc.issueDateRequired ? 'Required' : 'Optional'}
+                                                </span>
+                                            </td>
+                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-center">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${doc.issueStateRequired ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {doc.issueStateRequired ? 'Required' : 'Optional'}
+                                                </span>
+                                            </td>
+                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-center">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${doc.issueCountryRequired ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {doc.issueCountryRequired ? 'Required' : 'Optional'}
                                                 </span>
                                             </td>
                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">

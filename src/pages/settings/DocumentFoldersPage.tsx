@@ -138,6 +138,11 @@ export type DocumentFolderViewType = {
     tag: { label: string; tone: "blue" | "green" | "orange" | "gray" };
 };
 
+export type FolderNodeWithDocs = FolderNode & {
+    documents?: DocumentFolderViewType[];
+    children?: FolderNodeWithDocs[];
+};
+
 export type RoleOption = { id: string; name: string };
 export type UserOption = { id: string; name: string; roleLabel?: string };
 export type Assignment = { docTypeId: string; folderId: string };
@@ -722,22 +727,68 @@ function flattenIds(node: FolderNode): string[] {
     return out;
 }
 
-function filterTree(node: FolderNode, q: string): FolderNode | null {
+function filterTree(node: FolderNodeWithDocs, q: string): FolderNodeWithDocs | null {
     const query = q.trim().toLowerCase();
     if (!query) return node;
     const selfMatch = node.name.toLowerCase().includes(query);
+    
+    // Check docs
+    const matchingDocs = node.documents?.filter(d => d.name.toLowerCase().includes(query));
+    const hasMatchingDocs = matchingDocs && matchingDocs.length > 0;
+
     const filteredChildren =
         node.children
             ?.map((c) => filterTree(c, query))
-            .filter(Boolean) as FolderNode[] | undefined;
-    if (selfMatch || (filteredChildren && filteredChildren.length > 0)) {
-        return { ...node, children: filteredChildren };
+            .filter(Boolean) as FolderNodeWithDocs[] | undefined;
+            
+    if (selfMatch || hasMatchingDocs || (filteredChildren && filteredChildren.length > 0)) {
+        // If searching, we only show matching docs if self doesn't match? 
+        // Or show all docs if self matches?
+        // Let's filter docs if strict search
+        return { 
+            ...node, 
+            children: filteredChildren,
+            documents: selfMatch ? node.documents : matchingDocs // If folder matches, show all its docs? Or just matching? Let's show all if folder matches.
+        };
     }
     return null;
 }
 
+// Recursive merge function
+function mergeDocsIntoTree(node: FolderNode, docs: DocumentType[]): FolderNodeWithDocs {
+    // Find docs that belong to this folder
+    const myDocs = docs.filter(d => {
+        // Special case for Asset root
+        if(node.id === 'assets_root' && d.destination?.root === 'Asset') return true;
+        // Standard folder match
+        return d.destination?.folderId === node.id;
+    }).map(doc => {
+        // Map to view type locally
+        let tone: "blue" | "green" | "orange" | "gray" = "gray";
+        let label = doc.relatedTo === "carrier" ? "Compliance" : doc.relatedTo === "asset" ? "Maintenance" : "Personnel";
+
+        if (doc.relatedTo === 'carrier') tone = 'blue';
+        if (doc.name.includes('IFTA')) { tone = 'orange'; label = 'Tax'; }
+        if (doc.name.includes('Inspection')) { tone = 'green'; label = 'Audit Ready'; }
+
+        return {
+            id: doc.id,
+            name: doc.name,
+            tag: { label, tone }
+        };
+    });
+
+    const children = node.children?.map(c => mergeDocsIntoTree(c, docs));
+
+    return {
+        ...node,
+        documents: myDocs,
+        children: children as FolderNodeWithDocs[]
+    };
+}
+
 type RowProps = {
-    node: FolderNode;
+    node: FolderNodeWithDocs;
     depth: number;
     expanded: Record<string, boolean>;
     selectedId: string;
@@ -745,6 +796,7 @@ type RowProps = {
     onSelect: (id: string) => void;
     onEdit: (node: FolderNode) => void;
 };
+
 
 // Row component extracted to prevent re-renders losing focus/state
 const Row = React.memo(({ node, depth, expanded, selectedId, onToggle, onSelect, onEdit }: RowProps) => {
@@ -837,6 +889,27 @@ const Row = React.memo(({ node, depth, expanded, selectedId, onToggle, onSelect,
                     ))}
                 </div>
             ) : null}
+            
+            {/* Render Documents for this node if open */}
+            {isOpen && node.documents && node.documents.length > 0 && (
+                <div className="mt-0.5 space-y-0.5">
+                     {node.documents.map(doc => (
+                         <div 
+                             key={doc.id}
+                             className="relative flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-50 text-slate-600 transition-colors"
+                             style={{ paddingLeft: 8 + (depth + 1) * 18 }}
+                         >
+                             {/* Spacer for chevron alignment */}
+                             <span className="w-5" /> 
+                             <FileText className="h-3.5 w-3.5 text-blue-400" />
+                             <span className="text-xs font-medium truncate">{doc.name}</span>
+                             <span className={cn("ml-2 inline-flex items-center rounded border px-1.5 py-0 text-[9px] font-medium opacity-70", tagToneClasses(doc.tag.tone))}>
+                                 {doc.tag.label}
+                             </span>
+                         </div>
+                     ))}
+                </div>
+            )}
         </div>
     );
 });
@@ -880,10 +953,13 @@ export default function DocumentFoldersPage() {
     const [manageModalOpen, setManageModalOpen] = useState(false);
     const [editingNode, setEditingNode] = useState<FolderNode | null>(null);
 
+    // Merge docs into tree
+    const treeWithDocs = useMemo(() => mergeDocsIntoTree(tree, documents), [tree, documents]);
+
     const filtered = useMemo(() => {
-        const res = filterTree(tree, search);
-        return res ?? { ...tree, children: [] };
-    }, [tree, search]);
+        const res = filterTree(treeWithDocs, search);
+        return res ?? { ...treeWithDocs, children: [], documents: [] };
+    }, [treeWithDocs, search]);
 
     const totals = useMemo(() => {
         let folders = 0;

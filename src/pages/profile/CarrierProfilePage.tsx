@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import {
     MapPin,
     CheckSquare,
@@ -38,18 +39,27 @@ import {
     Clock,
     AlertCircle,
     FileWarning,
-    
+    UserCheck,
+    UserMinus,
+    UserX,
+    Download
 } from 'lucide-react';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { LocationViewModal } from '../../components/locations/LocationViewModal';
-import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS } from './carrier-profile.data';
+import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS, MOCK_DRIVERS } from './carrier-profile.data';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
+import { DriverProfileView } from './DriverProfileView';
+import { DriverForm } from './DriverForm';
+
+
+
 import { LocationsPage } from '@/pages/account/LocationsPage';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
+
 
 // --- HELPER COMPONENTS ---
 
@@ -368,6 +378,11 @@ export function CarrierProfilePage() {
     const [activeModal, setActiveModal] = useState<any>(null);
     const [toast, setToast] = useState({ visible: false, message: "" });
     const [activeTab, setActiveTab] = useState("fleet");
+    const [viewingDriverId, setViewingDriverId] = useState<string | null>(null);
+    const [selectedDriverData, setSelectedDriverData] = useState<any>(null); // State to hold detailed driver data
+    const [isAddingDriver, setIsAddingDriver] = useState(false);
+    const [editingDriverData, setEditingDriverData] = useState<any>(null);
+    const { appData, updateAppData } = useAppData();
     const [complianceFilter, setComplianceFilter] = useState('all');
     const [documentFilter, setDocumentFilter] = useState('all');
 
@@ -386,6 +401,10 @@ export function CarrierProfilePage() {
     const [editingOffice, setEditingOffice] = useState<any>(null);
     const [viewingOffice, setViewingOffice] = useState<any>(null);
     const [isOfficeViewModalOpen, setIsOfficeViewModalOpen] = useState(false);
+    
+    // Driver List State
+    const [driverSearch, setDriverSearch] = useState('');
+    const [driverStatusFilter, setDriverStatusFilter] = useState('All');
 
     const showToast = (msg: string) => {
         setToast({ visible: true, message: msg });
@@ -479,31 +498,26 @@ export function CarrierProfilePage() {
                 const hasDoc = val?.documents && val.documents.length > 0;
 
                 // Calculate status
-                let status = 'Missing';
+                const enabled = isMonitoringEnabled(kn);
+                const maxDays = getMaxReminderDays(kn);
+                
+                const status = calculateComplianceStatus(
+                    val?.expiryDate,
+                    enabled,
+                    maxDays,
+                    !!hasValue,
+                    kn.hasExpiry,
+                    kn.numberRequired ?? true
+                );
+
                 let docStatus = kn.documentRequired ? 'Missing' : 'N/A';
-                if (hasValue) {
-                    if (kn.hasExpiry && !hasExpiry) {
-                        status = 'Incomplete';
-                    } else {
-                        status = 'Active';
-                    }
-                }
                 if (hasDoc) docStatus = 'Uploaded';
 
                 // Calculate expiry display
                 let expiryDisplay = '-';
                 if (kn.hasExpiry) {
                     if (hasExpiry) {
-                        expiryDisplay = val.expiryDate!;
-                        // Check if expiring soon (within 30 days)
-                        const expiryDate = new Date(val.expiryDate!);
-                        const now = new Date();
-                        const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                        if (daysUntilExpiry < 0) {
-                            status = 'Expired';
-                        } else if (daysUntilExpiry <= 30) {
-                            status = 'Expiring Soon';
-                        }
+                        expiryDisplay = val?.expiryDate!;
                     } else {
                         expiryDisplay = 'Not set';
                     }
@@ -562,21 +576,21 @@ export function CarrierProfilePage() {
             const hasUpload = knValue?.documents && knValue.documents.length > 0;
             const expiryStr = knValue?.expiryDate;
 
-            if (!hasUpload) {
-                if (doc.requirementLevel === 'required') return 'Missing';
-                return 'Not Uploaded';
-            }
+            // Determine which config to use for monitoring (KeyNumber or DocType)
+            const config = linkedKn || doc;
+            const enabled = isMonitoringEnabled(config);
+            const maxDays = getMaxReminderDays(config);
 
-            // Check expiry
-            if (expiryStr) {
-                const expiry = new Date(expiryStr);
-                const now = new Date();
-                const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                if (daysUntil < 0) return 'Expired';
-                if (daysUntil <= 30) return 'Expiring Soon';
-            }
-
-            return 'Active';
+            const status = calculateComplianceStatus(
+                expiryStr,
+                enabled, 
+                maxDays,
+                !!hasUpload,
+                linkedKn ? linkedKn.hasExpiry : doc.expiryRequired, // If no linked KN, use doc settings
+                doc.requirementLevel === 'required'
+            );
+            
+            return status;
         };
 
         return carrierDocTypes.map((doc: DocumentType) => {
@@ -597,6 +611,7 @@ export function CarrierProfilePage() {
                 expiryDate: knValue?.expiryDate || '—',
                 requirement: doc.requirementLevel || 'optional',
                 linkedKeyNumber: getLinkedKeyNumber(doc.id),
+                linkedValue: knValue?.value || '', // Add linked value
                 hasUpload: !!(knValue?.documents && knValue.documents.length > 0),
                 folderPath,
                 docTypeData: doc,
@@ -632,6 +647,92 @@ export function CarrierProfilePage() {
     const opsData = formConfig.editModals.operationsAuthority.values;
     const cargoData = formConfig.cargoEditor.values;
     const activeDirector = (directorModalMode === 'edit' || directorModalMode === 'view') && selectedDirectorName ? directorData[selectedDirectorName as keyof typeof directorData] : null;
+
+    // --- DRIVER LIST LOGIC ---
+    const filteredDrivers = useMemo(() => {
+        return MOCK_DRIVERS.filter(driver => {
+            const matchesSearch = (
+                driver.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
+                driver.id.toLowerCase().includes(driverSearch.toLowerCase()) ||
+                driver.email.toLowerCase().includes(driverSearch.toLowerCase())
+            );
+            const matchesStatus = driverStatusFilter === 'All' || driver.status === driverStatusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    }, [driverSearch, driverStatusFilter]);
+
+    const driverStats = useMemo(() => {
+        return {
+            total: MOCK_DRIVERS.length,
+            active: MOCK_DRIVERS.filter(d => d.status === 'Active').length,
+            inactive: MOCK_DRIVERS.filter(d => d.status === 'Inactive').length,
+            terminated: MOCK_DRIVERS.filter(d => d.status === 'Terminated').length,
+            onLeave: MOCK_DRIVERS.filter(d => d.status === 'On Leave').length
+        };
+    }, []);
+
+    const handleDriverClick = (driverId: string) => {
+        setViewingDriverId(driverId);
+        const driver = MOCK_DRIVERS.find(d => d.id === driverId);
+        if (driver) {
+            setSelectedDriverData(driver);
+        }
+        window.scrollTo(0, 0);
+    };
+
+    const handleAddDriver = () => {
+        setEditingDriverData(null);
+        setIsAddingDriver(true);
+        window.scrollTo(0, 0);
+    };
+
+    const handleBackFromDriver = () => {
+        setViewingDriverId(null);
+        setIsAddingDriver(false);
+        setEditingDriverData(null);
+        window.scrollTo(0, 0);
+    };
+
+    const handleEditProfileInit = (driverData: any) => {
+         setEditingDriverData(driverData);
+         setIsAddingDriver(true);
+    };
+
+    // Handler for updates coming from DriverProfileView modals
+    const handleDriverUpdate = (updatedData: any) => {
+        setSelectedDriverData(updatedData);
+        // Here we would also update the list/backend
+    };
+
+    if (viewingDriverId && !isAddingDriver) {
+        return <DriverProfileView 
+            driverId={viewingDriverId} 
+            onBack={handleBackFromDriver} 
+            initialDriverData={selectedDriverData || MOCK_DRIVER_DETAILED_TEMPLATE} 
+            onEditProfile={handleEditProfileInit}
+            onUpdate={handleDriverUpdate}
+        />;
+    }
+
+    if (isAddingDriver) {
+        return <DriverForm 
+            initialData={editingDriverData}
+            isEditing={!!editingDriverData}
+            onCancel={() => { setIsAddingDriver(false); setEditingDriverData(null); }}
+            onSave={(data: any) => { 
+                console.log("Saved", data); 
+                setIsAddingDriver(false); 
+                setEditingDriverData(null);
+                
+                // If we were editing, update the selected driver data
+                if (editingDriverData) {
+                    setSelectedDriverData(data);
+                }
+                
+                showToast("Driver saved successfully");
+            }} 
+        />;
+    }
 
     const tabs = [
         { id: 'fleet', label: 'Fleet Overview' },
@@ -977,12 +1078,193 @@ export function CarrierProfilePage() {
                 )}
 
                 {activeTab === 'drivers' && (
-                    <div className="w-full">
-                        <Card title="Drivers" icon="Users" fullWidth>
-                            <div className="p-6 text-center text-slate-500 py-12">
-                                Driver management content will be displayed here.
+                    <div className="w-full space-y-6">
+                        {/* DRIVER STATUS CARDS */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <button onClick={() => setDriverStatusFilter('All')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'All' ? 'ring-1 ring-blue-500 border-l-blue-500' : 'border-l-blue-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-blue-50 text-blue-600"><Users className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Drivers</span>
+                                </div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.total}</div>
+                            </button>
+                            <button onClick={() => setDriverStatusFilter('Active')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Active' ? 'ring-1 ring-emerald-500 border-l-emerald-500' : 'border-l-emerald-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-emerald-50 text-emerald-600"><UserCheck className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Active<br />Drivers</span>
+                                </div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.active}</div>
+                            </button>
+                            <button onClick={() => setDriverStatusFilter('Inactive')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Inactive' ? 'ring-1 ring-slate-500 border-l-slate-500' : 'border-l-slate-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-slate-100 text-slate-600"><UserMinus className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Inactive<br />Drivers</span>
+                                </div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.inactive}</div>
+                            </button>
+                            <button onClick={() => setDriverStatusFilter('On Leave')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'On Leave' ? 'ring-1 ring-amber-500 border-l-amber-500' : 'border-l-amber-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-amber-50 text-amber-600"><Clock className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">On<br />Leave</span>
+                                </div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.onLeave}</div>
+                            </button>
+                            <button onClick={() => setDriverStatusFilter('Terminated')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Terminated' ? 'ring-1 ring-red-500 border-l-red-500' : 'border-l-red-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-red-50 text-red-600"><UserX className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Terminated<br />Drivers</span>
+                                </div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.terminated}</div>
+                            </button>
+                        </div>
+
+                        {/* TOOLBAR */}
+                        <div className="flex flex-col sm:flex-row justify-between gap-4">
+                            <div className="relative max-w-md w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search drivers by name, ID, or email..."
+                                    value={driverSearch}
+                                    onChange={(e) => setDriverSearch(e.target.value)}
+                                    className="pl-9 pr-4 h-10 w-full rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
                             </div>
-                        </Card>
+                            <div className="flex gap-2">
+                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center gap-2">
+                                    <Download className="w-4 h-4" /> Export
+                                </button>
+                                <button onClick={handleAddDriver} className="h-10 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                                    <Plus className="w-4 h-4" /> Add Driver
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* DRIVER TABLE */}
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm whitespace-nowrap">
+                                    <thead className="bg-slate-50/80 border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider pl-6">Driver Name</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">ID / Details</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">License</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {filteredDrivers.length > 0 ? (
+                                            filteredDrivers.map((driver) => {
+                                                const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
+                                                const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
+                                                const isCompliant = totalIssues === 0 && stats.expiring === 0;
+
+                                                return (
+                                                    <tr key={driver.id} onClick={() => handleDriverClick(driver.id)} className="hover:bg-blue-50/40 transition-colors group cursor-pointer">
+                                                        <td className="px-4 py-3 pl-6">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200">
+                                                                    {driver.avatarInitials}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{driver.name}</div>
+                                                                    <div className="text-[11px] text-slate-500 flex items-center gap-1">Hired: {driver.hiredDate}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded w-fit">
+                                                                {driver.id}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <Badge 
+                                                                text={driver.status} 
+                                                                tone={
+                                                                    driver.status === 'Active' ? 'success' : 
+                                                                    driver.status === 'Inactive' ? 'gray' : 
+                                                                    driver.status === 'Terminated' ? 'danger' : 'warning'
+                                                                } 
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {isCompliant ? (
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded w-fit">
+                                                                        <Check className="w-3 h-3" /> Compliant
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex flex-col gap-1 items-start">
+                                                                    {stats.expired > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 bg-red-50 px-2 py-1 rounded">
+                                                                            {stats.expired} Expired
+                                                                        </span>
+                                                                    )}
+                                                                    {(stats.missingNumber + stats.missingExpiry + stats.missingDoc) > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 bg-red-50 px-2 py-1 rounded">
+                                                                            {stats.missingNumber + stats.missingExpiry + stats.missingDoc} Missing
+                                                                        </span>
+                                                                    )}
+                                                                    {stats.expiring > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                                                            {stats.expiring} Expiring
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="text-slate-900 font-medium text-xs">{driver.licenseNumber || '—'}</div>
+                                                            <div className="text-[11px] text-slate-500 mt-0.5">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <span className="flex items-center gap-1.5 text-[11px]"><Phone className="w-3 h-3 text-slate-400" /> {driver.phone}</span>
+                                                                <span className="flex items-center gap-1.5 text-[11px]"><Mail className="w-3 h-3 text-slate-400" /> {driver.email}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right pr-6">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDriverClick(driver.id); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                                                    <Edit3 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={7} className="py-20 text-center">
+                                                    <div className="flex flex-col items-center gap-3">
+                                                        <div className="p-4 bg-slate-50 rounded-full text-slate-300">
+                                                            <Search className="w-8 h-8" />
+                                                        </div>
+                                                        <p className="text-slate-500 font-medium">No drivers found matching your filter</p>
+                                                        <button onClick={() => { setDriverSearch(''); setDriverStatusFilter('All'); }} className="text-sm text-blue-600 hover:underline">
+                                                            Clear filters
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
+                                <div className="text-xs text-slate-500">
+                                    Showing <span className="font-medium text-slate-900">{filteredDrivers.length}</span> of <span className="font-medium text-slate-900">{MOCK_DRIVERS.length}</span> drivers
+                                </div>
+                                <div className="flex gap-2">
+                                    <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Previous</button>
+                                    <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Next</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -1054,6 +1336,7 @@ export function CarrierProfilePage() {
                                         <tr>
                                             <th className="px-6 py-3 w-1/4">Number Type</th>
                                             <th className="px-6 py-3 w-1/4">Value</th>
+                                            <th className="px-6 py-3 w-1/6">Document</th> {/* New Column */}
                                             <th className="px-6 py-3 w-1/4">Status</th>
                                             <th className="px-6 py-3 w-1/4">Expiry</th>
                                             <th className="px-6 py-3 w-24 text-right">Actions</th>
@@ -1082,6 +1365,14 @@ export function CarrierProfilePage() {
                                                             <td className="px-6 py-4 font-semibold text-slate-900 truncate">{item.type}</td>
                                                             <td className="px-6 py-4 text-slate-400 italic">{item.value}</td>
                                                             <td className="px-6 py-4">
+                                                                {/* Document Status Column */}
+                                                                <Badge 
+                                                                    text={item.docStatus === 'Uploaded' ? 'Uploaded' : item.docStatus === 'Missing' ? 'Missing' : 'N/A'} 
+                                                                    tone={item.docStatus === 'Uploaded' ? 'success' : item.docStatus === 'Missing' ? 'danger' : 'gray'} 
+                                                                    className={item.docStatus === 'Missing' ? 'animate-pulse' : ''}
+                                                                />
+                                                            </td>
+                                                            <td className="px-6 py-4">
                                                                 <Badge text={item.status} tone={getStatusTone(item.status)} />
                                                             </td>
                                                             <td className="px-6 py-4 text-slate-500 italic">{item.expiry}</td>
@@ -1091,7 +1382,7 @@ export function CarrierProfilePage() {
                                                                         // Find full config for this item to get hasExpiry/documentRequired
                                                                         const config = keyNumbers.find((kn: KeyNumberConfig) => kn.id === item.id);
                                                                         const val = keyNumberValues[item.id];
-                                                                        const linkedDocType = config?.requiredDocumentTypeId ? getDocumentTypeById(config.requiredDocumentTypeId) : null;
+                                                                            // Remove linkedDocType declaration as it is unused
                                                                         setKeyNumberModalMode('edit');
                                                                         setEditingKeyNumber({
                                                                             id: item.id,
@@ -1099,13 +1390,13 @@ export function CarrierProfilePage() {
                                                                             value: val?.value || '',
                                                                             expiryDate: val?.expiryDate || '',
                                                                             issueDate: val?.issueDate || '',
+                                                                            issuingState: val?.issuingState || undefined,
+                                                                            issuingCountry: val?.issuingCountry || undefined,
                                                                             tags: val?.tags || [],
                                                                             documents: val?.documents || [],
                                                                             numberRequired: config?.numberRequired !== false, // default true
                                                                             hasExpiry: config?.hasExpiry || false,
                                                                             documentRequired: config?.documentRequired || false,
-                                                                            requiredDocumentTypeId: config?.requiredDocumentTypeId,
-                                                                            linkedDocumentType: linkedDocType
                                                                         });
                                                                     }}
                                                                     className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -1205,7 +1496,14 @@ export function CarrierProfilePage() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-4 text-slate-700">{doc.documentName}</td>
+                                                <td className="px-4 py-4 text-slate-700">
+                                                    <div>{doc.documentName}</div>
+                                                    {doc.linkedValue && doc.linkedValue !== 'Not entered' && (
+                                                        <div className="text-xs text-slate-400 mt-0.5 font-mono">
+                                                             Ref: {doc.linkedValue}
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-4 text-slate-500 text-xs">{doc.folderPath}</td>
                                                 <td className="px-4 py-4 text-slate-500">{doc.dateUploaded}</td>
                                                 <td className="px-4 py-4">
@@ -1516,6 +1814,15 @@ export function CarrierProfilePage() {
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+            {viewingDriverId && (
+                <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <DriverProfileView 
+                        driverId={viewingDriverId}
+                        onBack={() => setViewingDriverId(null)}
+                        data={selectedDriverData}
+                    />
                 </div>
             )}
         </div>

@@ -8,7 +8,8 @@ import {
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { USA_STATES, CANADA_PROVINCES, MOCK_DRIVERS, MOCK_YARDS } from './assets.data';
+import { USA_STATES, CANADA_PROVINCES, MOCK_YARDS } from './assets.data';
+import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
 
 // --- UI Utilities & Primitives ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');

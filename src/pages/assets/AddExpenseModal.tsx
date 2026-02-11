@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, Calendar, DollarSign, FileText } from 'lucide-react';
-import { INITIAL_EXPENSE_TYPES, type AssetExpense } from '@/pages/settings/expenses.data';
+import { INITIAL_EXPENSE_TYPES, type AssetExpense, type ExpenseEntityType } from '@/pages/settings/expenses.data';
 
 interface AddExpenseModalProps {
     isOpen: boolean;
@@ -8,11 +8,15 @@ interface AddExpenseModalProps {
     onSave: (expense: AssetExpense) => void;
     assetId: string;
     preSelectedDate?: string;
+    entityType?: ExpenseEntityType;
 }
 
-export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedDate }: AddExpenseModalProps) {
+export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedDate, entityType = 'Asset' }: AddExpenseModalProps) {
     const [expenseTypeId, setExpenseTypeId] = useState<string>("");
     
+    // Filter types based on entity context
+    const availableTypes = INITIAL_EXPENSE_TYPES.filter(t => t.entityType === entityType);
+
     // Form State
     const [amount, setAmount] = useState<string>("");
     const [currency, setCurrency] = useState<"USD" | "CAD">("USD");
@@ -21,7 +25,7 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
 
     // Recurring State
     const [isRecurring, setIsRecurring] = useState<boolean>(false);
-    const [frequency, setFrequency] = useState<string>("Monthly");
+    const [frequency, setFrequency] = useState<string>("monthly");
     const [startDate, setStartDate] = useState<string>("");
     const [endDate, setEndDate] = useState<string>("");
 
@@ -30,12 +34,12 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
     const [document, setDocument] = useState<File | null>(null);
 
     // Derived Logic
-    const selectedType = INITIAL_EXPENSE_TYPES.find(t => t.id === expenseTypeId);
+    const selectedType = availableTypes.find(t => t.id === expenseTypeId);
     
     useEffect(() => {
         if (selectedType) {
-            setIsRecurring(selectedType.isRecurringAllowed && selectedType.category === 'Recurring');
-            if (selectedType.defaultFrequency) setFrequency(selectedType.defaultFrequency);
+            setIsRecurring(selectedType.isRecurring && selectedType.subCategory === 'recurring');
+            if (selectedType.frequency) setFrequency(selectedType.frequency);
         }
     }, [expenseTypeId, selectedType]);
 
@@ -48,6 +52,12 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
 
     const handleSave = () => {
         if (!assetId || !expenseTypeId) return;
+        
+        // Validation: Check if document is required
+        if (selectedType?.documentRequired && !document) {
+            alert("A receipt/document is required for this expense type."); // Simple alert or toast replacement
+            return;
+        }
 
         const newExpense: AssetExpense = {
             id: `exp_${Math.random().toString(36).substr(2, 9)}`,
@@ -91,7 +101,7 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
                         <h3 className="font-bold text-lg text-slate-900">Add New Expense</h3>
-                        <p className="text-xs text-slate-500">Record a new cost for this asset</p>
+                        <p className="text-xs text-slate-500">Record a new cost for this {entityType.toLowerCase()}</p>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
                         <X className="w-5 h-5" />
@@ -110,7 +120,7 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
                             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         >
                             <option value="">Select type...</option>
-                            {INITIAL_EXPENSE_TYPES.map(type => (
+                            {availableTypes.map(type => (
                                 <option key={type.id} value={type.id}>{type.name}</option>
                             ))}
                         </select>
@@ -144,7 +154,7 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
 
                          {/* Date */}
                          <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1.5">Date</label>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5">Date {selectedType?.dateRequired && <span className="text-red-500 ml-0.5">*</span>}</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-2 text-slate-400">
                                     <Calendar className="w-4 h-4" />
@@ -180,11 +190,11 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
                                         onChange={(e) => setFrequency(e.target.value)}
                                         className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
                                     >
-                                        <option value="Weekly">Weekly</option>
-                                        <option value="Bi-Weekly">Bi-Weekly</option>
-                                        <option value="Monthly">Monthly</option>
-                                        <option value="Quarterly">Quarterly</option>
-                                        <option value="Annually">Annually</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="bi-weekly">Bi-Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="quarterly">Quarterly</option>
+                                        <option value="annually">Annually</option>
                                     </select>
                                 </div>
                                 <div>
@@ -222,10 +232,13 @@ export function AddExpenseModal({ isOpen, onClose, onSave, assetId, preSelectedD
 
                     {/* Document Upload */}
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-1.5">Attach Receipt/Document</label>
+                        <label className="block text-sm font-bold text-slate-700 mb-1.5">
+                            Attach Receipt/Document
+                            {selectedType?.documentRequired && <span className="text-red-500 ml-0.5">*</span>}
+                        </label>
                         <div 
                             onClick={() => fileInputRef.current?.click()}
-                            className="border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 hover:border-blue-400 transition-colors"
+                            className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${selectedType?.documentRequired && !document ? 'border-amber-300 bg-amber-50 hover:border-amber-400' : 'border-slate-300 hover:bg-slate-50 hover:border-blue-400'}`}
                         >
                             <input 
                                 type="file" 

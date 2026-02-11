@@ -11,6 +11,8 @@ import {
     Layers,
     Folder,
     DollarSign,
+    Ban,
+    GraduationCap,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -67,6 +69,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "document-types", label: "Document Types", icon: FileText, path: "/settings/document-types" },
             { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders" },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
+            { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },
+            { key: "trainings", label: "Trainings", icon: GraduationCap, path: "/settings/trainings" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" }
         ],
     },

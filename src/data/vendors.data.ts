@@ -13,11 +13,7 @@ export interface Vendor {
     };
     email: string;
     phone: string;
-    contacts: {
-        id: string;
-        firstName: string;
-        lastName: string;
-    }[];
+    contactName: string;
 }
 
 // Initial mock vendors
@@ -35,10 +31,7 @@ export const INITIAL_VENDORS: Vendor[] = [
         },
         email: "service@fleetmaintpro.com",
         phone: "(713) 555-0101",
-        contacts: [
-            { id: "c1", firstName: "John", lastName: "Smith" },
-            { id: "c2", firstName: "Sarah", lastName: "Johnson" }
-        ]
+        contactName: "John Smith"
     },
     {
         id: "v2",
@@ -53,8 +46,6 @@ export const INITIAL_VENDORS: Vendor[] = [
         },
         email: "info@truckcare.com",
         phone: "(214) 555-0202",
-        contacts: [
-            { id: "c3", firstName: "Mike", lastName: "Williams" }
-        ]
+        contactName: "Mike Williams"
     }
 ];

@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
     FileText,
-    FileDown,
-    ShieldCheck,
+
     AlertTriangle,
     CalendarX,
     Clock,
@@ -15,13 +14,31 @@ import {
     Check,
     ChevronDown,
     Hash,
-    Building2
+    LayoutGrid,
+    Truck,
+    User,
+    Download,
+    Eye,
+    Search,
+    Filter,
+    RotateCcw,
+    AlertCircle,
+    XCircle,
+    UserCheck,
+    UserMinus,
+    UserX,
+    Users
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
+import { INITIAL_ASSETS as MOCK_ASSETS, type Asset, type Driver } from '@/pages/assets/assets.data';
+import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
+import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
+import { AssetModal } from '@/pages/assets/AssetModal';
+import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled, calculateDriverComplianceStats } from '@/utils/compliance-utils';
 
 // --- HELPER COMPONENTS (Copied from CarrierProfilePage for consistency) ---
 
@@ -37,11 +54,11 @@ const Badge = ({ text, tone, className = "" }: { text: string; tone: string; cla
     return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles} ${className}`}>{text}</span>;
 };
 
-// Simplified Card to match CarrierProfilePage usage
-const Card = ({ title, icon: Icon, children, rightAction, fullWidth = false, className = "", onEdit }: { title: string; icon: any; children: React.ReactNode; rightAction?: React.ReactNode; fullWidth?: boolean; className?: string; onEdit?: () => void }) => {
+// Simplified Card
+const Card = ({ title, icon: Icon, children, rightAction, fullWidth = false, className = "", noPadding=false, onEdit }: { title: string; icon: any; children: React.ReactNode; rightAction?: React.ReactNode; fullWidth?: boolean; className?: string; noPadding?: boolean; onEdit?: () => void }) => {
     return (
         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col ${fullWidth ? 'col-span-1 lg:col-span-2' : ''} ${className}`}>
-            <div className="flex items-center justify-between p-6 pb-2">
+            <div className={`flex items-center justify-between p-6 pb-2 ${noPadding ? 'border-b border-slate-200' : ''}`}>
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                         <Icon className="w-5 h-5" />
@@ -57,7 +74,7 @@ const Card = ({ title, icon: Icon, children, rightAction, fullWidth = false, cla
                     )}
                 </div>
             </div>
-            <div className="p-6 pt-4 flex-1">
+            <div className={`${noPadding ? 'p-0' : 'p-6 pt-4'} flex-1`}>
                 {children}
             </div>
         </div>
@@ -75,18 +92,191 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
     );
 };
 
+export // Helper Component for Stats Buttons
+const ComplianceStatsButton = ({ 
+    icon: Icon, 
+    label, 
+    count, 
+    isActive, 
+    color, 
+    onClick 
+}: { 
+    icon: any; 
+    label: React.ReactNode; 
+    count: number; 
+    isActive: boolean; 
+    color: 'red' | 'orange' | 'yellow' | 'blue'; 
+    onClick: () => void; 
+}) => {
+    const colorStyles = {
+        red: {
+             active: 'ring-1 ring-red-600 border-l-red-600',
+             inactive: 'border-l-red-600 border-slate-200',
+             iconBg: 'bg-red-50',
+             iconColor: 'text-red-600'
+        },
+        orange: {
+             active: 'ring-1 ring-orange-500 border-l-orange-500',
+             inactive: 'border-l-orange-500 border-slate-200',
+             iconBg: 'bg-orange-50',
+             iconColor: 'text-orange-600'
+        },
+        yellow: {
+             active: 'ring-1 ring-yellow-500 border-l-yellow-500',
+             inactive: 'border-l-yellow-500 border-slate-200',
+             iconBg: 'bg-yellow-50',
+             iconColor: 'text-yellow-600'
+        },
+        blue: {
+             active: 'ring-1 ring-blue-500 border-l-blue-500',
+             inactive: 'border-l-blue-500 border-slate-200',
+             iconBg: 'bg-blue-50',
+             iconColor: 'text-blue-600'
+        }
+    };
+
+    const styles = colorStyles[color];
+
+    return (
+        <button 
+            onClick={onClick} 
+            className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${isActive ? styles.active : styles.inactive}`}
+        >
+            <div className="flex items-center gap-2">
+                <div className={`p-1.5 rounded-full ${styles.iconBg} ${styles.iconColor}`}>
+                    <Icon className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">
+                    {label}
+                </span>
+            </div>
+            <div className="text-lg font-bold text-slate-900">{count}</div>
+        </button>
+    );
+};
+
 export const ComplianceDocumentsPage = () => {
     // --- STATE ---
     const [activeTab, setActiveTab] = useState<'compliance' | 'documents'>('compliance');
+    // New sub-filter for Entity Type
+    const [activeEntityFilter, setActiveEntityFilter] = useState<'Carrier' | 'Asset' | 'Driver'>('Carrier'); // Default to Carrier
+    const [activeSubCategory, setActiveSubCategory] = useState<'ALL' | 'CMV' | 'NON_CMV'>('ALL'); // New: Sub-category for Asset/Driver
+    const [assetStatusFilter, setAssetStatusFilter] = useState<'ALL' | 'Active' | 'Maintenance' | 'OutOfService' | 'Deactivated'>('ALL'); // New: Status filter
+
+    // Reset sub-category and status when entity changes
+    React.useEffect(() => {
+        setActiveSubCategory('ALL');
+        setAssetStatusFilter('ALL');
+    }, [activeEntityFilter]);
+
     const [complianceFilter, setComplianceFilter] = useState('all');
     const [documentFilter, setDocumentFilter] = useState('all');
     const [keyNumberGroupsCollapsed, setKeyNumberGroupsCollapsed] = useState<Record<string, boolean>>({ carrier: false, bond: false, other: false, regulatory: false, tax: false });
     
-    // Modals
     const [keyNumberModalMode, setKeyNumberModalMode] = useState<'add' | 'edit' | null>(null);
     const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
     const [editingDocument, setEditingDocument] = useState<any | null>(null); // Type inferred from usage
     const [viewingDocument, setViewingDocument] = useState<any | null>(null);
+    const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null); // New state for selected asset
+    const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null); // New state for selected driver
+    
+    // UI State for Asset List
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 6;
+
+    // Reset pagination when filters change
+    React.useEffect(() => {
+        setCurrentPage(1);
+    }, [activeSubCategory, searchQuery, activeEntityFilter]);
+    
+    // Reset selection when entity filter changes
+    React.useEffect(() => {
+        setSelectedAsset(null);
+        setSelectedDriver(null);
+    }, [activeEntityFilter]);
+
+    // --- ASSET STATE ---
+    const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
+    const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+    const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+
+    const [isSavingAsset, setIsSavingAsset] = useState(false);
+
+    // --- DRIVER STATE (Refactor) ---
+    const [driverSearch, setDriverSearch] = useState('');
+    const [driverStatusFilter, setDriverStatusFilter] = useState('All');
+
+    const driverStats = useMemo(() => {
+        return {
+            total: MOCK_DRIVERS.length,
+            active: MOCK_DRIVERS.filter(d => d.status === 'Active').length,
+            inactive: MOCK_DRIVERS.filter(d => d.status === 'Inactive').length,
+            terminated: MOCK_DRIVERS.filter(d => d.status === 'Terminated').length,
+            onLeave: MOCK_DRIVERS.filter(d => d.status === 'On Leave').length
+        };
+    }, []);
+
+    const filteredDriversList = useMemo(() => {
+        return MOCK_DRIVERS.filter(driver => {
+            const matchesSearch = (
+                driver.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
+                driver.id.toLowerCase().includes(driverSearch.toLowerCase()) ||
+                driver.email.toLowerCase().includes(driverSearch.toLowerCase())
+            );
+            const matchesStatus = driverStatusFilter === 'All' || driver.status === driverStatusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    }, [driverSearch, driverStatusFilter]);
+
+    // --- COMPUTED ASSET STATS ---
+    const assetStats = useMemo(() => ({
+        total: assets.length,
+        active: assets.filter(a => a.operationalStatus === 'Active').length,
+        maintenance: assets.filter(a => a.operationalStatus === 'Maintenance').length,
+        outOfService: assets.filter(a => a.operationalStatus === 'OutOfService').length,
+        deactivated: assets.filter(a => a.operationalStatus === 'Deactivated').length
+    }), [assets]);
+
+    // --- FILTERED ASSETS ---
+    const filteredAssetsList = useMemo(() => {
+        return assets.filter(a => {
+            // Sub-category filter
+            if (activeSubCategory === 'CMV' && a.assetCategory !== 'CMV') return false;
+            if (activeSubCategory === 'NON_CMV' && a.assetCategory === 'CMV') return false;
+            
+            // Status filter
+            if (assetStatusFilter !== 'ALL' && a.operationalStatus !== assetStatusFilter) return false;
+            
+            // Search filter
+            if (searchQuery) {
+                const s = searchQuery.toLowerCase();
+                return (
+                    a.unitNumber.toLowerCase().includes(s) ||
+                    a.vin.toLowerCase().includes(s) ||
+                    a.assetType.toLowerCase().includes(s)
+                );
+            }
+            return true;
+        });
+    }, [assets, activeSubCategory, searchQuery, assetStatusFilter]);
+
+    const handleSaveAsset = (data: any) => {
+        setIsSavingAsset(true);
+        // Simulate API call
+        setTimeout(() => {
+            if (editingAsset) {
+                setAssets(prev => prev.map(a => a.id === editingAsset.id ? { ...a, ...data } : a));
+            } else {
+                setAssets(prev => [{ ...data, id: `a${Date.now()}`, complianceStatus: 'Compliant' }, ...prev]);
+            }
+            setIsSavingAsset(false);
+            setIsAssetModalOpen(false);
+            setEditingAsset(null);
+            showToast(editingAsset ? "Asset updated successfully" : "Asset created successfully");
+        }, 600);
+    };
+
     const [toast, setToast] = useState({ visible: false, message: "" });
 
     // --- DATA CONTEXT ---
@@ -108,54 +298,149 @@ export const ComplianceDocumentsPage = () => {
 
     const toggleKeyNumberGroup = (key: string) => setKeyNumberGroupsCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
 
-    // --- DATA PREPARATION (Copied logic) ---
+    // Helper to get composite ID for storage
+    const getKeyNumberStorageId = (configId: string) => {
+        if (activeEntityFilter === 'Asset' && selectedAsset) {
+            return `${selectedAsset.id}_${configId}`;
+        }
+        if (activeEntityFilter === 'Driver' && selectedDriver) {
+            return `${selectedDriver.id}_${configId}`;
+        }
+        return configId;
+    };
 
-    // 1. Compliance Groups
+    // Helper to get value (from storage OR asset property fallback)
+    const getKeyNumberData = (config: KeyNumberConfig) => {
+        const storageId = getKeyNumberStorageId(config.id);
+        const storedVal = keyNumberValues[storageId];
+        
+        // Return stored value if exists
+        if (storedVal) return storedVal;
+
+        // Fallback: If viewing an Asset, check if asset has this property populated
+        if (activeEntityFilter === 'Asset' && selectedAsset) {
+            const typeName = config.numberTypeName.toLowerCase();
+            if (typeName.includes('vin')) return { value: selectedAsset.vin, expiryDate: '' };
+            if (typeName.includes('plate') && !typeName.includes('expiry')) return { value: selectedAsset.plateNumber, expiryDate: '' }; // Simplified
+        }
+        
+        // Fallback: If viewing a Driver
+        if (activeEntityFilter === 'Driver' && selectedDriver) {
+            // Add driver mapping logic here if needed, e.g. License Number
+             // Simple name mapping maybe?
+        }
+
+        return null;
+    };
+
+    // Helper to calculate compliance summary for a row in the list
+    const getComplianceSummary = (entityId: string, entityType: 'Asset' | 'Driver', subCategory: string = 'ALL') => {
+        // Filter configs relevant to this entity type
+        const relevantConfigs = keyNumbers.filter(kn => {
+            if (kn.entityType !== entityType) return false;
+            // Sub-category filter logic (mirrors main filter)
+            if (entityType === 'Asset') {
+                 if (subCategory === 'CMV') return !kn.numberTypeName.includes('Non-CMV');
+                 if (subCategory === 'NON_CMV') return kn.numberTypeName.includes('Non-CMV') || (kn.category as string) === 'Non-CMV';
+            }
+            return true;
+        });
+
+        let missingNumbers = 0;
+        let missingDocs = 0;
+        let expired = 0;
+        let expiringSoon = 0;
+        let valid = 0;
+
+        relevantConfigs.forEach(kn => {
+            const storageId = `${entityId}_${kn.id}`;
+            const val = keyNumberValues[storageId];
+            
+            // Check implicit data (fallback)
+            let hasValue = val?.value && val.value.toString().trim() !== '';
+            let hasDoc = val?.documents && val.documents.length > 0;
+
+            const status = calculateComplianceStatus(
+                val?.expiryDate,
+                isMonitoringEnabled(kn),
+                getMaxReminderDays(kn),
+                !!val?.value, 
+                kn.hasExpiry,
+                kn.numberRequired ?? true
+            );
+
+            if (status === 'Missing') {
+                if (!hasValue && (kn.numberRequired !== false)) missingNumbers++;
+                else if (kn.documentRequired && !hasDoc) missingDocs++;
+                else missingNumbers++; // Fallback if logic unclear
+            }
+            else if (status === 'Expired') expired++;
+            else if (status === 'Expiring Soon') expiringSoon++;
+            else valid++;
+        });
+
+        return { missingNumbers, missingDocs, expired, expiringSoon, valid };
+    };    
+
+    // --- DATA PREPARATION ---
+
+    // 1. Compliance Groups (Filtered by Active Entity & Sub-Category)
     const complianceGroups = useMemo(() => {
-        const carrierNumbers = keyNumbers.filter(
-            (kn: KeyNumberConfig) => kn.entityType === 'Carrier' && kn.status === 'Active'
+        // Filter Key Numbers by Entity Type
+        const filteredNumbers = keyNumbers.filter(
+            (kn: KeyNumberConfig) => {
+                if (kn.entityType !== activeEntityFilter) return false;
+                if (kn.status !== 'Active') return false;
+                
+                // Sub-Category Filter (Note: KeyNumberTypes might not have explicit subCategory yet, so checks name or defaults)
+                if (activeSubCategory === 'ALL') return true;
+                if (activeSubCategory === 'CMV') return !kn.numberTypeName.includes('Non-CMV'); // Simple heuristic if data missing
+                if (activeSubCategory === 'NON_CMV') return kn.numberTypeName.includes('Non-CMV') || (kn.category as string) === 'Non-CMV';
+                return true;
+            }
         );
 
-        const grouped = carrierNumbers.reduce((acc, kn) => {
+        const grouped = filteredNumbers.reduce((acc, kn) => {
             const cat = kn.category || 'Other';
             if (!acc[cat]) acc[cat] = [];
             acc[cat].push(kn);
             return acc;
         }, {} as Record<string, KeyNumberConfig[]>);
-
+        
+        // ... (rest of logic unchanged)
+    
         return Object.entries(grouped).map(([category, items]) => ({
             key: category.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
             label: category.toUpperCase(),
             items: items.map(kn => {
-                const val = keyNumberValues[kn.id];
-                const hasValue = val?.value && val.value.trim() !== '';
+                // Use helper to get data (storage or fallback)
+                const val = getKeyNumberData(kn);
+
+                const hasValue = val?.value && val.value.toString().trim() !== ''; // Ensure string
                 const hasExpiry = val?.expiryDate && val.expiryDate.trim() !== '';
                 const hasDoc = val?.documents && val.documents.length > 0;
 
-                let status = 'Missing';
-                let docStatus = kn.documentRequired ? 'Missing' : 'N/A';
+                // Calculate status
+                const enabled = isMonitoringEnabled(kn);
+                const maxDays = getMaxReminderDays(kn);
+                
+                const status = calculateComplianceStatus(
+                    val?.expiryDate,
+                    enabled,
+                    maxDays,
+                    !!hasValue,
+                    kn.hasExpiry,
+                    kn.numberRequired ?? true
+                );
 
-                if (hasValue) {
-                    if (kn.hasExpiry && !hasExpiry) {
-                        status = 'Incomplete';
-                    } else {
-                        status = 'Active';
-                    }
-                }
+                let docStatus = kn.documentRequired ? 'Missing' : 'N/A';
                 if (hasDoc) docStatus = 'Uploaded';
 
+                // Calculate expiry display
                 let expiryDisplay = '-';
                 if (kn.hasExpiry) {
                     if (hasExpiry) {
-                        expiryDisplay = val.expiryDate!;
-                        const expiryDate = new Date(val.expiryDate!);
-                        const now = new Date();
-                        const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                        if (daysUntilExpiry < 0) {
-                            status = 'Expired';
-                        } else if (daysUntilExpiry <= 30) {
-                            status = 'Expiring Soon';
-                        }
+                        expiryDisplay = val?.expiryDate!;
                     } else {
                         expiryDisplay = 'Not set';
                     }
@@ -164,67 +449,90 @@ export const ComplianceDocumentsPage = () => {
                 return {
                     id: kn.id,
                     type: kn.numberTypeName,
-                    value: hasValue ? val.value : 'Not entered',
+                    value: hasValue ? val?.value : 'Not entered',
                     status,
                     expiry: expiryDisplay,
                     docStatus
                 };
             })
         }));
-    }, [keyNumbers, keyNumberValues]);
+    }, [keyNumbers, keyNumberValues, activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver]); // Added selectedDriver dependency
 
-    // 2. Carrier Documents
-    const carrierDocuments = useMemo(() => {
-        const carrierDocTypes = documents.filter((doc: DocumentType) => doc.relatedTo === 'carrier');
+    // 2. Documents (Filtered by Active Entity & Sub-Category)
+    const filteredDocuments = useMemo(() => {
+        // Filter Document Types by Entity Type
+        const filteredDocTypes = documents.filter((doc: DocumentType) => {
+             if (doc.relatedTo.toLowerCase() !== activeEntityFilter.toLowerCase()) return false;
+             
+             // Sub-Category Filter
+             if (activeSubCategory === 'ALL') return true;
+             // Check if doc explicit sub-category exists (mock check) or infer
+             // Assume 'category' or 'monitoringEnabled' etc. could be used, or just pass all for now if undefined
+             if (activeSubCategory === 'CMV') return !doc.name.includes('Non-CMV');
+             if (activeSubCategory === 'NON_CMV') return doc.name.includes('Non-CMV');
+             return true;
+        });
 
         const getLinkedKeyNumber = (docTypeId: string) => {
+// ...
+
             const kn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === docTypeId);
             return kn ? kn.numberTypeName : null;
         };
 
         const getDocStatus = (doc: DocumentType) => {
             const linkedKn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === doc.id);
+            // If linkedKn exists, we check its value.
             const knValue = linkedKn ? keyNumberValues[linkedKn.id] : null;
+
+            // If not key number linked, we'd check a generic document store (mocked here as "Not Uploaded" generally)
+            
             const hasUpload = knValue?.documents && knValue.documents.length > 0;
             const expiryStr = knValue?.expiryDate;
 
-            if (!hasUpload) {
-                if (doc.requirementLevel === 'required') return 'Missing';
-                return 'Not Uploaded';
-            }
+            // Determine which config to use for monitoring (KeyNumber or DocType)
+            const config = linkedKn || doc;
+            const enabled = isMonitoringEnabled(config);
+            const maxDays = getMaxReminderDays(config);
 
-            if (expiryStr) {
-                const expiry = new Date(expiryStr);
-                const now = new Date();
-                const daysUntil = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                if (daysUntil < 0) return 'Expired';
-                if (daysUntil <= 30) return 'Expiring Soon';
-            }
-            return 'Active';
+            const status = calculateComplianceStatus(
+                expiryStr,
+                enabled, 
+                maxDays,
+                !!hasUpload,
+                linkedKn ? linkedKn.hasExpiry : doc.expiryRequired,
+                doc.requirementLevel === 'required'
+            );
+
+            return status;
         };
 
-        return carrierDocTypes.map((doc: DocumentType) => {
+
+        return filteredDocTypes.map((doc: DocumentType) => {
             const linkedKn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === doc.id);
-            const knValue = linkedKn ? keyNumberValues[linkedKn.id] : null;
-            const uploadedDoc = knValue?.documents?.[0];
+            // Use composite lookup
+            const storageId = linkedKn ? getKeyNumberStorageId(linkedKn.id) : null;
+            const knValue = storageId ? keyNumberValues[storageId] : null;
+            const uploadedDoc = knValue?.documents?.[0]; // Mock: get first doc
 
             return {
                 id: doc.id,
                 documentType: doc.name,
-                documentName: uploadedDoc?.fileName || '—',
-                dateUploaded: uploadedDoc ? new Date().toLocaleDateString() : '—',
+                documentName: uploadedDoc?.fileName || (knValue?.documents?.length ? 'scanned_doc.pdf' : '—'),
+                dateUploaded: uploadedDoc ? (uploadedDoc.uploadDate || new Date().toLocaleDateString()) : (knValue?.documents?.length ? new Date().toLocaleDateString() : '—'),
                 status: getDocStatus(doc),
                 issueDate: knValue?.issueDate || '—',
                 expiryDate: knValue?.expiryDate || '—',
                 requirement: doc.requirementLevel || 'optional',
                 linkedKeyNumber: getLinkedKeyNumber(doc.id),
+                linkedExpense: INITIAL_EXPENSE_TYPES.find(e => e.documentTypeId === doc.id)?.name,
                 hasUpload: !!(knValue?.documents && knValue.documents.length > 0),
-                folderPath: doc.destination?.folderName || doc.destination?.root || '—',
+                folderPath: doc?.destination?.folderName || doc?.destination?.root || 'General',
                 docTypeData: doc,
                 uploadedDocData: uploadedDoc
             };
         });
-    }, [documents, keyNumbers, keyNumberValues]);
+    }, [documents, keyNumbers, keyNumberValues, activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver]); // Added selectedDriver dependency
 
     // --- FILTER LOGIC ---
     const filterComplianceItems = (items: any[]) => {
@@ -237,7 +545,7 @@ export const ComplianceDocumentsPage = () => {
         return items;
     };
 
-    const filterDocumentItems = (items: typeof carrierDocuments) => {
+    const filterDocumentItems = (items: typeof filteredDocuments) => {
         if (documentFilter === 'all') return items;
         if (documentFilter === 'required_missing') return items.filter(d => d.requirement === 'required' && !d.hasUpload);
         if (documentFilter === 'expiring_soon') return items.filter(d => d.status === 'Expiring Soon');
@@ -257,318 +565,789 @@ export const ComplianceDocumentsPage = () => {
     };
 
     const docCounts = {
-        requiredMissing: carrierDocuments.filter(d => d.requirement === 'required' && !d.hasUpload).length,
-        expiringSoon: carrierDocuments.filter(d => d.status === 'Expiring Soon').length,
-        expired: carrierDocuments.filter(d => d.status === 'Expired').length,
-        optionalMissing: carrierDocuments.filter(d => d.requirement === 'optional' && !d.hasUpload).length,
-        active: carrierDocuments.filter(d => d.status === 'Active').length
+        requiredMissing: filteredDocuments.filter(d => d.requirement === 'required' && !d.hasUpload).length,
+        expiringSoon: filteredDocuments.filter(d => d.status === 'Expiring Soon').length,
+        expired: filteredDocuments.filter(d => d.status === 'Expired').length,
+        optionalMissing: filteredDocuments.filter(d => d.requirement === 'optional' && !d.hasUpload).length,
+        active: filteredDocuments.filter(d => d.status === 'Active').length
     };
 
-    const tabs = [
-        { id: 'compliance', label: 'Carrier Compliance' },
-        { id: 'documents', label: 'Documents' }
+    const tabs = [ { id: 'compliance', label: 'Compliance' }, { id: 'documents', label: 'Documents' } ];
+    const entityTabs = [
+        { id: 'Carrier', label: 'Carrier', icon: LayoutGrid },
+        { id: 'Asset', label: 'Asset', icon: Truck },
+        { id: 'Driver', label: 'Driver', icon: User }
     ];
 
     return (
         <div className="flex-1 p-4 lg:p-6 overflow-x-hidden bg-slate-50 min-h-screen">
-             {/* Header Area matching Profile Page */}
-             <div className="mb-6">
-                <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
-                    <Building2 className="w-4 h-4" />
-                    <span>Dashboard</span>
-                    <span className="text-slate-300">/</span>
-                    <span className="font-semibold text-slate-900">Compliance & Documents</span>
+                {/* Unified Dynamic Header */}
+                 <div className="mb-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold text-slate-900">
+                                {activeEntityFilter === 'Carrier' ? 'Carrier Compliance' : 
+                                 activeEntityFilter === 'Asset' ? 'Assets' : 'Drivers'}
+                            </h1>
+                            <p className="text-slate-500 mt-1">
+                                {activeEntityFilter === 'Carrier' ? 'Manage company-level documents, licenses and permits.' : 
+                                 activeEntityFilter === 'Asset' ? 'Manage vehicle compliance, documentation and status.' : 
+                                 'Manage driver qualification files, licenses and certifications.'}
+                            </p>
+                        </div>
+                        {(activeEntityFilter === 'Carrier' || selectedAsset || selectedDriver) && (
+                            <div className="flex bg-slate-100 p-1 rounded-lg self-start md:self-auto">
+                                {tabs.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id as any)}
+                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                                            activeTab === tab.id
+                                                ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
 
-            {/* Tab Navigation */}
-            <div className="border-b border-slate-200 mb-6 overflow-x-auto scrollbar-hide">
-                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                    {tabs.map((tab) => (
+            {/* Entity Filter Sub-Tabs (Always Visible to allow switching) */}
+            <div className="flex items-center gap-8 border-b border-slate-200 mb-6">
+                {entityTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeEntityFilter === tab.id;
+                    return (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
+                            onClick={() => setActiveEntityFilter(tab.id as any)}
                             className={`
-                                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                                ${activeTab === tab.id
+                                flex items-center gap-2 pb-4 border-b-2 font-medium transition-colors
+                                ${isActive
                                     ? 'border-blue-600 text-blue-600'
                                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
                             `}
                         >
-                            {tab.label}
+                            <Icon className="w-5 h-5" />
+                            <span>{tab.label}</span>
                         </button>
-                    ))}
-                </nav>
+                    );
+                })}
             </div>
+
+            {/* Sub-Category Toggle (Driver Only - Asset moved to Toolbar) */}
+
 
             {/* Tab Content */}
             <div className="mt-6">
-                {activeTab === 'compliance' && (
-                    <div className="w-full space-y-6">
-                         {/* COMPLIANCE INDICATORS */}
-                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                            <button onClick={() => setComplianceFilter('missing_number')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${complianceFilter === 'missing_number' ? 'ring-1 ring-red-500 border-l-red-500' : 'border-l-red-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-red-50 text-red-600"><Hash className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Missing<br />Number</span>
+                
+                {/* 1. ASSET LIST VIEW (If Asset Filter + No Selection) */}
+                {activeEntityFilter === 'Asset' && !selectedAsset && (
+                     <div className="w-full space-y-6">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                            {/* Toolbar */}
+                            <div className="p-4 border-b border-slate-200 flex flex-col lg:flex-row gap-4 justify-between items-center">
+                                <div className="relative w-full lg:w-96">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <Search className="h-4 w-4 text-slate-400" />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Search by Unit #, VIN or Type..."
+                                        value={searchQuery}
+                                        onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                                    />
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{counts.missingNumber}</div>
-                            </button>
-                            <button onClick={() => setComplianceFilter('missing_expiry')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${complianceFilter === 'missing_expiry' ? 'ring-1 ring-orange-400 border-l-orange-400' : 'border-l-orange-400 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-orange-50 text-orange-600"><CalendarX className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Missing<br />Expiry</span>
+                                
+                                <div className="flex items-center gap-3 w-full lg:w-auto">
+                                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                                        {(['ALL', 'CMV', 'NON_CMV'] as const).map((cat) => (
+                                            <button
+                                                key={cat}
+                                                onClick={() => { setActiveSubCategory(cat); setCurrentPage(1); }}
+                                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                                                    activeSubCategory === cat
+                                                        ? 'bg-white text-slate-900 shadow-sm'
+                                                        : 'text-slate-500 hover:text-slate-700'
+                                                }`}
+                                            >
+                                                {cat === 'ALL' ? 'All Assets' : cat === 'NON_CMV' ? 'Trailers (Non-CMV)' : 'Trucks (CMV)'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    
+                                    <div className="h-8 w-px bg-slate-200 ml-1"></div>
+                                    
+                                    <button className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
+                                        <Filter className="w-4 h-4" />
+                                        Filter
+                                    </button>
+                                    
+                                    <button 
+                                        onClick={() => { setEditingAsset(null); setIsAssetModalOpen(true); }}
+                                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                        Add Asset
+                                    </button>
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{counts.missingExpiry}</div>
-                            </button>
-                            <button onClick={() => setComplianceFilter('missing_doc')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${complianceFilter === 'missing_doc' ? 'ring-1 ring-orange-500 border-l-orange-500' : 'border-l-orange-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-orange-50 text-orange-600"><FileWarning className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Missing<br />Doc</span>
-                                </div>
-                                <div className="text-lg font-bold text-slate-900">{counts.missingDoc}</div>
-                            </button>
-                            <button onClick={() => setComplianceFilter('expiring_soon')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${complianceFilter === 'expiring_soon' ? 'ring-1 ring-yellow-500 border-l-yellow-500' : 'border-l-yellow-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-yellow-50 text-yellow-600"><Clock className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Expiring<br />Soon</span>
-                                </div>
-                                <div className="text-lg font-bold text-slate-900">{counts.expiringSoon}</div>
-                            </button>
-                            <button onClick={() => setComplianceFilter('expired')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${complianceFilter === 'expired' ? 'ring-1 ring-red-600 border-l-red-600' : 'border-l-red-600 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-red-50 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Expired</span>
-                                </div>
-                                <div className="text-lg font-bold text-slate-900">{counts.expired}</div>
-                            </button>
-                        </div>
-                        
-                        {complianceFilter !== 'all' && (
-                            <div className="flex justify-end">
-                                <button onClick={() => setComplianceFilter('all')} className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
-                                    <X className="w-3 h-3" /> Clear Filter
-                                </button>
                             </div>
-                        )}
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 p-4 bg-slate-50 border-b border-slate-200">
+                                <ComplianceStatsButton 
+                                    icon={LayoutGrid} 
+                                    label={<>Total<br />Assets</>} 
+                                    count={assetStats.total} 
+                                    isActive={assetStatusFilter === 'ALL'} 
+                                    color="blue" 
+                                    onClick={() => setAssetStatusFilter('ALL')} 
+                                />
+                                <ComplianceStatsButton 
+                                    icon={Check} 
+                                    label={<>Active<br />Assets</>} 
+                                    count={assetStats.active} 
+                                    isActive={assetStatusFilter === 'Active'} 
+                                    color="blue" 
+                                    onClick={() => setAssetStatusFilter('Active')} 
+                                />
+                                <ComplianceStatsButton 
+                                    icon={RotateCcw} 
+                                    label={<>In<br />Maintenance</>} 
+                                    count={assetStats.maintenance} 
+                                    isActive={assetStatusFilter === 'Maintenance'} 
+                                    color="orange" 
+                                    onClick={() => setAssetStatusFilter('Maintenance')} 
+                                />
+                                <ComplianceStatsButton 
+                                    icon={AlertCircle} 
+                                    label={<>Out of<br />Service</>} 
+                                    count={assetStats.outOfService} 
+                                    isActive={assetStatusFilter === 'OutOfService'} 
+                                    color="yellow" 
+                                    onClick={() => setAssetStatusFilter('OutOfService')} 
+                                />
+                                <ComplianceStatsButton 
+                                    icon={XCircle} 
+                                    label={<>Deactivated<br />Assets</>} 
+                                    count={assetStats.deactivated} 
+                                    isActive={assetStatusFilter === 'Deactivated'} 
+                                    color="red" 
+                                    onClick={() => setAssetStatusFilter('Deactivated')} 
+                                />
+                            </div>
 
-                        <Card
-                            title="Key Numbers"
-                            icon={FileKey}
-                            fullWidth
-                            rightAction={
-                                <button
-                                    onClick={() => setKeyNumberModalMode('add')}
-                                    className="px-3 py-1.5 text-sm font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1.5"
-                                >
-                                    <Plus className="w-4 h-4" /> Add Number
-                                </button>
-                            }
-                        >
-                             <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                            <div className="overflow-x-auto">
                                 <table className="w-full text-left text-sm table-fixed">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky top-0">
+                                    <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider">
                                         <tr>
-                                            <th className="px-6 py-3 w-1/4">Number Type</th>
-                                            <th className="px-6 py-3 w-1/4">Value</th>
-                                            <th className="px-6 py-3 w-1/4">Status</th>
-                                            <th className="px-6 py-3 w-1/4">Expiry</th>
-                                            <th className="px-6 py-3 w-24 text-right">Actions</th>
+                                            <th className="px-6 py-4 w-[12%]">Unit #</th>
+                                            <th className="px-6 py-4 w-[18%]">VIN</th>
+                                            <th className="px-6 py-4 w-[10%]">Type</th>
+                                            <th className="px-6 py-4 w-[25%]">Compliance Status</th>
+                                            <th className="px-6 py-4 w-[15%]">Vehicle Status</th>
+                                            <th className="px-6 py-4 w-[10%] text-right">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {complianceGroups.map(group => {
-                                            const isCollapsed = keyNumberGroupsCollapsed[group.key] ?? false;
-                                            const visibleItems = filterComplianceItems(group.items);
-                                            if (complianceFilter !== 'all' && visibleItems.length === 0) return null;
+                                    <tbody className="divide-y divide-slate-100/50">
+                                        {(() => {
+                                            // Pagination Logic
+                                            const totalItems = filteredAssetsList.length;
+                                            const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+                                            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+                                            const endIndex = startIndex + ITEMS_PER_PAGE;
+                                            const currentAssets = filteredAssetsList.slice(startIndex, endIndex);
+
+                                            if (totalItems === 0) {
+                                                return (
+                                                    <tr>
+                                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                                            No assets found matching your search.
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            }
 
                                             return (
-                                                <React.Fragment key={group.key}>
-                                                    <tr className="bg-slate-100/50 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => toggleKeyNumberGroup(group.key)}>
-                                                        <td colSpan={5} className="px-6 py-2.5">
+                                                <>
+                                                    {currentAssets.map((asset: Asset) => {
+                                                        const stats = getComplianceSummary(asset.id, 'Asset', asset.assetCategory); 
+                                                        return (
+                                                        <tr key={asset.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer group" onClick={() => setSelectedAsset(asset)}>
+                                                            <td className="px-6 py-6 font-bold text-slate-900">{asset.unitNumber}</td>
+                                                            <td className="px-6 py-6 text-slate-500 font-mono text-xs">{asset.vin}</td>
+                                                            <td className="px-6 py-6 text-slate-600">{asset.assetType}</td>
+                                                            <td className="px-6 py-6">
+                                                                <div className="flex gap-1 flex-wrap">
+                                                                    {stats.missingNumbers > 0 && <span className="px-3 py-1.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">{stats.missingNumbers} No. Missing</span>}
+                                                                    {stats.missingDocs > 0 && <span className="px-3 py-1.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">{stats.missingDocs} Doc. Missing</span>}
+                                                                    {stats.expired > 0 && <span className="px-3 py-1.5 rounded bg-orange-50 text-orange-600 text-[11px] font-bold">{stats.expired} Expired</span>}
+                                                                    {stats.expiringSoon > 0 && <span className="px-3 py-1.5 rounded bg-yellow-50 text-yellow-700 text-[11px] font-bold">{stats.expiringSoon} Soon</span>}
+                                                                    {stats.missingNumbers === 0 && stats.missingDocs === 0 && stats.expired === 0 && stats.expiringSoon === 0 && <span className="px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-[11px] font-bold">OK</span>}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-6">
+                                                                <Badge 
+                                                                    text={asset.operationalStatus} 
+                                                                    tone={asset.operationalStatus === 'Active' ? 'success' : asset.operationalStatus === 'Maintenance' ? 'warning' : 'gray'} 
+                                                                    className="rounded-full px-3 py-1"
+                                                                />
+                                                            </td>
+                                                            <td className="px-6 py-6 text-right">
+                                                                <button 
+                                                                    onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); }}
+                                                                    className="text-blue-600 hover:text-blue-800 font-semibold text-sm hover:underline"
+                                                                >
+                                                                    Manage
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    )})}
+                                                    
+                                                    {/* Footer / Pagination */}
+                                                    <tr className="border-t border-slate-100">
+                                                        <td colSpan={6} className="px-6 py-4">
                                                             <div className="flex items-center justify-between">
-                                                                <span className="font-bold text-xs uppercase text-slate-500 tracking-wider pl-2">{group.label}</span>
-                                                                <div className="flex items-center gap-3">
-                                                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                                                                <div className="text-sm text-slate-500">
+                                                                    Showing <span className="font-semibold text-slate-900">{startIndex + 1}</span> to <span className="font-semibold text-slate-900">{Math.min(endIndex, totalItems)}</span> of <span className="font-semibold text-slate-900">{totalItems}</span> results
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.max(1, p - 1)); }}
+                                                                        disabled={currentPage === 1}
+                                                                        className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                                    >
+                                                                        Previous
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(totalPages, p + 1)); }}
+                                                                        disabled={currentPage === totalPages}
+                                                                        className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                                    >
+                                                                        Next
+                                                                    </button>
                                                                 </div>
                                                             </div>
                                                         </td>
                                                     </tr>
-                                                    {!isCollapsed && visibleItems.map((item, idx) => (
-                                                        <tr key={idx}>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 truncate">{item.type}</td>
-                                                            <td className="px-6 py-4 text-slate-400 italic">{item.value}</td>
-                                                            <td className="px-6 py-4">
-                                                                <Badge text={item.status} tone={getStatusTone(item.status)} />
-                                                            </td>
-                                                            <td className="px-6 py-4 text-slate-500 italic">{item.expiry}</td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        const config = keyNumbers.find((kn: KeyNumberConfig) => kn.id === item.id);
-                                                                        const val = keyNumberValues[item.id];
-                                                                        const linkedDocType = config?.requiredDocumentTypeId ? getDocumentTypeById(config.requiredDocumentTypeId) : undefined;
-                                                                        setKeyNumberModalMode('edit');
-                                                                        setEditingKeyNumber({
-                                                                            id: item.id,
-                                                                            configId: item.id,
-                                                                            value: val?.value || '',
-                                                                            expiryDate: val?.expiryDate || '',
-                                                                            issueDate: val?.issueDate || '',
-                                                                            tags: val?.tags || [],
-                                                                            documents: val?.documents || [],
-                                                                            numberRequired: config?.numberRequired !== false,
-                                                                            hasExpiry: config?.hasExpiry || false,
-                                                                            documentRequired: config?.documentRequired || false,
-                                                                            requiredDocumentTypeId: config?.requiredDocumentTypeId,
-                                                                            linkedDocumentType: linkedDocType
-                                                                        });
-                                                                    }}
-                                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                                >
-                                                                    <Edit3 className="w-4 h-4" />
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </React.Fragment>
+                                                </>
                                             );
-                                        })}
+                                        })()}
                                     </tbody>
                                 </table>
                             </div>
-                        </Card>
-                    </div>
+                        </div>
+                     </div>
                 )}
 
-                {activeTab === 'documents' && (
-                    <div className="w-full space-y-6">
-                        {/* DOCUMENT FILTER INDICATORS */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                            <button onClick={() => setDocumentFilter('required_missing')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${documentFilter === 'required_missing' ? 'ring-1 ring-red-500 border-l-red-500' : 'border-l-red-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-red-50 text-red-600"><AlertTriangle className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Required<br />Missing</span>
+                {/* 2. DRIVER LIST VIEW (Refactored) */}
+                {activeEntityFilter === 'Driver' && !selectedDriver && (
+                     <div className="w-full space-y-6">
+                        {/* DRIVER STATUS CARDS */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <button onClick={() => setDriverStatusFilter('All')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'All' ? 'ring-1 ring-blue-500 border-l-blue-500' : 'border-l-blue-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-blue-50 text-blue-600"><Users className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Drivers</span>
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{docCounts.requiredMissing}</div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.total}</div>
                             </button>
-                            <button onClick={() => setDocumentFilter('expiring_soon')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${documentFilter === 'expiring_soon' ? 'ring-1 ring-yellow-500 border-l-yellow-500' : 'border-l-yellow-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-yellow-50 text-yellow-600"><Clock className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Expiring<br />Soon</span>
+                            <button onClick={() => setDriverStatusFilter('Active')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Active' ? 'ring-1 ring-emerald-500 border-l-emerald-500' : 'border-l-emerald-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-emerald-50 text-emerald-600"><UserCheck className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Active<br />Drivers</span>
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{docCounts.expiringSoon}</div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.active}</div>
                             </button>
-                            <button onClick={() => setDocumentFilter('expired')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${documentFilter === 'expired' ? 'ring-1 ring-red-600 border-l-red-600' : 'border-l-red-600 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-red-50 text-red-600"><CalendarX className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Expired</span>
+                            <button onClick={() => setDriverStatusFilter('Inactive')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Inactive' ? 'ring-1 ring-slate-500 border-l-slate-500' : 'border-l-slate-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-slate-100 text-slate-600"><UserMinus className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Inactive<br />Drivers</span>
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{docCounts.expired}</div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.inactive}</div>
                             </button>
-                            <button onClick={() => setDocumentFilter('optional_missing')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${documentFilter === 'optional_missing' ? 'ring-1 ring-orange-400 border-l-orange-400' : 'border-l-orange-400 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-orange-50 text-orange-600"><FileWarning className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Optional<br />Missing</span>
+                            <button onClick={() => setDriverStatusFilter('On Leave')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'On Leave' ? 'ring-1 ring-amber-500 border-l-amber-500' : 'border-l-amber-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-amber-50 text-amber-600"><Clock className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">On<br />Leave</span>
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{docCounts.optionalMissing}</div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.onLeave}</div>
                             </button>
-                             <button onClick={() => setDocumentFilter('active')} className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${documentFilter === 'active' ? 'ring-1 ring-green-500 border-l-green-500' : 'border-l-green-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 rounded-full bg-green-50 text-green-600"><ShieldCheck className="w-3.5 h-3.5" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">Active</span>
+                            <button onClick={() => setDriverStatusFilter('Terminated')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Terminated' ? 'ring-1 ring-red-500 border-l-red-500' : 'border-l-red-500 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-red-50 text-red-600"><UserX className="w-4 h-4" /></div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Terminated<br />Drivers</span>
                                 </div>
-                                <div className="text-lg font-bold text-slate-900">{docCounts.active}</div>
+                                <div className="text-xl font-bold text-slate-900">{driverStats.terminated}</div>
                             </button>
                         </div>
 
-                         {documentFilter !== 'all' && (
-                            <div className="flex justify-end">
-                                <button onClick={() => setDocumentFilter('all')} className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
-                                    <X className="w-3 h-3" /> Clear Filter
+                        {/* TOOLBAR */}
+                        <div className="flex flex-col sm:flex-row justify-between gap-4">
+                            <div className="relative max-w-md w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search drivers by name, ID, or email..."
+                                    value={driverSearch}
+                                    onChange={(e) => setDriverSearch(e.target.value)}
+                                    className="pl-9 pr-4 h-10 w-full rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center gap-2">
+                                    <Download className="w-4 h-4" /> Export
+                                </button>
+                                <button className="h-10 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                                    <Plus className="w-4 h-4" /> Add Driver
                                 </button>
                             </div>
-                        )}
+                        </div>
 
-                        <Card title="Carrier Documents" icon={FileText} fullWidth>
-                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky top-0">
+                        {/* DRIVER TABLE */}
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm whitespace-nowrap">
+                                    <thead className="bg-slate-50/80 border-b border-slate-200">
                                         <tr>
-                                            <th className="px-4 py-3">Document Type</th>
-                                            <th className="px-4 py-3">Document Name</th>
-                                            <th className="px-4 py-3">Folder</th>
-                                            <th className="px-4 py-3">Date Uploaded</th>
-                                            <th className="px-4 py-3">Status</th>
-                                            <th className="px-4 py-3">Issue Date</th>
-                                            <th className="px-4 py-3">Expiry Date</th>
-                                            <th className="px-4 py-3 text-center w-24">Actions</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider pl-6">Driver Name</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">ID / Details</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">License</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {filterDocumentItems(carrierDocuments).map((doc) => (
-                                            <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-4">
-                                                    <div>
-                                                        <div className="font-medium text-slate-900">{doc.documentType}</div>
-                                                        {doc.linkedKeyNumber && (
-                                                            <div className="text-xs text-blue-600 mt-0.5 flex items-center gap-1">
-                                                                <FileKey className="w-3 h-3" /> Related to: {doc.linkedKeyNumber}
+                                    <tbody className="divide-y divide-slate-50">
+                                        {filteredDriversList.length > 0 ? (
+                                            filteredDriversList.map((driver) => {
+                                                const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
+                                                const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
+                                                const isCompliant = totalIssues === 0 && stats.expiring === 0;
+
+                                                return (
+                                                    <tr key={driver.id} onClick={() => setSelectedDriver(driver)} className="hover:bg-blue-50/40 transition-colors group cursor-pointer">
+                                                        <td className="px-4 py-3 pl-6">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200">
+                                                                    {driver.avatarInitials}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{driver.name}</div>
+                                                                    <div className="text-[11px] text-slate-500 flex items-center gap-1">Hired: {driver.hiredDate}</div>
+                                                                </div>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4 text-slate-700">{doc.documentName}</td>
-                                                <td className="px-4 py-4 text-slate-500 text-xs">{doc.folderPath}</td>
-                                                <td className="px-4 py-4 text-slate-500">{doc.dateUploaded}</td>
-                                                <td className="px-4 py-4">
-                                                    <Badge text={doc.status} tone={getStatusTone(doc.status)} />
-                                                </td>
-                                                <td className="px-4 py-4 text-slate-500">{doc.issueDate}</td>
-                                                <td className="px-4 py-4">
-                                                    {doc.status === 'Expiring Soon' || doc.status === 'Expired' ? (
-                                                        <span className={doc.status === 'Expired' ? 'text-red-600 font-medium' : 'text-yellow-600 font-medium'}>
-                                                            {doc.expiryDate}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-slate-500">{doc.expiryDate}</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-4">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        {doc.hasUpload && (
-                                                            <button
-                                                                onClick={() => setViewingDocument(doc)}
-                                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                                title="View Document"
-                                                            >
-                                                                <FileDown className="w-4 h-4" />
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => setEditingDocument(doc)}
-                                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                            title="Edit"
-                                                        >
-                                                            <Edit3 className="w-4 h-4" />
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded w-fit">
+                                                                {driver.id}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <Badge 
+                                                                text={driver.status} 
+                                                                tone={
+                                                                    driver.status === 'Active' ? 'success' : 
+                                                                    driver.status === 'Inactive' ? 'gray' : 
+                                                                    driver.status === 'Terminated' ? 'danger' : 'warning'
+                                                                } 
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {isCompliant ? (
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded w-fit">
+                                                                        <Check className="w-3 h-3" /> Compliant
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex flex-col gap-1 items-start">
+                                                                    {stats.expired > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 bg-red-50 px-2 py-1 rounded">
+                                                                            {stats.expired} Expired
+                                                                        </span>
+                                                                    )}
+                                                                    {(stats.missingNumber + stats.missingExpiry + stats.missingDoc) > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-red-600 bg-red-50 px-2 py-1 rounded">
+                                                                            {stats.missingNumber + stats.missingExpiry + stats.missingDoc} Missing
+                                                                        </span>
+                                                                    )}
+                                                                    {stats.expiring > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                                                            {stats.expiring} Expiring
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="text-slate-900 font-medium text-xs">{driver.licenseNumber || '—'}</div>
+                                                            <div className="text-[11px] text-slate-500 mt-0.5">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                                            <div className="flex flex-col gap-0.5">
+                                                                // Mock phone/email data from driver object if available
+                                                                <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                                                    {driver.phone || '(555) 000-0000'}
+                                                                </span>
+                                                                <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                                                     {driver.email || 'driver@example.com'}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right pr-6">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button onClick={(e) => { e.stopPropagation(); setSelectedDriver(driver); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Manage Driver">
+                                                                    <div className="font-semibold text-xs text-blue-600 hover:underline">Manage</div>
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={7} className="py-20 text-center">
+                                                    <div className="flex flex-col items-center gap-3">
+                                                        <div className="p-4 bg-slate-50 rounded-full text-slate-300">
+                                                            <Search className="w-8 h-8" />
+                                                        </div>
+                                                        <p className="text-slate-500 font-medium">No drivers found matching your filter</p>
+                                                        <button onClick={() => { setDriverSearch(''); setDriverStatusFilter('All'); }} className="text-sm text-blue-600 hover:underline">
+                                                            Clear filters
                                                         </button>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {filterDocumentItems(carrierDocuments).length === 0 && (
-                                            <tr>
-                                                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                                                    No documents match the current filter
                                                 </td>
                                             </tr>
                                         )}
                                     </tbody>
                                 </table>
                             </div>
-                        </Card>
-                    </div>
+                            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
+                                <div className="text-xs text-slate-500">
+                                    Showing <span className="font-medium text-slate-900">{filteredDriversList.length}</span> of <span className="font-medium text-slate-900">{MOCK_DRIVERS.length}</span> drivers
+                                </div>
+                                <div className="flex gap-2">
+                                    <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Previous</button>
+                                    <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Next</button>
+                                </div>
+                            </div>
+                        </div>
+                     </div>
                 )}
+
+
+
+                {/* 4. DETAIL VIEW (Carrier OR Selected Asset OR Selected Driver) */}
+                {(activeEntityFilter === 'Carrier' || selectedAsset || selectedDriver) && (
+                    <>
+                        {/* Selected Entity Header (Asset) */}
+                        {selectedAsset && (
+                            <div className="flex items-center gap-4 mb-4">
+                                <button onClick={() => setSelectedAsset(null)} className="text-slate-500 hover:text-slate-700 flex items-center gap-1 text-sm font-medium">
+                                    <ChevronDown className="w-4 h-4 rotate-90" /> Back to List
+                                </button>
+                                <div className="h-6 w-px bg-slate-300"></div>
+                                <h2 className="text-xl font-bold text-slate-900">
+                                    {selectedAsset.unitNumber} ({selectedAsset.vin})
+                                </h2>
+                            </div>
+                        )}
+                        {/* Selected Entity Header (Driver) */}
+                        {selectedDriver && (
+                            <div className="flex items-center gap-4 mb-4">
+                                <button onClick={() => setSelectedDriver(null)} className="text-slate-500 hover:text-slate-700 flex items-center gap-1 text-sm font-medium">
+                                    <ChevronDown className="w-4 h-4 rotate-90" /> Back to List
+                                </button>
+                                <div className="h-6 w-px bg-slate-300"></div>
+                                <h2 className="text-xl font-bold text-slate-900">
+                                    {selectedDriver.name}
+                                </h2>
+                            </div>
+                        )}
+
+
+
+                        {/* COMPLIANCE TAB CONTENT */}
+                        {activeTab === 'compliance' && (
+                            <div className="w-full space-y-6">
+                                {/* INDICATORS */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                                    <ComplianceStatsButton 
+                                        icon={Hash} 
+                                        label={<>Missing<br />Number</>} 
+                                        count={counts.missingNumber} 
+                                        isActive={complianceFilter === 'missing_number'} 
+                                        color="red" 
+                                        onClick={() => setComplianceFilter('missing_number')} 
+                                    />
+                                    <ComplianceStatsButton 
+                                        icon={CalendarX} 
+                                        label={<>Missing<br />Expiry</>} 
+                                        count={counts.missingExpiry} 
+                                        isActive={complianceFilter === 'missing_expiry'} 
+                                        color="orange" 
+                                        onClick={() => setComplianceFilter('missing_expiry')} 
+                                    />
+                                    <ComplianceStatsButton 
+                                        icon={FileWarning} 
+                                        label={<>Missing<br />Doc</>} 
+                                        count={counts.missingDoc} 
+                                        isActive={complianceFilter === 'missing_doc'} 
+                                        color="orange" 
+                                        onClick={() => setComplianceFilter('missing_doc')} 
+                                    />
+                                    <ComplianceStatsButton 
+                                        icon={Clock} 
+                                        label={<>Expiring<br />Soon</>} 
+                                        count={counts.expiringSoon} 
+                                        isActive={complianceFilter === 'expiring_soon'} 
+                                        color="yellow" 
+                                        onClick={() => setComplianceFilter('expiring_soon')} 
+                                    />
+                                    <ComplianceStatsButton 
+                                        icon={AlertTriangle} 
+                                        label={<>Expired</>} 
+                                        count={counts.expired} 
+                                        isActive={complianceFilter === 'expired'} 
+                                        color="red" 
+                                        onClick={() => setComplianceFilter('expired')} 
+                                    />
+                                </div>
+                                <div className="flex justify-end">
+                                    {complianceFilter !== 'all' && (
+                                        <button onClick={() => setComplianceFilter('all')} className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
+                                            <X className="w-3 h-3" /> Clear Filter
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* KEY NUMBERS CARD */}
+                                <Card
+                                    title="Key Numbers"
+                                    icon={FileKey}
+                                    fullWidth
+                                    rightAction={
+                                        <button
+                                            onClick={() => setKeyNumberModalMode('add')}
+                                            className="px-3 py-1.5 text-sm font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                                        >
+                                            <Plus className="w-4 h-4" /> Add Number
+                                        </button>
+                                    }
+                                >
+                                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                        <table className="w-full text-left text-sm table-fixed">
+                                            <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
+                                                <tr>
+                                                    <th className="px-6 py-3 w-1/4">Number Type</th>
+                                                    <th className="px-6 py-3 w-1/4">Value</th>
+                                                    <th className="px-6 py-3 w-1/4">Status</th>
+                                                    <th className="px-6 py-3 w-1/4">Expiry</th>
+                                                    <th className="px-6 py-3 w-24 text-right">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {complianceGroups.map(group => {
+                                                    const isCollapsed = keyNumberGroupsCollapsed[group.key] ?? false;
+                                                    const visibleItems = filterComplianceItems(group.items);
+                                                    if (complianceFilter !== 'all' && visibleItems.length === 0) return null;
+        
+                                                    return (
+                                                        <React.Fragment key={group.key}>
+                                                            <tr className="bg-slate-50/50 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-100" onClick={() => toggleKeyNumberGroup(group.key)}>
+                                                                <td colSpan={5} className="px-6 py-2.5">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="font-bold text-xs uppercase text-slate-500 tracking-wider pl-2">{group.label}</span>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                            {!isCollapsed && visibleItems.map((item, idx) => {
+                                                                const config = keyNumbers.find((kn: KeyNumberConfig) => kn.id === item.id);
+                                                                const val = config ? getKeyNumberData(config) : null;
+                                                                return (
+                                                                <tr key={idx}>
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="font-semibold text-slate-900 truncate">{item.type}</div>
+                                                                        {(() => {
+                                                                            const docType = documents.find(d => d.id === config?.requiredDocumentTypeId);
+                                                                            if (docType) {
+                                                                                return (
+                                                                                    <div className="text-xs text-blue-600 flex items-center gap-1 mt-0.5 font-normal">
+                                                                                        <FileText className="w-3 h-3" />
+                                                                                        Linked to: {docType.name}
+                                                                                    </div>
+                                                                                );
+                                                                            }
+                                                                            return null;
+                                                                        })()}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-slate-400 italic">{item.value}</td>
+                                                                    <td className="px-6 py-4">
+                                                                        <Badge text={item.status} tone={getStatusTone(item.status)} />
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-slate-500 italic">{item.expiry}</td>
+                                                                    <td className="px-6 py-4 text-right">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setKeyNumberModalMode('edit');
+                                                                                setEditingKeyNumber({
+                                                                                    id: item.id,
+                                                                                    configId: item.id,
+                                                                                    value: val?.value || '',
+                                                                                    expiryDate: val?.expiryDate || '',
+                                                                                    issueDate: val?.issueDate || '',
+                                                                                    tags: val?.tags || [],
+                                                                                    numberRequired: config?.numberRequired !== false,
+                                                                                    hasExpiry: config?.hasExpiry || false,
+                                                                                    documentRequired: config?.documentRequired || false
+                                                                                });
+                                                                            }}
+                                                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                                        >
+                                                                            <Edit3 className="w-4 h-4" />
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            )})}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Card>
+                            </div>
+                        )}
+
+                        {/* DOCUMENTS TAB CONTENT */}
+                        {activeTab === 'documents' && (
+                            <div className="w-full space-y-6">
+                                {/* DOCUMENT FILTER INDICATORS */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                                    <ComplianceStatsButton 
+                                        icon={FileText} 
+                                        label={<>Missing<br />Required</>} 
+                                        count={docCounts.requiredMissing} 
+                                        isActive={documentFilter === 'required_missing'} 
+                                        color="red" 
+                                        onClick={() => setDocumentFilter('required_missing')} 
+                                    />
+                                    <ComplianceStatsButton 
+                                        icon={Clock} 
+                                        label={<>Expiring<br />Soon</>} 
+                                        count={docCounts.expiringSoon} 
+                                        isActive={documentFilter === 'expiring_soon'} 
+                                        color="yellow" 
+                                        onClick={() => setDocumentFilter('expiring_soon')} 
+                                    />
+                                    <ComplianceStatsButton 
+                                        icon={AlertTriangle} 
+                                        label={<>Expired</>} 
+                                        count={docCounts.expired} 
+                                        isActive={documentFilter === 'expired'} 
+                                        color="red" 
+                                        onClick={() => setDocumentFilter('expired')} 
+                                    />
+                                </div>
+                                
+                                {documentFilter !== 'all' && (
+                                    <div className="flex justify-end">
+                                        <button onClick={() => setDocumentFilter('all')} className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1">
+                                            <X className="w-3 h-3" /> Clear Filter
+                                        </button>
+                                    </div>
+                                )}
+        
+                                <Card title="Documents" icon={FileText} fullWidth>
+                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                        <table className="w-full text-left text-sm table-fixed">
+                                            <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
+                                            <tr>
+                                                    <th className="px-6 py-3 w-[15%]">Document Type</th>
+                                                    <th className="px-6 py-3 w-[15%]">Name</th>
+                                                    <th className="px-6 py-3 w-[10%]">Folder</th>
+                                                    <th className="px-6 py-3 w-[10%]">Date Uploaded</th>
+                                                    <th className="px-6 py-3 w-[10%]">Status</th>
+                                                    <th className="px-6 py-3 w-[12%]">Expiry</th>
+                                                    <th className="px-6 py-3 w-[10%] text-right">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filterDocumentItems(filteredDocuments).map((doc, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100/50">
+                                                        <td className="px-6 py-4 font-semibold text-slate-900">
+                                                            <div className="flex items-center gap-2">
+                                                                <FileText className="w-4 h-4 text-slate-400" />
+                                                                {doc.documentType}
+                                                            </div>
+                                                            {doc.linkedKeyNumber && (
+                                                                <div className="ml-6 text-xs text-blue-600 flex items-center gap-1 mt-1 font-normal">
+                                                                    Linked to: {doc.linkedKeyNumber}
+                                                                </div>
+                                                            )}
+                                                            {doc.linkedExpense && (
+                                                                <div className="ml-6 text-xs text-emerald-600 flex items-center gap-1 mt-1 font-normal">
+                                                                    Linked to Expense: {doc.linkedExpense}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-slate-600 font-medium text-xs truncate max-w-[150px]" title={doc.documentName}>
+                                                            {doc.documentName}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-slate-500 text-xs">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className="p-1 bg-slate-100 rounded text-slate-400">
+                                                                    <LayoutGrid className="w-3 h-3" />
+                                                                </div>
+                                                                {doc.folderPath}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-slate-500 font-mono text-xs">
+                                                            {doc.dateUploaded}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <Badge text={doc.status} tone={getStatusTone(doc.status)} />
+                                                        </td>
+                                                        <td className="px-6 py-4 text-slate-500 font-mono text-xs">{doc.expiryDate}</td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                {doc.hasUpload && (
+                                                                    <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Download">
+                                                                        <Download className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => {
+                                                                         // Handle document edit/view - open modal
+                                                                         setEditingDocument(doc);
+                                                                    }}
+                                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                                >
+                                                                    {doc.hasUpload ? <Edit3 className="w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Card>
+                            </div>
+                        )}
+                    </>
+                )}
+
+
+
             </div>
 
             <Toast message={toast.message} visible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
@@ -580,7 +1359,10 @@ export const ComplianceDocumentsPage = () => {
                     setEditingKeyNumber(null);
                 }}
                 onSave={(data) => {
-                    updateKeyNumberValue(data.configId, data.value, data.expiryDate, data.issueDate, data.tags, data.documents);
+                    // Fetch existing documents to preserve them
+                    const storageId = getKeyNumberStorageId(data.configId);
+                    const existingDocs = keyNumberValues[storageId]?.documents || [];
+                    updateKeyNumberValue(storageId, data.value, data.expiryDate, data.issueDate, data.tags, existingDocs);
                     showToast(keyNumberModalMode === 'add' ? 'Key number added successfully' : 'Key number updated successfully');
                 }}
                 mode={keyNumberModalMode || 'edit'}
@@ -641,14 +1423,35 @@ export const ComplianceDocumentsPage = () => {
                                     </div>
                                 )}
                                 <div className="grid grid-cols-2 gap-4">
-                                     <div>
-                                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Expiry Date</label>
-                                         <input type="date" defaultValue={editingDocument.expiryDate !== '—' ? editingDocument.expiryDate : ''} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm" />
-                                     </div>
-                                     <div>
-                                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Issue Date</label>
-                                         <input type="date" defaultValue={editingDocument.issueDate !== '—' ? editingDocument.issueDate : ''} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm" />
-                                     </div>
+                                     {docType?.expiryRequired && (
+                                         <div>
+                                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Expiry Date <span className="text-red-500">*</span></label>
+                                             <input type="date" defaultValue={editingDocument.expiryDate !== '—' ? editingDocument.expiryDate : ''} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                                         </div>
+                                     )}
+                                     {(docType?.issueDateRequired) && (
+                                         <div>
+                                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Issue Date <span className="text-red-500">*</span></label>
+                                             <input type="date" defaultValue={editingDocument.issueDate !== '—' ? editingDocument.issueDate : ''} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                                         </div>
+                                     )}
+                                     {docType?.issueStateRequired && (
+                                         <div>
+                                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Issue State/Province <span className="text-red-500">*</span></label>
+                                             <input type="text" placeholder="e.g. CA, NY, ON" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                                         </div>
+                                     )}
+                                     {docType?.issueCountryRequired && (
+                                         <div>
+                                             <label className="block text-sm font-medium text-slate-700 mb-1.5">Issue Country <span className="text-red-500">*</span></label>
+                                             <select className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                                                 <option value="">Select Country...</option>
+                                                 <option value="US">United States</option>
+                                                 <option value="CA">Canada</option>
+                                                 <option value="MX">Mexico</option>
+                                             </select>
+                                         </div>
+                                     )}
                                 </div>
                                 {docTagSections.length > 0 && (
                                      <div className="space-y-3">
@@ -698,6 +1501,15 @@ export const ComplianceDocumentsPage = () => {
                         </div>
                     </div>
                 </div>
+            )}
+            {/* ASSET MODAL */}
+            {isAssetModalOpen && (
+                <AssetModal
+                    asset={editingAsset}
+                    onClose={() => { setIsAssetModalOpen(false); setEditingAsset(null); }}
+                    onSave={handleSaveAsset}
+                    isSaving={isSavingAsset}
+                />
             )}
         </div>
     );

@@ -5,27 +5,33 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
     // Regulatory and Safety Numbers
     {
         id: "kn-dot",
+        documentRequired: true,
+        requiredDocumentTypeId: "12",
         numberTypeId: "dot-number",
         numberTypeName: "USDOT Number",
         numberTypeDescription: "Department of Transportation identification number",
+        description: "USDOT Number for carrier identification",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "12",
+
+
         status: "Active",
         isSystem: true,
     },
     {
         id: "kn-mc",
+        documentRequired: true,
+        requiredDocumentTypeId: "4",
         numberTypeId: "mc-number",
         numberTypeName: "MC Number",
         numberTypeDescription: "Motor Carrier operating authority number",
+        description: "MC Number for operating authority",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "4",
+
+
         status: "Active",
     },
     {
@@ -33,10 +39,11 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "dot-legal-name",
         numberTypeName: "USDOT Legal Name",
         numberTypeDescription: "Legal name associated with USDOT number",
+        description: "Legal name verification",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
@@ -44,34 +51,27 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "operating-authority-status",
         numberTypeName: "Operating Authority Status",
         numberTypeDescription: "Current status of operating authority",
+        description: "Status of operating authority",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
-    {
-        id: "kn-transponder",
-        numberTypeId: "transponder-id",
-        numberTypeName: "Transponder ID",
-        numberTypeDescription: "Toll or Weigh Station Transponder ID",
-        category: "Regulatory and Safety Numbers",
-        entityType: "Asset",
-        hasExpiry: true,
-        documentRequired: true,
-        status: "Active",
-        isSystem: true,
-    },
+
     {
         id: "kn-mx",
+        documentRequired: true,
+        requiredDocumentTypeId: "13",
         numberTypeId: "mx-number",
         numberTypeName: "MX Number",
         numberTypeDescription: "FMCSA motor carrier ID for Mexican carriers",
+        description: "MX Number for Mexican carriers",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "13",
+
+
         status: "Inactive",
     },
     {
@@ -79,10 +79,11 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "safety-fitness-date",
         numberTypeName: "Safety Fitness Rating Date",
         numberTypeDescription: "Date of last safety fitness determination",
+        description: "Safety Fitness Rating Date",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
@@ -90,49 +91,59 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "cvor-status",
         numberTypeName: "CVOR Level / Threshold Status",
         numberTypeDescription: "Commercial Vehicle Operator's Registration status (ON)",
+        description: "CVOR Status",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "1",
+
+
         status: "Active",
     },
     {
         id: "kn-nsc",
+        documentRequired: true,
+        requiredDocumentTypeId: "14",
         numberTypeId: "nsc-profile",
         numberTypeName: "NSC Carrier Profile Number",
         numberTypeDescription: "National Safety Code profile number",
+        description: "NSC Profile Number",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "14",
+
+
         status: "Active",
     },
     {
         id: "kn-copr",
+        documentRequired: true,
+        requiredDocumentTypeId: "15",
         numberTypeId: "copr-id",
         numberTypeName: "COPR / Carrier Safety Profile ID",
         numberTypeDescription: "Provincial carrier safety profile identifier",
+        description: "COPR / Carrier Safety Profile ID",
         category: "Regulatory and Safety Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "15",
+
+
         status: "Inactive",
     },
 
     // Tax and Business Identification Numbers
     {
         id: "kn-ein",
+        documentRequired: true,
+        requiredDocumentTypeId: "16",
         numberTypeId: "ein",
         numberTypeName: "EIN",
         numberTypeDescription: "Employer Identification Number",
+        description: "Employer Identification Number (EIN)",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "16",
+
+
         status: "Active",
     },
     {
@@ -140,46 +151,56 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "duns-number",
         numberTypeName: "DUNS Number",
         numberTypeDescription: "Data Universal Numbering System identifier",
+        description: "DUNS Number",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
         id: "kn-gst",
+        documentRequired: true,
+        requiredDocumentTypeId: "17",
         numberTypeId: "gst-hst",
         numberTypeName: "GST/HST Number",
         numberTypeDescription: "Canadian Goods and Services Tax number",
+        description: "GST/HST Number",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "17",
+
+
         status: "Active",
     },
     {
         id: "kn-pst",
+        documentRequired: true,
+        requiredDocumentTypeId: "18",
         numberTypeId: "pst-qst",
         numberTypeName: "PST/QST Number",
         numberTypeDescription: "Provincial Sales Tax / Quebec Sales Tax number",
+        description: "PST/QST Number",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "18",
+
+
         status: "Inactive",
     },
     {
         id: "kn-state-tax",
+        documentRequired: true,
+        requiredDocumentTypeId: "19",
         numberTypeId: "state-tax-id",
         numberTypeName: "State Tax ID",
         numberTypeDescription: "State-specific tax identification number",
+        description: "State Tax ID",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "19",
+
+
         status: "Active",
     },
     {
@@ -187,34 +208,41 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "payroll-acct",
         numberTypeName: "Payroll Account Number",
         numberTypeDescription: "Payroll deduction account (Canada RP)",
+        description: "Payroll Account Number",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
         id: "kn-wsib",
+        documentRequired: true,
+        requiredDocumentTypeId: "20",
         numberTypeId: "wsib-wcb",
         numberTypeName: "WSIB / WCB Account Number",
         numberTypeDescription: "Workplace insurance account number",
+        description: "WSIB / WCB Account Number",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "20",
+
+
         status: "Active",
     },
     {
         id: "kn-iib",
+        documentRequired: true,
+        requiredDocumentTypeId: "21",
         numberTypeId: "iib-policy",
         numberTypeName: "IIB / Workers Comp Policy Number",
         numberTypeDescription: "Workers compensation policy number (US)",
+        description: "IIB / Workers Comp Policy Number",
         category: "Tax and Business Identification Numbers",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "21",
+
+
         status: "Active",
     },
 
@@ -224,10 +252,11 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "naics-code",
         numberTypeName: "NAICS Code",
         numberTypeDescription: "North American Industry Classification System code",
+        description: "NAICS Code",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
@@ -235,22 +264,26 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "sic-code",
         numberTypeName: "SIC Code",
         numberTypeDescription: "Standard Industrial Classification code",
+        description: "SIC Code",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Inactive",
     },
     {
         id: "kn-scac",
+        documentRequired: true,
+        requiredDocumentTypeId: "22",
         numberTypeId: "scac-code",
         numberTypeName: "Standard Carrier Alpha Code (SCAC)",
         numberTypeDescription: "Code for freight identification",
+        description: "Standard Carrier Alpha Code",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "22",
+
+
         status: "Active",
     },
     {
@@ -258,22 +291,26 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "carrier-code-type",
         numberTypeName: "Carrier Code Type",
         numberTypeDescription: "e.g., Private, For-Hire, Broker",
+        description: "Carrier Code Type",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
         id: "kn-cbsa",
+        documentRequired: true,
+        requiredDocumentTypeId: "23",
         numberTypeId: "cbsa-code",
         numberTypeName: "CBSA Carrier Code",
         numberTypeDescription: "Canada Border Services Agency carrier code",
+        description: "CBSA Carrier Code",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "23",
+
+
         status: "Active",
     },
     {
@@ -281,170 +318,210 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "aci-emanifest",
         numberTypeName: "ACI / eManifest Carrier Code",
         numberTypeDescription: "Canada eManifest identifier",
+        description: "ACI / eManifest Carrier Code",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
     },
     {
         id: "kn-ace",
+        documentRequired: true,
+        requiredDocumentTypeId: "24",
         numberTypeId: "ace-scac",
         numberTypeName: "ACE / SCAC for US Customs",
         numberTypeDescription: "US Customs cross-border identifier",
+        description: "ACE / SCAC for US Customs",
         category: "Carrier & Industry Codes",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "24",
+
+
         status: "Active",
     },
 
     // Bond and Registration Numbers
     {
         id: "kn-boc3",
+        documentRequired: true,
+        requiredDocumentTypeId: "25",
         numberTypeId: "boc3",
         numberTypeName: "BOC-3 Filing",
         numberTypeDescription: "Process agent designation filing",
+        description: "BOC-3 Filing",
         category: "Bond and Registration Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "25",
+
+
         status: "Active",
     },
     {
         id: "kn-surety",
+        documentRequired: true,
+        requiredDocumentTypeId: "26",
         numberTypeId: "surety-bond",
         numberTypeName: "Surety Bond Policy Number",
         numberTypeDescription: "BMC-84 / BMC-85 bond number",
+        description: "Surety Bond Policy Number",
         category: "Bond and Registration Numbers",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "26",
+
+
         status: "Active",
     },
     {
         id: "kn-ifta",
+        documentRequired: true,
+        requiredDocumentTypeId: "5",
         numberTypeId: "ifta-account",
         numberTypeName: "IFTA Account Number",
         numberTypeDescription: "International Fuel Tax Agreement account",
+        description: "IFTA Account Number",
         category: "Bond and Registration Numbers",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "5",
+
+
         status: "Active",
     },
     {
         id: "kn-irp",
+        documentRequired: true,
+        requiredDocumentTypeId: "27",
         numberTypeId: "irp-account",
         numberTypeName: "IRP Account Number / Fleet ID",
         numberTypeDescription: "International Registration Plan account",
+        description: "IRP Account Number",
         category: "Bond and Registration Numbers",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "27",
+
+
         status: "Active",
     },
     {
         id: "kn-ucr",
+        documentRequired: true,
+        requiredDocumentTypeId: "28",
         numberTypeId: "ucr-id",
         numberTypeName: "UCR Registration ID",
         numberTypeDescription: "Unified Carrier Registration ID",
+        description: "UCR Registration ID",
         category: "Bond and Registration Numbers",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "28",
+
+
         status: "Active",
     },
     {
         id: "kn-hvut",
+        documentRequired: true,
+        requiredDocumentTypeId: "29",
         numberTypeId: "hvut-2290",
         numberTypeName: "Heavy Vehicle Use Tax (HVUT 2290)",
         numberTypeDescription: "2290 Schedule 1 reference number",
+        description: "Heavy Vehicle Use Tax (HVUT 2290)",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "29",
+
+
         status: "Active",
     },
     {
         id: "kn-state-permits",
+        documentRequired: true,
+        requiredDocumentTypeId: "30",
         numberTypeId: "state-permits",
         numberTypeName: "State Operating Authority / Permit Numbers",
         numberTypeDescription: "State-specific operating authorities",
+        description: "State Operating Authority / Permit Numbers",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "30",
+
+
         status: "Active",
     },
     {
         id: "kn-kyu",
+        documentRequired: true,
+        requiredDocumentTypeId: "31",
         numberTypeId: "kyu-number",
         numberTypeName: "KYU Number",
         numberTypeDescription: "Kentucky weight-distance tax number",
+        description: "KYU Number",
         category: "Bond and Registration Numbers",
         entityType: "Carrier",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "31",
+
+
         status: "Active",
     },
     {
         id: "kn-nm-weight",
+        documentRequired: true,
+        requiredDocumentTypeId: "32",
         numberTypeId: "nm-weight",
         numberTypeName: "NM Weight Distance Permit",
         numberTypeDescription: "New Mexico weight distance tax permit",
+        description: "NM Weight Distance Permit",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "32",
+
+
         status: "Active",
     },
     {
         id: "kn-ny-hut",
+        documentRequired: true,
+        requiredDocumentTypeId: "33",
         numberTypeId: "ny-hut",
         numberTypeName: "NY HUT Permit",
         numberTypeDescription: "New York Highway Use Tax permit",
+        description: "NY HUT Permit",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: false,
-        documentRequired: true,
-        requiredDocumentTypeId: "33",
+
+
         status: "Active",
     },
 
     // Other
     {
         id: "kn-hazmat",
+        documentRequired: true,
+        requiredDocumentTypeId: "34",
         numberTypeId: "hazmat-permit",
         numberTypeName: "Hazmat Permit Number",
         numberTypeDescription: "Hazardous materials transportation permit",
+        description: "Hazmat Permit Number",
         category: "Other",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "34",
+
+
         status: "Active",
     },
     {
         id: "kn-fast",
+        documentRequired: true,
+        requiredDocumentTypeId: "35",
         numberTypeId: "fast-ctpat",
         numberTypeName: "FAST / C-TPAT ID",
         numberTypeDescription: "Free and Secure Trade / C-TPAT identification",
+        description: "FAST / C-TPAT ID",
         category: "Other",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "35",
+
+
         status: "Active",
     },
     {
@@ -452,22 +529,26 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "twic-id",
         numberTypeName: "TWIC (Company/Program)",
         numberTypeDescription: "Transportation Worker Identification Credential",
+        description: "TWIC",
         category: "Other",
         entityType: "Driver",
         hasExpiry: true,
-        documentRequired: false,
+
         status: "Inactive",
     },
     {
         id: "kn-drug-consortium",
+        documentRequired: true,
+        requiredDocumentTypeId: "36",
         numberTypeId: "drug-consortium",
         numberTypeName: "Drug & Alcohol Consortium ID",
         numberTypeDescription: "Clearinghouse/Consortium reference ID",
+        description: "Drug & Alcohol Consortium ID",
         category: "Other",
         entityType: "Driver",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "36",
+
+
         status: "Active",
     },
     {
@@ -475,10 +556,11 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "clearinghouse-plan",
         numberTypeName: "FMCSA Clearinghouse Query Plan ID",
         numberTypeDescription: "Internal tracking for Clearinghouse plan",
+        description: "FMCSA Clearinghouse Query Plan ID",
         category: "Other",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: false,
+
         status: "Active",
     },
     {
@@ -486,11 +568,12 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "insurance-policy",
         numberTypeName: "Insurance Policy Numbers",
         numberTypeDescription: "Liability / Cargo insurance policy numbers",
+        description: "Insurance Policy Numbers",
         category: "Other",
         entityType: "Carrier",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "3",
+
+
         status: "Active",
     },
     {
@@ -498,10 +581,11 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "vin-number",
         numberTypeName: "VIN",
         numberTypeDescription: "Vehicle Identification Number",
+        description: "VIN",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: false,
-        documentRequired: false,
+
         status: "Active",
         isSystem: true,
     },
@@ -510,24 +594,28 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "plate-number",
         numberTypeName: "Plate #",
         numberTypeDescription: "Vehicle license plate number",
+        description: "Plate #",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "6",
+
+
         status: "Active",
         isSystem: true,
     },
     {
         id: "kn-cvsa",
+        documentRequired: true,
+        requiredDocumentTypeId: "37",
         numberTypeId: "cvsa-number",
         numberTypeName: "CVSA Decal Number",
         numberTypeDescription: "CVSA inspection decal number",
+        description: "CVSA Decal Number",
         category: "Regulatory and Safety Numbers",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "37",
+
+
         status: "Active",
     },
     {
@@ -535,36 +623,60 @@ export const INITIAL_KEY_NUMBERS: KeyNumberConfig[] = [
         numberTypeId: "mvi-number",
         numberTypeName: "MVI Number",
         numberTypeDescription: "Motor Vehicle Inspection number",
+        description: "MVI Number",
         category: "Regulatory and Safety Numbers",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "7",
+
+
         status: "Active",
     },
     {
         id: "kn-ifta-decal",
+        documentRequired: true,
+        requiredDocumentTypeId: "38",
         numberTypeId: "ifta-decal",
         numberTypeName: "IFTA Decal",
         numberTypeDescription: "IFTA license decal number",
+        description: "IFTA Decal",
         category: "Bond and Registration Numbers",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "38",
+
+
         status: "Active",
     },
     {
         id: "kn-transponder",
+        documentRequired: true,
+        requiredDocumentTypeId: "39",
         numberTypeId: "transponder-id",
         numberTypeName: "Transponder ID",
         numberTypeDescription: "Toll/Weigh station transponder ID",
+        description: "Transponder ID",
         category: "Other",
         entityType: "Asset",
         hasExpiry: true,
-        documentRequired: true,
-        requiredDocumentTypeId: "39",
+
+
         status: "Active",
+    },
+    {
+        id: "kn-driver-license",
+        documentRequired: true,
+        requiredDocumentTypeId: "9",
+        numberTypeId: "driver-license",
+        numberTypeName: "Driver License Number",
+        numberTypeDescription: "Primary driver license number",
+        description: "Primary Driver License",
+        category: "Regulatory and Safety Numbers",
+        entityType: "Driver",
+        hasExpiry: true,
+        issueDateRequired: false,
+        issueStateRequired: true,
+        issueCountryRequired: true, 
+        status: "Active",
+        isSystem: true,
     },
 ];
 

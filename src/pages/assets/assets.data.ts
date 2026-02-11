@@ -103,12 +103,14 @@ export const CANADA_PROVINCES = [
     "Quebec", "Saskatchewan", "Northwest Territories", "Nunavut", "Yukon"
 ];
 
-export const MOCK_DRIVERS = [
-    { id: "drv_1", name: "John Smith" },
-    { id: "drv_2", name: "Sarah Miller" },
-    { id: "drv_3", name: "Mike Johnson" },
-    { id: "drv_4", name: "Elena Rodriguez" },
-];
+export interface Driver {
+    id: string;
+    name: string;
+    status: string;
+    driverCategory?: "CMV" | "Non-CMV";
+}
+
+// MOCK_DRIVERS moved to @/pages/profile/carrier-profile.data.ts
 
 export const MOCK_YARDS = [
     { id: "yard_1", name: "Dallas Main Terminal" },

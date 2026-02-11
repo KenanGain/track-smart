@@ -19,25 +19,53 @@ export interface KeyNumberConfig {
     numberTypeId: string; // References MasterNumberType
     numberTypeName: string;
     numberTypeDescription: string;
+    description: string;
     category: Category;
     entityType: EntityType;
     numberRequired?: boolean; // defaults to true if not specified
     hasExpiry: boolean;
-    documentRequired: boolean;
+    issueDateRequired?: boolean;
+    issueStateRequired?: boolean;
+    issueCountryRequired?: boolean;
+    documentRequired?: boolean;
     requiredDocumentTypeId?: string;
     status: "Active" | "Inactive";
     isSystem?: boolean;
+    // Monitoring & Notifications
+    monitoringEnabled?: boolean;
+    monitorBasedOn?: 'expiry' | 'issue_date';
+    renewalRecurrence?: string;
+    reminderDays?: Record<number, boolean>;
+    notificationChannels?: {
+        email: boolean;
+        inApp: boolean;
+        sms: boolean;
+    };
 }
 
 export interface AddNumberFormData {
-    numberTypeName: string;
     category: Category;
-    entityType: EntityType;
+    entityType: "Carrier" | "Asset" | "Driver";
+    numberTypeName: string;
+    description: string;
     numberRequired: boolean;
     hasExpiry: boolean;
+    issueDateRequired: boolean;
+    issueStateRequired: boolean;
+    issueCountryRequired: boolean;
     documentRequired: boolean;
     requiredDocumentTypeId?: string;
     status: "Active" | "Inactive";
+    // Monitoring
+    monitoringEnabled: boolean;
+    monitorBasedOn: 'expiry' | 'issue_date';
+    renewalRecurrence:  'annually' | 'biannually' | 'quarterly' | 'monthly' | 'none';
+    reminderDays: Record<number, boolean>;
+    notificationChannels: {
+        email: boolean;
+        inApp: boolean;
+        sms: boolean;
+    };
 }
 
 // Stores an uploaded document associated with a key number
@@ -58,8 +86,8 @@ export interface KeyNumberValue {
     value: string;
     expiryDate?: string;
     issueDate?: string;
+    issuingState?: string;
+    issuingCountry?: string;
     tags?: string[];                // Union of selected tags (tag IDs)
     documents?: UploadedDocument[];
 }
-
-

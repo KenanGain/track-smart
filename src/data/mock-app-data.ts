@@ -41,6 +41,8 @@ export interface DocumentType {
     requirementLevel: 'required' | 'optional' | 'not_required';
     expiryRequired: boolean;
     issueDateRequired: boolean;
+    issueStateRequired?: boolean;
+    issueCountryRequired?: boolean;
     status: Status;
 
     // Tags
@@ -152,8 +154,8 @@ export const INITIAL_TAG_SECTIONS: TagSection[] = [
 
 export const MOCK_DOCUMENTS: DocumentType[] = [
     // Carrier Docs
-    { id: '1', name: 'CVOR Level 2', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '2', name: 'Safety Fitness Certificate', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
+    { id: '1', name: 'CVOR Level 2', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_safety', folderName: 'Safety Rating' } },
+    { id: '2', name: 'Safety Fitness Certificate', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_safety', folderName: 'Safety Rating' } },
     {
         id: '3',
         name: 'Liability Insurance',
@@ -168,46 +170,67 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
                 { id: 'ins_physical', required: false }
             ]
         },
-        requirementLevel: 'required'
+        requirementLevel: 'required',
+        destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' }
     },
-    { id: '4', name: 'Operating Authority', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Draft', selectedTags: {}, requirementLevel: 'optional' },
-    { id: '5', name: 'IFTA License', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    // Asset Docs
-    { id: '6', name: 'Vehicle Registration', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '7', name: 'Annual Safety Inspection', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '8', name: 'Lease Agreement', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Draft', selectedTags: {}, requirementLevel: 'required' },
+    { id: '4', name: 'Operating Authority', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Draft', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '5', name: 'IFTA License', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_ifta', folderName: 'IFTA' } },
+    // Asset Docs (Defaulting to Asset Root as they are unit specific)
+    { id: '6', name: 'Vehicle Registration', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '7', name: 'Annual Safety Inspection', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '8', name: 'Lease Agreement', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Draft', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
     // Driver Docs
-    { id: '9', name: 'Driver License', relatedTo: 'driver', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '10', name: 'Medical Examiner Certificate', relatedTo: 'driver', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '11', name: 'Training Certificate', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: '12', name: 'USDOT Number', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '13', name: 'MX Number', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '14', name: 'NSC Carrier Profile', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '15', name: 'COPR Profile', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '16', name: 'EIN Document', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '17', name: 'GST/HST Registration', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '18', name: 'PST/QST Registration', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '19', name: 'State Tax ID', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '20', name: 'WSIB/WCB Clearance', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '21', name: 'Workers Comp Policy', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '22', name: 'SCAC Assignment', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '23', name: 'CBSA Carrier Code', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '24', name: 'ACE/SCAC Document', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '25', name: 'BOC-3 Filing', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '26', name: 'Surety Bond', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '27', name: 'IRP Account', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '28', name: 'UCR Registration', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '29', name: 'HVUT 2290 Schedule 1', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '30', name: 'State Operating Permit', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '31', name: 'KYU License', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '32', name: 'NM Weight Permit', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '33', name: 'NY HUT Certificate', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '34', name: 'Hazmat Permit', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '35', name: 'FAST/C-TPAT Cert', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '36', name: 'Drug Consortium', relatedTo: 'driver', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '37', name: 'CVSA Inspection', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '38', name: 'IFTA Decal Copy', relatedTo: 'asset', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
-    { id: '39', name: 'Transponder Doc', relatedTo: 'asset', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required' },
+    { id: '9', name: 'Driver License', relatedTo: 'driver', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_cdls', folderName: 'CDLS Records' } },
+    { id: '10', name: 'Medical Examiner Certificate', relatedTo: 'driver', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_app', folderName: 'Driver Application' } },
+    { id: '11', name: 'Training Certificate', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'driver_train', folderName: 'Training Certificates' } },
+    { id: '12', name: 'USDOT Number', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '13', name: 'MX Number', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '14', name: 'NSC Carrier Profile', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '15', name: 'COPR Profile', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '16', name: 'EIN Document', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: '17', name: 'GST/HST Registration', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: '18', name: 'PST/QST Registration', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: '19', name: 'State Tax ID', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: '20', name: 'WSIB/WCB Clearance', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: '21', name: 'Workers Comp Policy', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: '22', name: 'SCAC Assignment', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '23', name: 'CBSA Carrier Code', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '24', name: 'ACE/SCAC Document', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '25', name: 'BOC-3 Filing', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '26', name: 'Surety Bond', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '27', name: 'IRP Account', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '28', name: 'UCR Registration', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '29', name: 'HVUT 2290 Schedule 1', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '30', name: 'State Operating Permit', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '31', name: 'KYU License', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '32', name: 'NM Weight Permit', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '33', name: 'NY HUT Certificate', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '34', name: 'Hazmat Permit', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '35', name: 'FAST/C-TPAT Cert', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: '36', name: 'Drug Consortium', relatedTo: 'driver', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_app', folderName: 'Driver Application' } },
+    { id: '37', name: 'CVSA Inspection', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '38', name: 'IFTA Decal Copy', relatedTo: 'asset', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: '39', name: 'Transponder Doc', relatedTo: 'asset', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    
+    // Expense Related Documents
+    { id: 'fuel_receipt', name: 'Fuel Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'repair_invoice', name: 'Repair Invoice', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'toll_receipt', name: 'Toll Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'parking_receipt', name: 'Parking Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'lumper_receipt', name: 'Lumper Receipt', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: 'cleaning_receipt', name: 'Cleaning Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'lease_payment_statement', name: 'Lease Payment Statement', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'insurance_premium_invoice', name: 'Insurance Premium Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: 'vehicle_registration', name: 'Vehicle Registration', relatedTo: 'asset', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'permit_document', name: 'Permit Document', relatedTo: 'carrier', expiryRequired: true, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: 'ifta_return', name: 'IFTA Return', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_ifta', folderName: 'IFTA' } },
+    { id: 'irp_receipt', name: 'IRP Receipt', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: 'ucr_receipt', name: 'UCR Receipt', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
+    { id: 'payroll_statement', name: 'Payroll Statement', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_ev', folderName: 'Employment Verification' } },
+    { id: 'travel_receipt', name: 'Travel Receipt', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_app', folderName: 'Driver Application' } },
+    { id: 'software_invoice', name: 'Software Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: 'marketing_invoice', name: 'Marketing Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    { id: 'professional_services_invoice', name: 'Professional Services Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
 ];
 
 export const MOCK_FOLDER_TREE: FolderNode = {

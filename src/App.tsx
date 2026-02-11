@@ -9,7 +9,9 @@ import { LocationsPage } from '@/pages/account/LocationsPage'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
 import { ExpenseTypesPage } from '@/pages/settings/ExpenseTypesPage'
+import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
+import TrainingsPage from '@/pages/settings/TrainingsPage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -65,6 +67,12 @@ function App() {
         }
         if (path === "/settings/expenses") {
             return <ExpenseTypesPage />
+        }
+        if (path === "/settings/violations") {
+            return <ViolationsPage />
+        }
+        if (path === "/settings/trainings") {
+            return <TrainingsPage />
         }
         if (path === "/assets/directory") {
             return <AssetDirectoryPage />
