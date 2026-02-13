@@ -13,6 +13,9 @@ import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 
+import { PaystubsPage } from '@/pages/finance/PaystubsPage'
+import { TicketsPage } from '@/pages/tickets/TicketsPage'
+
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
     // or the user might want to test without it initially.
@@ -79,6 +82,12 @@ function App() {
         }
         if (path === "/maintenance") {
             return <AssetMaintenancePage />
+        }
+        if (path === "/paystubs") {
+            return <PaystubsPage />
+        }
+        if (path === "/tickets") {
+            return <TicketsPage />
         }
         if (path === "/compliance") {
             return (

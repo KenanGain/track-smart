@@ -148,6 +148,9 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     // Destination
     const [selectedFolderId, setSelectedFolderId] = useState<string | null>(initialData?.destination?.folderId || null);
     const [selectedFolderName, setSelectedFolderName] = useState<string>(initialData?.destination?.folderName || '');
+    // Derived
+    const isSystem = initialData?.isSystem || false;
+    const isPaystubSystemDoc = isSystem && initialData?.id === 'DT-PAYSTUB';
     const [driverMode, setDriverMode] = useState<'name' | 'folder'>('name');
     const [selectedDriver, setSelectedDriver] = useState<string>(initialData?.destination?.driverId || '');
 
@@ -364,6 +367,16 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                 </div>
             )}
 
+            {/* Ticket / Offense Indicator */}
+            {['offense_ticket', 'payment_receipt', 'notice_of_trial'].includes(initialData?.id || '') && (
+                <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 flex items-center gap-3 text-blue-800 text-sm">
+                    <Info className="h-4 w-4 shrink-0" />
+                    <p>
+                        This document is related to <strong>Tickets / Offenses</strong> management.
+                    </p>
+                </div>
+            )}
+
             {/* Scrollable Form Content */}
             <main className="flex-1 overflow-y-auto p-6">
                 <div className="max-w-5xl mx-auto space-y-6 pb-20">
@@ -536,8 +549,9 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                         </div>
                     </Card>
 
-                    {/* 4. Monitoring */}
-                    <Card className="p-6 relative overflow-hidden">
+                    {/* 4. Monitoring & Notifications */}
+                    {!isPaystubSystemDoc && (
+                    <Card className="p-6">
                         {isLockedByExpenseType && (
                              <div className="absolute top-0 left-0 right-0 bg-blue-50 border-b border-blue-100 px-6 py-2 flex items-center justify-between z-10">
                                 <div className="flex items-center gap-2">
@@ -619,6 +633,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                             </div>
                         </div>
                     </Card>
+                    )}
 
                     {/* 5. Destination */}
                     <Card className="p-6">
@@ -648,7 +663,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         <select className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 pl-9 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)}>
                                             <option value="">Select a driver...</option>
                                             {MOCK_DRIVERS.map(d => (
-                                                <option key={d.id} value={d.id}>{d.name} ({d.license})</option>
+                                                <option key={d.id} value={d.id}>{d.name} ({d.licenseNumber})</option>
                                             ))}
                                         </select>
                                     </div>

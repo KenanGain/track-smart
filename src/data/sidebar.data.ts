@@ -13,6 +13,7 @@ import {
     DollarSign,
     Ban,
     GraduationCap,
+    Ticket,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -44,6 +45,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/maintenance",
     },
     {
+        key: "paystubs",
+        label: "Paystubs",
+        icon: DollarSign,
+        path: "/paystubs",
+    },
+    {
         key: "safety",
         label: "Safety",
         icon: Shield,
@@ -55,6 +62,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Accidents",
         icon: AlertTriangle,
         path: "/accidents",
+    },
+    {
+        key: "tickets",
+        label: "Tickets",
+        icon: Ticket,
+        path: "/tickets",
     },
     {
         key: "settings",

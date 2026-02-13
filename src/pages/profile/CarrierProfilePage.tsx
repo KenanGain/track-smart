@@ -52,6 +52,7 @@ import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
+import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
 import { DriverForm } from './DriverForm';
 
@@ -396,6 +397,30 @@ export function CarrierProfilePage() {
     const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
     const [editingDocument, setEditingDocument] = useState<typeof carrierDocuments[0] | null>(null);
     const [viewingDocument, setViewingDocument] = useState<typeof carrierDocuments[0] | null>(null);
+    const [docIssuingCountry, setDocIssuingCountry] = useState('');
+    const [docIssuingState, setDocIssuingState] = useState('');
+    const [deletingDocument, setDeletingDocument] = useState<any>(null);
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+
+    const handleSaveDocument = () => {
+        // Mock save logic
+        if (editingDocument && uploadedFiles.length > 0) {
+            // In a real app, you'd save these files
+            showToast(`Uploaded ${uploadedFiles.length} documents successfully`);
+        } else {
+            showToast('Document updated successfully');
+        }
+        setUploadedFiles([]);
+        setEditingDocument(null);
+    };
+
+    const handleDeleteDocument = () => {
+        if (deletingDocument) {
+            // Mock delete logic
+            showToast('Document deleted successfully');
+            setDeletingDocument(null);
+        }
+    };
 
     const [isOfficeModalOpen, setIsOfficeModalOpen] = useState(false);
     const [editingOffice, setEditingOffice] = useState<any>(null);
@@ -1474,7 +1499,7 @@ export function CarrierProfilePage() {
                                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider sticky top-0">
                                         <tr>
                                             <th className="px-4 py-3">Document Type</th>
-                                            <th className="px-4 py-3">Document Name</th>
+                                            <th className="px-4 py-3">Document Type</th>
                                             <th className="px-4 py-3">Folder</th>
                                             <th className="px-4 py-3">Date Uploaded</th>
                                             <th className="px-4 py-3">Status</th>
@@ -1495,14 +1520,6 @@ export function CarrierProfilePage() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                </td>
-                                                <td className="px-4 py-4 text-slate-700">
-                                                    <div>{doc.documentName}</div>
-                                                    {doc.linkedValue && doc.linkedValue !== 'Not entered' && (
-                                                        <div className="text-xs text-slate-400 mt-0.5 font-mono">
-                                                             Ref: {doc.linkedValue}
-                                                        </div>
-                                                    )}
                                                 </td>
                                                 <td className="px-4 py-4 text-slate-500 text-xs">{doc.folderPath}</td>
                                                 <td className="px-4 py-4 text-slate-500">{doc.dateUploaded}</td>
@@ -1540,6 +1557,15 @@ export function CarrierProfilePage() {
                                                         >
                                                             <Edit3 className="w-4 h-4" />
                                                         </button>
+                                                        {doc.hasUpload && (
+                                                            <button
+                                                                onClick={() => setDeletingDocument(doc)}
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1669,6 +1695,48 @@ export function CarrierProfilePage() {
                                 </div>
                                 <p className="text-xs text-blue-400 -mt-3">Used for renewal reminders & compliance tracking.</p>
 
+                                {/* Issuing Country & State */}
+                                {(docType?.issueCountryRequired || docType?.issueStateRequired) && (
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {docType?.issueCountryRequired && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                                    Issuing Country <span className="text-red-500">*</span>
+                                                </label>
+                                                <select
+                                                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                                    value={docIssuingCountry}
+                                                    onChange={(e) => {
+                                                        setDocIssuingCountry(e.target.value);
+                                                        setDocIssuingState('');
+                                                    }}
+                                                >
+                                                    <option value="">Select country...</option>
+                                                    <option value="United States">United States</option>
+                                                    <option value="Canada">Canada</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                        {docType?.issueStateRequired && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                                    Issuing State / Province <span className="text-red-500">*</span>
+                                                </label>
+                                                <select
+                                                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                                    value={docIssuingState}
+                                                    onChange={(e) => setDocIssuingState(e.target.value)}
+                                                >
+                                                    <option value="">Select state / province...</option>
+                                                    {(docIssuingCountry === 'Canada' ? CA_PROVINCES : US_STATES).map(s => (
+                                                        <option key={s} value={s}>{s}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* Tags Section */}
                                 {docTagSections.length > 0 && (
                                     <div className="space-y-3">
@@ -1711,11 +1779,46 @@ export function CarrierProfilePage() {
                                     <p className="text-xs text-slate-400 mb-3">Upload documents for: {editingDocument.documentType}</p>
 
                                     {/* Upload Area */}
-                                    <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-colors cursor-pointer mb-3">
+                                    <div 
+                                        className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-colors cursor-pointer mb-3"
+                                        onClick={() => document.getElementById('carrier-doc-upload')?.click()}
+                                    >
+                                        <input 
+                                            id="carrier-doc-upload" 
+                                            type="file" 
+                                            multiple 
+                                            className="hidden" 
+                                            accept=".pdf,.doc,.docx,.jpg,.png"
+                                            onChange={(e) => {
+                                                if (e.target.files) {
+                                                    setUploadedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                                                }
+                                                e.target.value = '';
+                                            }}
+                                        />
                                         <UploadCloud className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                                         <p className="text-sm font-medium text-slate-600">Click to upload or drag & drop</p>
-                                        <p className="text-xs text-slate-400 mt-1">PDF, DOC, DOCX up to 10MB</p>
+                                        <p className="text-xs text-slate-400 mt-1">PDF, DOC, DOCX up to 10MB — Select multiple files</p>
                                     </div>
+
+                                    {/* New Uploads List */}
+                                    {uploadedFiles.length > 0 && (
+                                        <div className="space-y-2 mb-3">
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Files to upload ({uploadedFiles.length})</p>
+                                            {uploadedFiles.map((file, idx) => (
+                                                <div key={idx} className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+                                                    <span className="text-sm font-medium text-slate-800 truncate">{file.name}</span>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); setUploadedFiles(prev => prev.filter((_, i) => i !== idx)); }}
+                                                        className="text-slate-400 hover:text-red-500"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
 
                                     {/* Uploaded Documents as Bubbles */}
                                     {editingDocument.hasUpload && (
@@ -1750,10 +1853,7 @@ export function CarrierProfilePage() {
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        showToast('Document updated successfully');
-                                        setEditingDocument(null);
-                                    }}
+                                    onClick={handleSaveDocument}
                                     className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                                 >
                                     Save Changes
@@ -1763,6 +1863,37 @@ export function CarrierProfilePage() {
                     </div>
                 );
             })()}
+
+            {/* Delete Confirmation Dialog */}
+            {deletingDocument && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-6 text-center">
+                            <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+                                <Trash2 className="w-7 h-7" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900 mb-2">Delete Document?</h3>
+                            <p className="text-sm text-slate-500">
+                                Are you sure you want to delete <strong>{deletingDocument.documentType}</strong>? This action cannot be undone.
+                            </p>
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setDeletingDocument(null)} 
+                                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleDeleteDocument} 
+                                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm shadow-red-200 transition-all"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Document View Modal */}
             {viewingDocument && (

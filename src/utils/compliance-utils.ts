@@ -1,5 +1,6 @@
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType } from '@/data/mock-app-data';
+import type { Asset } from '@/pages/assets/assets.data';
 
 export type ComplianceStatus = 'Active' | 'Expiring Soon' | 'Expired' | 'Missing' | 'Incomplete' | 'Optional' | 'N/A' | 'Not Uploaded';
 
@@ -190,4 +191,93 @@ export function calculateDriverComplianceStats(
     });
 
     return { total, expired, expiring, missingNumber, missingExpiry, missingDoc };
+}
+
+/**
+ * Calculates aggregated compliance statistics for an asset.
+ * Checks defined compliance items (Registration, etc.)
+ * 
+ * Rule:
+ * An item is "Missing" if ANY of the following are missing:
+ * - Document (if required)
+ * - Key Number (if required)
+ * - Expiry Date (if required)
+ * - Issue Date (if required)
+ * 
+ * Otherwise, check Expiry status.
+ */
+export function calculateAssetComplianceStats(asset: Asset) {
+    let missing = 0;
+    let expired = 0;
+    let expiringSoon = 0;
+
+    // Define Items to Check
+    const items = [
+        {
+            name: 'Registration',
+            enabled: asset.plateMonitoringEnabled ?? true,
+            required: true, // Registration is generally required for an asset
+            fields: {
+                number: asset.plateNumber,
+                document: (asset as any).plateDocument, // check array length > 0
+                expiryDate: asset.registrationExpiryDate,
+                issueDate: asset.registrationIssueDate
+            },
+            reminderSchedule: asset.plateReminderSchedule
+        },
+        {
+            name: 'Transponder',
+            enabled: asset.transponderMonitoringEnabled ?? false,
+            // Only required if we want to enforce it, but typically optional unless specified.
+            // However, if enabled/monitoring is ON, we usually expect data.
+            // Let's assume if monitoring is enabled, we expect completeness.
+            required: asset.transponderMonitoringEnabled ?? false, 
+            fields: {
+                number: asset.transponderNumber,
+                document: (asset as any).transponderDocument,
+                expiryDate: asset.transponderExpiryDate,
+                issueDate: asset.transponderIssueDate
+            },
+            reminderSchedule: asset.transponderReminderSchedule
+        }
+    ];
+
+    items.forEach(item => {
+        if (!item.enabled && !item.required) return;
+
+        // Check for "Missing" (Any required field missing)
+        // For Transponder, if it's enabled, we likely require the number/doc/dates if we are tracking it.
+        
+        const hasNumber = !!item.fields.number;
+        const hasDoc = item.fields.document && item.fields.document.length > 0;
+        const hasExpiry = !!item.fields.expiryDate;
+        const hasIssue = !!item.fields.issueDate;
+
+        // Rule: If "Missing any of this document, keynumber, expiry, issue date" -> Tag as Missing
+        const isMissing = !hasNumber || !hasDoc || !hasExpiry || !hasIssue;
+
+        if (isMissing) {
+            missing++;
+        } else {
+            // All fields present, check expiry
+            const status = calculateComplianceStatus(
+                item.fields.expiryDate,
+                true,
+                Math.max(...(item.reminderSchedule || [30])),
+                true, // hasValue (we confirmed above)
+                true, // hasExpiry
+                true // isRequired
+            );
+
+            if (status === 'Expired') expired++;
+            else if (status === 'Expiring Soon') expiringSoon++;
+        }
+    });
+
+    return {
+        missing,
+        expired,
+        expiringSoon,
+        totalIssues: missing + expired + expiringSoon
+    };
 }

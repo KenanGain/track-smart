@@ -44,12 +44,14 @@ const DocumentTypesPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState('All');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isCreateSectionModalOpen, setIsCreateSectionModalOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const { documents, addDocument, updateDocument, addTagSection, keyNumbers } = useAppData();
 
     const tabs = ['All', 'Carrier', 'Asset', 'Driver'];
 
     const filteredDocuments = documents.filter(doc => {
+        if (searchQuery && !doc.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
         if (activeTab === 'All') return true;
         if (activeTab === 'Asset') return doc.relatedTo === 'asset';
         if (activeTab === 'Driver') return doc.relatedTo === 'driver';
@@ -192,6 +194,8 @@ const DocumentTypesPage: React.FC = () => {
                                     </div>
                                     <input
                                         type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
                                         className="block w-full rounded-md border-0 py-1.5 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:text-sm sm:leading-6"
                                         placeholder="Search types..."
                                     />
@@ -241,6 +245,14 @@ const DocumentTypesPage: React.FC = () => {
                                                             );
                                                         }
                                                         
+                                                        if (doc.id === 'DT-PAYSTUB') {
+                                                            return (
+                                                                <div className="ml-12 mt-1 text-xs text-indigo-700 font-normal flex items-center gap-1">
+                                                                    Linked to Paystubs
+                                                                </div>
+                                                            );
+                                                        }
+
                                                         const linkedExpense = INITIAL_EXPENSE_TYPES.find(exp => exp.documentTypeId === doc.id);
                                                         if (linkedExpense) {
                                                             return (
@@ -250,6 +262,14 @@ const DocumentTypesPage: React.FC = () => {
                                                             );
                                                         }
 
+                                                        if (['offense_ticket', 'payment_receipt', 'notice_of_trial'].includes(doc.id)) {
+                                                            return (
+                                                                <div className="ml-12 mt-1 text-xs text-orange-600 font-normal flex items-center gap-1">
+                                                                    Linked to Tickets / Offenses
+                                                                </div>
+                                                            );
+                                                        }
+                                                        
                                                         return null;
                                                     })()}
                                                 </div>

@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
     FileText,
-
     AlertTriangle,
     CalendarX,
     Clock,
@@ -18,7 +17,6 @@ import {
     Truck,
     User,
     Download,
-    Filter,
     RotateCcw,
     AlertCircle,
     XCircle,
@@ -27,6 +25,8 @@ import {
     Users,
     UserMinus,
     UserX,
+    ArrowUpDown,
+    Columns
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
@@ -202,9 +202,55 @@ export const ComplianceDocumentsPage = () => {
 
     const [isSavingAsset, setIsSavingAsset] = useState(false);
 
+    // --- SEARCH / SORT / COLUMN STATE ---
+    // Key Numbers
+    const [knSearch, setKnSearch] = useState('');
+    const [knSort, setKnSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [knColumns, setKnColumns] = useState<Record<string, boolean>>({
+        type: true,
+        value: true,
+        status: true,
+        expiry: true,
+        actions: true
+    });
+    const [isKnColumnDropdownOpen, setIsKnColumnDropdownOpen] = useState(false);
+
+    // Documents
+    const [docSearch, setDocSearch] = useState('');
+    const [docSort, setDocSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [docColumns, setDocColumns] = useState<Record<string, boolean>>({
+        type: true,
+        name: true,
+        folder: true,
+        uploaded: true,
+        status: true,
+        expiry: true,
+        actions: true
+    });
+    const [isDocColumnDropdownOpen, setIsDocColumnDropdownOpen] = useState(false);
+
+    // Reset search/sort when main filters change
+    React.useEffect(() => {
+        setKnSearch('');
+        setDocSearch('');
+        setKnSort(null);
+        setDocSort(null);
+    }, [activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver]);
+
     // --- DRIVER STATE (Refactor) ---
     const [driverSearch, setDriverSearch] = useState('');
     const [driverStatusFilter, setDriverStatusFilter] = useState('All');
+    const [driverSort, setDriverSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [driverColumns, setDriverColumns] = useState<Record<string, boolean>>({
+        name: true,
+        id: true,
+        status: true,
+        compliance: true,
+        license: true,
+        contact: true,
+        actions: true
+    });
+    const [isDriverColumnDropdownOpen, setIsDriverColumnDropdownOpen] = useState(false);
 
     const driverStats = useMemo(() => {
         return {
@@ -217,7 +263,7 @@ export const ComplianceDocumentsPage = () => {
     }, []);
 
     const filteredDriversList = useMemo(() => {
-        return MOCK_DRIVERS.filter(driver => {
+        let result = MOCK_DRIVERS.filter(driver => {
             const matchesSearch = (
                 driver.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
                 driver.id.toLowerCase().includes(driverSearch.toLowerCase()) ||
@@ -226,7 +272,24 @@ export const ComplianceDocumentsPage = () => {
             const matchesStatus = driverStatusFilter === 'All' || driver.status === driverStatusFilter;
             return matchesSearch && matchesStatus;
         });
-    }, [driverSearch, driverStatusFilter]);
+        if (driverSort) {
+            result = [...result].sort((a, b) => {
+                let aVal: any, bVal: any;
+                switch (driverSort.key) {
+                    case 'name': aVal = a.name; bVal = b.name; break;
+                    case 'id': aVal = a.id; bVal = b.id; break;
+                    case 'status': aVal = a.status; bVal = b.status; break;
+                    case 'license': aVal = a.licenseNumber || ''; bVal = b.licenseNumber || ''; break;
+                    case 'contact': aVal = a.phone || a.email || ''; bVal = b.phone || b.email || ''; break;
+                    default: return 0;
+                }
+                if (aVal < bVal) return driverSort.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return driverSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return result;
+    }, [driverSearch, driverStatusFilter, driverSort]);
 
     // --- COMPUTED ASSET STATS ---
     const assetStats = useMemo(() => ({
@@ -237,9 +300,21 @@ export const ComplianceDocumentsPage = () => {
         deactivated: assets.filter(a => a.operationalStatus === 'Deactivated').length
     }), [assets]);
 
+    // --- ASSET SORT STATE ---
+    const [assetSort, setAssetSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [assetColumns, setAssetColumns] = useState<Record<string, boolean>>({
+        unitNumber: true,
+        vin: true,
+        type: true,
+        compliance: true,
+        status: true,
+        actions: true
+    });
+    const [isAssetColumnDropdownOpen, setIsAssetColumnDropdownOpen] = useState(false);
+
     // --- FILTERED ASSETS ---
     const filteredAssetsList = useMemo(() => {
-        return assets.filter(a => {
+        let result = assets.filter(a => {
             // Sub-category filter
             if (activeSubCategory === 'CMV' && a.assetCategory !== 'CMV') return false;
             if (activeSubCategory === 'NON_CMV' && a.assetCategory === 'CMV') return false;
@@ -258,7 +333,23 @@ export const ComplianceDocumentsPage = () => {
             }
             return true;
         });
-    }, [assets, activeSubCategory, searchQuery, assetStatusFilter]);
+        if (assetSort) {
+            result = [...result].sort((a, b) => {
+                let aVal: any, bVal: any;
+                switch (assetSort.key) {
+                    case 'unitNumber': aVal = a.unitNumber; bVal = b.unitNumber; break;
+                    case 'vin': aVal = a.vin; bVal = b.vin; break;
+                    case 'type': aVal = a.assetType; bVal = b.assetType; break;
+                    case 'status': aVal = a.operationalStatus; bVal = b.operationalStatus; break;
+                    default: return 0;
+                }
+                if (aVal < bVal) return assetSort.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return assetSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return result;
+    }, [assets, activeSubCategory, searchQuery, assetStatusFilter, assetSort]);
 
     const handleSaveAsset = (data: any) => {
         setIsSavingAsset(true);
@@ -408,7 +499,7 @@ export const ComplianceDocumentsPage = () => {
         
         // ... (rest of logic unchanged)
     
-        return Object.entries(grouped).map(([category, items]) => ({
+        const groupList = Object.entries(grouped).map(([category, items]) => ({
             key: category.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
             label: category.toUpperCase(),
             items: items.map(kn => {
@@ -451,11 +542,46 @@ export const ComplianceDocumentsPage = () => {
                     value: hasValue ? val?.value : 'Not entered',
                     status,
                     expiry: expiryDisplay,
-                    docStatus
+                    docStatus,
+                    rawValue: val?.value 
                 };
             })
         }));
-    }, [keyNumbers, keyNumberValues, activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver]); // Added selectedDriver dependency
+
+        // Apply Search and Sort within groups
+        return groupList.map(group => {
+            let items = group.items;
+
+            // Search
+            if (knSearch) {
+                const s = knSearch.toLowerCase();
+                items = items.filter(i => 
+                    i.type.toLowerCase().includes(s) || 
+                    String(i.value).toLowerCase().includes(s)
+                );
+            }
+
+            // Sort
+            if (knSort) {
+                items = [...items].sort((a, b) => {
+                    if (!knSort) return 0;
+                    let aVal: any = a[knSort.key as keyof typeof a];
+                    let bVal: any = b[knSort.key as keyof typeof b];
+
+                    // Handle specific sort keys
+                    if (knSort.key === 'type') { aVal = a.type; bVal = b.type; }
+                    if (knSort.key === 'value') { aVal = a.rawValue || ''; bVal = b.rawValue || ''; }
+                    if (knSort.key === 'expiry') { aVal = a.expiry === '-' ? 'z' : a.expiry; bVal = b.expiry === '-' ? 'z' : b.expiry; }
+
+                    if (aVal < bVal) return knSort.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return knSort.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            return { ...group, items };
+        });
+    }, [keyNumbers, keyNumberValues, activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver, knSearch, knSort]); // Added knSearch, knSort dependency
 
     // 2. Documents (Filtered by Active Entity & Sub-Category)
     const filteredDocuments = useMemo(() => {
@@ -507,7 +633,7 @@ export const ComplianceDocumentsPage = () => {
         };
 
 
-        return filteredDocTypes.map((doc: DocumentType) => {
+        const processedDocs = filteredDocTypes.map((doc: DocumentType) => {
             const linkedKn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === doc.id);
             // Use composite lookup
             const storageId = linkedKn ? getKeyNumberStorageId(linkedKn.id) : null;
@@ -531,7 +657,33 @@ export const ComplianceDocumentsPage = () => {
                 uploadedDocData: uploadedDoc
             };
         });
-    }, [documents, keyNumbers, keyNumberValues, activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver]); // Added selectedDriver dependency
+
+        let result = processedDocs;
+
+        // Search
+        if (docSearch) {
+            const s = docSearch.toLowerCase();
+            result = result.filter(d => 
+                d.documentType.toLowerCase().includes(s) || 
+                d.documentName.toLowerCase().includes(s)
+            );
+        }
+
+        // Sort
+        if (docSort) {
+             result = [...result].sort((a, b) => {
+                if (!docSort) return 0;
+                let aVal: any = a[docSort.key as keyof typeof a];
+                let bVal: any = b[docSort.key as keyof typeof b];
+                
+                if (aVal < bVal) return docSort.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return docSort.direction === 'asc' ? 1 : -1;
+                return 0;
+             });
+        }
+
+        return result;
+    }, [documents, keyNumbers, keyNumberValues, activeEntityFilter, activeSubCategory, selectedAsset, selectedDriver, docSearch, docSort]); // Added docSearch, docSort dependency
 
     // --- FILTER LOGIC ---
     const filterComplianceItems = (items: any[]) => {
@@ -646,7 +798,7 @@ export const ComplianceDocumentsPage = () => {
                 {/* 1. ASSET LIST VIEW (If Asset Filter + No Selection) */}
                 {activeEntityFilter === 'Asset' && !selectedAsset && (
                      <div className="w-full space-y-6">
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                             {/* Toolbar */}
                             <div className="p-4 border-b border-slate-200 flex flex-col lg:flex-row gap-4 justify-between items-center">
                                 <div className="relative w-full lg:w-96">
@@ -680,11 +832,38 @@ export const ComplianceDocumentsPage = () => {
                                     </div>
                                     
                                     <div className="h-8 w-px bg-slate-200 ml-1"></div>
-                                    
-                                    <button className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
-                                        <Filter className="w-4 h-4" />
-                                        Filter
-                                    </button>
+
+                                    {/* Column Visibility Dropdown */}
+                                    <div className="relative">
+                                        <button 
+                                            onClick={() => setIsAssetColumnDropdownOpen(!isAssetColumnDropdownOpen)}
+                                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                        >
+                                            <Columns className="w-3.5 h-3.5" />
+                                            Columns
+                                            <ChevronDown className="w-3 h-3" />
+                                        </button>
+                                        {isAssetColumnDropdownOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-10" onClick={() => setIsAssetColumnDropdownOpen(false)}></div>
+                                                <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-20 p-2">
+                                                    {Object.keys(assetColumns).map(col => (
+                                                        col !== 'actions' && (
+                                                            <label key={col} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={assetColumns[col]} 
+                                                                    onChange={(e) => setAssetColumns(prev => ({ ...prev, [col]: e.target.checked }))}
+                                                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                                                                />
+                                                                <span className="text-xs text-slate-700 capitalize">{col === 'unitNumber' ? 'Unit #' : col === 'vin' ? 'VIN' : col}</span>
+                                                            </label>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
                                     
                                     <button 
                                         onClick={() => { setEditingAsset(null); setIsAssetModalOpen(true); }}
@@ -743,12 +922,20 @@ export const ComplianceDocumentsPage = () => {
                                 <table className="w-full text-left text-sm table-fixed">
                                     <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider">
                                         <tr>
-                                            <th className="px-6 py-4 w-[12%]">Unit #</th>
-                                            <th className="px-6 py-4 w-[18%]">VIN</th>
-                                            <th className="px-6 py-4 w-[10%]">Type</th>
-                                            <th className="px-6 py-4 w-[25%]">Compliance Status</th>
-                                            <th className="px-6 py-4 w-[15%]">Vehicle Status</th>
-                                            <th className="px-6 py-4 w-[10%] text-right">Actions</th>
+                                            {assetColumns.unitNumber && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'unitNumber', direction: assetSort?.key === 'unitNumber' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Unit # <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'unitNumber' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.vin && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'vin', direction: assetSort?.key === 'vin' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">VIN <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'vin' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.type && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'type', direction: assetSort?.key === 'type' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Type <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'type' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.compliance && <th className="px-6 py-4">Compliance Status</th>}
+                                            {assetColumns.status && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'status', direction: assetSort?.key === 'status' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Vehicle Status <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'status' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.actions && <th className="px-6 py-4 text-right">Actions</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100/50">
@@ -763,7 +950,7 @@ export const ComplianceDocumentsPage = () => {
                                             if (totalItems === 0) {
                                                 return (
                                                     <tr>
-                                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                                        <td colSpan={Object.values(assetColumns).filter(Boolean).length} className="px-6 py-12 text-center text-slate-500">
                                                             No assets found matching your search.
                                                         </td>
                                                     </tr>
@@ -776,10 +963,10 @@ export const ComplianceDocumentsPage = () => {
                                                         const stats = getComplianceSummary(asset.id, 'Asset', asset.assetCategory); 
                                                         return (
                                                         <tr key={asset.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer group" onClick={() => setSelectedAsset(asset)}>
-                                                            <td className="px-6 py-6 font-bold text-slate-900">{asset.unitNumber}</td>
-                                                            <td className="px-6 py-6 text-slate-500 font-mono text-xs">{asset.vin}</td>
-                                                            <td className="px-6 py-6 text-slate-600">{asset.assetType}</td>
-                                                            <td className="px-6 py-6">
+                                                            {assetColumns.unitNumber && <td className="px-6 py-6 font-bold text-slate-900">{asset.unitNumber}</td>}
+                                                            {assetColumns.vin && <td className="px-6 py-6 text-slate-500 font-mono text-xs">{asset.vin}</td>}
+                                                            {assetColumns.type && <td className="px-6 py-6 text-slate-600">{asset.assetType}</td>}
+                                                            {assetColumns.compliance && <td className="px-6 py-6">
                                                                 <div className="flex gap-1 flex-wrap">
                                                                     {stats.missingNumbers > 0 && <span className="px-3 py-1.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">{stats.missingNumbers} No. Missing</span>}
                                                                     {stats.missingDocs > 0 && <span className="px-3 py-1.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">{stats.missingDocs} Doc. Missing</span>}
@@ -787,28 +974,28 @@ export const ComplianceDocumentsPage = () => {
                                                                     {stats.expiringSoon > 0 && <span className="px-3 py-1.5 rounded bg-yellow-50 text-yellow-700 text-[11px] font-bold">{stats.expiringSoon} Soon</span>}
                                                                     {stats.missingNumbers === 0 && stats.missingDocs === 0 && stats.expired === 0 && stats.expiringSoon === 0 && <span className="px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-[11px] font-bold">OK</span>}
                                                                 </div>
-                                                            </td>
-                                                            <td className="px-6 py-6">
+                                                            </td>}
+                                                            {assetColumns.status && <td className="px-6 py-6">
                                                                 <Badge 
                                                                     text={asset.operationalStatus} 
                                                                     tone={asset.operationalStatus === 'Active' ? 'success' : asset.operationalStatus === 'Maintenance' ? 'warning' : 'gray'} 
                                                                     className="rounded-full px-3 py-1"
                                                                 />
-                                                            </td>
-                                                            <td className="px-6 py-6 text-right">
+                                                            </td>}
+                                                            {assetColumns.actions && <td className="px-6 py-6 text-right">
                                                                 <button 
                                                                     onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); }}
                                                                     className="text-blue-600 hover:text-blue-800 font-semibold text-sm hover:underline"
                                                                 >
                                                                     Manage
                                                                 </button>
-                                                            </td>
+                                                            </td>}
                                                         </tr>
-                                                    )})}
+                                                    )})})
                                                     
                                                     {/* Footer / Pagination */}
                                                     <tr className="border-t border-slate-100">
-                                                        <td colSpan={6} className="px-6 py-4">
+                                                        <td colSpan={Object.values(assetColumns).filter(Boolean).length} className="px-6 py-4">
                                                             <div className="flex items-center justify-between">
                                                                 <div className="text-sm text-slate-500">
                                                                     Showing <span className="font-semibold text-slate-900">{startIndex + 1}</span> to <span className="font-semibold text-slate-900">{Math.min(endIndex, totalItems)}</span> of <span className="font-semibold text-slate-900">{totalItems}</span> results
@@ -896,7 +1083,38 @@ export const ComplianceDocumentsPage = () => {
                                     className="pl-9 pr-4 h-10 w-full rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 items-center">
+                                {/* Column Visibility Dropdown */}
+                                <div className="relative">
+                                    <button 
+                                        onClick={() => setIsDriverColumnDropdownOpen(!isDriverColumnDropdownOpen)}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                    >
+                                        <Columns className="w-3.5 h-3.5" />
+                                        Columns
+                                        <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                    {isDriverColumnDropdownOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-10" onClick={() => setIsDriverColumnDropdownOpen(false)}></div>
+                                            <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-20 p-2">
+                                                {Object.keys(driverColumns).map(col => (
+                                                    col !== 'actions' && (
+                                                        <label key={col} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={driverColumns[col]} 
+                                                                onChange={(e) => setDriverColumns(prev => ({ ...prev, [col]: e.target.checked }))}
+                                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                                                            />
+                                                            <span className="text-xs text-slate-700 capitalize">{col}</span>
+                                                        </label>
+                                                    )
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                                 <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center gap-2">
                                     <Download className="w-4 h-4" /> Export
                                 </button>
@@ -912,13 +1130,23 @@ export const ComplianceDocumentsPage = () => {
                                 <table className="w-full text-left text-sm whitespace-nowrap">
                                     <thead className="bg-slate-50/80 border-b border-slate-200">
                                         <tr>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider pl-6">Driver Name</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">ID / Details</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">License</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>
+                                            {driverColumns.name && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider pl-6 cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => setDriverSort({ key: 'name', direction: driverSort?.key === 'name' && driverSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Driver Name <ArrowUpDown className={`w-3 h-3 ${driverSort?.key === 'name' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {driverColumns.id && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => setDriverSort({ key: 'id', direction: driverSort?.key === 'id' && driverSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">ID / Details <ArrowUpDown className={`w-3 h-3 ${driverSort?.key === 'id' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {driverColumns.status && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => setDriverSort({ key: 'status', direction: driverSort?.key === 'status' && driverSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Status <ArrowUpDown className={`w-3 h-3 ${driverSort?.key === 'status' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {driverColumns.compliance && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>}
+                                            {driverColumns.license && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => setDriverSort({ key: 'license', direction: driverSort?.key === 'license' && driverSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">License <ArrowUpDown className={`w-3 h-3 ${driverSort?.key === 'license' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {driverColumns.contact && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => setDriverSort({ key: 'contact', direction: driverSort?.key === 'contact' && driverSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Contact <ArrowUpDown className={`w-3 h-3 ${driverSort?.key === 'contact' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {driverColumns.actions && <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
@@ -930,7 +1158,7 @@ export const ComplianceDocumentsPage = () => {
 
                                                 return (
                                                     <tr key={driver.id} onClick={() => setSelectedDriver(driver)} className="hover:bg-blue-50/40 transition-colors group cursor-pointer">
-                                                        <td className="px-4 py-3 pl-6">
+                                                        {driverColumns.name && <td className="px-4 py-3 pl-6">
                                                             <div className="flex items-center gap-3">
                                                                 <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold border border-slate-200">
                                                                     {driver.avatarInitials}
@@ -940,13 +1168,13 @@ export const ComplianceDocumentsPage = () => {
                                                                     <div className="text-[11px] text-slate-500 flex items-center gap-1">Hired: {driver.hiredDate}</div>
                                                                 </div>
                                                             </div>
-                                                        </td>
-                                                        <td className="px-4 py-3">
+                                                        </td>}
+                                                        {driverColumns.id && <td className="px-4 py-3">
                                                             <div className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded w-fit">
                                                                 {driver.id}
                                                             </div>
-                                                        </td>
-                                                        <td className="px-4 py-3">
+                                                        </td>}
+                                                        {driverColumns.status && <td className="px-4 py-3">
                                                             <Badge 
                                                                 text={driver.status} 
                                                                 tone={
@@ -955,8 +1183,8 @@ export const ComplianceDocumentsPage = () => {
                                                                     driver.status === 'Terminated' ? 'danger' : 'warning'
                                                                 } 
                                                             />
-                                                        </td>
-                                                        <td className="px-4 py-3">
+                                                        </td>}
+                                                        {driverColumns.compliance && <td className="px-4 py-3">
                                                             {isCompliant ? (
                                                                 <div className="flex flex-col gap-1">
                                                                     <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded w-fit">
@@ -982,14 +1210,14 @@ export const ComplianceDocumentsPage = () => {
                                                                     )}
                                                                 </div>
                                                             )}
-                                                        </td>
-                                                        <td className="px-4 py-3">
+                                                        </td>}
+                                                        {driverColumns.license && <td className="px-4 py-3">
                                                             <div className="text-slate-900 font-medium text-xs">{driver.licenseNumber || '—'}</div>
                                                             <div className="text-[11px] text-slate-500 mt-0.5">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                                        </td>}
+                                                        {driverColumns.contact && <td className="px-4 py-3 text-sm text-slate-600">
                                                             <div className="flex flex-col gap-0.5">
-                                                                // Mock phone/email data from driver object if available
+                                                                {/* Mock phone/email data from driver object if available */}
                                                                 <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
                                                                     {driver.phone || '(555) 000-0000'}
                                                                 </span>
@@ -997,20 +1225,20 @@ export const ComplianceDocumentsPage = () => {
                                                                      {driver.email || 'driver@example.com'}
                                                                 </span>
                                                             </div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right pr-6">
+                                                        </td>}
+                                                        {driverColumns.actions && <td className="px-4 py-3 text-right pr-6">
                                                             <div className="flex items-center justify-end gap-1">
                                                                 <button onClick={(e) => { e.stopPropagation(); setSelectedDriver(driver); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Manage Driver">
                                                                     <div className="font-semibold text-xs text-blue-600 hover:underline">Manage</div>
                                                                 </button>
                                                             </div>
-                                                        </td>
+                                                        </td>}
                                                     </tr>
                                                 );
                                             })
                                         ) : (
                                             <tr>
-                                                <td colSpan={7} className="py-20 text-center">
+                                                <td colSpan={Object.values(driverColumns).filter(Boolean).length} className="py-20 text-center">
                                                     <div className="flex flex-col items-center gap-3">
                                                         <div className="p-4 bg-slate-50 rounded-full text-slate-300">
                                                             <Search className="w-8 h-8" />
@@ -1139,15 +1367,99 @@ export const ComplianceDocumentsPage = () => {
                                         </button>
                                     }
                                 >
-                                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                     {/* Custom Toolbar */}
+                                     <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                                        <div className="relative w-full sm:w-64">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search numbers..." 
+                                                value={knSearch}
+                                                onChange={(e) => setKnSearch(e.target.value)}
+                                                className="pl-9 pr-3 py-1.5 w-full text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <button 
+                                                onClick={() => setIsKnColumnDropdownOpen(!isKnColumnDropdownOpen)}
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                <Columns className="w-3.5 h-3.5" />
+                                                Columns
+                                                <ChevronDown className="w-3 h-3" />
+                                            </button>
+                                            {isKnColumnDropdownOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-10" onClick={() => setIsKnColumnDropdownOpen(false)}></div>
+                                                    <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-20 p-2">
+                                                        {Object.keys(knColumns).map(col => (
+                                                            col !== 'actions' && (
+                                                                <label key={col} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={knColumns[col]} 
+                                                                        onChange={(e) => setKnColumns(prev => ({ ...prev, [col]: e.target.checked }))}
+                                                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                                                                    />
+                                                                    <span className="text-xs text-slate-700 capitalize">{col}</span>
+                                                                </label>
+                                                            )
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                     </div>
+
+                                     <div className="overflow-x-auto border-t border-slate-200">
                                         <table className="w-full text-left text-sm table-fixed">
                                             <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
                                                 <tr>
-                                                    <th className="px-6 py-3 w-1/4">Number Type</th>
-                                                    <th className="px-6 py-3 w-1/4">Value</th>
-                                                    <th className="px-6 py-3 w-1/4">Status</th>
-                                                    <th className="px-6 py-3 w-1/4">Expiry</th>
-                                                    <th className="px-6 py-3 w-24 text-right">Actions</th>
+                                                    {knColumns.type && (
+                                                        <th 
+                                                            className="px-6 py-3 w-1/4 cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setKnSort({ key: 'type', direction: knSort?.key === 'type' && knSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Number Type
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${knSort?.key === 'type' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {knColumns.value && (
+                                                        <th 
+                                                            className="px-6 py-3 w-1/4 cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setKnSort({ key: 'value', direction: knSort?.key === 'value' && knSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                             <div className="flex items-center gap-1">
+                                                                Value
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${knSort?.key === 'value' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {knColumns.status && (
+                                                        <th 
+                                                            className="px-6 py-3 w-1/4 cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setKnSort({ key: 'status', direction: knSort?.key === 'status' && knSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                             <div className="flex items-center gap-1">
+                                                                Status
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${knSort?.key === 'status' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {knColumns.expiry && (
+                                                        <th 
+                                                            className="px-6 py-3 w-1/4 cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setKnSort({ key: 'expiry', direction: knSort?.key === 'expiry' && knSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                             <div className="flex items-center gap-1">
+                                                                Expiry
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${knSort?.key === 'expiry' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {knColumns.actions && <th className="px-6 py-3 w-24 text-right">Actions</th>}
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
@@ -1159,7 +1471,7 @@ export const ComplianceDocumentsPage = () => {
                                                     return (
                                                         <React.Fragment key={group.key}>
                                                             <tr className="bg-slate-50/50 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-100" onClick={() => toggleKeyNumberGroup(group.key)}>
-                                                                <td colSpan={5} className="px-6 py-2.5">
+                                                                <td colSpan={Object.values(knColumns).filter(Boolean).length} className="px-6 py-2.5">
                                                                     <div className="flex items-center justify-between">
                                                                         <span className="font-bold text-xs uppercase text-slate-500 tracking-wider pl-2">{group.label}</span>
                                                                         <div className="flex items-center gap-3">
@@ -1173,49 +1485,60 @@ export const ComplianceDocumentsPage = () => {
                                                                 const val = config ? getKeyNumberData(config) : null;
                                                                 return (
                                                                 <tr key={idx}>
-                                                                    <td className="px-6 py-4">
-                                                                        <div className="font-semibold text-slate-900 truncate">{item.type}</div>
-                                                                        {(() => {
-                                                                            const docType = documents.find(d => d.id === config?.requiredDocumentTypeId);
-                                                                            if (docType) {
-                                                                                return (
-                                                                                    <div className="text-xs text-blue-600 flex items-center gap-1 mt-0.5 font-normal">
-                                                                                        <FileText className="w-3 h-3" />
-                                                                                        Linked to: {docType.name}
-                                                                                    </div>
-                                                                                );
-                                                                            }
-                                                                            return null;
-                                                                        })()}
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-slate-400 italic">{item.value}</td>
-                                                                    <td className="px-6 py-4">
-                                                                        <Badge text={item.status} tone={getStatusTone(item.status)} />
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-slate-500 italic">{item.expiry}</td>
-                                                                    <td className="px-6 py-4 text-right">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setKeyNumberModalMode('edit');
-                                                                                setEditingKeyNumber({
-                                                                                    id: item.id,
-                                                                                    configId: item.id,
-                                                                                    value: val?.value || '',
-                                                                                    expiryDate: val?.expiryDate || '',
-                                                                                    issueDate: val?.issueDate || '',
-                                                                                    tags: val?.tags || [],
-                                                                                    numberRequired: config?.numberRequired !== false,
-                                                                                    hasExpiry: config?.hasExpiry || false,
-                                                                                    documentRequired: config?.documentRequired || false
-                                                                                });
-                                                                            }}
-                                                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                                        >
-                                                                            <Edit3 className="w-4 h-4" />
-                                                                        </button>
-                                                                    </td>
+                                                                    {knColumns.type && (
+                                                                        <td className="px-6 py-4">
+                                                                            <div className="font-semibold text-slate-900 truncate">{item.type}</div>
+                                                                            {(() => {
+                                                                                const docType = documents.find(d => d.id === config?.requiredDocumentTypeId);
+                                                                                if (docType) {
+                                                                                    return (
+                                                                                        <div className="text-xs text-blue-600 flex items-center gap-1 mt-0.5 font-normal">
+                                                                                            <FileText className="w-3 h-3" />
+                                                                                            Linked to: {docType.name}
+                                                                                        </div>
+                                                                                    );
+                                                                                }
+                                                                                return null;
+                                                                            })()}
+                                                                        </td>
+                                                                    )}
+                                                                    {knColumns.value && (
+                                                                        <td className="px-6 py-4 text-slate-400 italic">{item.value}</td>
+                                                                    )}
+                                                                    {knColumns.status && (
+                                                                        <td className="px-6 py-4">
+                                                                            <Badge text={item.status} tone={getStatusTone(item.status)} />
+                                                                        </td>
+                                                                    )}
+                                                                    {knColumns.expiry && (
+                                                                        <td className="px-6 py-4 text-slate-500 italic">{item.expiry}</td>
+                                                                    )}
+                                                                    {knColumns.actions && (
+                                                                        <td className="px-6 py-4 text-right">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setKeyNumberModalMode('edit');
+                                                                                    setEditingKeyNumber({
+                                                                                        id: item.id,
+                                                                                        configId: item.id,
+                                                                                        value: val?.value || '',
+                                                                                        expiryDate: val?.expiryDate || '',
+                                                                                        issueDate: val?.issueDate || '',
+                                                                                        tags: val?.tags || [],
+                                                                                        numberRequired: config?.numberRequired !== false,
+                                                                                        hasExpiry: config?.hasExpiry || false,
+                                                                                        documentRequired: config?.documentRequired || false
+                                                                                    });
+                                                                                }}
+                                                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                                            >
+                                                                                <Edit3 className="w-4 h-4" />
+                                                                            </button>
+                                                                        </td>
+                                                                    )}
                                                                 </tr>
-                                                            )})}
+                                                            );
+                                                        })}
                                                         </React.Fragment>
                                                     );
                                                 })}
@@ -1266,74 +1589,192 @@ export const ComplianceDocumentsPage = () => {
                                 )}
         
                                 <Card title="Documents" icon={FileText} fullWidth>
-                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                     {/* Custom Toolbar */}
+                                     <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                                        <div className="relative w-full sm:w-64">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search documents..." 
+                                                value={docSearch}
+                                                onChange={(e) => setDocSearch(e.target.value)}
+                                                className="pl-9 pr-3 py-1.5 w-full text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <button 
+                                                onClick={() => setIsDocColumnDropdownOpen(!isDocColumnDropdownOpen)}
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                            >
+                                                <Columns className="w-3.5 h-3.5" />
+                                                Columns
+                                                <ChevronDown className="w-3 h-3" />
+                                            </button>
+                                            {isDocColumnDropdownOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-10" onClick={() => setIsDocColumnDropdownOpen(false)}></div>
+                                                    <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-20 p-2">
+                                                        {Object.keys(docColumns).map(col => (
+                                                            col !== 'actions' && (
+                                                                <label key={col} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={docColumns[col]} 
+                                                                        onChange={(e) => setDocColumns(prev => ({ ...prev, [col]: e.target.checked }))}
+                                                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                                                                    />
+                                                                    <span className="text-xs text-slate-700 capitalize">{col === 'uploaded' ? 'Date Uploaded' : col}</span>
+                                                                </label>
+                                                            )
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                     </div>
+                                    <div className="overflow-x-auto border-t border-slate-200">
                                         <table className="w-full text-left text-sm table-fixed">
                                             <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
                                             <tr>
-                                                    <th className="px-6 py-3 w-[15%]">Document Type</th>
-                                                    <th className="px-6 py-3 w-[15%]">Name</th>
-                                                    <th className="px-6 py-3 w-[10%]">Folder</th>
-                                                    <th className="px-6 py-3 w-[10%]">Date Uploaded</th>
-                                                    <th className="px-6 py-3 w-[10%]">Status</th>
-                                                    <th className="px-6 py-3 w-[12%]">Expiry</th>
-                                                    <th className="px-6 py-3 w-[10%] text-right">Actions</th>
+
+                                                    {docColumns.type && (
+                                                        <th 
+                                                            className="px-6 py-3 w-[15%] cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setDocSort({ key: 'documentType', direction: docSort?.key === 'documentType' && docSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Document Type
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${docSort?.key === 'documentType' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {docColumns.name && (
+                                                        <th 
+                                                            className="px-6 py-3 w-[15%] cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setDocSort({ key: 'documentName', direction: docSort?.key === 'documentName' && docSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Name
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${docSort?.key === 'documentName' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {docColumns.folder && (
+                                                        <th 
+                                                            className="px-6 py-3 w-[10%] cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setDocSort({ key: 'folderPath', direction: docSort?.key === 'folderPath' && docSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Folder
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${docSort?.key === 'folderPath' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {docColumns.uploaded && (
+                                                        <th 
+                                                            className="px-6 py-3 w-[10%] cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setDocSort({ key: 'dateUploaded', direction: docSort?.key === 'dateUploaded' && docSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Date Uploaded
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${docSort?.key === 'dateUploaded' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {docColumns.status && (
+                                                        <th 
+                                                            className="px-6 py-3 w-[10%] cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setDocSort({ key: 'status', direction: docSort?.key === 'status' && docSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Status
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${docSort?.key === 'status' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {docColumns.expiry && (
+                                                        <th 
+                                                            className="px-6 py-3 w-[12%] cursor-pointer hover:bg-slate-50 transition-colors group"
+                                                            onClick={() => setDocSort({ key: 'expiryDate', direction: docSort?.key === 'expiryDate' && docSort.direction === 'asc' ? 'desc' : 'asc' })}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                Expiry
+                                                                <ArrowUpDown className={`w-3 h-3 text-slate-400 ${docSort?.key === 'expiryDate' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100'}`} />
+                                                            </div>
+                                                        </th>
+                                                    )}
+                                                    {docColumns.actions && <th className="px-6 py-3 w-[10%] text-right">Actions</th>}
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {filterDocumentItems(filteredDocuments).map((doc, idx) => (
                                                     <tr key={idx} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100/50">
-                                                        <td className="px-6 py-4 font-semibold text-slate-900">
-                                                            <div className="flex items-center gap-2">
-                                                                <FileText className="w-4 h-4 text-slate-400" />
-                                                                {doc.documentType}
-                                                            </div>
-                                                            {doc.linkedKeyNumber && (
-                                                                <div className="ml-6 text-xs text-blue-600 flex items-center gap-1 mt-1 font-normal">
-                                                                    Linked to: {doc.linkedKeyNumber}
+                                                        {docColumns.type && (
+                                                            <td className="px-6 py-4 font-semibold text-slate-900">
+                                                                <div className="flex items-center gap-2">
+                                                                    <FileText className="w-4 h-4 text-slate-400" />
+                                                                    {doc.documentType}
                                                                 </div>
-                                                            )}
-                                                            {doc.linkedExpense && (
-                                                                <div className="ml-6 text-xs text-emerald-600 flex items-center gap-1 mt-1 font-normal">
-                                                                    Linked to Expense: {doc.linkedExpense}
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-slate-600 font-medium text-xs truncate max-w-[150px]" title={doc.documentName}>
-                                                            {doc.documentName}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-slate-500 text-xs">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <div className="p-1 bg-slate-100 rounded text-slate-400">
-                                                                    <LayoutGrid className="w-3 h-3" />
-                                                                </div>
-                                                                {doc.folderPath}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-slate-500 font-mono text-xs">
-                                                            {doc.dateUploaded}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <Badge text={doc.status} tone={getStatusTone(doc.status)} />
-                                                        </td>
-                                                        <td className="px-6 py-4 text-slate-500 font-mono text-xs">{doc.expiryDate}</td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <div className="flex items-center justify-end gap-2">
-                                                                {doc.hasUpload && (
-                                                                    <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Download">
-                                                                        <Download className="w-4 h-4" />
-                                                                    </button>
+                                                                {doc.linkedKeyNumber && (
+                                                                    <div className="ml-6 text-xs text-blue-600 flex items-center gap-1 mt-1 font-normal">
+                                                                        Linked to: {doc.linkedKeyNumber}
+                                                                    </div>
                                                                 )}
-                                                                <button
-                                                                    onClick={() => {
-                                                                         // Handle document edit/view - open modal
-                                                                         setEditingDocument(doc);
-                                                                    }}
-                                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                                >
-                                                                    {doc.hasUpload ? <Edit3 className="w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
-                                                                </button>
-                                                            </div>
-                                                        </td>
+                                                                {doc.linkedExpense && (
+                                                                    <div className="ml-6 text-xs text-emerald-600 flex items-center gap-1 mt-1 font-normal">
+                                                                        Linked to Expense: {doc.linkedExpense}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        )}
+                                                        {docColumns.name && (
+                                                            <td className="px-6 py-4 text-slate-600 font-medium text-xs truncate max-w-[150px]" title={doc.documentName}>
+                                                                {doc.documentName}
+                                                            </td>
+                                                        )}
+                                                        {docColumns.folder && (
+                                                            <td className="px-6 py-4 text-slate-500 text-xs">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <div className="p-1 bg-slate-100 rounded text-slate-400">
+                                                                        <LayoutGrid className="w-3 h-3" />
+                                                                    </div>
+                                                                    {doc.folderPath}
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        {docColumns.uploaded && (
+                                                            <td className="px-6 py-4 text-slate-500 font-mono text-xs">
+                                                                {doc.dateUploaded}
+                                                            </td>
+                                                        )}
+                                                        {docColumns.status && (
+                                                            <td className="px-6 py-4">
+                                                                <Badge text={doc.status} tone={getStatusTone(doc.status)} />
+                                                            </td>
+                                                        )}
+                                                        {docColumns.expiry && (
+                                                            <td className="px-6 py-4 text-slate-500 font-mono text-xs">{doc.expiryDate}</td>
+                                                        )}
+                                                        {docColumns.actions && (
+                                                            <td className="px-6 py-4 text-right">
+                                                                <div className="flex items-center justify-end gap-2">
+                                                                    {doc.hasUpload && (
+                                                                        <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Download">
+                                                                            <Download className="w-4 h-4" />
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            // Handle document edit/view - open modal
+                                                                            setEditingDocument(doc);
+                                                                        }}
+                                                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                                    >
+                                                                        {doc.hasUpload ? <Edit3 className="w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        )}
                                                     </tr>
                                                 ))}
                                             </tbody>

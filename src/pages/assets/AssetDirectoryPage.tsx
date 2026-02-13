@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { calculateAssetComplianceStats } from '@/utils/compliance-utils';
 import {
     Search, Plus, Download, MoreHorizontal,
     Check, Edit2, FileText,
@@ -288,6 +289,7 @@ export function AssetDirectoryPage({ isEmbedded = false }: { isEmbedded?: boolea
                                                 <TH>Make / Model / Year</TH>
                                                 <TH className="w-32">Date Added</TH>
                                                 <TH className="w-32">Ownership</TH>
+                                                <TH className="w-32 text-center">Compliance</TH>
                                                 <TH className="w-32">Status</TH>
                                                 <TH align="right" className="w-24 pr-6">Actions</TH>
                                             </tr>
@@ -335,6 +337,33 @@ export function AssetDirectoryPage({ isEmbedded = false }: { isEmbedded?: boolea
                                                             </span>
                                                         </TD>
                                                         <TD><Badge variant={asset.financialStructure}>{asset.financialStructure}</Badge></TD>
+                                                        <TD align="center">
+                                                            {(() => {
+                                                                const stats = calculateAssetComplianceStats(asset);
+                                                                if (stats.totalIssues === 0) {
+                                                                    return <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100"><Check size={14} strokeWidth={3} /></div>;
+                                                                }
+                                                                return (
+                                                                    <div className="flex flex-col gap-1 items-center">
+                                                                        {stats.expired > 0 && (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
+                                                                                {stats.expired} EXPIRED
+                                                                            </span>
+                                                                        )}
+                                                                        {stats.expiringSoon > 0 && (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200 whitespace-nowrap">
+                                                                                {stats.expiringSoon} EXPIRING
+                                                                            </span>
+                                                                        )}
+                                                                        {stats.missing > 0 && (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100 whitespace-nowrap">
+                                                                                {stats.missing} MISSING
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </TD>
                                                         <TD><Badge variant={asset.operationalStatus}>{asset.operationalStatus}</Badge></TD>
                                                         <TD align="right" className="pr-6">
                                                             <div className="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity relative">

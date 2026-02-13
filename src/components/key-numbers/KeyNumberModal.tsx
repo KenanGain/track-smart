@@ -4,6 +4,7 @@ import { Toggle } from '@/components/ui/toggle';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig, UploadedDocument } from '@/types/key-numbers.types';
 import type { DocumentType, TagSection } from '@/data/mock-app-data';
+import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 
 // Key Number Add/Edit Modal Types
 export interface KeyNumberModalData {
@@ -243,39 +244,50 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
                                 </div>
                             </div>
                             
-                            {/* Issuing State & Country */}
+                            {/* Issuing Country & State */}
+                            {(activeConfig.issueCountryRequired || activeConfig.issueStateRequired) && (
                             <div className="grid grid-cols-2 gap-4">
-                                {activeConfig.issueStateRequired && (
-                                    <div>
-                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                                            Issuing State <span className="text-red-500">*</span>
-                                        </label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="e.g. CA, NY, TX"
-                                            className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${errors.issuingState ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
-                                            value={formIssuingState} 
-                                            onChange={(e) => { setFormIssuingState(e.target.value); setErrors(prev => ({ ...prev, issuingState: '' })); }}
-                                        />
-                                        {errors.issuingState && <p className="text-xs text-red-500 mt-1">{errors.issuingState}</p>}
-                                    </div>
-                                )}
                                 {activeConfig.issueCountryRequired && (
                                     <div>
                                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                                             Issuing Country <span className="text-red-500">*</span>
                                         </label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="e.g. USA, CAN, MEX"
-                                            className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 ${errors.issuingCountry ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
-                                            value={formIssuingCountry} 
-                                            onChange={(e) => { setFormIssuingCountry(e.target.value); setErrors(prev => ({ ...prev, issuingCountry: '' })); }}
-                                        />
+                                        <select
+                                            className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white ${errors.issuingCountry ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
+                                            value={formIssuingCountry}
+                                            onChange={(e) => {
+                                                setFormIssuingCountry(e.target.value);
+                                                setFormIssuingState('');
+                                                setErrors(prev => ({ ...prev, issuingCountry: '', issuingState: '' }));
+                                            }}
+                                        >
+                                            <option value="">Select country...</option>
+                                            <option value="United States">United States</option>
+                                            <option value="Canada">Canada</option>
+                                        </select>
                                         {errors.issuingCountry && <p className="text-xs text-red-500 mt-1">{errors.issuingCountry}</p>}
                                     </div>
                                 )}
+                                {activeConfig.issueStateRequired && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                            Issuing State / Province <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white ${errors.issuingState ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
+                                            value={formIssuingState}
+                                            onChange={(e) => { setFormIssuingState(e.target.value); setErrors(prev => ({ ...prev, issuingState: '' })); }}
+                                        >
+                                            <option value="">Select state / province...</option>
+                                            {(formIssuingCountry === 'Canada' ? CA_PROVINCES : US_STATES).map(s => (
+                                                <option key={s} value={s}>{s}</option>
+                                            ))}
+                                        </select>
+                                        {errors.issuingState && <p className="text-xs text-red-500 mt-1">{errors.issuingState}</p>}
+                                    </div>
+                                )}
                             </div>
+                            )}
                             {/* Monitoring & Notifications Card (Added to match KeyNumberEditor) */}
                             <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-5 mt-4">
                                 <div className="flex items-center justify-between">

@@ -3,11 +3,14 @@ import {
   User, Phone, MapPin, Briefcase, 
   AlertTriangle, Edit, Edit3, Trash2, Mail, History, Award, 
   UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Route, Ticket, Car, DollarSign, AlertOctagon, FileKey, Hash, Clock, Plus,
-  CalendarX, FileWarning, Download, Eye, X, Construction
+  CalendarX, FileWarning, Download, Eye, X, Construction, Map
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 // Removed: import { Badge } from '../../components/ui/Badge';
 import { StatusBadge, SectionHeader, ViewField, InputGroup, Modal, maskSSN, formatDate, calculateAge } from './DriverComponents';
+import { PaystubsPage } from '../finance/PaystubsPage';
+import { MOCK_DRIVERS } from '@/data/mock-app-data';
+import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 
 // --- Individual Section Edit Modals ---
 
@@ -565,11 +568,39 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   // Document Modals State
   const [editingDocument, setEditingDocument] = useState<any>(null);
   const [viewingDocument, setViewingDocument] = useState<any>(null);
+  const [docIssuingCountry, setDocIssuingCountry] = useState('');
+  const [docIssuingState, setDocIssuingState] = useState('');
+  const [deletingDocument, setDeletingDocument] = useState<any>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
   const handleSaveDocument = () => {
-      // Mock save logic - in real app would update driverData documents list
-      console.log('Saved document', editingDocument);
+      // Mock save logic - store uploaded file metadata
+      if (editingDocument && uploadedFiles.length > 0) {
+          const newDocs = uploadedFiles.map((f, i) => ({
+              id: `upload_${Date.now()}_${i}`,
+              typeId: editingDocument.typeId,
+              name: f.name,
+              dateUploaded: new Date().toLocaleDateString(),
+              expiryDate: editingDocument.expiryDate || '—',
+              status: 'Active'
+          }));
+          setDriverData((prev: any) => ({
+              ...prev,
+              documents: [...(prev.documents || []), ...newDocs]
+          }));
+      }
+      setUploadedFiles([]);
       setEditingDocument(null);
+  };
+
+  const handleDeleteDocument = () => {
+      if (deletingDocument) {
+          setDriverData((prev: any) => ({
+              ...prev,
+              documents: (prev.documents || []).filter((d: any) => d.id !== deletingDocument.id)
+          }));
+          setDeletingDocument(null);
+      }
   };
 
   const toggleKeyNumberGroup = (key: string) => setKeyNumberGroupsCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
@@ -693,97 +724,81 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Accidents', label: 'Accidents', icon: Car },
         { id: 'Safety', label: 'Safety', icon: AlertOctagon },
 
-        { id: 'Payrolls', label: 'Payrolls', icon: DollarSign }
+        { id: 'Paystubs', label: 'Paystubs', icon: DollarSign },
+        { id: 'HoursOfService', label: 'Hours of Service', icon: Clock },
+        { id: 'MileageReport', label: 'Mileage Report', icon: Map }
     ];
 
   // Document Logic
   const driverDocuments = React.useMemo(() => {
       const driverDocTypes = documents.filter((doc: any) => doc.relatedTo === 'driver');
-      return driverDocTypes.map((docType: any) => {
-          const linkedKn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === docType.id && k.entityType === 'Driver');
+      
+      // 1. Get all actual uploads from driverData.documents
+      const actualUploads = (driverData.documents || []).map((userDoc: any) => {
+          const docType = getDocumentTypeById(userDoc.typeId) || driverDocTypes.find((dt: any) => dt.id === userDoc.typeId);
           
-          let hasUpload = false;
-          let expiryStr: string | undefined;
-          let dateUploaded = '—';
-          let documentName = '—';
-
-          // Check for existing document in driverData
-          const existingDoc = driverData?.documents?.find((d: any) => d.typeId === docType.id);
-
-          if (existingDoc) {
-              expiryStr = existingDoc.expiryDate;
-              hasUpload = existingDoc.hasUpload ?? false;
-              dateUploaded = existingDoc.uploadedDate || '—';
-              documentName = existingDoc.name || '—';
-          }
-          
-          // If linked to a key number, check if driver has a value with docs
-          if (linkedKn) {
-              // Special handling for Driver License virtual key number
-              if (linkedKn.id === 'kn-driver-license') {
-                  const primaryLicense = driverData.licenses?.find((l: any) => l.isPrimary) || driverData.licenses?.[0];
-                  if (primaryLicense) {
-                      if (!expiryStr && primaryLicense.expiryDate) expiryStr = primaryLicense.expiryDate;
-                      // Check for uploads on the license object
-                      if (primaryLicense.frontImage || primaryLicense.pdfDoc || primaryLicense.rearImage) {
-                          hasUpload = true;
-                          // If we have a file, we could update dateUploaded/documentName if available
-                          if (primaryLicense.pdfDoc) {
-                                documentName = primaryLicense.pdfDoc.name;
-                                dateUploaded = 'Today'; // Mock
-                          } else if (primaryLicense.frontImage) {
-                                documentName = 'License Image';
-                                dateUploaded = 'Today'; // Mock
-                          }
-                      }
-                  }
-              } else {
-                  const driverKn = driverData?.keyNumbers?.find((k: any) => k.configId === linkedKn.id);
-                  if (driverKn) {
-                      if (!expiryStr && driverKn.expiryDate) expiryStr = driverKn.expiryDate;
-                      if (driverKn.documents && driverKn.documents.length > 0) hasUpload = true;
-                  }
-              }
-          }
-
-          // Use shared compliance status calculation
-          const config = linkedKn || docType;
-          const enabled = isMonitoringEnabled(config);
-          const maxDays = getMaxReminderDays(config);
+          // Calculate status based on expiry
           const status = calculateComplianceStatus(
-              expiryStr,
-              enabled,
-              maxDays,
-              hasUpload,
-              linkedKn ? linkedKn.hasExpiry : docType.expiryRequired,
-              docType.requirementLevel === 'required'
+            userDoc.expiryDate, 
+            docType?.monitoring?.enabled ?? false, 
+            30, // Default 30 days warning
+            true, // Has upload
+            docType?.expiryRequired ?? false, 
+            docType?.requirementLevel === 'required'
           );
 
-          // Linked expense type
-          const linkedExpense = INITIAL_EXPENSE_TYPES.find((e: any) => e.documentTypeId === docType.id)?.name;
-          // Linked key number name
-          const linkedKeyNumber = linkedKn ? linkedKn.numberTypeName : null;
-
           return {
-              id: docType.id,
-              documentType: docType.name,
-              documentName,
-              folderPath: docType.destination?.folderName || docType.destination?.root || 'Driver',
-              dateUploaded,
-              status,
-              expiryDate: expiryStr || '—',
-              hasUpload,
-              requirementLevel: docType.requirementLevel,
-              linkedExpense,
-              linkedKeyNumber,
+              id: userDoc.id || `doc_${Math.random()}`,
+              documentType: docType?.name || 'Unknown Document',
+              typeId: userDoc.typeId,
+              documentName: userDoc.name || docType?.name || 'Document',
+              folderPath: docType?.destination?.folderName || 'Driver',
+              dateUploaded: userDoc.dateUploaded || '—',
+              status: userDoc.status || status,
+              expiryDate: userDoc.expiryDate || '—',
+              hasUpload: true,
+              requirementLevel: docType?.requirementLevel || 'optional',
+              linkedExpense: null,
+              linkedKeyNumber: null,
               docTypeData: docType
           };
       });
+
+      // 2. Identify document types without uploads (required + optional)
+      const missingRequirements = driverDocTypes.filter((dt: any) => {
+          // Skip 'not_required' types — they don't need to appear
+          if (dt.requirementLevel === 'not_required') return false;
+          
+          const hasUpload = actualUploads.some((d: any) => d.typeId === dt.id);
+          if (hasUpload) return false;
+
+          return true;
+      }).map((dt: any) => {
+          return {
+              id: dt.id,
+              documentType: dt.name,
+              typeId: dt.id,
+              documentName: '—',
+              folderPath: dt.destination?.folderName || 'Driver',
+              dateUploaded: '—',
+              status: dt.requirementLevel === 'required' ? 'Missing' : 'Not Uploaded',
+              expiryDate: '—',
+              hasUpload: false,
+              requirementLevel: dt.requirementLevel,
+              linkedExpense: null,
+              linkedKeyNumber: null,
+              docTypeData: dt
+          };
+      });
+
+      // Combine: Actual Uploads + Missing Requirements
+      return [...actualUploads, ...missingRequirements];
+
   }, [documents, keyNumbers, driverData?.documents, driverData?.keyNumbers]);
 
   // Document filter counts
   const docCounts = React.useMemo(() => ({
-    requiredMissing: driverDocuments.filter((d: any) => d.requirementLevel === 'required' && !d.hasUpload).length,
+    requiredMissing: driverDocuments.filter((d: any) => d.status === 'Missing').length,
     expiringSoon: driverDocuments.filter((d: any) => d.status === 'Expiring Soon').length,
     expired: driverDocuments.filter((d: any) => d.status === 'Expired').length
   }), [driverDocuments]);
@@ -1089,7 +1104,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                             <table className="w-full text-left text-sm table-fixed">
                                 <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
                                     <tr>
-                                        <th className="px-6 py-3 w-1/3">Document Name</th>
+                                        <th className="px-6 py-3 w-1/3">Document Type</th>
                                         <th className="px-6 py-3 w-1/4">Status</th>
                                         <th className="px-6 py-3 w-1/4">Expiry</th>
                                         <th className="px-6 py-3 w-24 text-right">Actions</th>
@@ -1107,6 +1122,11 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                                     {doc.linkedKeyNumber && (
                                                         <div className="ml-6 text-xs text-blue-600 flex items-center gap-1 mt-1 font-normal">
                                                             Linked to: {doc.linkedKeyNumber}
+                                                        </div>
+                                                    )}
+                                                    {doc.typeId === 'DT-PAYSTUB' && (
+                                                        <div className="ml-6 text-xs text-indigo-600 flex items-center gap-1 mt-1 font-normal">
+                                                            <DollarSign className="w-3 h-3" /> Paystub
                                                         </div>
                                                     )}
                                                     {doc.linkedExpense && (
@@ -1142,6 +1162,15 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                                         >
                                                             <Edit3 className="w-4 h-4" />
                                                         </button>
+                                                        {doc.hasUpload && (
+                                                            <button 
+                                                                onClick={() => setDeletingDocument(doc)}
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1157,8 +1186,20 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 </div>
             )}
             
+            {activeTab === 'Paystubs' && (
+                <div className="animate-in fade-in">
+                    <PaystubsPage 
+                        driverId={driverData.id} 
+                        onPaystubChange={() => {
+                            const fresh = MOCK_DRIVERS.find(d => d.id === driverData.id);
+                            if (fresh) setDriverData({...fresh});
+                        }}
+                    />
+                </div>
+            )}
+
             {/* PLACEHOLDER TABS */}
-            {['Training', 'Certificates', 'Trips', 'Tickets', 'Accidents', 'Safety', 'Payrolls'].includes(activeTab) && (() => {
+            {['Training', 'Certificates', 'Trips', 'Tickets', 'Accidents', 'Safety', 'HoursOfService', 'MileageReport'].includes(activeTab) && (() => {
                 const tabConfig = tabs.find(t => t.id === activeTab);
                 const TabIcon = tabConfig?.icon || FileText;
                 return (
@@ -1220,17 +1261,128 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                     <input type="date" defaultValue={editingDocument.expiryDate !== 'Not set' && editingDocument.expiryDate !== '—' ? editingDocument.expiryDate : ''} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
                                 </div>
                         </div>
-                        <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all group">
+                        {/* Issuing Country & State */}
+                        {(editingDocument.docTypeData?.issueCountryRequired || editingDocument.docTypeData?.issueStateRequired) && (
+                            <div className="grid grid-cols-2 gap-4">
+                                {editingDocument.docTypeData?.issueCountryRequired && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                            Issuing Country <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
+                                            value={docIssuingCountry}
+                                            onChange={(e) => {
+                                                setDocIssuingCountry(e.target.value);
+                                                setDocIssuingState('');
+                                            }}
+                                        >
+                                            <option value="">Select country...</option>
+                                            <option value="United States">United States</option>
+                                            <option value="Canada">Canada</option>
+                                        </select>
+                                    </div>
+                                )}
+                                {editingDocument.docTypeData?.issueStateRequired && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                            Issuing State / Province <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
+                                            value={docIssuingState}
+                                            onChange={(e) => setDocIssuingState(e.target.value)}
+                                        >
+                                            <option value="">Select state / province...</option>
+                                            {(docIssuingCountry === 'Canada' ? CA_PROVINCES : US_STATES).map(s => (
+                                                <option key={s} value={s}>{s}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        <div 
+                            className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all group"
+                            onClick={() => document.getElementById('doc-file-input')?.click()}
+                        >
+                            <input 
+                                id="doc-file-input" 
+                                type="file" 
+                                multiple 
+                                className="hidden" 
+                                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                onChange={(e) => {
+                                    if (e.target.files) {
+                                        setUploadedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                                    }
+                                    e.target.value = '';
+                                }}
+                            />
                             <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
                                 <UploadCloud className="w-6 h-6" />
                             </div>
                             <p className="text-sm font-medium text-slate-700">Click to upload or drag and drop</p>
-                            <p className="text-xs text-slate-400 mt-1">PDF, JPG, PNG up to 10MB</p>
+                            <p className="text-xs text-slate-400 mt-1">PDF, JPG, PNG, DOC up to 10MB — Select multiple files</p>
                         </div>
+                        {/* Uploaded Files List */}
+                        {uploadedFiles.length > 0 && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Files to upload ({uploadedFiles.length})</p>
+                                {uploadedFiles.map((file, idx) => (
+                                    <div key={idx} className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
+                                                <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setUploadedFiles(prev => prev.filter((_, i) => i !== idx)); }}
+                                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
                         <button onClick={() => setEditingDocument(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Cancel</button>
                         <button onClick={handleSaveDocument} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all hover:translate-y-px">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        {deletingDocument && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                    <div className="p-6 text-center">
+                        <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+                            <Trash2 className="w-7 h-7" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">Delete Document?</h3>
+                        <p className="text-sm text-slate-500">
+                            Are you sure you want to delete <strong>{deletingDocument.documentType}</strong>? This action cannot be undone.
+                        </p>
+                    </div>
+                    <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                        <button 
+                            onClick={() => setDeletingDocument(null)} 
+                            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            onClick={handleDeleteDocument} 
+                            className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm shadow-red-200 transition-all"
+                        >
+                            Delete
+                        </button>
                     </div>
                 </div>
             </div>
