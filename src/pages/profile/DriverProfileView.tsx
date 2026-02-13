@@ -394,7 +394,7 @@ import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-number
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
-import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
+
 
 // ... (existing helper components)
 
