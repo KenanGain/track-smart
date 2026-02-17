@@ -19,8 +19,30 @@ export interface CanadaEnforcement {
   section: string;
   code: string;
   ccmtaCode: string;
-  descriptions: { full: string };
-  points: { nsc: number };
+  category?: string;
+  descriptions: {
+    full: string;
+    conviction?: string;
+    shortForm52?: string;
+  };
+  points: {
+    nsc: number | null;
+    revised?: number | null;
+    cvor?: {
+      raw: string;
+      min: number | null;
+      max: number | null;
+    };
+  };
+  cvorClassification?: {
+    convictionType: string;
+    alternativeGroup: string;
+  };
+  rawSource?: {
+    rawLine: string;
+    rawMatch: string;
+    pdfPage?: number | null;
+  };
 }
 
 export interface ViolationItem {
@@ -29,7 +51,7 @@ export interface ViolationItem {
   violationDescription: string;
   violationGroup: string;
   severityWeight: { driver: number; carrier: number };
-  crashLikelihoodPercent: number;
+  crashLikelihoodPercent: number | null;
   driverRiskCategory: number;
   inDsms: boolean;
   isOos: boolean;
@@ -38,6 +60,7 @@ export interface ViolationItem {
     canada: ViolationRegulatoryCodeCanada[];
   };
   canadaEnforcement: CanadaEnforcement;
+  _source?: string;
 }
 
 export interface ViolationCategoryStats {
@@ -48,7 +71,7 @@ export interface ViolationCategoryStats {
 }
 
 export interface ViolationCategory {
-  label: string;
+  label?: string;
   _stats: ViolationCategoryStats;
   items: ViolationItem[];
 }

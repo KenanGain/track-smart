@@ -523,7 +523,7 @@ export function ViolationsPage() {
 
                           {/* Simplified Crash Probability (No Charts) */}
                           <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <span className={`text-xs font-bold ${item.crashLikelihoodPercent > 100 ? 'text-red-600' : 'text-slate-600'}`}>
+                            <span className={`text-xs font-bold ${(item.crashLikelihoodPercent ?? 0) > 100 ? 'text-red-600' : 'text-slate-600'}`}>
                                 {item.crashLikelihoodPercent ? `${item.crashLikelihoodPercent}%` : '-'}
                             </span>
                           </td>
@@ -597,12 +597,12 @@ export function ViolationsPage() {
                                           <div>
                                             <div className="flex justify-between text-sm mb-2">
                                               <span className="text-slate-600 font-medium">Crash Probability Correlation</span>
-                                              <span className={`font-bold ${item.crashLikelihoodPercent > 100 ? 'text-red-600' : 'text-slate-800'}`}>{item.crashLikelihoodPercent}%</span>
+                                              <span className={`font-bold ${(item.crashLikelihoodPercent ?? 0) > 100 ? 'text-red-600' : 'text-slate-800'}`}>{item.crashLikelihoodPercent ?? 0}%</span>
                                             </div>
                                             <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-                                              <div className={`h-full rounded-full ${item.crashLikelihoodPercent > 100 ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-indigo-500'}`} style={{width: `${Math.min(item.crashLikelihoodPercent, 100)}%`}}></div>
+                                              <div className={`h-full rounded-full ${(item.crashLikelihoodPercent ?? 0) > 100 ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-indigo-500'}`} style={{width: `${Math.min(item.crashLikelihoodPercent ?? 0, 100)}%`}}></div>
                                             </div>
-                                            {item.crashLikelihoodPercent > 100 && <p className="text-xs text-red-600 mt-2 font-medium flex items-center gap-1"><AlertTriangle size={12}/> Extreme crash correlation detected.</p>}
+                                            {(item.crashLikelihoodPercent ?? 0) > 100 && <p className="text-xs text-red-600 mt-2 font-medium flex items-center gap-1"><AlertTriangle size={12}/> Extreme crash correlation detected.</p>}
                                           </div>
 
                                           <div className="grid grid-cols-2 gap-4">
