@@ -674,8 +674,10 @@ export function CarrierProfilePage() {
     const activeDirector = (directorModalMode === 'edit' || directorModalMode === 'view') && selectedDirectorName ? directorData[selectedDirectorName as keyof typeof directorData] : null;
 
     // --- DRIVER LIST LOGIC ---
+    const [drivers, setDrivers] = useState(MOCK_DRIVERS);
+
     const filteredDrivers = useMemo(() => {
-        return MOCK_DRIVERS.filter(driver => {
+        return drivers.filter(driver => {
             const matchesSearch = (
                 driver.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
                 driver.id.toLowerCase().includes(driverSearch.toLowerCase()) ||
@@ -684,15 +686,15 @@ export function CarrierProfilePage() {
             const matchesStatus = driverStatusFilter === 'All' || driver.status === driverStatusFilter;
             return matchesSearch && matchesStatus;
         });
-    }, [driverSearch, driverStatusFilter]);
+    }, [driverSearch, driverStatusFilter, drivers]);
 
     const driverStats = useMemo(() => {
         return {
             total: MOCK_DRIVERS.length,
-            active: MOCK_DRIVERS.filter(d => d.status === 'Active').length,
-            inactive: MOCK_DRIVERS.filter(d => d.status === 'Inactive').length,
-            terminated: MOCK_DRIVERS.filter(d => d.status === 'Terminated').length,
-            onLeave: MOCK_DRIVERS.filter(d => d.status === 'On Leave').length
+            active: drivers.filter(d => d.status === 'Active').length,
+            inactive: drivers.filter(d => d.status === 'Inactive').length,
+            terminated: drivers.filter(d => d.status === 'Terminated').length,
+            onLeave: drivers.filter(d => d.status === 'On Leave').length
         };
     }, []);
 
@@ -726,7 +728,7 @@ export function CarrierProfilePage() {
     // Handler for updates coming from DriverProfileView modals
     const handleDriverUpdate = (updatedData: any) => {
         setSelectedDriverData(updatedData);
-        // Here we would also update the list/backend
+        setDrivers(prev => prev.map(d => d.id === updatedData.id ? updatedData : d));
     };
 
     if (viewingDriverId && !isAddingDriver) {
@@ -746,15 +748,25 @@ export function CarrierProfilePage() {
             onCancel={() => { setIsAddingDriver(false); setEditingDriverData(null); }}
             onSave={(data: any) => { 
                 console.log("Saved", data); 
+                
+                if (editingDriverData) {
+                    setDrivers(prev => prev.map(d => d.id === data.id ? data : d));
+                    setSelectedDriverData(data);
+                    showToast("Driver updated successfully");
+                } else {
+                    const newDriver = {
+                        ...data,
+                        id: `DRV-${Date.now()}`, 
+                        status: data.status || 'Active',
+                        complianceStatus: 'Compliant',
+                        lastActive: new Date().toLocaleDateString()
+                    };
+                    setDrivers(prev => [...prev, newDriver]);
+                    showToast("Driver added successfully");
+                }
+
                 setIsAddingDriver(false); 
                 setEditingDriverData(null);
-                
-                // If we were editing, update the selected driver data
-                if (editingDriverData) {
-                    setSelectedDriverData(data);
-                }
-                
-                showToast("Driver saved successfully");
             }} 
         />;
     }

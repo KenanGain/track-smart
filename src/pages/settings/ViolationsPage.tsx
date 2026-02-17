@@ -1,753 +1,852 @@
-import { useState } from "react";
-import { Search, AlertTriangle, Shield, Info, Plus, Edit, Trash2, Eye, Globe } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { VIOLATION_RISK_MATRIX } from "@/data/violations.data";
-import type { Violation, ViolationCategory } from "@/types/violations.types";
+import React, { useState, useMemo } from 'react';
+import { 
+  AlertTriangle, 
+  ShieldAlert, 
+  Search, 
+  Activity, 
+  Info,
+  AlertOctagon,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Scale,
+  Globe,
+  Gavel,
+  Plus,
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Edit2
+} from 'lucide-react';
+import { VIOLATION_DATA } from '@/data/violations.data';
 
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { Textarea } from "@/components/ui/textarea";
+const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
-// --- Helper Components ---
+// Tab Configuration
+const TABS_CONFIG = [
+  { key: 'all', label: 'All Violations' },
+  { key: 'vehicle_maintenance', label: 'Vehicle Maintenance' },
+  { key: 'unsafe_driving', label: 'Unsafe Driving' },
+  { key: 'hours_of_service', label: 'Hours-of-service Compliance' },
+  { key: 'driver_fitness', label: 'Driver Fitness' },
+  { key: 'hazmat_compliance', label: 'Hazmat compliance' },
+  { key: 'controlled_substances_alcohol', label: 'Controlled Substances' },
+  { key: 'other', label: 'Other' }
+];
 
-const RiskBadge = ({ category, className }: { category: number; className?: string }) => {
-    const config = VIOLATION_RISK_MATRIX.riskCategories[category.toString()];
-    if (!config) return <span className="text-slate-500">Unknown</span>;
-
-    let styles = "bg-slate-100 text-slate-700 border-slate-200";
-    if (category === 1) styles = "bg-rose-50 text-rose-700 border-rose-200 ring-rose-500/10";
-    if (category === 2) styles = "bg-amber-50 text-amber-700 border-amber-200 ring-amber-500/10";
-    if (category === 3) styles = "bg-emerald-50 text-emerald-700 border-emerald-200 ring-emerald-500/10";
-
-    return (
-        <div className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wider ring-1 ring-inset whitespace-nowrap", styles, className)}>
-            {category === 1 && <AlertTriangle className="w-3 h-3" />}
-            {category === 3 && <Shield className="w-3 h-3" />}
-            {config.label}
-        </div>
-    );
+// Normalize text: convert ALL CAPS to sentence case, preserving acronyms
+const normalizeText = (text: string): string => {
+  if (!text) return text;
+  
+  // Common acronyms to preserve in uppercase
+  const acronyms = new Set([
+    'OOS', 'CFR', 'FMCSA', 'DOT', 'BAC', 'DUI', 'DWI', 'OWI', 'CMV', 'DSMS',
+    'HOS', 'CDL', 'NSC', 'HTA', 'TDG', 'PHMSA', 'CCMTA', 'CVOR', 'USA', 'ON',
+    'BC', 'AB', 'SK', 'MB', 'QC', 'NB', 'NS', 'PE', 'NL', 'YT', 'NT', 'NU'
+  ]);
+  
+  // Convert to lowercase first
+  let normalized = text.toLowerCase();
+  
+  // Capitalize first letter
+  normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  
+  // Restore acronyms (use word boundaries to match whole words)
+  acronyms.forEach(acronym => {
+    const regex = new RegExp(`\\b${acronym.toLowerCase()}\\b`, 'gi');
+    normalized = normalized.replace(regex, acronym);
+  });
+  
+  return normalized;
 };
-
-const SeverityBadge = ({ weight }: { weight: number }) => {
-    let bgClass = "bg-slate-50 text-slate-700 border-slate-200";
-    if (weight >= 8) bgClass = "bg-rose-50 text-rose-700 border-rose-200";
-    else if (weight >= 5) bgClass = "bg-orange-50 text-orange-700 border-orange-200";
-    else if (weight >= 3) bgClass = "bg-amber-50 text-amber-700 border-amber-200";
-
-    return (
-        <div className={cn("flex items-center justify-center w-12 h-10 rounded-lg border text-lg font-bold leading-none shadow-sm", bgClass)}>
-            {weight}
-        </div>
-    );
-};
-
-// --- Main Component ---
 
 export function ViolationsPage() {
-    // State
-    const [activeTab, setActiveTab] = useState<string>("all");
-    const [riskFilters, setRiskFilters] = useState<number[]>([]);
-    const [searchQuery, setSearchQuery] = useState("");
-    
-    // Dialog State
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-    const [editingViolation, setEditingViolation] = useState<Violation | null>(null);
-    const [viewingViolation, setViewingViolation] = useState<Violation | null>(null);
-    const [localCategories] = useState<ViolationCategory[]>(VIOLATION_RISK_MATRIX.violationCategories);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('impact');
+  
+  // State for Sorting
+  const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
 
-    // Form State
-    const [formData, setFormData] = useState<Partial<Violation>>({});
-    const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState<string>("");
-    
-    // Advanced Form State for Regulatory Codes
-    const [regMasterEnabled, setRegMasterEnabled] = useState(false);
-    const [regForm, setRegForm] = useState<{
-        usa: Array<{ id: string; authority: string; code: string; description: string }>;
-        canada: Array<{ id: string; authority: string; code: string; description: string }>;
-    }>({
-        usa: [],
-        canada: []
+  // State for Filters
+  const [selectedRisks, setSelectedRisks] = useState<string[]>([]); // Empty array = ALL
+  
+  // Active Category State
+  const [activeCategory, setActiveCategory] = useState('all');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
+
+  const data = VIOLATION_DATA;
+
+  const currentCategoryData = useMemo(() => {
+    if (activeCategory === 'all') {
+      const allItems = Object.values(data.categories).flatMap(c => c.items);
+      const allStats = {
+        total: allItems.length,
+        high_risk: allItems.filter(i => i.driverRiskCategory === 1).length,
+        moderate_risk: allItems.filter(i => i.driverRiskCategory === 2).length,
+        lower_risk: allItems.filter(i => i.driverRiskCategory === 3).length,
+      };
+      return { _stats: allStats, items: allItems };
+    }
+    return data.categories[activeCategory] || { _stats: { total: 0, high_risk: 0, moderate_risk: 0, lower_risk: 0 }, items: [] };
+  }, [activeCategory, data.categories]);
+
+  // Deep search: build a flat searchable string for each item (all nested fields)
+  const buildSearchableText = (item: typeof currentCategoryData.items[0]): string => {
+    const parts: string[] = [
+      item.violationCode,
+      item.violationDescription,
+      item.violationGroup,
+      item.id,
+      item.isOos ? 'oos out-of-service' : '',
+      item.inDsms ? 'dsms' : '',
+      `risk ${item.driverRiskCategory}`,
+      // USA regulatory
+      ...item.regulatoryCodes.usa.flatMap(r => [
+        r.authority,
+        r.description,
+        ...r.cfr,
+        ...r.statute,
+      ]),
+      // Canada regulatory
+      ...item.regulatoryCodes.canada.flatMap(r => [
+        r.authority,
+        r.description,
+        ...r.reference,
+        ...(r.province || []),
+      ]),
+      // Canada enforcement
+      item.canadaEnforcement?.act || '',
+      item.canadaEnforcement?.section || '',
+      item.canadaEnforcement?.code || '',
+      item.canadaEnforcement?.ccmtaCode || '',
+      item.canadaEnforcement?.descriptions?.full || '',
+    ];
+    return parts.filter(Boolean).join(' ').toLowerCase();
+  };
+
+  // Pre-compute searchable text per item for performance
+  const searchableMap = useMemo(() => {
+    const map = new Map<string, string>();
+    currentCategoryData.items.forEach(item => {
+      map.set(item.id, buildSearchableText(item));
+    });
+    return map;
+  }, [currentCategoryData]);
+
+  // Filtering Logic
+  const filteredItems = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+
+    let items = currentCategoryData.items.filter(item => {
+      // Deep search across all fields
+      if (term) {
+        const text = searchableMap.get(item.id) || '';
+        // Support multi-word search: every word must match somewhere
+        const words = term.split(/\s+/).filter(Boolean);
+        const matchesSearch = words.every(word => text.includes(word));
+        if (!matchesSearch) return false;
+      }
+      
+      // Multi-select Risk Filter
+      if (selectedRisks.length > 0) {
+        if (!selectedRisks.includes(String(item.driverRiskCategory))) return false;
+      }
+      
+      return true;
     });
 
-    // --- Actions ---
+    // Sorting Logic
+    if (sortConfig.key) {
+      items = [...items].sort((a, b) => {
+        let aVal: string | number, bVal: string | number;
 
-    const toggleRiskFilter = (riskLevel: number) => {
-        setRiskFilters(prev => 
-            prev.includes(riskLevel) 
-                ? prev.filter(r => r !== riskLevel)
-                : [...prev, riskLevel]
-        );
-    };
-
-    // Regulatory Form Helpers
-    const addRegulation = (country: 'usa' | 'canada') => {
-        setRegForm(prev => ({
-            ...prev,
-            [country]: [
-                ...prev[country],
-                { 
-                    id: Math.random().toString(36).substr(2, 9), 
-                    authority: country === 'usa' ? "FMCSA" : "Provincial HTA", 
-                    code: "", 
-                    description: "" 
-                }
-            ]
-        }));
-    };
-
-    const removeRegulation = (country: 'usa' | 'canada', id: string) => {
-        setRegForm(prev => ({
-            ...prev,
-            [country]: prev[country].filter(item => item.id !== id)
-        }));
-    };
-
-    const updateRegulation = (country: 'usa' | 'canada', id: string, field: string, value: string) => {
-        setRegForm(prev => ({
-            ...prev,
-            [country]: prev[country].map(item => 
-                item.id === id ? { ...item, [field]: value } : item
-            )
-        }));
-    };
-
-    const handleView = (violation: Violation) => {
-        setViewingViolation(violation);
-        setIsViewDialogOpen(true);
-    };
-
-    const handleEdit = (violation: Violation, categoryId: string) => {
-        setEditingViolation(violation);
-        setFormData({ ...violation });
-        setSelectedCategoryForAdd(categoryId);
-        
-        // Initialize regulatory inputs
-        const hasRegs = !!violation.regulatoryCodes;
-        setRegMasterEnabled(hasRegs);
-
-        setRegForm({
-            usa: violation.regulatoryCodes?.usa?.map(r => ({
-                id: Math.random().toString(36).substr(2, 9),
-                authority: r.authority,
-                code: r.cfr.join(", "),
-                description: r.description || ""
-            })) || [],
-            canada: violation.regulatoryCodes?.canada?.map(r => ({
-                id: Math.random().toString(36).substr(2, 9),
-                authority: r.authority,
-                code: r.reference.join(", "),
-                description: r.description || ""
-            })) || []
-        });
-
-        // If enabled but no sub-entries, add defaults
-        if (hasRegs && !violation.regulatoryCodes?.usa?.length && !violation.regulatoryCodes?.canada?.length) {
-             // Optional: could add default empty rows here if desired
-        }
-        
-        setIsDialogOpen(true);
-    };
-
-    const handleAdd = () => {
-        setEditingViolation(null);
-        setFormData({ severityWeight: 5, crashLikelihoodPercent: 50, driverRiskCategory: 2, description: "" });
-        setSelectedCategoryForAdd(activeTab !== "all" ? activeTab : localCategories[0].id);
-        
-        setRegMasterEnabled(false);
-        setRegForm({
-            usa: [],
-            canada: []
-        });
-        setIsDialogOpen(true);
-    };
-
-    const handleSave = () => {
-        // Construct regulatory object from inputs
-        const regulatoryCodes: Violation['regulatoryCodes'] = {};
-        
-        if (regMasterEnabled) {
-            const usaRegs = regForm.usa
-                .filter(r => r.code.trim())
-                .map(r => ({
-                    authority: r.authority,
-                    cfr: r.code.split(',').map(s => s.trim()).filter(Boolean),
-                    description: r.description
-                }));
-
-            const canadaRegs = regForm.canada
-                .filter(r => r.code.trim())
-                .map(r => ({
-                    authority: r.authority,
-                    reference: r.code.split(',').map(s => s.trim()).filter(Boolean),
-                    description: r.description
-                }));
-            
-            if (usaRegs.length > 0) regulatoryCodes.usa = usaRegs;
-            if (canadaRegs.length > 0) regulatoryCodes.canada = canadaRegs;
+        switch(sortConfig.key) {
+          case 'code': aVal = a.violationCode; bVal = b.violationCode; break;
+          case 'desc': aVal = a.violationDescription; bVal = b.violationDescription; break;
+          case 'group': aVal = a.violationGroup; bVal = b.violationGroup; break;
+          case 'risk': aVal = a.driverRiskCategory; bVal = b.driverRiskCategory; break;
+          case 'sev': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
+          case 'crash': aVal = a.crashLikelihoodPercent || 0; bVal = b.crashLikelihoodPercent || 0; break;
+          case 'status': aVal = a.inDsms ? 1 : 0; bVal = b.inDsms ? 1 : 0; break;
+          case 'oos': aVal = a.isOos ? 1 : 0; bVal = b.isOos ? 1 : 0; break;
+          default: return 0;
         }
 
-        const finalData = { ...formData, regulatoryCodes: Object.keys(regulatoryCodes).length > 0 ? regulatoryCodes : undefined };
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
 
-        console.log("Saving violation:", finalData, "Category:", selectedCategoryForAdd);
-        setIsDialogOpen(false);
-    };
+    return items;
+  }, [currentCategoryData, searchTerm, selectedRisks, sortConfig, searchableMap]);
 
-    // --- Filtering Logic ---
+  // Pagination derived values
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / rowsPerPage));
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredItems.slice(start, start + rowsPerPage);
+  }, [filteredItems, currentPage, rowsPerPage]);
 
-    const getVisibleViolations = () => {
-        let violations: Array<Violation & { categoryName: string; categoryId: string }> = [];
+  // Reset page when filters change
+  const resetPage = () => setCurrentPage(1);
 
-        localCategories.forEach(cat => {
-            if (activeTab === "all" || activeTab === cat.id) {
-                cat.violations.forEach(v => {
-                    violations.push({
-                        ...v,
-                        categoryName: cat.name,
-                        categoryId: cat.id
-                    });
-                });
-            }
-        });
 
-        return violations.filter(v => {
-            const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                  v.id.toLowerCase().includes(searchQuery.toLowerCase());
+  const handleRiskCardClick = (level: string) => {
+    setSelectedRisks(prev => {
+      if (prev.includes(level)) {
+        return prev.filter(r => r !== level);
+      } else {
+        return [...prev, level];
+      }
+    });
+    resetPage();
+  };
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (columnKey: string) => {
+    if (sortConfig.key !== columnKey) return <ArrowUpDown size={14} className="text-slate-300" />;
+    if (sortConfig.direction === 'asc') return <ArrowUp size={14} className="text-indigo-600" />;
+    return <ArrowDown size={14} className="text-indigo-600" />;
+  };
+
+  const getRiskColor = (level: number) => {
+    switch (String(level)) {
+      case '1': return { bg: 'bg-red-50', text: 'text-red-700', badge: 'bg-red-100 text-red-800', border: 'border-red-200' };
+      case '2': return { bg: 'bg-orange-50', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-800', border: 'border-orange-200' };
+      case '3': return { bg: 'bg-blue-50', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-800', border: 'border-blue-200' };
+      default: return { bg: 'bg-gray-50', text: 'text-gray-700', badge: 'bg-gray-100 text-gray-800', border: 'border-gray-200' };
+    }
+  };
+
+  const getAuthStyle = (auth: string) => {
+    const a = auth.toUpperCase();
+    if (a.includes('FMCSA')) return 'bg-blue-50 text-blue-700 border-blue-200';
+    if (a.includes('DOT')) return 'bg-sky-50 text-sky-700 border-sky-200';
+    if (a.includes('NSC')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (a.includes('CRIMINAL') || a.includes('CC')) return 'bg-slate-100 text-slate-700 border-slate-200';
+    if (a.includes('PROVINCIAL') || a.includes('HTA')) return 'bg-purple-50 text-purple-700 border-purple-200';
+    if (a.includes('STATE')) return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (a.includes('TDG')) return 'bg-orange-50 text-orange-800 border-orange-200';
+    if (a.includes('PHMSA')) return 'bg-teal-50 text-teal-700 border-teal-200';
+    return 'bg-gray-50 text-slate-600 border-gray-200';
+  };
+
+  const getRiskCardClass = (level: string, baseColor: string) => {
+    const isActive = selectedRisks.includes(level);
+    let classes = "border rounded-lg p-4 shadow-sm cursor-pointer transition-all duration-200 relative overflow-hidden group ";
+    
+    if (isActive) {
+      if (baseColor === 'red') classes += "bg-red-50 border-red-200 ring-2 ring-red-500 ring-offset-2";
+      else if (baseColor === 'amber') classes += "bg-amber-50 border-amber-200 ring-2 ring-amber-500 ring-offset-2";
+      else if (baseColor === 'emerald') classes += "bg-emerald-50 border-emerald-200 ring-2 ring-emerald-500 ring-offset-2";
+    } else {
+      classes += "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md opacity-80 hover:opacity-100";
+      if (selectedRisks.length > 0) classes += " opacity-60"; 
+    }
+    return classes;
+  };
+
+  const toggleRow = (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+    } else {
+      setExpandedId(id);
+      setActiveTab('impact');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-slate-800 pb-12">
+      {/* Violations Risk Matrix Header Section */}
+      <div className="max-w-[1400px] mx-auto px-4 pt-6 pb-2">
+        <div className="flex flex-col gap-6">
+          
+          {/* Breadcrumbs & Title */}
+          <div>
+            <div className="text-xs font-medium text-slate-500 mb-1">
+              Settings <span className="mx-1">/</span> <span className="text-slate-700">Violations</span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">
+              Violations Risk Matrix
+            </h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <p className="text-sm text-slate-500 max-w-3xl">
+                Risk configuration grouped by violation category. Each violation has a severity weight, a crash likelihood percentage, and a driver risk category (probability to cause crash in next 12 months).
+              </p>
+              <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded flex items-center gap-2 transition-colors">
+                <Plus size={16} /> ADD VIOLATION
+              </button>
+            </div>
+          </div>
+
+          {/* Risk Summary Cards (Interactive Multi-Select Filters) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
-            const matchesRisk = riskFilters.length === 0 || riskFilters.includes(v.driverRiskCategory);
-
-            return matchesSearch && matchesRisk;
-        });
-    };
-
-    const visibleViolations = getVisibleViolations();
-
-    return (
-        <div className="flex flex-col h-full bg-slate-50/50">
-            <div className="px-8 py-6 max-w-[1600px] mx-auto w-full">
-                
-                {/* Header */}
-                <div className="flex items-end justify-between mb-8">
-                    <div>
-                         <nav className="flex text-sm text-slate-500 mb-1 font-medium items-center gap-2">
-                            <span>Settings</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="text-slate-900">Violations</span>
-                        </nav>
-                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-2">
-                            Violations Risk Matrix
-                        </h1>
-                        <p className="text-slate-600 max-w-3xl text-sm">
-                            {VIOLATION_RISK_MATRIX.description}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm h-9 px-4 text-xs font-semibold uppercase tracking-wide">
-                            <Plus className="h-3.5 w-3.5 mr-2" />
-                            Add Violation
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Risk Indicators (Filters) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                    {Object.entries(VIOLATION_RISK_MATRIX.riskCategories).map(([key, cat]) => {
-                        const riskLevel = parseInt(key);
-                        const isActive = riskFilters.includes(riskLevel);
-                        const isInactive = riskFilters.length > 0 && !isActive;
-
-                        let activeClass = "ring-1 ring-blue-600 bg-blue-50/50";
-                        if (riskLevel === 1) activeClass = "ring-1 ring-rose-500 bg-rose-50/50";
-                        if (riskLevel === 2) activeClass = "ring-1 ring-amber-500 bg-amber-50/50";
-                        if (riskLevel === 3) activeClass = "ring-1 ring-emerald-500 bg-emerald-50/50";
-
-                        return (
-                            <button
-                                key={key}
-                                onClick={() => toggleRiskFilter(riskLevel)}
-                                className={cn(
-                                    "flex flex-col gap-2 p-3 rounded-lg border text-left transition-all duration-200 relative group",
-                                    isActive ? activeClass : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm",
-                                    isInactive && "opacity-60 grayscale-[0.5]"
-                                )}
-                            >
-                                <div className="flex items-center justify-between w-full">
-                                    <RiskBadge category={riskLevel} />
-                                    {isActive && <div className="h-1.5 w-1.5 rounded-full bg-current" />}
-                                </div>
-                                <p className="text-xs text-slate-500 truncate">{cat.description}</p>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Tabs & Search Bar */}
-                <div className="flex flex-col space-y-4 mb-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200">
-                        {/* Tabs */}
-                        <div className="flex items-center gap-4 overflow-x-auto no-scrollbar -mb-px">
-                            <button
-                                onClick={() => setActiveTab("all")}
-                                className={cn(
-                                    "pb-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-1",
-                                    activeTab === "all" 
-                                        ? "border-blue-600 text-blue-600" 
-                                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                                )}
-                            >
-                                All Violations
-                            </button>
-                            {localCategories.map(cat => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => setActiveTab(cat.id)}
-                                    className={cn(
-                                        "pb-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-1",
-                                        activeTab === cat.id 
-                                            ? "border-blue-600 text-blue-600" 
-                                            : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                                    )}
-                                >
-                                    {cat.name}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Toolbar */}
-                    <div className="flex items-center justify-between gap-4">
-                         <div className="relative flex-1 max-w-sm">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                            <Input
-                                placeholder="Search violations..."
-                                className="pl-8 h-8 bg-white border-slate-200 text-xs"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="text-xs text-slate-400 font-medium">
-                            {visibleViolations.length} Violations Found
-                        </div>
-                    </div>
-                </div>
-
-                {/* Violations List Table - Compact Mode */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                                <tr>
-                                    <th className="px-4 py-2 w-[45%]">Violation Type</th>
-                                    {activeTab === "all" && (
-                                        <th className="px-4 py-2 w-[20%]">Category</th>
-                                    )}
-                                    <th className="px-4 py-2 text-center w-[10%]">Severity</th>
-                                    <th className="px-4 py-2 text-center w-[10%]">Crash Prob.</th>
-                                    <th className="px-4 py-2 w-[15%]">Risk Cat</th>
-                                    <th className="px-4 py-2 text-right w-[100px]">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {visibleViolations.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                                            <p className="font-medium text-sm">No violations found</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    visibleViolations.map((violation) => (
-                                        <tr key={violation.id} className="group hover:bg-slate-50/80 transition-colors">
-                                             <td className="px-4 py-2 align-middle">
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold text-slate-900 text-sm truncate" title={violation.name}>{violation.name}</span>
-                                                    {violation.description && (
-                                                        <span className="text-[11px] text-slate-500 truncate max-w-md" title={violation.description}>
-                                                            {violation.description}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            {activeTab === "all" && (
-                                                <td className="px-4 py-2 align-middle">
-                                                    <span className="text-xs text-slate-600 truncate block max-w-[150px]" title={violation.categoryName}>
-                                                        {violation.categoryName}
-                                                    </span>
-                                                </td>
-                                            )}
-                                           <td className="px-4 py-2 align-middle">
-                                                <div className="flex justify-center">
-                                                    <div className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold border", 
-                                                        violation.severityWeight >= 8 ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                                        violation.severityWeight >= 5 ? "bg-orange-50 text-orange-700 border-orange-200" :
-                                                        "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                                    )}>
-                                                        {violation.severityWeight}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-2 align-middle text-center">
-                                                <span className={cn(
-                                                    "text-sm font-bold tabular-nums",
-                                                    violation.crashLikelihoodPercent >= 100 ? "text-rose-600" : 
-                                                    violation.crashLikelihoodPercent >= 50 ? "text-orange-600" : "text-slate-700"
-                                                )}>
-                                                    {violation.crashLikelihoodPercent}%
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-2 align-middle">
-                                                <RiskBadge category={violation.driverRiskCategory} />
-                                            </td>
-                                            <td className="px-4 py-2 align-middle text-right">
-                                                <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                     <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        onClick={() => handleView(violation)}
-                                                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                                        title="View Details"
-                                                    >
-                                                        <Eye className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        onClick={() => handleEdit(violation, violation.categoryId)}
-                                                        className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                                                        title="Edit"
-                                                    >
-                                                        <Edit className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            {/* High Risk Card */}
+            <div 
+              className={getRiskCardClass('1', 'red')}
+              onClick={() => handleRiskCardClick('1')}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <span className="inline-block bg-red-50 text-red-600 text-xs font-bold px-2 py-1 rounded border border-red-100 uppercase tracking-wide">
+                  <AlertTriangle size={12} className="inline mr-1" /> High Risk
+                </span>
+                {selectedRisks.includes('1') && <div className="bg-red-100 text-red-600 rounded-full p-1"><X size={12} /></div>}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700 transition-colors">
+                Highest crash probability — requires urgent action, coaching, or restriction.
+              </p>
             </div>
 
-            {/* Styled Detail Dialog (Matches User Screenshot) */}
-            <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-                <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-0 shadow-2xl rounded-2xl">
-                    {viewingViolation && (
-                        <div className="flex flex-col">
-                            {/* Header Section */}
-                            <div className="p-8 pb-6 bg-white">
-                                <div className="flex items-center gap-2 mb-4 text-slate-500 font-semibold text-xs uppercase tracking-wider">
-                                    <Info className="w-4 h-4 text-blue-600" />
-                                    Violation Details
-                                </div>
-                                <h2 className="text-3xl font-bold text-slate-900 leading-tight">
-                                    {viewingViolation.name}
-                                </h2>
-                                <p className="text-slate-500 mt-2 text-base">
-                                    {viewingViolation.description || "No description provided."}
-                                </p>
-                            </div>
+            {/* Moderate Risk Card */}
+            <div 
+              className={getRiskCardClass('2', 'amber')}
+              onClick={() => handleRiskCardClick('2')}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <span className="inline-block bg-amber-50 text-amber-600 text-xs font-bold px-2 py-1 rounded border border-amber-100 uppercase tracking-wide">
+                  Moderate Risk
+                </span>
+                {selectedRisks.includes('2') && <div className="bg-amber-100 text-amber-600 rounded-full p-1"><X size={12} /></div>}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700 transition-colors">
+                Elevated risk — requires monitoring and corrective training.
+              </p>
+            </div>
 
-                            {/* Metrics Cards */}
-                            <div className="grid grid-cols-3 gap-4 px-8 mb-6">
-                                <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-2 tracking-widest">Severity</span>
-                                    <SeverityBadge weight={viewingViolation.severityWeight} />
-                                </div>
-                                <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-2 tracking-widest">Crash Prob.</span>
-                                    <span className={cn("text-2xl font-bold", viewingViolation.crashLikelihoodPercent >= 50 ? "text-rose-600" : "text-slate-700")}>
-                                        {viewingViolation.crashLikelihoodPercent}% <span className="text-sm text-slate-400 font-normal">~</span>
-                                    </span>
-                                </div>
-                                <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                    <span className="text-[10px] uppercase text-slate-400 font-bold mb-2 tracking-widest">Risk Cat</span>
-                                    <RiskBadge category={viewingViolation.driverRiskCategory} className="px-3 py-1 text-xs" />
-                                </div>
-                            </div>
+            {/* Lower Risk Card */}
+            <div 
+              className={getRiskCardClass('3', 'emerald')}
+              onClick={() => handleRiskCardClick('3')}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <span className="inline-block bg-emerald-50 text-emerald-600 text-xs font-bold px-2 py-1 rounded border border-emerald-100 uppercase tracking-wide">
+                  Lower Risk
+                </span>
+                {selectedRisks.includes('3') && <div className="bg-emerald-100 text-emerald-600 rounded-full p-1"><X size={12} /></div>}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700 transition-colors">
+                Mostly compliance/maintenance-related or lower crash correlation (still important).
+              </p>
+            </div>
 
-                            {/* Regulatory Section */}
-                           <div className="px-4 pb-8">
-                                    <div className="bg-slate-50/80 rounded-2xl p-6 border border-slate-100">
-                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 px-1">Regulatory References</h4>
-                                        
-                                        <div className="space-y-8">
-                                            {viewingViolation.regulatoryCodes?.usa?.map((reg, index) => (
-                                                <div key={`usa-${index}`} className="flex gap-5 items-start px-2">
-                                                     <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm">
-                                                        <span className="text-sm font-bold text-slate-700">US</span>
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="text-sm font-bold text-slate-900">USA ({reg.authority})</div>
-                                                        <div className="text-xs font-mono text-slate-500 mt-1 uppercase tracking-wider">CFR {reg.cfr.join(", ")}</div>
-                                                        <div className="text-sm text-slate-600 mt-1.5">{reg.description}</div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            
-                                            {viewingViolation.regulatoryCodes?.usa && viewingViolation.regulatoryCodes?.canada && (
-                                                <div className="border-t border-slate-200 mx-2" />
-                                            )}
+          </div>
 
-                                            {viewingViolation.regulatoryCodes?.canada?.map((reg, index) => (
-                                                <div key={`can-${index}`} className="flex gap-5 items-start px-2">
-                                                     <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm">
-                                                        <span className="text-sm font-bold text-slate-700">CA</span>
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="text-sm font-bold text-slate-900">Canada ({reg.authority})</div>
-                                                        <div className="text-xs font-mono text-slate-500 mt-1 uppercase tracking-wider">{reg.reference.join(", ")}</div>
-                                                        <div className="text-sm text-slate-600 mt-1.5">{reg.description}</div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            
-                                            {(!viewingViolation.regulatoryCodes?.usa?.length && !viewingViolation.regulatoryCodes?.canada?.length) && (
-                                                <div className="text-center text-slate-400 text-sm py-2">No regulatory references available.</div>
-                                            )}
-                                        </div>
-                                    </div>
-                            </div>
-                            
-                            <div className="px-8 pb-6 flex justify-end">
-                                <Button onClick={() => setIsViewDialogOpen(false)} variant="outline" className="min-w-[100px] border-slate-200 text-slate-600">Close</Button>
-                            </div>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
+          {/* Tabs Navigation */}
+          <div className="mt-4 border-b border-slate-200">
+            <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+              {TABS_CONFIG.map((tab) => {
+                const isActiveTab = activeCategory === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveCategory(tab.key)}
+                    className={`
+                      whitespace-nowrap pb-3 border-b-2 font-medium text-sm transition-colors
+                      ${isActiveTab 
+                        ? 'border-blue-600 text-blue-600' 
+                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
+                    `}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
 
-            {/* Edit/Add Dialog - Enhanced Form */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>{editingViolation ? "Edit Violation" : "New Violation Rule"}</DialogTitle>
-                        <DialogDescription>
-                            Configure violation parameters and regulatory mappings.
-                        </DialogDescription>
-                    </DialogHeader>
+          {/* Filters Row */}
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="relative flex-grow">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-slate-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Deep search — code, description, CFR, authority, province..."
+                className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-md bg-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
 
-                    <div className="grid gap-6 py-4">
-                        {/* Basic Info */}
-                        <div className="grid gap-4">
-                             <div className="grid grid-cols-2 gap-4">
-                                <div className="grid gap-2">
-                                    <Label>Primary Category</Label>
-                                    <Select 
-                                        value={selectedCategoryForAdd} 
-                                        onValueChange={setSelectedCategoryForAdd}
-                                    >
-                                        <SelectTrigger disabled={!!editingViolation}><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {localCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>Risk Level</Label>
-                                    <Select 
-                                        value={formData.driverRiskCategory?.toString()} 
-                                        onValueChange={(v) => setFormData({...formData, driverRiskCategory: parseInt(v)})}
-                                    >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="1">High Risk (Category 1)</SelectItem>
-                                            <SelectItem value="2">Moderate Risk (Category 2)</SelectItem>
-                                            <SelectItem value="3">Lower Risk (Category 3)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label>Violation Name</Label>
-                                <Input value={formData.name || ""} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Reckless Driving" />
-                            </div>
-
-                             <div className="grid gap-2">
-                                <Label>Description</Label>
-                                <Textarea value={formData.description || ""} onChange={(e) => setFormData({...formData, description: e.target.value})} className="h-16 resize-none" placeholder="Description of the violation behavior..." />
-                            </div>
-                        </div>
-
-                        {/* Quantitative Data */}
-                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 grid grid-cols-2 gap-6">
-                            <div className="grid gap-2">
-                                <Label className="text-xs uppercase text-slate-500">Severity Weight (1-10)</Label>
-                                <div className="flex items-center gap-3">
-                                    <Input type="number" min="1" max="10" className="w-20" value={formData.severityWeight || 0} onChange={(e) => setFormData({...formData, severityWeight: parseInt(e.target.value)})} />
-                                    <SeverityBadge weight={formData.severityWeight || 0} />
-                                </div>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label className="text-xs uppercase text-slate-500">Crash Likelihood Increase</Label>
-                                <div className="flex items-center gap-2">
-                                    <Input type="number" className="w-24" value={formData.crashLikelihoodPercent || 0} onChange={(e) => setFormData({...formData, crashLikelihoodPercent: parseInt(e.target.value)})} />
-                                    <span className="text-sm font-bold text-slate-500">%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Enhanced Regulatory Form */}
-                        <div className="border border-slate-200 rounded-lg overflow-hidden transition-all duration-200">
-                            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors"
-                                onClick={() => setRegMasterEnabled(!regMasterEnabled)}
-                            >
-                                <h3 className="font-semibold text-sm flex items-center gap-2 text-slate-700">
-                                    <Globe className="w-4 h-4 text-slate-500" />
-                                    Regulatory Definitions
-                                </h3>
-                                <div className="flex items-center gap-3">
-                                    <span className={cn("text-xs font-medium", regMasterEnabled ? "text-blue-600" : "text-slate-400")}>
-                                        {regMasterEnabled ? "Enabled" : "Disabled"}
-                                    </span>
-                                    <div className={cn("w-9 h-5 rounded-full relative transition-colors duration-200 ease-in-out", regMasterEnabled ? "bg-blue-600" : "bg-slate-300")}>
-                                        <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out", regMasterEnabled ? "translate-x-4" : "translate-x-0")} />
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {regMasterEnabled && (
-                                <div className="p-4 space-y-6 bg-white animate-in slide-in-from-top-2 duration-200">
-                                    
-                                    {/* USA Section */}
-                                    <div className="flex gap-4">
-                                        <div className="pt-1">
-                                            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center text-xs font-bold shadow-sm">US</div>
-                                        </div>
-                                        <div className="flex-1 space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-blue-900 font-bold">United States Regulation</Label>
-                                                <Button size="sm" variant="outline" className="h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => addRegulation('usa')}>
-                                                    <Plus className="w-3 h-3 mr-1" /> Add Regulation
-                                                </Button>
-                                            </div>
-
-                                            <div className="space-y-4">
-                                                {regForm.usa.map((item) => (
-                                                    <div key={item.id} className="grid gap-3 p-3 rounded-md border border-slate-100 bg-slate-50/50 hover:border-blue-100 transition-colors group relative">
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="sm" 
-                                                            className="absolute top-2 right-2 h-6 w-6 p-0 text-slate-400 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                            onClick={() => removeRegulation('usa', item.id)}
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </Button>
-
-                                                        <div className="grid grid-cols-2 gap-3 pr-6">
-                                                            <div className="grid gap-1.5">
-                                                                <Label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Authority</Label>
-                                                                <Select value={item.authority} onValueChange={v => updateRegulation('usa', item.id, 'authority', v)}>
-                                                                    <SelectTrigger className="h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="FMCSA">FMCSA</SelectItem>
-                                                                        <SelectItem value="DOT">DOT</SelectItem>
-                                                                        <SelectItem value="State Law">State Law</SelectItem>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                            <div className="grid gap-1.5">
-                                                                <Label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Codes (Title 49 CFR)</Label>
-                                                                <Input className="h-8 text-xs bg-white" placeholder="e.g. 392.2, 395.8" value={item.code} onChange={e => updateRegulation('usa', item.id, 'code', e.target.value)} />
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid gap-1.5">
-                                                            <Label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Description</Label>
-                                                            <Input className="h-8 text-xs bg-white" placeholder="Short description of the regulation" value={item.description} onChange={e => updateRegulation('usa', item.id, 'description', e.target.value)} />
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {regForm.usa.length === 0 && (
-                                                    <div className="text-center py-4 border-2 border-dashed border-slate-100 rounded-lg text-slate-400 text-xs">
-                                                        No USA regulations added
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="h-px bg-slate-100" />
-
-                                    {/* Canada Section */}
-                                    <div className="flex gap-4">
-                                        <div className="pt-1">
-                                            <div className="w-8 h-8 rounded-full bg-red-50 text-red-700 border border-red-100 flex items-center justify-center text-xs font-bold shadow-sm">CA</div>
-                                        </div>
-                                        <div className="flex-1 space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-red-900 font-bold">Canada Regulation</Label>
-                                                <Button size="sm" variant="outline" className="h-7 text-xs border-red-200 text-red-700 hover:bg-red-50" onClick={() => addRegulation('canada')}>
-                                                    <Plus className="w-3 h-3 mr-1" /> Add Regulation
-                                                </Button>
-                                            </div>
-                                            
-                                            <div className="space-y-4">
-                                                {regForm.canada.map((item) => (
-                                                    <div key={item.id} className="grid gap-3 p-3 rounded-md border border-slate-100 bg-slate-50/50 hover:border-red-100 transition-colors group relative">
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="sm" 
-                                                            className="absolute top-2 right-2 h-6 w-6 p-0 text-slate-400 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                            onClick={() => removeRegulation('canada', item.id)}
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </Button>
-
-                                                        <div className="grid grid-cols-2 gap-3 pr-6">
-                                                            <div className="grid gap-1.5">
-                                                                <Label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Authority</Label>
-                                                                <Select value={item.authority} onValueChange={v => updateRegulation('canada', item.id, 'authority', v)}>
-                                                                    <SelectTrigger className="h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="Provincial HTA">Provincial HTA</SelectItem>
-                                                                        <SelectItem value="NSC">NSC</SelectItem>
-                                                                        <SelectItem value="TDG">TDG</SelectItem>
-                                                                        <SelectItem value="Criminal Code">Criminal Code</SelectItem>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
-                                                            <div className="grid gap-1.5">
-                                                                <Label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Reference Codes</Label>
-                                                                <Input className="h-8 text-xs bg-white" placeholder="e.g. HTA s.130" value={item.code} onChange={e => updateRegulation('canada', item.id, 'code', e.target.value)} />
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid gap-1.5">
-                                                            <Label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Description</Label>
-                                                            <Input className="h-8 text-xs bg-white" placeholder="Short description of the regulation" value={item.description} onChange={e => updateRegulation('canada', item.id, 'description', e.target.value)} />
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {regForm.canada.length === 0 && (
-                                                    <div className="text-center py-4 border-2 border-dashed border-slate-100 rounded-lg text-slate-400 text-xs">
-                                                        No Canada regulations added
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white">
-                            {editingViolation ? "Save Changes" : "Create Violation"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
-    );
+      </div>
+
+      {/* Main Table Content */}
+      <main className="max-w-[1400px] mx-auto px-4 py-4">
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50 select-none">
+                <tr>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('code')}
+                  >
+                    <div className="flex items-center gap-1">Code {getSortIcon('code')}</div>
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[200px] cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('desc')}
+                  >
+                    <div className="flex items-center gap-1">Description {getSortIcon('desc')}</div>
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[120px]">
+                    Regulatory
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[120px] cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('group')}
+                  >
+                    <div className="flex items-center gap-1">Group {getSortIcon('group')}</div>
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('risk')}
+                  >
+                    <div className="flex items-center justify-center gap-1">Risk {getSortIcon('risk')}</div>
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('sev')}
+                  >
+                    <div className="flex items-center justify-center gap-1">Sev (D/C) {getSortIcon('sev')}</div>
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('crash')}
+                  >
+                    <div className="flex items-center justify-center gap-1">Crash % {getSortIcon('crash')}</div>
+                  </th>
+                  <th 
+                    scope="col" 
+                    className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('oos')}
+                  >
+                    <div className="flex items-center justify-end gap-1">OOS {getSortIcon('oos')}</div>
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
+                    Actions
+                  </th>
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-10">
+                    
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-6 py-12 text-center">
+                      <Search className="mx-auto h-10 w-10 text-slate-300 mb-3" />
+                      <h3 className="text-slate-900 font-medium">No violations found in this category</h3>
+                      <p className="text-slate-500 text-sm mt-1">Try switching categories or adjusting filters.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedItems.map((item) => {
+                    const styles = getRiskColor(item.driverRiskCategory);
+                    const isExpanded = expandedId === item.id;
+                    
+                    const authorities = Array.from(new Set([
+                        ...item.regulatoryCodes.usa.map(r => r.authority),
+                        ...item.regulatoryCodes.canada.map(r => r.authority)
+                    ])).slice(0, 3);
+                    
+                    return (
+                      <React.Fragment key={item.id}>
+                        <tr 
+                          className={`group hover:bg-slate-50 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}
+                          onClick={() => toggleRow(item.id)}
+                        >
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded text-xs">
+                              {item.violationCode}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-medium text-slate-900 leading-tight">
+                              { normalizeText(item.violationDescription)}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              {authorities.map(auth => (
+                                  <span key={auth} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getAuthStyle(auth)}`}>
+                                      {auth.replace('_', ' ')}
+                                  </span>
+                              ))}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3 whitespace-nowrap">
+                             <span className="text-xs text-slate-600 font-medium">{item.violationGroup}</span>
+                          </td>
+
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                             <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${styles.badge} border-transparent uppercase tracking-wide`}>
+                               {data.riskCategories[String(item.driverRiskCategory)]?.label || `Risk ${item.driverRiskCategory}`}
+                             </span>
+                          </td>
+
+                          {/* Simplified Severity (No Charts) */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <div className="text-xs font-mono text-slate-600">
+                                <span className="font-bold text-slate-800">{item.severityWeight.driver}</span>
+                                <span className="mx-1 text-slate-300">/</span>
+                                <span className="font-bold text-slate-800">{item.severityWeight.carrier}</span>
+                            </div>
+                          </td>
+
+                          {/* Simplified Crash Probability (No Charts) */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <span className={`text-xs font-bold ${item.crashLikelihoodPercent > 100 ? 'text-red-600' : 'text-slate-600'}`}>
+                                {item.crashLikelihoodPercent ? `${item.crashLikelihoodPercent}%` : '-'}
+                            </span>
+                          </td>
+
+                          {/* OOS Column */}
+                          <td className="px-4 py-3 whitespace-nowrap text-right">
+                            {item.isOos ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 uppercase tracking-wide">
+                                Yes
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide px-2">
+                                No
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Actions Column */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); console.log('Edit violation:', item.id); }}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Edit violation"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          </td>
+
+                          {/* Expand Trigger Column */}
+                          <td className="px-4 py-3 whitespace-nowrap text-right">
+                            <div className="flex items-center justify-end">
+                              <ChevronDown size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expanded Row */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={10} className="p-0 border-t border-slate-100 bg-slate-50/50">
+                               <div className="px-6 py-6 animate-in slide-in-from-top-2 duration-200">
+                                <div className="flex gap-1 bg-white p-1 rounded-lg border border-slate-200 w-fit mb-6">
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); setActiveTab('impact'); }}
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'impact' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                                  >
+                                    <span className="flex items-center gap-2"><Activity size={16}/> Impact Analysis</span>
+                                  </button>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); setActiveTab('usa'); }}
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'usa' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                                  >
+                                    <span className="flex items-center gap-2"><Scale size={16}/> USA Regulations</span>
+                                  </button>
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); setActiveTab('canada'); }}
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'canada' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                                  >
+                                    <span className="flex items-center gap-2"><Globe size={16}/> Canada Enforcement</span>
+                                  </button>
+                                </div>
+
+                                <div className="min-h-[200px]" onClick={(e) => e.stopPropagation()}>
+                                  {activeTab === 'impact' && (
+                                    <div className="grid md:grid-cols-2 gap-8">
+                                      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                                        <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-6 pb-2 border-b border-slate-100">
+                                            Risk & Liability Profile
+                                        </h4>
+                                        <div className="space-y-6">
+                                          <div>
+                                            <div className="flex justify-between text-sm mb-2">
+                                              <span className="text-slate-600 font-medium">Crash Probability Correlation</span>
+                                              <span className={`font-bold ${item.crashLikelihoodPercent > 100 ? 'text-red-600' : 'text-slate-800'}`}>{item.crashLikelihoodPercent}%</span>
+                                            </div>
+                                            <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+                                              <div className={`h-full rounded-full ${item.crashLikelihoodPercent > 100 ? 'bg-gradient-to-r from-red-500 to-red-600' : 'bg-indigo-500'}`} style={{width: `${Math.min(item.crashLikelihoodPercent, 100)}%`}}></div>
+                                            </div>
+                                            {item.crashLikelihoodPercent > 100 && <p className="text-xs text-red-600 mt-2 font-medium flex items-center gap-1"><AlertTriangle size={12}/> Extreme crash correlation detected.</p>}
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                              <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Driver Severity</div>
+                                              <div className="flex items-center gap-2">
+                                                 <span className="text-2xl font-bold text-slate-800">{item.severityWeight.driver}</span>
+                                                 <span className="text-xs text-slate-400">/ 10</span>
+                                              </div>
+                                              <div className="h-1.5 w-full bg-slate-200 rounded-full mt-2 overflow-hidden">
+                                                 <div className="h-full bg-indigo-500 rounded-full" style={{width: `${(item.severityWeight.driver/10)*100}%`}}></div>
+                                              </div>
+                                            </div>
+                                            
+                                            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                                              <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Carrier Severity</div>
+                                              <div className="flex items-center gap-2">
+                                                 <span className="text-2xl font-bold text-slate-800">{item.severityWeight.carrier}</span>
+                                                 <span className="text-xs text-slate-400">/ 10</span>
+                                              </div>
+                                              <div className="h-1.5 w-full bg-slate-200 rounded-full mt-2 overflow-hidden">
+                                                 <div className="h-full bg-slate-500 rounded-full" style={{width: `${(item.severityWeight.carrier/10)*100}%`}}></div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                                        <div className="flex items-start gap-4">
+                                          <div className="p-3 bg-indigo-50 rounded-lg shrink-0">
+                                            <Info className="text-indigo-600 w-6 h-6" />
+                                          </div>
+                                          <div>
+                                            <h5 className="font-bold text-slate-900 text-base">Violation Analysis</h5>
+                                            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                                              This violation is categorized under <span className="font-semibold text-slate-800">{item.violationGroup}</span>. 
+                                              Current enforcement data indicates this infraction {item.inDsms ? 'is actively monitored in DSMS' : 'is not currently in DSMS'}.
+                                            </p>
+                                            <div className={`mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold ${item.isOos ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                                                {item.isOos ? <AlertOctagon size={14}/> : <ShieldAlert size={14}/>}
+                                                {item.isOos ? 'Triggers Immediate Out-of-Service Order' : 'Does Not Trigger Immediate OOS'}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {activeTab === 'usa' && (
+                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                      <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
+                                        <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Federal & State Regulations</h4>
+                                      </div>
+                                      <div className="divide-y divide-slate-100">
+                                        {item.regulatoryCodes.usa.map((reg, idx) => (
+                                          <div key={idx} className="p-6 hover:bg-slate-50 transition-colors group">
+                                            <div className="flex flex-col md:flex-row md:items-start gap-4">
+                                              <div className="md:w-56 shrink-0">
+                                                <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded mb-2 ${getAuthStyle(reg.authority)}`}>
+                                                  {reg.authority.replace('_', ' ')}
+                                                </span>
+                                                <div className="flex flex-col gap-1">
+                                                  {reg.cfr && reg.cfr.length > 0 && reg.cfr.map(code => (
+                                                    <div key={code} className="flex items-center gap-2 text-sm font-mono font-semibold text-slate-700">
+                                                       <FileText size={14} className="text-slate-400"/>
+                                                       {code}
+                                                    </div>
+                                                  ))}
+                                                  {reg.statute && reg.statute.length > 0 && reg.statute.map(stat => (
+                                                    <div key={stat} className="flex items-center gap-2 text-sm font-serif font-semibold text-slate-700 italic">
+                                                       <Gavel size={14} className="text-slate-400"/>
+                                                       {stat}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              <div className="flex-1">
+                                                <p className="text-sm text-slate-600 leading-relaxed group-hover:text-slate-900 transition-colors">
+                                                  {reg.description}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {activeTab === 'canada' && (
+                                    <div className="space-y-6">
+                                      <div className="grid md:grid-cols-3 gap-6">
+                                        <div className="md:col-span-1 bg-emerald-50 border border-emerald-100 p-6 rounded-xl flex flex-col justify-center items-center text-center">
+                                          <div className="text-4xl font-bold text-emerald-700 mb-1">{item.canadaEnforcement.points.nsc}</div>
+                                          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wide">NSC Points</div>
+                                          <div className="text-[10px] text-emerald-600 mt-2">National Safety Code Standard</div>
+                                        </div>
+                                        
+                                        <div className="md:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                                          {item.canadaEnforcement && item.canadaEnforcement.act ? (
+                                            <>
+                                              <div className="flex items-center gap-2 mb-2">
+                                                <Globe className="text-indigo-500 w-4 h-4" />
+                                                <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                                  Enforcement: {item.canadaEnforcement.act} ({item.canadaEnforcement.section})
+                                                </h5>
+                                              </div>
+                                              <p className="text-lg text-slate-800 font-medium">
+                                                &ldquo;{item.canadaEnforcement.descriptions.full}&rdquo;
+                                              </p>
+                                              <div className="mt-2 flex gap-2">
+                                                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">
+                                                  Code: {item.canadaEnforcement.code}
+                                                </span>
+                                                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">
+                                                  CCMTA: {item.canadaEnforcement.ccmtaCode}
+                                                </span>
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <div className="text-slate-500 italic text-center py-4">
+                                              No specific provincial enforcement mapping available for this violation.
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
+                                            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Provincial & Criminal References</h4>
+                                        </div>
+                                        <div className="divide-y divide-slate-100">
+                                            {item.regulatoryCodes.canada.map((reg, idx) => (
+                                            <div key={idx} className="p-6 hover:bg-slate-50 transition-colors">
+                                                <div className="flex flex-col md:flex-row md:items-start gap-4">
+                                                <div className="md:w-56 shrink-0">
+                                                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded mb-2 ${getAuthStyle(reg.authority)}`}>
+                                                    {reg.authority.replace('_', ' ')}
+                                                    </span>
+                                                    {reg.province && (
+                                                      <span className="ml-2 inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                                                        {reg.province.join(', ')}
+                                                      </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="mb-2">
+                                                        {reg.reference.map(ref => (
+                                                            <div key={ref} className="text-sm font-mono font-semibold text-slate-800 flex items-center gap-2 mb-1">
+                                                                <Scale size={14} className="text-slate-400"/>
+                                                                {ref}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-sm text-slate-600 leading-relaxed">
+                                                    {reg.description}
+                                                    </p>
+                                                </div>
+                                                </div>
+                                            </div>
+                                            ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                               </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Footer */}
+          {filteredItems.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t border-slate-200 bg-slate-50 rounded-b-lg">
+              {/* Rows per page */}
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <span className="font-medium">Rows per page:</span>
+                <select
+                  value={rowsPerPage}
+                  onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                  className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                >
+                  {ROWS_PER_PAGE_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Page info & controls */}
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-slate-500">
+                  {Math.min((currentPage - 1) * rowsPerPage + 1, filteredItems.length)}–{Math.min(currentPage * rowsPerPage, filteredItems.length)} of {filteredItems.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="First page"
+                  >
+                    <ChevronLeft size={14} /><ChevronLeft size={14} className="-ml-2" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="Previous page"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <span className="px-3 py-1 text-sm font-medium text-slate-700">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="Next page"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="Last page"
+                  >
+                    <ChevronRight size={14} /><ChevronRight size={14} className="-ml-2" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
 }
+
+export default ViolationsPage;

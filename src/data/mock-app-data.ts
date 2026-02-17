@@ -148,11 +148,30 @@ export interface Driver {
     // Employment History
     employmentHistory: Array<{
         employerName: string;
-        address: string;
+        address: string | { address: string; city: string; state: string; country: string; zip?: string; unit?: string; };
         startDate: string;
         endDate: string;
         operatingZone: string;
         terminationStatus: string;
+        employerContact?: {
+            name: string;
+            phone: string;
+            email: string;
+            fax: string;
+        };
+        hasReferenceDoc?: boolean;
+        referenceDocId?: string; // Links to a document in the main documents list
+    }>;
+
+    // Travel Documents (Passport, Visa, etc.)
+    travelDocuments?: Array<{
+        id: string;
+        type: string;
+        number: string;
+        country: string;
+        expiryDate: string;
+        uploadType: string;
+        documentUrl?: string; // For simplified mock
     }>;
 
     // Compliance
@@ -196,14 +215,34 @@ export const MOCK_DRIVERS: Driver[] = [
             { name: "Jane Smith", relation: "Spouse", phone: "(555) 000-1010", email: "jane.smith@example.com" }
         ],
         previousResidences: [
-            { country: 'USA', address: '50 Lake Shore Dr', unit: '', city: 'Milwaukee', state: 'WI', zip: '53202', startDate: '2019-06-01', endDate: '2022-12-31' }
+            { country: 'USA', address: '50 Lake Shore Dr', unit: '', city: 'Milwaukee', state: 'WI', zip: '53202', startDate: '2019-05-31', endDate: '2022-12-30' }
         ],
         licenses: [
             { id: 1, type: 'CDL', licenseNumber: 'SMI90228811', province: 'IL', country: 'USA', class: 'Class A', issueDate: '2022-01-10', expiryDate: '2027-01-10', status: 'Valid', conditions: '', endorsements: ['T - Double/Triple Trailers'], restrictions: [], isPrimary: true, suspended: false, uploadType: 'images' }
         ],
+        travelDocuments: [
+            { id: 'TD-001', type: 'Passport', number: 'P123456789', country: 'USA', expiryDate: '2030-05-20', uploadType: 'images' },
+            { id: 'TD-002', type: 'FAST Card', number: '41234567890', country: 'USA', expiryDate: '2028-11-15', uploadType: 'images' }
+        ],
         employmentHistory: [
-            { employerName: 'Midwest Freight Co.', address: 'Chicago, IL', startDate: '2020-03-01', endDate: '2022-12-31', operatingZone: 'Interstate', terminationStatus: 'Voluntary' },
-            { employerName: 'Rapid Dispatch LLC', address: 'Milwaukee, WI', startDate: '2018-05-01', endDate: '2020-02-28', operatingZone: 'Interstate', terminationStatus: 'Voluntary' }
+            { 
+                employerName: 'Midwest Freight Co.', 
+                address: { address: 'Chicago, IL', city: 'Chicago', state: 'IL', country: 'USA' }, 
+                startDate: '2020-02-29', 
+                endDate: '2022-12-30', 
+                operatingZone: 'Interstate', 
+                terminationStatus: 'Voluntary',
+                employerContact: { name: 'Mike Ross', phone: '(312) 555-0123', email: 'mike@midwestfreight.com', fax: '' }
+            },
+            { 
+                employerName: 'Rapid Dispatch LLC', 
+                address: { address: 'Milwaukee, WI', city: 'Milwaukee', state: 'WI', country: 'USA' }, 
+                startDate: '2018-04-30', 
+                endDate: '2020-02-27', 
+                operatingZone: 'Interstate', 
+                terminationStatus: 'Voluntary',
+                employerContact: { name: 'Sarah Connor', phone: '(414) 555-0987', email: '', fax: '' }
+            }
         ],
         keyNumbers: [],
         documents: [],
@@ -247,6 +286,9 @@ export const MOCK_DRIVERS: Driver[] = [
         ],
         licenses: [
             { id: 1, type: 'CDL', licenseNumber: 'MIL92003322', province: 'TX', country: 'USA', class: 'Class A', issueDate: '2023-02-15', expiryDate: '2028-02-15', status: 'Valid', conditions: '', endorsements: [], restrictions: [], isPrimary: true, suspended: false, uploadType: 'images' }
+        ],
+        travelDocuments: [
+             { id: 'TD-003', type: 'Passport', number: 'P987654321', country: 'USA', expiryDate: '2029-08-10', uploadType: 'images' }
         ],
         employmentHistory: [
             { employerName: 'Lone Star Logistics', address: 'Houston, TX', startDate: '2019-01-01', endDate: '2023-01-31', operatingZone: 'Intrastate', terminationStatus: 'Voluntary' }
@@ -407,6 +449,10 @@ export const MOCK_DRIVERS: Driver[] = [
                 suspended: false,
                 uploadType: 'images'
             }
+        ],
+        travelDocuments: [
+            { id: 'TD-101', type: 'Passport', number: 'P556677889', country: 'USA', expiryDate: '2026-06-30', uploadType: 'images' },
+            { id: 'TD-102', type: 'Visa', number: 'V99887766', country: 'Canada', expiryDate: '2025-12-31', uploadType: 'images' }
         ],
         
         employmentHistory: [
@@ -724,6 +770,7 @@ export const MOCK_DRIVER_DETAILED_TEMPLATE: Driver = {
     emergencyContacts: [],
     previousResidences: [],
     licenses: [],
+    travelDocuments: [],
     employmentHistory: [],
     keyNumbers: [],
     documents: [],
@@ -853,7 +900,20 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
             channels: { email: false, inapp: false, sms: false }
         }
     },
-    { id: '9', name: 'Driver License', relatedTo: 'driver', expiryRequired: true, issueDateRequired: false, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_cdls', folderName: 'CDLS Records' } },
+    { 
+        id: '14', 
+        name: 'Employment Reference', 
+        relatedTo: 'driver', 
+        expiryRequired: false, 
+        issueDateRequired: false, 
+        status: 'Active', 
+        isSystem: true, 
+        selectedTags: {}, 
+        requirementLevel: 'optional', 
+        destination: { mode: 'folder', folderId: 'driver_ev', folderName: 'Employment Verification' }
+    },
+    { id: 'DT-DL', name: 'Driver License (Standard)', relatedTo: 'driver', expiryRequired: true, issueDateRequired: false, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_cdls', folderName: 'CDLS Records' } },
+    { id: 'DT-CDL', name: 'Commercial Driver License (CDL)', relatedTo: 'driver', expiryRequired: true, issueDateRequired: false, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_cdls', folderName: 'CDLS Records' } },
     { id: '10', name: 'Medical Examiner Certificate', relatedTo: 'driver', expiryRequired: true, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'driver_app', folderName: 'Driver Application' } },
     { id: '11', name: 'Training Certificate', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'driver_train', folderName: 'Training Certificates' } },
     { id: '12', name: 'USDOT Number', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_auth', folderName: 'Authorities and Permits' } },
@@ -909,6 +969,59 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
     { id: 'offense_ticket', name: 'Offense Ticket', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'driver_tickets', folderName: 'Tickets / Offenses' } },
     { id: 'payment_receipt', name: 'Payment Receipt', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'driver_tickets', folderName: 'Tickets / Offenses' } },
     { id: 'notice_of_trial', name: 'Notice of Trial', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'driver_tickets', folderName: 'Tickets / Offenses' } },
+    // Travel Documents
+    {
+        id: '10',
+        name: 'Passport',
+        relatedTo: 'driver',
+        requirementLevel: 'optional',
+        expiryRequired: true,
+        issueDateRequired: false,
+        status: 'Active',
+        selectedTags: {},
+        destination: { mode: 'folder', folderName: 'Travel Documents' },
+        monitoring: { enabled: true, basedOn: 'expiryDate', recurrence: 'none', reminders: { d90: true, d60: true, d30: true, d7: true }, channels: { email: true, inapp: true, sms: false } },
+        isSystem: true
+    },
+    {
+        id: '11',
+        name: 'FAST Card',
+        relatedTo: 'driver',
+        requirementLevel: 'optional',
+        expiryRequired: true,
+        issueDateRequired: false,
+        status: 'Active',
+        selectedTags: {},
+        destination: { mode: 'folder', folderName: 'Travel Documents' },
+        monitoring: { enabled: true, basedOn: 'expiryDate', recurrence: 'none', reminders: { d90: true, d60: true, d30: true, d7: true }, channels: { email: true, inapp: true, sms: false } },
+        isSystem: true
+    },
+    {
+        id: '12',
+        name: 'Visa',
+        relatedTo: 'driver',
+        requirementLevel: 'optional',
+        expiryRequired: true,
+        issueDateRequired: false,
+        status: 'Active',
+        selectedTags: {},
+        destination: { mode: 'folder', folderName: 'Travel Documents' },
+        monitoring: { enabled: true, basedOn: 'expiryDate', recurrence: 'none', reminders: { d90: true, d60: true, d30: true, d7: true }, channels: { email: true, inapp: true, sms: false } },
+        isSystem: true
+    },
+    {
+        id: '13',
+        name: 'TWIC Card',
+        relatedTo: 'driver',
+        requirementLevel: 'optional',
+        expiryRequired: true,
+        issueDateRequired: false,
+        status: 'Active',
+        selectedTags: {},
+        destination: { mode: 'folder', folderName: 'Travel Documents' },
+        monitoring: { enabled: true, basedOn: 'expiryDate', recurrence: 'none', reminders: { d90: true, d60: true, d30: true, d7: true }, channels: { email: true, inapp: true, sms: false } },
+        isSystem: true
+    },
 ];
 
 export const MOCK_FOLDER_TREE: FolderNode = {

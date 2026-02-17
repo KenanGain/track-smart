@@ -68,7 +68,7 @@ export const StatusBadge = ({ status }: { status: string }) => {
 export const SectionHeader = ({ icon: Icon, title, onEdit, action }: { icon: any, title: string, onEdit?: () => void, action?: React.ReactNode }) => (
   <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-5 mt-2">
     <div className="flex items-center gap-2">
-      <div className="p-1.5 bg-blue-50 rounded text-blue-600">
+      <div className="p-1.5 bg-blue-50 rounded text-blue-600 flex items-center justify-center">
         <Icon className="w-4 h-4" />
       </div>
       <h3 className="text-base font-bold text-slate-800">{title}</h3>
@@ -84,12 +84,18 @@ export const SectionHeader = ({ icon: Icon, title, onEdit, action }: { icon: any
   </div>
 );
 
-export const ViewField = ({ label, value, highlight = false, fullWidth = false }: { label: string, value: string | number | undefined, highlight?: boolean, fullWidth?: boolean }) => (
+export const ViewField = ({ label, value, subValue, icon: Icon, highlight = false, fullWidth = false }: { label: string, value: string | number | undefined, subValue?: string, icon?: any, highlight?: boolean, fullWidth?: boolean }) => (
   <div className={`mb-4 ${fullWidth ? 'col-span-full' : ''}`}>
-    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-    <p className={`text-sm font-medium truncate ${highlight ? 'text-blue-700' : 'text-slate-900'}`}>
-      {value || '-'}
-    </p>
+    <div className="flex items-center gap-1.5 mb-1.5">
+       {Icon && <Icon className="w-3.5 h-3.5 text-slate-400" />}
+       <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{label}</p>
+    </div>
+    <div className="flex items-baseline gap-2">
+        <p className={`text-sm font-medium truncate ${highlight ? 'text-blue-700' : 'text-slate-900'}`}>
+          {value || '-'}
+        </p>
+        {subValue && <span className="text-xs text-slate-500">{subValue}</span>}
+    </div>
   </div>
 );
 
@@ -140,6 +146,71 @@ export const InputGroup = ({ label, name, type = "text", value, onChange, option
     {helper && <p className="text-[10px] text-slate-400 mt-1">{helper}</p>}
   </div>
 );
+
+// --- Address Component ---
+import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
+
+export const AddressFormFields = ({ data, onChange, errors = {} }: { data: any, onChange: (field: string, value: any) => void, errors?: any }) => {
+  const country = data.country || 'USA';
+  const isUS = country === 'USA';
+  const states = isUS ? US_STATES : CA_PROVINCES;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <InputGroup 
+        label="Street Address" 
+        value={data.address || ''} 
+        onChange={(e: any) => onChange('address', e.target.value)} 
+        className="md:col-span-3"
+        required
+      />
+      <InputGroup 
+        label="Unit/Apt" 
+        value={data.unit || ''} 
+        onChange={(e: any) => onChange('unit', e.target.value)} 
+        className="md:col-span-1"
+      />
+      <InputGroup 
+        label="City" 
+        value={data.city || ''} 
+        onChange={(e: any) => onChange('city', e.target.value)} 
+        className="md:col-span-2"
+        required
+      />
+      
+      <InputGroup 
+        label="Country" 
+        options={['USA', 'Canada']} 
+        value={country} 
+        onChange={(e: any) => {
+            onChange('country', e.target.value);
+            onChange('state', ''); // Reset state when country changes
+        }} 
+        className="md:col-span-2"
+        required
+      />
+      
+      <div className="md:col-span-2">
+         <InputGroup 
+            label={isUS ? "State" : "Province"}
+            name="state"
+            options={states}
+            value={data.state || ''}
+            onChange={(e: any) => onChange('state', e.target.value)}
+            required
+         />
+      </div>
+
+      <InputGroup 
+        label={isUS ? "Zip Code" : "Postal Code"} 
+        value={data.zip || ''} 
+        onChange={(e: any) => onChange('zip', e.target.value)} 
+        className="md:col-span-2"
+        required
+      />
+    </div>
+  );
+};
 
 export const Modal = ({ isOpen, onClose, title, children, onSave, saveText = "Save Changes" }: any) => {
   if (!isOpen) return null;
