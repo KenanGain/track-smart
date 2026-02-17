@@ -150,7 +150,7 @@ export const InputGroup = ({ label, name, type = "text", value, onChange, option
 // --- Address Component ---
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
 
-export const AddressFormFields = ({ data, onChange, errors = {} }: { data: any, onChange: (field: string, value: any) => void, errors?: any }) => {
+export const AddressFormFields = ({ data, onChange }: { data: any, onChange: (field: string, value: any) => void }) => {
   const country = data.country || 'USA';
   const isUS = country === 'USA';
   const states = isUS ? US_STATES : CA_PROVINCES;
