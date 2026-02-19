@@ -174,7 +174,6 @@ export function ViolationsPage() {
           case 'sev': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
           case 'crash': aVal = a.crashLikelihoodPercent || 0; bVal = b.crashLikelihoodPercent || 0; break;
           case 'status': aVal = a.inDsms ? 1 : 0; bVal = b.inDsms ? 1 : 0; break;
-          case 'oos': aVal = a.isOos ? 1 : 0; bVal = b.isOos ? 1 : 0; break;
           default: return 0;
         }
 
@@ -440,13 +439,7 @@ export function ViolationsPage() {
                   >
                     <div className="flex items-center justify-center gap-1">Crash % {getSortIcon('crash')}</div>
                   </th>
-                  <th 
-                    scope="col" 
-                    className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('oos')}
-                  >
-                    <div className="flex items-center justify-end gap-1">OOS {getSortIcon('oos')}</div>
-                  </th>
+
                   <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
                     Actions
                   </th>
@@ -458,7 +451,7 @@ export function ViolationsPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center">
+                    <td colSpan={9} className="px-6 py-12 text-center">
                       <Search className="mx-auto h-10 w-10 text-slate-300 mb-3" />
                       <h3 className="text-slate-900 font-medium">No violations found in this category</h3>
                       <p className="text-slate-500 text-sm mt-1">Try switching categories or adjusting filters.</p>
@@ -528,18 +521,7 @@ export function ViolationsPage() {
                             </span>
                           </td>
 
-                          {/* OOS Column */}
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
-                            {item.isOos ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold border border-red-200 uppercase tracking-wide">
-                                Yes
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide px-2">
-                                No
-                              </span>
-                            )}
-                          </td>
+
 
                           {/* Actions Column */}
                           <td className="px-4 py-3 whitespace-nowrap text-center">
@@ -563,7 +545,7 @@ export function ViolationsPage() {
                         {/* Expanded Row */}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={10} className="p-0 border-t border-slate-100 bg-slate-50/50">
+                            <td colSpan={9} className="p-0 border-t border-slate-100 bg-slate-50/50">
                                <div className="px-6 py-6 animate-in slide-in-from-top-2 duration-200">
                                 <div className="flex gap-1 bg-white p-1 rounded-lg border border-slate-200 w-fit mb-6">
                                   <button 

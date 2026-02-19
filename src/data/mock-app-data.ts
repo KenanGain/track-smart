@@ -56,6 +56,7 @@ export interface DocumentType {
         channels: { email: boolean; inapp: boolean; sms: boolean };
     };
     isSystem?: boolean; // If true, cannot be deleted
+    isAccidentDoc?: boolean; // If true, this doc type is linked to accidents
 }
 
 export type FolderCounts = { subfolders?: number; files?: number };
@@ -964,6 +965,14 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
     { id: 'software_invoice', name: 'Software Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
     { id: 'marketing_invoice', name: 'Marketing Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
     { id: 'professional_services_invoice', name: 'Professional Services Invoice', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { mode: 'folder', folderId: 'carrier_company_docs', folderName: 'Company Documents' } },
+    
+    // Accident Documents
+    { id: 'accident_police_report', name: 'Police Report', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
+    { id: 'accident_driver_statement', name: 'Driver Statement', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
+    { id: 'accident_photos', name: 'Accident Photos', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
+    { id: 'accident_witness_statement', name: 'Witness Statement', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
+    { id: 'accident_repair_estimate', name: 'Repair Estimate', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
+
     
     // Tickets / Offenses
     { id: 'offense_ticket', name: 'Offense Ticket', relatedTo: 'driver', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional', destination: { mode: 'folder', folderId: 'driver_tickets', folderName: 'Tickets / Offenses' } },

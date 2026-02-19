@@ -12,6 +12,7 @@ import {
     Folder,
     DollarSign,
     Ban,
+
     GraduationCap,
     Ticket,
 } from "lucide-react";
@@ -62,6 +63,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Accidents",
         icon: AlertTriangle,
         path: "/accidents",
+    },
+    {
+        key: "top-violations",
+        label: "Violations",
+        icon: Ban,
+        path: "/violations",
     },
     {
         key: "tickets",

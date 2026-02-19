@@ -584,8 +584,8 @@ export function CarrierProfilePage() {
 
     // --- CARRIER DOCUMENTS DATA ---
     const carrierDocuments = useMemo(() => {
-        // Filter document types related to Carrier
-        const carrierDocTypes = documents.filter((doc: DocumentType) => doc.relatedTo === 'carrier');
+        // Filter document types related to Carrier (excluding accident docs)
+        const carrierDocTypes = documents.filter((doc: DocumentType) => doc.relatedTo === 'carrier' && !doc.isAccidentDoc);
 
         // Find which key numbers link to this document type
         const getLinkedKeyNumber = (docTypeId: string) => {
@@ -1589,6 +1589,48 @@ export function CarrierProfilePage() {
                                                 </td>
                                             </tr>
                                         )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Card>
+
+                        {/* ACCIDENT DOCUMENTS CARD */}
+                        <Card title="Accident Documents" icon="FileText" fullWidth>
+                            <p className="text-sm text-slate-500 mb-4">
+                                These document types are tied to individual accident records. Upload files via the <strong>Accidents</strong> module on each record. Documents attached to an accident cannot be removed.
+                            </p>
+                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider">
+                                        <tr>
+                                            <th className="px-4 py-3">Document Type</th>
+                                            <th className="px-4 py-3">Requirement</th>
+                                            <th className="px-4 py-3">Folder</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {documents
+                                            .filter((doc: DocumentType) => doc.isAccidentDoc)
+                                            .map((doc: DocumentType) => (
+                                            <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-4 py-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                                                            <FileText className="w-3.5 h-3.5" />
+                                                        </div>
+                                                        <span className="font-medium text-slate-900">{doc.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-4">
+                                                    {doc.requirementLevel === 'required' ? (
+                                                        <Badge text="Required" tone="danger" />
+                                                    ) : (
+                                                        <Badge text="Optional" tone="gray" />
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-4 text-slate-500 text-xs">{doc.destination?.folderName || '—'}</td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>

@@ -283,8 +283,8 @@ export const TRAINING_TYPES: TrainingType[] = [
     tags: ["scale", "weight_limits", "compliance"]
   },
   {
-    id: "incident_reporting_post_accident_procedure",
-    name: "Incident Reporting & Post-Accident Procedure",
+    id: "accident_reporting_post_accident_procedure",
+    name: "Accident Reporting & Post-Accident Procedure",
     category: "Regulatory & Compliance",
     status: "active",
     defaultMandatory: true,
@@ -300,7 +300,7 @@ export const TRAINING_TYPES: TrainingType[] = [
       notificationChannels: { email: true, inApp: true, sms: false },
       projectedNotificationScheduleText: "Monitor Expiry Date. Reminders at 90 days, 60 days, 30 days before."
     },
-    tags: ["incident", "accident", "compliance"]
+    tags: ["accident", "compliance"]
   },
   {
     id: "recordkeeping_log_audits_carrier_driver",

@@ -339,12 +339,12 @@ export const INITIAL_SERVICE_TYPES: ServiceType[] = [
         description: "Perform roadside repair to address unexpected mechanical or safety issues."
     },
     {
-        id: "other_post_incident_inspection",
-        name: "Post-Incident Inspection",
+        id: "other_post_accident_inspection",
+        name: "Post-Accident Inspection",
         category: "both_cmv_and_non_cmv",
         group: "Other",
         complexity: "Moderate",
-        description: "Inspect vehicle after an accident or incident to assess damage and safety compliance."
+        description: "Inspect vehicle after an accident to assess damage and safety compliance."
     },
     {
         id: "other_seasonal_preparation",

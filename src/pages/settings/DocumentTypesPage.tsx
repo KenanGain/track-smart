@@ -48,14 +48,16 @@ const DocumentTypesPage: React.FC = () => {
 
     const { documents, addDocument, updateDocument, addTagSection, keyNumbers } = useAppData();
 
-    const tabs = ['All', 'Carrier', 'Asset', 'Driver'];
+    const tabs = ['All', 'Carrier', 'Asset', 'Driver', 'Accidents'];
 
     const filteredDocuments = documents.filter(doc => {
         if (searchQuery && !doc.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
         if (activeTab === 'All') return true;
         if (activeTab === 'Asset') return doc.relatedTo === 'asset';
         if (activeTab === 'Driver') return doc.relatedTo === 'driver';
-        return doc.relatedTo === 'carrier';
+        if (activeTab === 'Accidents') return !!(doc as any).isAccidentDoc;
+        // Carrier tab: exclude accident docs so they only appear under Accidents
+        return doc.relatedTo === 'carrier' && !(doc as any).isAccidentDoc;
     });
 
     const handleAddNew = () => { setEditingId(null); setViewMode('editor'); };
@@ -269,12 +271,26 @@ const DocumentTypesPage: React.FC = () => {
                                                                 </div>
                                                             );
                                                         }
+
+                                                        if ((doc as any).isAccidentDoc) {
+                                                            return (
+                                                                <div className="ml-12 mt-1 text-xs text-red-600 font-normal flex items-center gap-1">
+                                                                    Linked to Accidents
+                                                                </div>
+                                                            );
+                                                        }
                                                         
                                                         return null;
                                                     })()}
                                                 </div>
                                             </td>
-                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 capitalize">{doc.relatedTo}</td>
+                                            <td className="whitespace-nowrap px-3 py-4 text-sm capitalize">
+                                                {(doc as any).isAccidentDoc ? (
+                                                    <span className="text-red-600 font-medium">Accidents</span>
+                                                ) : (
+                                                    <span className="text-gray-500">{doc.relatedTo}</span>
+                                                )}
+                                            </td>
                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-center">
                                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${doc.expiryRequired ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
                                                     {doc.expiryRequired ? 'Required' : 'Optional'}
