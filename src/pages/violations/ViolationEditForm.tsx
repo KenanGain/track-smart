@@ -367,15 +367,42 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                         <option value="OOS Order">OOS Order</option>
                                     </select>
                                 </div>
-                                <div className="flex items-end pb-2">
-                                     {formData.isOos && (
-                                         <div className="flex items-center gap-2 text-rose-600 font-bold bg-rose-50 px-3 py-2 rounded-lg border border-rose-100 w-full animate-in fade-in">
-                                             <AlertTriangle size={16} />
-                                             <span className="text-xs uppercase">Out of Service Violation</span>
-                                         </div>
-                                     )}
                                 </div>
-                            </div>
+                                
+                                <div className="grid grid-cols-2 gap-5">
+                                    {/* Status Status */}
+                                    <div>
+                                        <label className={labelClass}>Status</label>
+                                        <select 
+                                            className={inputClass}
+                                            value={formData.status || 'Open'}
+                                            onChange={e => handleChange('status', e.target.value)}
+                                        >
+                                            <option value="Open">Open</option>
+                                            <option value="Under Review">Under Review</option>
+                                            <option value="Closed">Closed</option>
+                                        </select>
+                                    </div>
+
+                                    {/* OOS Toggle */}
+                                    <div>
+                                        <label className={labelClass}>OOS (Out of Service)</label>
+                                        <div className="flex items-center gap-3 h-10">
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="sr-only peer"
+                                                    checked={formData.isOos || false}
+                                                    onChange={e => handleChange('isOos', e.target.checked)}
+                                                />
+                                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                                                <span className="ml-3 text-sm font-medium text-slate-700">
+                                                    {formData.isOos ? 'Yes, OOS Issued' : 'No'}
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
                             
                             {/* Fine & Expense Section */}
                             <div className="grid grid-cols-2 gap-5 pt-2 border-t border-slate-200/60">
