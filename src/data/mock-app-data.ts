@@ -972,6 +972,7 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
     { id: 'accident_photos', name: 'Accident Photos', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
     { id: 'accident_witness_statement', name: 'Witness Statement', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
     { id: 'accident_repair_estimate', name: 'Repair Estimate', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
+    { id: 'accident_telemetry', name: 'Telemetry Data', relatedTo: 'carrier', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'optional', isAccidentDoc: true, destination: { mode: 'folder', folderId: 'carrier_accidents', folderName: 'Accidents' } },
 
     
     // Tickets / Offenses

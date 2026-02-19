@@ -2,6 +2,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { MOCK_DRIVERS } from "@/data/mock-app-data";
 import { INITIAL_ASSETS } from "../assets/assets.data";
+import { Toggle } from "@/components/ui/toggle";
 import { INCIDENTS } from "./incidents.data";
 import { useAppData } from "@/context/AppDataContext";
 import {
@@ -26,6 +27,9 @@ import {
   UserX,
   Truck,
   Camera,
+  HelpCircle,
+  Video,
+  Wifi,
 } from "lucide-react";
 
 
@@ -390,8 +394,8 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
               {preventBadge(inc.preventability.value)}
             </div>
             <Fld
-              l="FMCSA Reportable"
-              v={inc.classification.fmcsaReportable ? "Yes" : "No"}
+              l="FMCSR 390.15"
+              v={(inc.classification as any).fmcsr39015 || (inc.classification.fmcsaReportable ? "Yes" : "No")}
             />
           </div>
         </Sect>
@@ -437,6 +441,12 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
               ))}
             </div>
           </Sect>
+          <Sect title="Commodity">
+            <div className="space-y-2">
+              <Fld l="Commodity Type" v={(inc as any).commodityType || inc.vehicles?.[0]?.commodityType || "\u2014"} />
+              <Fld l="Commodity Loss" v={(inc as any).commodityLoss ? "Yes" : "No"} />
+            </div>
+          </Sect>
           <Sect title="Driver">
             <div className="space-y-2">
               <Fld l="Name" v={inc.driver.name} />
@@ -446,6 +456,8 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
               <Fld l="License" v={inc.driver.license} />
               <Fld l="License State" v={inc.driver.licenseState} />
               <Fld l="Age Band" v={inc.driver.ageBand} />
+              <Fld l="Driving Experience" v={inc.driver.drivingExperience} />
+              <Fld l="Length of Employment" v={inc.driver.lengthOfEmployment} />
             </div>
           </Sect>
         </div>
@@ -504,6 +516,7 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
               { id: "medicalReport", icon: Activity, color: "text-rose-700 bg-rose-50 border-rose-200", title: "Medical Report" },
               { id: "towReceipt", icon: Truck, color: "text-amber-700 bg-amber-50 border-amber-200", title: "Tow Receipt" },
               { id: "accidentPhoto", icon: Camera, color: "text-purple-700 bg-purple-50 border-purple-200", title: "Photos" },
+              { id: "telemetry", icon: Wifi, color: "text-teal-700 bg-teal-50 border-teal-200", title: "Telemetry" },
             ].map((d) => {
               const active = ((inc.documents as string[]) || []).includes(d.id);
               return (
@@ -703,16 +716,14 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
     </div>
   );
   const Chk = ({ l, s, f }: any) => (
-    <div className="flex items-center gap-2 pt-5">
-      <input
-        type="checkbox"
-        checked={!!form[s]?.[f]}
-        onChange={(e) => u(s, f, e.target.checked)}
-        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-      />
-      <label className="text-sm text-gray-700">{l}</label>
-    </div>
-  );
+  <div className="flex items-center gap-3 pt-5">
+    <Toggle
+      checked={!!form[s]?.[f]}
+      onCheckedChange={(val) => u(s, f, val)}
+    />
+    <label className="text-sm text-gray-700 font-medium">{l}</label>
+  </div>
+);
 
   const strOpts = (arr: string[]) => arr.map((x) => ({ v: x, l: x }));
 
@@ -796,7 +807,35 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
             </div>
-            <Inp l="Accident Type" s="cause" f="incidentType" />
+            <Sel
+              l="Accident Type"
+              s="cause"
+              f="incidentType"
+              opts={strOpts([
+                "Lost Control/Jackknife/Rollover",
+                "Head-on Collision",
+                "Rearend Collision",
+                "Intersection",
+                "Pedestrian",
+                "Sideswipe - High Speed",
+                "Sideswipe - Low Speed",
+                "Backing",
+                "Struck Object",
+                "Animal Strike",
+                "Parking Lot",
+                "Hit While Parked",
+                "Rearended By Other",
+                "Equipment Fire",
+                "Equipment Theft",
+                "Cargo Theft",
+                "Temperature Damage",
+                "Water Damage",
+                "Load Shift",
+                "Load Transfer Damage",
+                "Cargo Damage",
+                "Miscellaneous",
+              ])}
+            />
             <Sel
               l="Primary Cause"
               s="cause"
@@ -823,7 +862,50 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                 { v: "unknown", l: "Unknown" },
               ]}
             />
-            <Inp l="FMCSA Type" s="classification" f="accidentType" />
+            <div>
+              <div className="flex items-center gap-1 mb-1">
+                <label className="block text-xs font-medium text-gray-500">FMCSR 390.15</label>
+                <div className="relative group/fmcsr">
+                  <HelpCircle size={13} className="text-gray-400 cursor-help" />
+                  <div className="absolute top-full left-0 mt-1 w-[420px] max-h-[340px] overflow-y-auto p-3 bg-gray-900 text-white text-[10px] leading-relaxed rounded-lg opacity-0 invisible group-hover/fmcsr:opacity-100 group-hover/fmcsr:visible pointer-events-none group-hover/fmcsr:pointer-events-auto transition-all z-[9999] shadow-2xl border border-gray-700">
+                    <p className="font-bold text-[11px] mb-1.5">FMCSR - November 1, 2017</p>
+                    <p className="font-bold mb-1">§390.15 Assistance in investigations and special studies.</p>
+                    <p className="mb-1">(a) Each motor carrier and intermodal equipment provider must do the following:</p>
+                    <p className="ml-2 mb-1">(1) Make all records and information pertaining to an accident available to an authorized representative or special agent of the Federal Motor Carrier Safety Administration, an authorized State or local enforcement agency representative, or authorized third party representative within such time as the request or investigation may specify.</p>
+                    <p className="ml-2 mb-1">(2) Give an authorized representative all reasonable assistance in the investigation of any accident, including providing a full, true, and correct response to any question of the inquiry.</p>
+                    <p className="mb-1">(b) For accidents that occur after April 29, 2003, motor carriers must maintain an accident register for three years after the date of each accident. For accidents that occurred on or prior to April 29, 2003, motor carriers must maintain an accident register for a period of one year after the date of each accident. Information placed in the accident register must contain at least the following:</p>
+                    <p className="ml-2 mb-0.5">(1) A list of accidents as defined at §390.5 of this chapter containing for each accident:</p>
+                    <p className="ml-4 mb-0.5">(i) Date of accident.</p>
+                    <p className="ml-4 mb-0.5">(ii) City or town, or most near, where the accident occurred and the State where the accident occurred.</p>
+                    <p className="ml-4 mb-0.5">(iii) Driver Name.</p>
+                    <p className="ml-4 mb-0.5">(iv) Number of injuries.</p>
+                    <p className="ml-4 mb-0.5">(v) Number of fatalities.</p>
+                    <p className="ml-4 mb-1">(vi) Whether hazardous materials, other than fuel spilled from the fuel tanks of motor vehicle involved in the accident, were released.</p>
+                    <p className="ml-2 mb-2">(2) Copies of all accident reports required by State or other governmental entities or insurers.</p>
+                    <hr className="border-gray-600 my-2" />
+                    <p className="font-bold mb-1">§390.5 Definitions.</p>
+                    <p className="mb-1"><span className="font-semibold">Accident</span> means:</p>
+                    <p className="ml-2 mb-0.5">(1) Except as provided in paragraph (2) of this definition, an occurrence involving a commercial motor vehicle operating on a highway in interstate or intrastate commerce which results in:</p>
+                    <p className="ml-4 mb-0.5">(i) A fatality;</p>
+                    <p className="ml-4 mb-0.5">(ii) Bodily injury to a person who, as a result of the injury, immediately receives medical treatment away from the scene of the accident; or</p>
+                    <p className="ml-4 mb-1">(iii) One or more motor vehicles incurring disabling damage as a result of the accident, requiring the motor vehicle(s) to be transported away from the scene by a tow truck or other motor vehicle.</p>
+                    <p className="ml-2 mb-0.5">(2) The term accident does not include:</p>
+                    <p className="ml-4 mb-0.5">(i) An occurrence involving only boarding and alighting from a stationary motor vehicle; or</p>
+                    <p className="ml-4">(ii) An occurrence involving only the loading or unloading of cargo.</p>
+                  </div>
+                </div>
+              </div>
+              <select
+                value={form.classification?.fmcsr39015 ?? form.classification?.accidentType ?? ""}
+                onChange={(e) => u("classification", "fmcsr39015", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              >
+                <option value="" disabled>Select...</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="Not Applicable">Not Applicable</option>
+              </select>
+            </div>
             <div className="flex flex-col justify-end pb-2">
               <Chk
                 l="Police Report Obtained?"
@@ -834,7 +916,7 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
           </div>
         </Sect>
 
-        <Sect title="Location Settings">
+        <Sect title="Location">
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             <div className="col-span-1">
               <LocInp l="Unit #" f="unit" />
@@ -1016,7 +1098,7 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                         license: d.licenseNumber,
                         licenseState: d.licenseState,
                         ageBand,
-
+                        sinNumber: d.ssn || "",
                         lengthOfEmployment: empLen,
                         drivingExperience
                       }
@@ -1025,46 +1107,31 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                 }}
               >
                 <option value="">-- Select Driver --</option>
-                {MOCK_DRIVERS.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
+                {MOCK_DRIVERS.map(d => {
+                  const maskedSin = d.ssn ? `***-**-${d.ssn.slice(-4)}` : '';
+                  const plate = d.licenseNumber || '';
+                  return (
+                    <option key={d.id} value={d.id}>{d.firstName} {d.lastName}{plate ? ` | ${plate}` : ''}{maskedSin ? ` | SIN: ${maskedSin}` : ''}</option>
+                  );
+                })}
               </select>
             </div>
-            {/* Hidden Name Input (populated by select) */}
+            {/* Hidden Name + SIN Inputs (populated by select) */}
             <div className="hidden">
                  <Inp l="Name" s="driver" f="name" />
+                 <Inp l="SIN" s="driver" f="sinNumber" />
             </div>
 
-            <Sel
-              l="Driver Type"
-              s="driver"
-              f="driverType"
-              opts={strOpts(["Company", "Owner Operator", "Lease Purchase"])}
-            />
-            <Inp l="Email" s="driver" f="email" />
-            <Inp l="Phone" s="driver" f="phone" />
-            <Inp l="License" s="driver" f="license" />
-            <Inp l="License State" s="driver" f="licenseState" />
-            <Sel
-              l="Age Band"
-              s="driver"
-              f="ageBand"
-              opts={strOpts([
-                "Under 21",
-                "21 - 25",
-                "26 - 30",
-                "31 - 35",
-                "36 - 40",
-                "41 - 45",
-                "46 - 50",
-                "51 - 55",
-                "56 - 60",
-                "Over 65",
-                "Unknown",
-              ])}
-            />
-            <Inp l="Driving Experience" s="driver" f="drivingExperience" />
-            <Inp l="Length of Employment" s="driver" f="lengthOfEmployment" />
+            {/* Auto-populated fields - hidden from form, shown in table columns */}
+            <div className="hidden">
+              <Inp l="Driver Type" s="driver" f="driverType" />
+              <Inp l="Email" s="driver" f="email" />
+              <Inp l="Phone" s="driver" f="phone" />
+              <Inp l="License" s="driver" f="license" />
+              <Inp l="License State" s="driver" f="licenseState" />
+              <Inp l="Driving Experience" s="driver" f="drivingExperience" />
+            </div>
+            {/* Length of Employment - auto-populated, hidden */}
             <Inp
               l="Hrs Driving at Crash"
               s="driver"
@@ -1119,59 +1186,50 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Vehicle Type</label>
-                    <select
-                      value={veh.vehicleType ?? ""}
-                      onChange={(e) => setForm((p: any) => { const v = [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}])]; v[vi] = { ...v[vi], vehicleType: e.target.value }; return { ...p, vehicles: v }; })}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    >
-                      <option value="">Select...</option>
-                      {["Truck","Tractor","Trailer","Tanker","Flatbed","Box Truck","Van","Reefer","Power Unit"].map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  </div>
-                  {(["make","model","vin","licenseNumber"] as const).map((field) => (
-                    <div key={field}>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">{field === "licenseNumber" ? "License Plate" : field.charAt(0).toUpperCase() + field.slice(1)}</label>
-                      <input
-                        type="text"
-                        value={veh[field] ?? ""}
-                        onChange={(e) => setForm((p: any) => { const v = [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}])]; v[vi] = { ...v[vi], [field]: e.target.value }; return { ...p, vehicles: v }; })}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                  ))}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Year</label>
-                    <input
-                      type="number"
-                      value={veh.year ?? ""}
-                      onChange={(e) => setForm((p: any) => { const v = [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}])]; v[vi] = { ...v[vi], year: Number(e.target.value) }; return { ...p, vehicles: v }; })}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Commodity Type</label>
-                    <select
-                      value={veh.commodityType ?? ""}
-                      onChange={(e) => setForm((p: any) => { const v = [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}])]; v[vi] = { ...v[vi], commodityType: e.target.value }; return { ...p, vehicles: v }; })}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    >
-                      <option value="">Select...</option>
-                      {["Household Move","General Dry Freight","Auto Parts","Dry Food Products","Electronics","Temperature Controlled","General Flatbed Cargo"].map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                  {/* Auto-populated vehicle fields - hidden from form, shown in table */}
+                  <div className="hidden">
+                    <input type="hidden" value={veh.vehicleType ?? ""} />
+                    <input type="hidden" value={veh.make ?? ""} />
+                    <input type="hidden" value={veh.model ?? ""} />
+                    <input type="hidden" value={veh.vin ?? ""} />
+                    <input type="hidden" value={veh.licenseNumber ?? ""} />
+                    <input type="hidden" value={veh.year ?? ""} />
                   </div>
                 </div>
               </div>
             ))}
             <button
               type="button"
-              onClick={() => setForm((p: any) => ({ ...p, vehicles: [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}]), { assetId: "", vin: "", licenseNumber: "", licenseStateOrProvince: "", vehicleType: "", make: "", model: "", year: "", commodityType: "" }] }))}
+              onClick={() => setForm((p: any) => ({ ...p, vehicles: [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}]), { assetId: "", vin: "", licenseNumber: "", licenseStateOrProvince: "", vehicleType: "", make: "", model: "", year: "" }] }))}
               className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 rounded-lg px-4 py-2 transition"
             >
               <Plus size={14} />
               Add Vehicle
             </button>
+          </div>
+        </Sect>
+        <Sect title="Commodity">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Commodity Type</label>
+              <select
+                value={form.commodityType ?? form.vehicles?.[0]?.commodityType ?? ""}
+                onChange={(e) => setForm((p: any) => ({ ...p, commodityType: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              >
+                <option value="">Select...</option>
+                {["Household Move","General Dry Freight","Auto Parts","Dry Food Products","Electronics","Temperature Controlled","General Flatbed Cargo"].map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end pb-1">
+              <div className="flex items-center gap-3">
+                <Toggle
+                  checked={!!form.commodityLoss}
+                  onCheckedChange={(val) => setForm((p: any) => ({ ...p, commodityLoss: val }))}
+                />
+                <span className="text-sm text-gray-700 font-medium">Commodity Loss</span>
+              </div>
+            </div>
           </div>
         </Sect>
         <Sect title="Severity">
@@ -1268,6 +1326,59 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
               />
             </div>
           </div>
+        </Sect>
+        <Sect title="Video Evidence">
+          <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-colors cursor-pointer mb-3"
+            onClick={() => document.getElementById('video-upload')?.click()}
+          >
+            <input
+              id="video-upload"
+              type="file"
+              multiple
+              accept=".mp4,.mov,.avi,.webm"
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                if (files.length > 0) {
+                  setForm((p: any) => ({
+                    ...p,
+                    videoEvidence: [
+                      ...(p.videoEvidence || []),
+                      ...files.map((f) => ({ name: f.name, size: `${(f.size / 1024).toFixed(1)} KB`, type: f.type })),
+                    ],
+                  }));
+                }
+                e.target.value = '';
+              }}
+            />
+            <Video className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs text-gray-500">
+              <span className="font-semibold text-blue-600">Click to upload</span> or drag & drop video files
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">MP4, MOV, AVI, WEBM</p>
+          </div>
+          {(form.videoEvidence || []).length > 0 && (
+            <div className="space-y-2">
+              {(form.videoEvidence || []).map((v: any, vi: number) => (
+                <div key={vi} className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <Video size={13} className="text-violet-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-gray-800 line-clamp-1">{v.name}</p>
+                      <p className="text-[10px] text-gray-400">{v.size}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setForm((p: any) => ({ ...p, videoEvidence: (p.videoEvidence || []).filter((_: any, i: number) => i !== vi) }))}
+                    className="text-slate-400 hover:text-red-500 transition-colors"
+                    title="Remove video"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Sect>
         <Sect title="Accident Documents">
           <p className="text-xs text-gray-400 mb-4">
@@ -1400,6 +1511,8 @@ const ALL_COLS = [
   { id: "driverName", label: "Driver Name", checked: true },
   { id: "driverAge", label: "Driver Age", checked: true },
   { id: "driverType", label: "Driver Type", checked: true },
+  { id: "drivingExperience", label: "Driving Experience", checked: true },
+  { id: "sinNumber", label: "SIN Number", checked: false },
   { id: "city", label: "City (Closest)", checked: true },
   { id: "state", label: "Prov/State", checked: true },
   { id: "locationType", label: "Location Type", checked: true },
@@ -1410,7 +1523,7 @@ const ALL_COLS = [
   { id: "roadConditions", label: "Road Conditions", checked: true },
   { id: "accidentType", label: "Accident Type", checked: true },
   { id: "primaryCause", label: "Primary Cause", checked: true },
-  { id: "fmcsaType", label: "FMCSA Type", checked: true },
+  { id: "fmcsaType", label: "FMCSR 390.15", checked: true },
   { id: "status", label: "Status", checked: true },
   { id: "injuries", label: "Number of Injuries", checked: true },
   { id: "fatalities", label: "Number of Fatalities", checked: true },
@@ -1423,6 +1536,7 @@ const ALL_COLS = [
   { id: "vehicle", label: "Vehicle", checked: true },
   { id: "vin", label: "VIN", checked: true },
   { id: "commodityType", label: "Commodity Type", checked: true },
+  { id: "commodityLoss", label: "Commodity Loss", checked: true },
   { id: "source", label: "Sources", checked: true },
   { id: "docs", label: "Docs", checked: true },
 ];
@@ -1784,6 +1898,8 @@ export function AccidentsPage() {
                   {colVis("driverName") && <th className="px-4 py-3">Driver Name</th>}
                   {colVis("driverAge") && <th className="px-4 py-3">Driver Age</th>}
                   {colVis("driverType") && <th className="px-4 py-3">Driver Type</th>}
+                  {colVis("drivingExperience") && <th className="px-4 py-3">Driving Experience</th>}
+                  {colVis("sinNumber") && <th className="px-4 py-3">SIN Number</th>}
                   {colVis("city") && <th className="px-4 py-3">City (Closest)</th>}
                   {colVis("state") && <th className="px-4 py-3">Prov/State</th>}
                   {colVis("locationType") && <th className="px-4 py-3">Location Type</th>}
@@ -1794,7 +1910,7 @@ export function AccidentsPage() {
                   {colVis("roadConditions") && <th className="px-4 py-3">Road Conditions</th>}
                   {colVis("accidentType") && <th className="px-4 py-3">Accident Type</th>}
                   {colVis("primaryCause") && <th className="px-4 py-3">Primary Cause</th>}
-                  {colVis("fmcsaType") && <th className="px-4 py-3">FMCSA Type</th>}
+                  {colVis("fmcsaType") && <th className="px-4 py-3">FMCSR 390.15</th>}
                   {colVis("status") && <th className="px-4 py-3">Status</th>}
                   {colVis("injuries") && <th className="px-4 py-3 text-center">Injuries</th>}
                   {colVis("fatalities") && <th className="px-4 py-3 text-center">Fatalities</th>}
@@ -1807,6 +1923,7 @@ export function AccidentsPage() {
                   {colVis("vehicle") && <th className="px-4 py-3">Vehicle</th>}
                   {colVis("vin") && <th className="px-4 py-3">VIN</th>}
                   {colVis("commodityType") && <th className="px-4 py-3">Commodity Type</th>}
+                  {colVis("commodityLoss") && <th className="px-4 py-3 text-center">Commodity Loss</th>}
                   {colVis("source") && <th className="px-4 py-3">Sources</th>}
                   {colVis("docs") && <th className="px-4 py-3 text-center">Docs</th>}
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -1854,6 +1971,16 @@ export function AccidentsPage() {
                       {colVis("driverType") && (
                         <td className="px-4 py-3 text-gray-500">
                           {item.driver.driverType}
+                        </td>
+                      )}
+                      {colVis("drivingExperience") && (
+                        <td className="px-4 py-3 text-gray-500">
+                          {item.driver.drivingExperience || "—"}
+                        </td>
+                      )}
+                      {colVis("sinNumber") && (
+                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
+                          {(item.driver as any).sinNumber ? `***-**-${(item.driver as any).sinNumber?.slice(-4) || ''}` : "\u2014"}
                         </td>
                       )}
                       {colVis("city") && (
@@ -1908,7 +2035,7 @@ export function AccidentsPage() {
                       )}
                       {colVis("fmcsaType") && (
                          <td className="px-4 py-3 text-gray-500">
-                           {item.classification.accidentType}
+                           {(item.classification as any).fmcsr39015 || item.classification.accidentType || "—"}
                          </td>
                       )}
                       {colVis("status") && (
@@ -1995,12 +2122,12 @@ export function AccidentsPage() {
                       )}
                       {colVis("commodityType") && (
                         <td className="px-4 py-3 text-gray-500">
-                          <div className="flex items-center gap-1.5">
-                            <span>{item.vehicles?.[0]?.commodityType || "—"}</span>
-                            {(item.vehicles?.length ?? 0) > 1 && (
-                              <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-1.5 py-0.5">+{item.vehicles.length - 1}</span>
-                            )}
-                          </div>
+                          {(item as any).commodityType || item.vehicles?.[0]?.commodityType || "—"}
+                        </td>
+                      )}
+                      {colVis("commodityLoss") && (
+                        <td className="px-4 py-3 text-center">
+                          {boolCell(!!(item as any).commodityLoss)}
                         </td>
                       )}
                       {colVis("source") && (
@@ -2023,6 +2150,7 @@ export function AccidentsPage() {
                               { id: "medicalReport", icon: Activity, color: "text-rose-500", title: "Medical Report" },
                               { id: "towReceipt", icon: Truck, color: "text-amber-500", title: "Tow Receipt" },
                               { id: "accidentPhoto", icon: Camera, color: "text-purple-500", title: "Photos" },
+                              { id: "telemetry", icon: Wifi, color: "text-teal-500", title: "Telemetry" },
                             ].map((d) => {
                               const active = ((item.documents as string[]) || []).includes(d.id);
                               return (
