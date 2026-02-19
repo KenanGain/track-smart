@@ -77,6 +77,23 @@ function App() {
         if (path === "/accidents") {
             return <AccidentsPage />
         }
+        if (path === "/inspections") {
+            return (
+                <div className="p-8">
+                    <h1 className="text-3xl font-bold mb-4 text-slate-900">Inspections</h1>
+                    <p className="text-slate-600">Track and manage vehicle inspections here.</p>
+                    <div className="mt-8 bg-white p-12 rounded-xl border border-slate-200 text-center">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-semibold text-slate-700 mb-2">Inspections Module Coming Soon</h3>
+                        <p className="text-sm text-slate-500">This module will allow you to record DVIRs and roadside inspections.</p>
+                    </div>
+                </div>
+            )
+        }
         if (path === "/violations") {
             return <ViolationsListPage />
         }

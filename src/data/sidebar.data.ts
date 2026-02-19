@@ -1,5 +1,6 @@
 import {
     LayoutDashboard,
+    ClipboardCheck,
     Building2,
     CheckSquare,
     AlertTriangle,
@@ -63,6 +64,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Accidents",
         icon: AlertTriangle,
         path: "/accidents",
+    },
+    {
+        key: "inspections",
+        label: "Inspections",
+        icon: ClipboardCheck,
+        path: "/inspections",
     },
     {
         key: "top-violations",
