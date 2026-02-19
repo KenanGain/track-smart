@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Clock, MapPin, User as UserIcon, Truck, AlertTriangle, Globe } from 'lucide-react';
+import { X, Save, Clock, MapPin, User as UserIcon, Truck, Globe } from 'lucide-react';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS } from '@/pages/assets/assets.data';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
