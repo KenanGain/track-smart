@@ -17,7 +17,8 @@ import { INITIAL_TASKS, INITIAL_ORDERS, INITIAL_SERVICE_TYPES } from './maintena
 import type { TaskOrder } from './maintenance.data';
 import { INITIAL_VENDORS } from '@/data/vendors.data';
 import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
-import { DollarSign } from 'lucide-react';
+import { MOCK_ASSET_VIOLATION_RECORDS, type AssetViolationRecord } from '@/pages/violations/violations-list.data';
+import { DollarSign, HardHat, FileText as FileTextIcon } from 'lucide-react';
 import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 
@@ -967,7 +968,68 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
 
 
-            {/* Maintenance Content */}
+            {/* Violations Content */}
+            {activeTab === 'Violations' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">Asset Violations</h3>
+                      <p className="text-xs font-medium text-slate-500">Track and manage violations associated with this asset.</p>
+                    </div>
+                  </div>
+
+                  <Card className="overflow-hidden border-slate-200 shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
+                          <tr>
+                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4">Violation Type</th>
+                            <th className="px-6 py-4">Code</th>
+                            <th className="px-6 py-4 text-center">Status</th>
+                            <th className="px-6 py-4 text-right">Fine</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) => v.assetId === currentVehicle.id || v.assetName === currentVehicle.unitNumber || v.assetName === currentVehicle.plateNumber).length > 0 ? MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) => v.assetId === currentVehicle.id || v.assetName === currentVehicle.unitNumber || v.assetName === currentVehicle.plateNumber).map((violation: any) => (
+                               <tr key={violation.id} className="hover:bg-slate-50/50 transition-colors">
+                                 <td className="px-6 py-4 font-medium text-slate-900">
+                                   {new Date(violation.date).toLocaleDateString()}
+                                 </td>
+                                 <td className="px-6 py-4">
+                                     <div className="font-medium text-slate-900 line-clamp-2">{violation.violationType}</div>
+                                     <div className="text-xs text-slate-500 mt-1">{violation.violationGroup}</div>
+                                 </td>
+                                 <td className="px-6 py-4">
+                                     <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-800">{violation.violationCode}</code>
+                                 </td>
+                                 <td className="px-6 py-4 text-center">
+                                      <Badge variant={violation.status === 'Closed' ? 'success' : violation.status === 'Open' ? 'warning' : 'neutral'}>
+                                          {violation.status}
+                                      </Badge>
+                                      {violation.isOos && <Badge variant="danger" className="ml-2 w-auto">OOS</Badge>}
+                                 </td>
+                                 <td className="px-6 py-4 text-right font-bold text-slate-900">
+                                     {violation.fineAmount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: violation.currency || 'USD' }).format(violation.fineAmount) : '—'}
+                                 </td>
+                               </tr>
+                          )) : (
+                              <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <div className="p-3 bg-slate-50 rounded-full"><AlertCircle size={24} className="opacity-30" /></div>
+                                    <span className="text-sm font-medium">No violations recorded for this asset</span>
+                                  </div>
+                                </td>
+                              </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+              </div>
+            )}
+
             {/* Maintenance Content */}
             {activeTab === 'Maintenance' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">

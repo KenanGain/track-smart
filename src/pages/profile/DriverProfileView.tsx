@@ -11,6 +11,7 @@ import { StatusBadge, ViewField, InputGroup, Modal, maskSSN, formatDate, calcula
 import { PaystubsPage } from '../finance/PaystubsPage';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
+import { MOCK_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -678,8 +679,8 @@ import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxRemind
 
 // ... (existing helper components)
 
-const Card = ({ title, icon, rightAction, children }: { title: string, icon: any, rightAction?: React.ReactNode, children: React.ReactNode }) => (
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+const Card = ({ title, icon, rightAction, children, className }: { title: string, icon: any, rightAction?: React.ReactNode, children: React.ReactNode, className?: string }) => (
+  <div className={cn("bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full", className)}>
     <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
@@ -1286,7 +1287,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Tickets', label: 'Tickets', icon: Ticket },
         { id: 'Accidents', label: 'Accidents', icon: Car },
         { id: 'Safety', label: 'Safety', icon: AlertOctagon },
-
+        { id: 'Violations', label: 'Violations', icon: AlertTriangle },
         { id: 'Paystubs', label: 'Paystubs', icon: DollarSign },
         { id: 'HoursOfService', label: 'Hours of Service', icon: Clock },
         { id: 'MileageReport', label: 'Mileage Report', icon: Map }
@@ -1864,6 +1865,66 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                     </div>
                 );
             })()}
+            {activeTab === 'Violations' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">Driver Violations</h3>
+                      <p className="text-xs font-medium text-slate-500">Track and manage violations associated with this driver.</p>
+                    </div>
+                  </div>
+
+                  <Card className="overflow-hidden border-slate-200 shadow-sm" icon={AlertTriangle} title="Driver Violations">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
+                          <tr>
+                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4">Violation Type</th>
+                            <th className="px-6 py-4">Code</th>
+                            <th className="px-6 py-4 text-center">Status</th>
+                            <th className="px-6 py-4 text-right">Fine</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id || v.driverName === `${driverData.firstName} ${driverData.lastName}`).length > 0 ? MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id || v.driverName === `${driverData.firstName} ${driverData.lastName}`).map((violation: any) => (
+                               <tr key={violation.id} className="hover:bg-slate-50/50 transition-colors">
+                                 <td className="px-6 py-4 font-medium text-slate-900">
+                                   {new Date(violation.date).toLocaleDateString()}
+                                 </td>
+                                 <td className="px-6 py-4">
+                                     <div className="font-medium text-slate-900 line-clamp-2">{violation.violationType}</div>
+                                     <div className="text-xs text-slate-500 mt-1">{violation.violationGroup}</div>
+                                 </td>
+                                 <td className="px-6 py-4">
+                                     <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-800">{violation.violationCode}</code>
+                                 </td>
+                                 <td className="px-6 py-4 text-center flex items-center justify-center">
+                                      <Badge variant={violation.status === 'Closed' ? 'success' : violation.status === 'Open' ? 'warning' : 'neutral'}>
+                                          {violation.status}
+                                      </Badge>
+                                      {violation.isOos && <Badge variant="danger" className="ml-2 w-auto">OOS</Badge>}
+                                 </td>
+                                 <td className="px-6 py-4 text-right font-bold text-slate-900">
+                                     {violation.fineAmount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: violation.currency || 'USD' }).format(violation.fineAmount) : '—'}
+                                 </td>
+                               </tr>
+                          )) : (
+                              <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <div className="p-3 bg-slate-50 rounded-full"><AlertTriangle size={24} className="opacity-30" /></div>
+                                    <span className="text-sm font-medium">No violations recorded for this driver</span>
+                                  </div>
+                                </td>
+                              </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+              </div>
+            )}
         </div>
       
         <KeyNumberModal 

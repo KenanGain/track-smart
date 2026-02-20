@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType } from '@/data/mock-app-data';
 import type { Asset } from '@/pages/assets/assets.data';
