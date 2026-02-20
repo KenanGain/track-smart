@@ -107,19 +107,19 @@ export function ViolationsPage() {
       item.inDsms ? 'dsms' : '',
       `risk ${item.driverRiskCategory}`,
       // USA regulatory
-      ...item.regulatoryCodes.usa.flatMap(r => [
+      ...(item.regulatoryCodes?.usa?.flatMap(r => [
         r.authority,
         r.description,
-        ...r.cfr,
-        ...r.statute,
-      ]),
+        ...(r.cfr || []),
+        ...(r.statute || []),
+      ]) || []),
       // Canada regulatory
-      ...item.regulatoryCodes.canada.flatMap(r => [
+      ...(item.regulatoryCodes?.canada?.flatMap(r => [
         r.authority,
         r.description,
-        ...r.reference,
+        ...(r.reference || []),
         ...(r.province || []),
-      ]),
+      ]) || []),
       // Canada enforcement
       item.canadaEnforcement?.act || '',
       item.canadaEnforcement?.section || '',
