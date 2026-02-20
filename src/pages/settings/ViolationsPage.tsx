@@ -432,13 +432,7 @@ export function ViolationsPage() {
                   >
                     <div className="flex items-center justify-center gap-1">Sev (D/C) {getSortIcon('sev')}</div>
                   </th>
-                  <th 
-                    scope="col" 
-                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('crash')}
-                  >
-                    <div className="flex items-center justify-center gap-1">Crash % {getSortIcon('crash')}</div>
-                  </th>
+
 
                   <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
                     Actions
@@ -451,7 +445,7 @@ export function ViolationsPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center">
+                    <td colSpan={8} className="px-6 py-12 text-center">
                       <Search className="mx-auto h-10 w-10 text-slate-300 mb-3" />
                       <h3 className="text-slate-900 font-medium">No violations found in this category</h3>
                       <p className="text-slate-500 text-sm mt-1">Try switching categories or adjusting filters.</p>
@@ -499,10 +493,25 @@ export function ViolationsPage() {
                              <span className="text-xs text-slate-600 font-medium">{item.violationGroup}</span>
                           </td>
 
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
-                             <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${styles.badge} border-transparent uppercase tracking-wide`}>
-                               {data.riskCategories[String(item.driverRiskCategory)]?.label || `Risk ${item.driverRiskCategory}`}
-                             </span>
+                          <td className="px-4 py-3 whitespace-nowrap text-left">
+                            <div className="flex flex-col gap-2">
+                              <span className={`inline-flex w-fit items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${styles.badge} border-transparent uppercase tracking-wide`}>
+                                {data.riskCategories[String(item.driverRiskCategory)]?.label || `Risk ${item.driverRiskCategory}`}
+                              </span>
+                              
+                              <div className="w-24">
+                                  <div className="flex justify-between items-end mb-1">
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase">Crash Prob.</span>
+                                      <span className="text-[10px] font-bold text-slate-700">{item.crashLikelihoodPercent ?? 0}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                      <div 
+                                          className={`h-full rounded-full ${(item.crashLikelihoodPercent ?? 0) > 50 ? 'bg-red-500' : (item.crashLikelihoodPercent ?? 0) > 20 ? 'bg-amber-500' : 'bg-emerald-500'}`} 
+                                          style={{ width: `${Math.min(Math.max(item.crashLikelihoodPercent ?? 0, 5), 100)}%` }} 
+                                      />
+                                  </div>
+                              </div>
+                            </div>
                           </td>
 
                           {/* Simplified Severity (No Charts) */}
@@ -514,12 +523,7 @@ export function ViolationsPage() {
                             </div>
                           </td>
 
-                          {/* Simplified Crash Probability (No Charts) */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <span className={`text-xs font-bold ${(item.crashLikelihoodPercent ?? 0) > 100 ? 'text-red-600' : 'text-slate-600'}`}>
-                                {item.crashLikelihoodPercent ? `${item.crashLikelihoodPercent}%` : '-'}
-                            </span>
-                          </td>
+
 
 
 
@@ -545,7 +549,7 @@ export function ViolationsPage() {
                         {/* Expanded Row */}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={9} className="p-0 border-t border-slate-100 bg-slate-50/50">
+                            <td colSpan={8} className="p-0 border-t border-slate-100 bg-slate-50/50">
                                <div className="px-6 py-6 animate-in slide-in-from-top-2 duration-200">
                                 <div className="flex gap-1 bg-white p-1 rounded-lg border border-slate-200 w-fit mb-6">
                                   <button 
