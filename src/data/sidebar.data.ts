@@ -98,6 +98,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },
             { key: "trainings", label: "Trainings", icon: GraduationCap, path: "/settings/trainings" },
+            { key: "inspections-settings", label: "Inspections", icon: ClipboardCheck, path: "/settings/inspections" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" }
         ],
     },

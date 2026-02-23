@@ -12,6 +12,7 @@ import { ExpenseTypesPage } from '@/pages/settings/ExpenseTypesPage'
 import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
+import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
 
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
@@ -86,6 +87,9 @@ function App() {
         }
         if (path === "/settings/violations") {
             return <ViolationsPage />
+        }
+        if (path === "/settings/inspections") {
+            return <InspectionsSettingsPage />
         }
 
         if (path === "/settings/trainings") {

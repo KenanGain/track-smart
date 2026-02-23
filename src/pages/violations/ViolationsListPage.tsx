@@ -5,7 +5,8 @@ import {
     FileWarning, ShieldAlert, Ban,
     X, Edit3, Flag, Info,
     ArrowUpDown, ArrowUp, ArrowDown,
-    DollarSign, Gavel, Truck, User, MapPin
+    DollarSign, Gavel, Truck, User, MapPin,
+    ClipboardList
 } from 'lucide-react';
 import { MOCK_VIOLATION_RECORDS, type ViolationRecord, getViolation } from './violations-list.data';
 import { MOCK_ASSET_VIOLATION_RECORDS, type AssetViolationRecord } from './asset-violations.data';
@@ -834,6 +835,11 @@ export function ViolationsListPage() {
                                             <div className="flex items-center gap-2">
                                                 <ViolationCodePill code={r.violationCode} />
                                                 {r.isOos && <OOSBadge />}
+                                                {r.inspectionId && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 text-[9px] font-bold uppercase tracking-wide" title={`From Inspection ${r.inspectionId}`}>
+                                                        <ClipboardList size={9} strokeWidth={2.5} />INSP
+                                                    </span>
+                                                )}
                                             </div>
                                         </TD>}
                                         {visibleColumns.has('crashLikelihood') && <TD>
@@ -941,6 +947,11 @@ export function ViolationsListPage() {
                                             <div className="flex items-center gap-2">
                                                 <ViolationCodePill code={r.violationCode} />
                                                 {r.isOos && <OOSBadge />}
+                                                {r.inspectionId && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 text-[9px] font-bold uppercase tracking-wide" title={`From Inspection ${r.inspectionId}`}>
+                                                        <ClipboardList size={9} strokeWidth={2.5} />INSP
+                                                    </span>
+                                                )}
                                             </div>
                                         </TD>}
                                         {visibleColumns.has('crashLikelihood') && <TD>

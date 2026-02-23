@@ -57,9 +57,9 @@ export interface ViolationItem {
   isOos: boolean;
   regulatoryCodes: {
     usa: ViolationRegulatoryCodeUSA[];
-    canada: ViolationRegulatoryCodeCanada[];
+    canada?: ViolationRegulatoryCodeCanada[];
   };
-  canadaEnforcement: CanadaEnforcement;
+  canadaEnforcement?: CanadaEnforcement;
   _source?: string;
 }
 

@@ -4,7 +4,7 @@ import {
   AlertCircle, FileText,
   ShieldCheck, Hash, Clock, 
   Settings, MapPin, ChevronDown, Wrench, Trash2,
-  X, UploadCloud, FileDown, FileKey
+  X, UploadCloud, FileDown, FileKey, FileCheck, AlertOctagon
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
@@ -17,10 +17,13 @@ import { INITIAL_TASKS, INITIAL_ORDERS, INITIAL_SERVICE_TYPES } from './maintena
 import type { TaskOrder } from './maintenance.data';
 import { INITIAL_VENDORS } from '@/data/vendors.data';
 import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
-import { MOCK_ASSET_VIOLATION_RECORDS, type AssetViolationRecord } from '@/pages/violations/violations-list.data';
-import { DollarSign, HardHat, FileText as FileTextIcon } from 'lucide-react';
+import { MOCK_ASSET_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
+import { DollarSign, Car, Eye, AlertTriangle } from 'lucide-react';
 import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
+import { INCIDENTS } from '@/pages/incidents/incidents.data';
+import { inspectionsData } from '@/pages/inspections/inspectionsData';
+import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 
 // --- Types for Rich Data (extending base Asset) ---
 export interface DetailedAsset extends Asset {
@@ -224,6 +227,8 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
     { name: 'Compliance Monitoring', count: 0 },
     { name: 'Notifications', count: 3, alert: true },
     { name: 'Violations', count: 0 },
+    { name: 'Accidents', count: 0 },
+    { name: 'Inspections', count: 0 },
     { name: 'Maintenance', count: 0 },
     { name: 'Expenses', count: 0 },
     { name: 'Documents', count: 0 },
@@ -242,6 +247,12 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
 
   const [activeComplianceFilter, setActiveComplianceFilter] = useState<string | null>(null);
+  const [viewingAccident, setViewingAccident] = useState<any | null>(null);
+  const [editingAccident, setEditingAccident] = useState<any | null>(null);
+  const [viewingViolation, setViewingViolation] = useState<any>(null);
+  const [editingViolation, setEditingViolation] = useState<any>(null);
+  const [expandedInspection, setExpandedInspection] = useState<string | null>(null);
+  const [viewingInspection, setViewingInspection] = useState<any>(null);
 
   const { keyNumbers, tagSections, getDocumentTypeById, documents } = useAppData();
 
@@ -493,6 +504,51 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
   const [docIssuingState, setDocIssuingState] = useState('');
   const [deletingDocument, setDeletingDocument] = useState<any>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+
+  // Violations Tab State
+  const [violQ, setViolQ] = useState('');
+  const [violPage, setViolPage] = useState(1);
+  const [violRpp, setViolRpp] = useState(10);
+  const [violCols, setViolCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'type', label: 'Violation Type', visible: true },
+    { id: 'code', label: 'Code', visible: true },
+    { id: 'status', label: 'Status', visible: true },
+    { id: 'fine', label: 'Fine', visible: true },
+  ]);
+  useEffect(() => { setViolPage(1); }, [violQ, violRpp]);
+
+  // Accidents Tab State
+  const [accQ, setAccQ] = useState('');
+  const [accPage, setAccPage] = useState(1);
+  const [accRpp, setAccRpp] = useState(10);
+  const [accCols, setAccCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'incident', label: 'Incident', visible: true },
+    { id: 'type', label: 'Type / Cause', visible: true },
+    { id: 'location', label: 'Location', visible: true },
+    { id: 'severity', label: 'Severity', visible: true },
+    { id: 'preventability', label: 'Preventability', visible: true },
+    { id: 'status', label: 'Status', visible: true },
+    { id: 'cost', label: 'Cost', visible: true },
+  ]);
+  useEffect(() => { setAccPage(1); }, [accQ, accRpp]);
+
+  // Inspections Tab State
+  const [insQ, setInsQ] = useState('');
+  const [insPage, setInsPage] = useState(1);
+  const [insRpp, setInsRpp] = useState(10);
+  const [insCols, setInsCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'report', label: 'Report #', visible: true },
+    { id: 'level', label: 'Level', visible: true },
+    { id: 'state', label: 'State', visible: true },
+    { id: 'driver', label: 'Driver', visible: true },
+    { id: 'violations', label: 'Violations', visible: true },
+    { id: 'oos', label: 'OOS', visible: true },
+    { id: 'result', label: 'Result', visible: true },
+  ]);
+  useEffect(() => { setInsPage(1); }, [insQ, insRpp]);
 
   const assetDocuments = useMemo(() => {
       // 1. Get Asset-related Document Types
@@ -968,67 +1024,565 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
 
 
-            {/* Violations Content */}
-            {activeTab === 'Violations' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base">Asset Violations</h3>
-                      <p className="text-xs font-medium text-slate-500">Track and manage violations associated with this asset.</p>
-                    </div>
-                  </div>
-
-                  <Card className="overflow-hidden border-slate-200 shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
-                          <tr>
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Violation Type</th>
-                            <th className="px-6 py-4">Code</th>
-                            <th className="px-6 py-4 text-center">Status</th>
-                            <th className="px-6 py-4 text-right">Fine</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) => v.assetId === currentVehicle.id || v.assetName === currentVehicle.unitNumber || v.assetName === currentVehicle.plateNumber).length > 0 ? MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) => v.assetId === currentVehicle.id || v.assetName === currentVehicle.unitNumber || v.assetName === currentVehicle.plateNumber).map((violation: any) => (
-                               <tr key={violation.id} className="hover:bg-slate-50/50 transition-colors">
-                                 <td className="px-6 py-4 font-medium text-slate-900">
-                                   {new Date(violation.date).toLocaleDateString()}
-                                 </td>
-                                 <td className="px-6 py-4">
-                                     <div className="font-medium text-slate-900 line-clamp-2">{violation.violationType}</div>
-                                     <div className="text-xs text-slate-500 mt-1">{violation.violationGroup}</div>
-                                 </td>
-                                 <td className="px-6 py-4">
-                                     <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-800">{violation.violationCode}</code>
-                                 </td>
+            {/* Violations Content */}
+            {activeTab === 'Violations' && (() => {
+              const assetViolations = MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) => v.assetId === currentVehicle.id || v.assetName === currentVehicle.unitNumber || v.assetName === currentVehicle.plateNumber);
+              const oosCount = assetViolations.filter((v: any) => v.isOos).length;
+              const openCount = assetViolations.filter((v: any) => v.status === 'Open').length;
+              const totalFines = assetViolations.reduce((sum: number, v: any) => sum + (v.fineAmount || 0), 0);
+
+              const violColVis = (id: string) => violCols.find(c => c.id === id)?.visible;
+              const violFiltered = assetViolations.filter((v: any) => {
+                if (!violQ) return true;
+                const s = violQ.toLowerCase();
+                return v.violationCode?.toLowerCase().includes(s) || v.violationType?.toLowerCase().includes(s);
+              });
+              const violPaged = violFiltered.slice((violPage - 1) * violRpp, violPage * violRpp);
+
+              return (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">Asset Violations</h3>
+                      <p className="text-xs font-medium text-slate-500">Track and manage violations associated with this asset.</p>
+                    </div>
+                  </div>
+
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Violations</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{assetViolations.length}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0"><AlertOctagon className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">OOS<br />Orders</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{oosCount}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0"><Clock className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Open<br />Cases</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{openCount}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-emerald-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><DollarSign className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Fines</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">${totalFines.toLocaleString()}</div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <DataListToolbar searchValue={violQ} onSearchChange={setViolQ} searchPlaceholder="Search violations..." columns={violCols} onToggleColumn={(id) => setViolCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={violFiltered.length} currentPage={violPage} rowsPerPage={violRpp} onPageChange={setViolPage} onRowsPerPageChange={setViolRpp} />
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
+                          <tr>
+                            {violColVis('date') && <th className="px-6 py-4">Date</th>}
+                            {violColVis('type') && <th className="px-6 py-4">Violation Type</th>}
+                            {violColVis('code') && <th className="px-6 py-4">Code</th>}
+                            {violColVis('status') && <th className="px-6 py-4 text-center">Status</th>}
+                            {violColVis('fine') && <th className="px-6 py-4 text-right">Fine</th>}
+                            <th className="px-6 py-4 text-center w-[80px]">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {violPaged.length > 0 ? violPaged.map((violation: any) => (
+                               <tr key={violation.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer group" onClick={() => setViewingViolation(violation)}>
+                                 {violColVis('date') && (<td className="px-6 py-4 font-medium text-slate-900">{new Date(violation.date).toLocaleDateString()}</td>)}
+                                 {violColVis('type') && (<td className="px-6 py-4"><div className="font-medium text-slate-900 line-clamp-2">{violation.violationType}</div><div className="text-xs text-slate-500 mt-1">{violation.violationGroup}</div></td>)}
+                                 {violColVis('code') && (<td className="px-6 py-4"><code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-800">{violation.violationCode}</code></td>)}
+                                 {violColVis('status') && (<td className="px-6 py-4 text-center"><Badge variant={violation.status === 'Closed' ? 'success' : violation.status === 'Open' ? 'warning' : 'neutral'}>{violation.status}</Badge>{violation.isOos && <Badge variant="danger" className="ml-2 w-auto">OOS</Badge>}</td>)}
+                                 {violColVis('fine') && (<td className="px-6 py-4 text-right font-bold text-slate-900">{violation.fineAmount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: violation.currency || 'USD' }).format(violation.fineAmount) : 'â€”'}</td>)}
                                  <td className="px-6 py-4 text-center">
-                                      <Badge variant={violation.status === 'Closed' ? 'success' : violation.status === 'Open' ? 'warning' : 'neutral'}>
-                                          {violation.status}
-                                      </Badge>
-                                      {violation.isOos && <Badge variant="danger" className="ml-2 w-auto">OOS</Badge>}
+                                   <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                     <button onClick={(e) => { e.stopPropagation(); setViewingViolation(violation); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="View Details"><Eye size={16} /></button>
+                                     <button onClick={(e) => { e.stopPropagation(); setEditingViolation(violation); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit"><Edit2 size={16} /></button>
+                                   </div>
                                  </td>
-                                 <td className="px-6 py-4 text-right font-bold text-slate-900">
-                                     {violation.fineAmount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: violation.currency || 'USD' }).format(violation.fineAmount) : '—'}
-                                 </td>
-                               </tr>
-                          )) : (
+                               </tr>
+                          )) : (
+                              <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <div className="p-3 bg-slate-50 rounded-full"><AlertCircle size={24} className="opacity-30" /></div>
+                                    <span className="text-sm font-medium">No violations recorded for this asset</span>
+                                  </div>
+                                </td>
+                              </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <PaginationBar totalItems={violFiltered.length} currentPage={violPage} rowsPerPage={violRpp} onPageChange={setViolPage} onRowsPerPageChange={setViolRpp} />
+                  </div>
+              </div>
+              );
+            })()}
+
+            {/* Accidents Content */}
+            {activeTab === 'Accidents' && (() => {
+              const assetIncidents = INCIDENTS.filter((inc: any) => inc.vehicles?.some((v: any) => v.assetId === currentVehicle.id || v.vin === currentVehicle.vin));
+              const totalCost = assetIncidents.reduce((sum: number, inc: any) => sum + (inc.costs?.totalAccidentCosts || 0), 0);
+              const preventableCount = assetIncidents.filter((inc: any) => inc.preventability?.value === 'preventable').length;
+              const tbdCount = assetIncidents.filter((inc: any) => inc.preventability?.value === 'tbd').length;
+
+              const accColVis = (id: string) => accCols.find(c => c.id === id)?.visible;
+              const accFiltered = assetIncidents.filter((inc: any) => {
+                if (!accQ) return true;
+                const s = accQ.toLowerCase();
+                return inc.incidentId?.toLowerCase().includes(s) || inc.cause?.incidentType?.toLowerCase().includes(s) || inc.location?.city?.toLowerCase().includes(s);
+              });
+              const accPaged = accFiltered.slice((accPage - 1) * accRpp, accPage * accRpp);
+
+              return (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0"><Car className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Accidents</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{assetIncidents.length}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-emerald-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><DollarSign className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Costs</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(totalCost)}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Preventable<br />Accidents</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{preventableCount}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0"><Clock className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Pending<br />(TBD)</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{tbdCount}</div>
+                    </div>
+                  </div>
+
+                  {/* Table Card */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <DataListToolbar searchValue={accQ} onSearchChange={setAccQ} searchPlaceholder="Search accidents..." columns={accCols} onToggleColumn={(id) => setAccCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={accFiltered.length} currentPage={accPage} rowsPerPage={accRpp} onPageChange={setAccPage} onRowsPerPageChange={setAccRpp} />
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50/80 border-b border-slate-200">
+                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                            {accColVis('date') && <th className="px-5 py-3">Date</th>}
+                            {accColVis('incident') && <th className="px-5 py-3">Incident</th>}
+                            {accColVis('type') && <th className="px-5 py-3">Type / Cause</th>}
+                            {accColVis('location') && <th className="px-5 py-3">Location</th>}
+                            {accColVis('severity') && <th className="px-5 py-3 text-center">Severity</th>}
+                            {accColVis('preventability') && <th className="px-5 py-3 text-center">Preventability</th>}
+                            {accColVis('status') && <th className="px-5 py-3 text-center">Status</th>}
+                            {accColVis('cost') && <th className="px-5 py-3 text-right">Cost</th>}
+                            <th className="px-5 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {accPaged.length > 0 ? accPaged.map((incident: any) => (
+                            <tr key={incident.incidentId} className="hover:bg-blue-50/30 transition-colors group">
+                              {accColVis('date') && (<td className="px-5 py-3.5"><div className="font-semibold text-slate-900">{new Date(incident.occurredAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div><div className="text-xs text-slate-500">{new Date(incident.occurredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div></td>)}
+                              {accColVis('incident') && (<td className="px-5 py-3.5"><div className="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-bold font-mono border border-blue-100 mb-1">{incident.incidentId}</div><div className="text-xs text-slate-500">Claim: {incident.insuranceClaimNumber}</div></td>)}
+                              {accColVis('type') && (<td className="px-5 py-3.5"><div className="font-medium text-slate-900">{incident.cause?.incidentType || 'Unknown'}</div><div className="text-xs text-slate-500">{incident.cause?.primaryCause || 'Unknown'}</div></td>)}
+                              {accColVis('location') && (<td className="px-5 py-3.5"><div className="flex items-start gap-1.5"><MapPin size={14} className="text-slate-400 mt-0.5" /><div><div className="text-sm text-slate-900">{incident.location?.city}, {incident.location?.stateOrProvince}</div><div className="text-xs text-slate-500">{incident.location?.country}</div></div></div></td>)}
+                              {accColVis('severity') && (<td className="px-5 py-3.5 text-center"><div className="flex flex-col gap-1 items-center">{incident.severity?.fatalities > 0 && <Badge variant="danger" className="text-[9px]">FATAL ({incident.severity.fatalities})</Badge>}{incident.severity?.injuriesNonFatal > 0 && <Badge variant="warning" className="text-[9px]">INJURIES ({incident.severity.injuriesNonFatal})</Badge>}{incident.severity?.towAway && <Badge variant="neutral" className="text-[9px]">TOW AWAY</Badge>}{!incident.severity?.fatalities && !incident.severity?.injuriesNonFatal && !incident.severity?.towAway && <Badge variant="success" className="text-[9px]">MINOR</Badge>}</div></td>)}
+                              {accColVis('preventability') && (<td className="px-5 py-3.5 text-center"><Badge variant={incident.preventability?.value === 'preventable' ? 'danger' : incident.preventability?.value === 'non_preventable' ? 'success' : 'pending'}>{incident.preventability?.value?.toUpperCase() || 'TBD'}</Badge></td>)}
+                              {accColVis('status') && (<td className="px-5 py-3.5 text-center"><Badge variant={incident.status?.value === 'closed' || incident.status?.value === 'resolved' ? 'success' : incident.status?.value === 'active' ? 'warning' : 'pending'}>{incident.status?.label?.toUpperCase() || incident.status?.value?.toUpperCase() || 'ACTIVE'}</Badge></td>)}
+                              {accColVis('cost') && (<td className="px-5 py-3.5 text-right font-bold text-slate-900">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(incident.costs?.totalAccidentCosts || 0)}</td>)}
+                              <td className="px-5 py-3.5 text-right">
+                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => setViewingAccident(incident)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="View Details"><Eye size={16} /></button>
+                                  <button onClick={() => setEditingAccident(incident)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit Record"><Edit2 size={16} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr>
+                              <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
+                                <div className="flex flex-col items-center justify-center gap-2">
+                                  <div className="p-3 bg-slate-50 rounded-full"><Car size={24} className="opacity-30" /></div>
+                                  <span className="text-sm font-medium">No accidents recorded</span>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <PaginationBar totalItems={accFiltered.length} currentPage={accPage} rowsPerPage={accRpp} onPageChange={setAccPage} onRowsPerPageChange={setAccRpp} />
+                  </div>
+              </div>
+              );
+            })()}
+
+            {/* Inspections Content */}
+            {activeTab === 'Inspections' && (() => {
+              const assetInspections = inspectionsData.filter((ins: any) => ins.assetId === currentVehicle.id || ins.vehiclePlate === currentVehicle.plateNumber || ins.units?.some((u: any) => u.vin === currentVehicle.vin));
+              const totalViolations = assetInspections.reduce((sum: number, ins: any) => sum + (ins.violations?.length || 0), 0);
+              const oosCount = assetInspections.filter((ins: any) => ins.hasOOS).length;
+              const cleanCount = assetInspections.filter((ins: any) => ins.isClean).length;
+
+              const insColVis = (id: string) => insCols.find(c => c.id === id)?.visible;
+              const insFiltered = assetInspections.filter((ins: any) => {
+                if (!insQ) return true;
+                const s = insQ.toLowerCase();
+                return ins.id?.toLowerCase().includes(s) || ins.driver?.toLowerCase().includes(s) || ins.state?.toLowerCase().includes(s);
+              });
+              const insPaged = insFiltered.slice((insPage - 1) * insRpp, insPage * insRpp);
+
+              return (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0"><FileCheck className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Inspections</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{assetInspections.length}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Violations</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{totalViolations}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0"><AlertOctagon className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Out of<br />Service</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{oosCount}</div>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-emerald-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><ShieldCheck className="w-4 h-4" /></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Clean<br />Inspections</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{cleanCount}</div>
+                    </div>
+                  </div>
+
+                  {/* Table Card */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <DataListToolbar searchValue={insQ} onSearchChange={setInsQ} searchPlaceholder="Search inspections..." columns={insCols} onToggleColumn={(id) => setInsCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={insFiltered.length} currentPage={insPage} rowsPerPage={insRpp} onPageChange={setInsPage} onRowsPerPageChange={setInsRpp} />
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50/80 border-b border-slate-200">
+                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                            {insColVis('date') && <th className="px-5 py-3">Date</th>}
+                            {insColVis('report') && <th className="px-5 py-3">Report #</th>}
+                            {insColVis('level') && <th className="px-5 py-3">Level</th>}
+                            {insColVis('state') && <th className="px-5 py-3">State</th>}
+                            {insColVis('driver') && <th className="px-5 py-3">Driver</th>}
+                            {insColVis('violations') && <th className="px-5 py-3 text-center">Violations</th>}
+                            {insColVis('oos') && <th className="px-5 py-3 text-center">OOS</th>}
+                            {insColVis('result') && <th className="px-5 py-3 text-center">Result</th>}
+                            <th className="px-5 py-3 text-center w-[80px]">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {insPaged.length > 0 ? insPaged.map((ins: any) => (
+                            <React.Fragment key={ins.id}>
+                            <tr className="hover:bg-blue-50/30 transition-colors group cursor-pointer" onClick={() => setExpandedInspection(expandedInspection === ins.id ? null : ins.id)}>
+                              {insColVis('date') && (<td className="px-5 py-3.5"><div className="font-semibold text-slate-900">{new Date(ins.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div></td>)}
+                              {insColVis('report') && (<td className="px-5 py-3.5"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{ins.id}</code></td>)}
+                              {insColVis('level') && (<td className="px-5 py-3.5"><span className="text-sm font-medium text-slate-700">{ins.level}</span></td>)}
+                              {insColVis('state') && (<td className="px-5 py-3.5"><span className="text-sm font-medium text-slate-700">{ins.state}</span></td>)}
+                              {insColVis('driver') && (<td className="px-5 py-3.5"><div className="font-medium text-slate-800">{ins.driver}</div><div className="text-xs text-slate-400">{ins.driverId}</div></td>)}
+                              {insColVis('violations') && (<td className="px-5 py-3.5 text-center"><span className={cn('text-sm font-bold', ins.violations?.length > 0 ? 'text-red-600' : 'text-slate-400')}>{ins.violations?.length || 0}</span></td>)}
+                              {insColVis('oos') && (<td className="px-5 py-3.5 text-center">{ins.hasOOS ? (<span className="inline-flex items-center px-2 py-0.5 rounded bg-red-50 text-red-700 text-[10px] font-bold border border-red-100">YES</span>) : (<span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-50 text-slate-400 text-[10px] font-bold border border-slate-100">NO</span>)}</td>)}
+                              {insColVis('result') && (<td className="px-5 py-3.5 text-center">{ins.isClean ? (<span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">CLEAN</span>) : (<span className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">VIOLATIONS</span>)}</td>)}
+                              <td className="px-5 py-3.5 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button onClick={(e) => { e.stopPropagation(); setViewingInspection(ins); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100" title="View Details"><Eye size={16} /></button>
+                                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expandedInspection === ins.id ? 'rotate-180' : ''}`} />
+                                </div>
+                              </td>
+                            </tr>
+                            {expandedInspection === ins.id && (
                               <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <div className="p-3 bg-slate-50 rounded-full"><AlertCircle size={24} className="opacity-30" /></div>
-                                    <span className="text-sm font-medium">No violations recorded for this asset</span>
+                                <td colSpan={9} className="px-0 py-0 bg-slate-50/70">
+                                  <div className="px-6 py-4 space-y-3 animate-in fade-in duration-200">
+                                    <div className="flex items-center justify-between">
+                                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Violations ({ins.violations?.length || 0})</h4>
+                                      <div className="flex items-center gap-2">
+                                        {ins.hasOOS && <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold rounded border border-red-100">OOS</span>}
+                                        <span className="text-[10px] text-slate-400 font-medium">{ins.level} | {ins.state}</span>
+                                      </div>
+                                    </div>
+                                    {ins.violations?.length > 0 ? (
+                                      <table className="w-full text-left text-sm">
+                                        <thead className="bg-white/80 border-b border-slate-200">
+                                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                                            <th className="px-4 py-2">Code</th>
+                                            <th className="px-4 py-2">Description</th>
+                                            <th className="px-4 py-2">Category</th>
+                                            <th className="px-4 py-2 text-center">Severity</th>
+                                            <th className="px-4 py-2 text-center">Points</th>
+                                            <th className="px-4 py-2 text-center">OOS</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                          {ins.violations.map((viol: any, vi: number) => (
+                                            <tr key={vi} className="bg-white hover:bg-blue-50/30 transition-colors">
+                                              <td className="px-4 py-2"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-semibold">{viol.code}</code></td>
+                                              <td className="px-4 py-2 max-w-[250px]"><div className="text-sm font-medium text-slate-800 truncate">{viol.description}</div></td>
+                                              <td className="px-4 py-2"><span className="text-xs text-slate-500">{viol.category}</span></td>
+                                              <td className="px-4 py-2 text-center"><span className="text-sm font-bold text-slate-700">{viol.severity}</span></td>
+                                              <td className="px-4 py-2 text-center"><span className="text-sm font-bold text-slate-700">{viol.points}</span></td>
+                                              <td className="px-4 py-2 text-center">{viol.oos ? <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold rounded border border-red-100">YES</span> : <span className="text-[10px] text-slate-400">NO</span>}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    ) : (
+                                      <div className="text-center py-4 text-sm text-emerald-600 font-medium bg-white rounded-lg border border-slate-200">Clean Inspection - No violations found</div>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
-                          )}
-                        </tbody>
-                      </table>
+                            )}
+                            </React.Fragment>
+                          )) : (
+                            <tr>
+                              <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
+                                <div className="flex flex-col items-center justify-center gap-2">
+                                  <div className="p-3 bg-slate-50 rounded-full"><FileCheck size={24} className="opacity-30" /></div>
+                                  <span className="text-sm font-medium">No inspections recorded for this asset</span>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <PaginationBar totalItems={insFiltered.length} currentPage={insPage} rowsPerPage={insRpp} onPageChange={setInsPage} onRowsPerPageChange={setInsRpp} />
+                  </div>
+              </div>
+              );
+            })()}
+
+
+
+            {/* VIOLATION VIEW POPUP */}
+            {viewingViolation && (() => {
+              const v = viewingViolation;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setViewingViolation(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-slate-400 font-medium">Asset Profile / Violations</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h2 className="text-lg font-bold text-slate-900">Violation Detail</h2>
+                          <code className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{v.id}</code>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => { setViewingViolation(null); setEditingViolation(v); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm"><Edit2 size={14} /> Edit</button>
+                        <button onClick={() => setViewingViolation(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+                      </div>
                     </div>
-                  </Card>
-              </div>
-            )}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Violation Information</h4>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Date</p><p className="text-sm font-medium text-slate-900">{new Date(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Time</p><p className="text-sm font-medium text-slate-900">{v.time || '—'}</p></div>
+                          <div className="col-span-2"><p className="text-[11px] text-slate-400 mb-0.5">Description</p><p className="text-sm font-medium text-slate-900">{v.violationType}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Code</p><code className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{v.violationCode}</code></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Group</p><p className="text-sm font-medium text-slate-900">{v.violationGroup}</p></div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-5">
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Location</h4>
+                          <div className="space-y-2">
+                            <div><p className="text-[11px] text-slate-400">State</p><p className="text-sm font-medium text-slate-800">{v.locationState}</p></div>
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Driver</h4>
+                          <div className="space-y-2">
+                            <div><p className="text-[11px] text-slate-400">Name</p><p className="text-sm font-medium text-slate-800">{v.driverName || '—'}</p></div>
+                            <div><p className="text-[11px] text-slate-400">Type</p><p className="text-sm font-medium text-slate-800">{v.driverType || '—'}</p></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Result & Status</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center"><p className="text-sm font-bold text-slate-700">{v.result}</p><p className="text-[10px] font-medium text-slate-400">Result</p></div>
+                          <div className={`rounded-lg border p-2.5 text-center ${v.isOos ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><p className="text-sm font-bold">{v.isOos ? 'YES' : 'NO'}</p><p className="text-[10px] font-medium">OOS</p></div>
+                          <div className={`rounded-lg border p-2.5 text-center ${v.status === 'Open' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><p className="text-sm font-bold">{v.status}</p><p className="text-[10px] font-medium">Status</p></div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center"><p className="text-sm font-bold text-slate-700">{v.fineAmount > 0 ? `$${v.fineAmount.toLocaleString()}` : '—'}</p><p className="text-[10px] font-medium text-slate-400">Fine</p></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setViewingViolation(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                      <button onClick={() => { setViewingViolation(null); setEditingViolation(v); }} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Edit Violation</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* VIOLATION EDIT POPUP */}
+            {editingViolation && (() => {
+              const v = editingViolation;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingViolation(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[620px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center"><Edit2 size={16} className="text-blue-600" /></div>
+                        <div>
+                          <h2 className="text-base font-bold text-slate-900">Edit Violation</h2>
+                          <p className="text-[11px] text-slate-400 font-medium">{v.id}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingViolation(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Violation Details</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Date</label><input type="date" defaultValue={v.date} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Time</label><input type="time" defaultValue={v.time} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div className="col-span-2"><label className="block text-xs font-medium text-slate-500 mb-1.5">Description</label><input type="text" defaultValue={v.violationType} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Violation Code</label><input type="text" defaultValue={v.violationCode} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">State</label><input type="text" defaultValue={v.locationState} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Result & Fine</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Result</label><select defaultValue={v.result} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all"><option value="Citation Issued">Citation Issued</option><option value="Warning">Warning</option><option value="OOS Order">OOS Order</option><option value="Clean Inspection">Clean Inspection</option></select></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Status</label><select defaultValue={v.status} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all"><option value="Open">Open</option><option value="Closed">Closed</option><option value="Under Review">Under Review</option></select></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Fine Amount ($)</label><input type="number" min="0" defaultValue={v.fineAmount} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div className="flex items-end pb-1"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" defaultChecked={v.isOos} className="rounded border-slate-300" /><span className="text-sm font-medium text-slate-700">Out of Service</span></label></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setEditingViolation(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Cancel</button>
+                      <button onClick={() => setEditingViolation(null)} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Save Changes</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* INSPECTION VIEW POPUP */}
+            {viewingInspection && (() => {
+              const ins = viewingInspection;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setViewingInspection(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-slate-400 font-medium">Asset Profile / Inspections</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h2 className="text-lg font-bold text-slate-900">Inspection Report</h2>
+                          <code className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{ins.id}</code>
+                        </div>
+                      </div>
+                      <button onClick={() => setViewingInspection(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Inspection Details</h4>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Date</p><p className="text-sm font-medium text-slate-900">{new Date(ins.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Level</p><p className="text-sm font-medium text-slate-900">{ins.level}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">State</p><p className="text-sm font-medium text-slate-900">{ins.state}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Driver</p><p className="text-sm font-medium text-slate-900">{ins.driver}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Vehicle</p><p className="text-sm font-medium text-slate-900">{ins.vehiclePlate} ({ins.vehicleType})</p></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">OOS Summary</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className={`rounded-lg border p-2.5 text-center ${ins.oosSummary?.driver === 'FAILED' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><p className="text-sm font-bold">{ins.oosSummary?.driver || 'PASSED'}</p><p className="text-[10px] font-medium">Driver</p></div>
+                          <div className={`rounded-lg border p-2.5 text-center ${ins.oosSummary?.vehicle === 'FAILED' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><p className="text-sm font-bold">{ins.oosSummary?.vehicle || 'PASSED'}</p><p className="text-[10px] font-medium">Vehicle</p></div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center"><p className="text-sm font-bold text-slate-700">{ins.oosSummary?.total || 0}</p><p className="text-[10px] font-medium text-slate-400">Total OOS</p></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Violations ({ins.violations?.length || 0})</h4>
+                        {ins.violations?.length > 0 ? (
+                          <div className="rounded-lg border border-slate-200 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                                  <th className="px-4 py-2.5">Code</th>
+                                  <th className="px-4 py-2.5">Description</th>
+                                  <th className="px-4 py-2.5">Category</th>
+                                  <th className="px-4 py-2.5 text-center">Sev</th>
+                                  <th className="px-4 py-2.5 text-center">Pts</th>
+                                  <th className="px-4 py-2.5 text-center">OOS</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {ins.violations.map((viol: any, vi: number) => (
+                                  <tr key={vi} className="hover:bg-blue-50/30 transition-colors">
+                                    <td className="px-4 py-2.5"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-semibold">{viol.code}</code></td>
+                                    <td className="px-4 py-2.5 max-w-[220px]"><div className="text-sm text-slate-800 truncate">{viol.description}</div><div className="text-[10px] text-slate-400">{viol.subDescription || ''}</div></td>
+                                    <td className="px-4 py-2.5"><span className="text-xs text-slate-500">{viol.category}</span></td>
+                                    <td className="px-4 py-2.5 text-center"><span className="font-bold text-slate-700">{viol.severity}</span></td>
+                                    <td className="px-4 py-2.5 text-center"><span className="font-bold text-slate-700">{viol.points}</span></td>
+                                    <td className="px-4 py-2.5 text-center">{viol.oos ? <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold rounded border border-red-100">YES</span> : <span className="text-[10px] text-slate-400">NO</span>}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-sm text-emerald-600 font-medium bg-emerald-50/50 rounded-lg border border-emerald-100">Clean Inspection - No violations recorded</div>
+                        )}
+                      </div>
+                      {ins.units?.length > 0 && (
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Units Inspected</h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {ins.units.map((unit: any, ui: number) => (
+                              <div key={ui} className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-1">
+                                <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-slate-500 uppercase">{unit.type}</span><code className="text-[10px] font-mono bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">{unit.license}</code></div>
+                                <div><p className="text-[11px] text-slate-400">Make</p><p className="text-sm font-medium text-slate-800">{unit.make}</p></div>
+                                <div><p className="text-[11px] text-slate-400">VIN</p><p className="text-[10px] font-mono text-slate-500">{unit.vin}</p></div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setViewingInspection(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Maintenance Content */}
             {activeTab === 'Maintenance' && (
@@ -1383,6 +1937,291 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
             )}
           </div>
         </div>
+
+        {/* ACCIDENT DETAIL POPUP */}
+        {viewingAccident && (() => {
+          const inc = viewingAccident;
+          const fmtDT = (d: string) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+          const fmtCur = (v: number) => v != null ? `$${v.toLocaleString()}` : '—';
+          return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setViewingAccident(null)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-400 font-medium">Asset Profile / Accidents</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <h2 className="text-lg font-bold text-slate-900">Crash Report</h2>
+                      <code className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{inc.incidentId}</code>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">Details of the event, vehicle, and driver information.</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={() => { setViewingAccident(null); setEditingAccident(inc); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                      <Edit2 className="w-3.5 h-3.5" /> Edit
+                    </button>
+                    <button onClick={() => setViewingAccident(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                      <X className="w-4 h-4 text-slate-500" />
+                    </button>
+                  </div>
+                </div>
+                {/* Scrollable body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  {/* Location Map Placeholder */}
+                  <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 h-[80px] flex items-center justify-center">
+                    <div className="text-center text-slate-400 flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      <p className="text-xs font-medium">{inc.location?.full}</p>
+                    </div>
+                  </div>
+                  {/* Event Details */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Event Details</h4>
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                      <div><p className="text-[11px] text-slate-400 mb-0.5">Timestamp</p><p className="text-sm font-medium text-slate-900">{fmtDT(inc.occurredAt)}</p></div>
+                      <div><p className="text-[11px] text-slate-400 mb-0.5">Accident Type</p><p className="text-sm font-medium text-slate-900">{inc.cause?.incidentType || '—'}</p></div>
+                      <div className="col-span-2"><p className="text-[11px] text-slate-400 mb-0.5">Address</p><p className="text-sm font-medium text-slate-900">{inc.location?.full || '—'}</p></div>
+                      <div><p className="text-[11px] text-slate-400 mb-0.5">Primary Cause</p><p className="text-sm font-medium text-slate-900">{inc.cause?.primaryCause || '—'}</p></div>
+                      <div><p className="text-[11px] text-slate-400 mb-0.5">Location Type</p><p className="text-sm font-medium text-slate-900">{inc.location?.locationType || '—'}</p></div>
+                      <div>
+                        <p className="text-[11px] text-slate-400 mb-1">Preventability</p>
+                        <Badge variant={inc.preventability?.value === 'preventable' ? 'danger' : inc.preventability?.value === 'non_preventable' ? 'success' : 'pending'}>
+                          {inc.preventability?.value === 'preventable' ? 'Preventable' : inc.preventability?.value === 'non_preventable' ? 'Non-Preventable' : 'TBD'}
+                        </Badge>
+                      </div>
+                      <div><p className="text-[11px] text-slate-400 mb-0.5">FMCSA Reportable</p><p className="text-sm font-medium text-slate-900">{inc.classification?.fmcsaReportable ? 'Yes' : 'No'}</p></div>
+                    </div>
+                  </div>
+                  {/* Vehicles + Driver side by side */}
+                  <div className="grid grid-cols-2 gap-5">
+                    <div>
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Vehicles</h4>
+                      {(inc.vehicles || []).map((veh: any, vi: number) => (
+                        <div key={vi} className="space-y-2 mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">{inc.vehicles.length > 1 ? `Vehicle ${vi + 1}` : 'Vehicle'}</span>
+                            {veh.assetId && <code className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{veh.assetId}</code>}
+                          </div>
+                          <div className="space-y-1.5">
+                            <div><p className="text-[11px] text-slate-400">Make / Model</p><p className="text-sm font-medium text-slate-800">{veh.make} {veh.model} ({veh.year})</p></div>
+                            <div><p className="text-[11px] text-slate-400">Type</p><p className="text-sm font-medium text-slate-800">{veh.vehicleType}</p></div>
+                            <div><p className="text-[11px] text-slate-400">VIN</p><p className="text-xs font-mono text-slate-600">{veh.vin}</p></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Driver at Time of Incident</h4>
+                      <div className="space-y-1.5">
+                        <div><p className="text-[11px] text-slate-400">Name</p><p className="text-sm font-medium text-slate-800">{inc.driver?.name}</p></div>
+                        <div><p className="text-[11px] text-slate-400">Type</p><p className="text-sm font-medium text-slate-800">{inc.driver?.driverType}</p></div>
+                        <div><p className="text-[11px] text-slate-400">Experience</p><p className="text-sm font-medium text-slate-800">{inc.driver?.drivingExperience}</p></div>
+                        <div><p className="text-[11px] text-slate-400">Hrs Driving / On Duty</p><p className="text-sm font-medium text-slate-800">{inc.driver?.hrsDriving}h / {inc.driver?.hrsOnDuty}h</p></div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Severity & Costs */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Severity & Costs</h4>
+                    <div className="grid grid-cols-4 gap-2 mb-4">
+                      {[
+                        { label: 'Fatalities', value: inc.severity?.fatalities, bad: inc.severity?.fatalities > 0 },
+                        { label: 'Injuries', value: inc.severity?.injuriesNonFatal, bad: inc.severity?.injuriesNonFatal > 0 },
+                        { label: 'Tow Away', value: inc.severity?.towAway ? 'Yes' : 'No', bad: inc.severity?.towAway },
+                        { label: 'HAZMAT', value: inc.severity?.hazmatReleased ? 'Yes' : 'No', bad: inc.severity?.hazmatReleased },
+                      ].map((s, i) => (
+                        <div key={i} className={cn('rounded-lg border p-2.5 text-center', s.bad ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600')}>
+                          <p className="text-base font-bold">{s.value}</p>
+                          <p className="text-[10px] font-medium">{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-2">
+                      <div><p className="text-[11px] text-slate-400">Company Costs</p><p className="text-sm font-semibold text-slate-900">{fmtCur(inc.costs?.companyCostsFromDollarOne)}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Insurance Paid</p><p className="text-sm font-semibold text-slate-900">{fmtCur(inc.costs?.insuranceCostsPaid)}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Insurance Reserves</p><p className="text-sm font-semibold text-slate-900">{fmtCur(inc.costs?.insuranceReserves)}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Total Costs</p><p className="text-sm font-bold text-blue-700">{fmtCur(inc.costs?.totalAccidentCosts)}</p></div>
+                    </div>
+                  </div>
+                  {/* Road & Conditions */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Road & Conditions</h4>
+                    <div className="grid grid-cols-3 gap-x-5 gap-y-2">
+                      <div><p className="text-[11px] text-slate-400">Road Type</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.roadType}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Weather</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.weatherConditions}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Road Surface</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.roadConditions}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Speed Limit</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.postedSpeedLimitKmh} km/h</p></div>
+                      <div><p className="text-[11px] text-slate-400">Terrain</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.terrain}</p></div>
+                      <div><p className="text-[11px] text-slate-400">Light</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.light}</p></div>
+                    </div>
+                  </div>
+                  {/* Follow Up */}
+                  {(inc.followUp?.action || inc.followUp?.comments) && (
+                    <div>
+                      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Follow Up</h4>
+                      <div className="space-y-2">
+                        {inc.followUp?.action && <div><p className="text-[11px] text-slate-400">Action</p><p className="text-sm font-medium text-slate-800">{inc.followUp.action}</p></div>}
+                        {inc.followUp?.comments && <div><p className="text-[11px] text-slate-400">Comments</p><p className="text-sm font-medium text-slate-800">{inc.followUp.comments}</p></div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Footer */}
+                <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                  <button onClick={() => setViewingAccident(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                  <button onClick={() => { setViewingAccident(null); setEditingAccident(inc); }} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Edit Accident</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ACCIDENT EDIT POPUP */}
+        {editingAccident && (() => {
+          return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingAccident(null)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                      <Edit2 className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">Edit Accident</h2>
+                      <p className="text-[11px] text-slate-400 font-medium">{editingAccident.incidentId}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingAccident(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                    <X className="w-4 h-4 text-slate-500" />
+                  </button>
+                </div>
+                {/* Scrollable form body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {/* Event Details Section */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Event Details</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Date & Time of Loss</label>
+                        <input type="datetime-local" defaultValue={editingAccident.occurredAt?.slice(0, 16)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Accident Type</label>
+                        <select defaultValue={editingAccident.cause?.incidentType} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all">
+                          {['Rear-end collision', 'Intersection collision', 'Single vehicle runoff', 'Sideswipe - same direction', 'Sideswipe - opposite direction', 'Backing into structure', 'Load shift / spill', 'Tire blowout / rollover', 'Tire blowout', 'Head-on Collision', 'Pedestrian', 'Animal Strike', 'Equipment Fire'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Primary Cause</label>
+                        <select defaultValue={editingAccident.cause?.primaryCause} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all">
+                          {['Unsafe Behaviour', 'Mechanical Failure', 'Third Party', 'Weather', 'Fatigue', 'Load Securement', 'Road Conditions', 'Unknown'].map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Insurance Claim #</label>
+                        <input type="text" defaultValue={editingAccident.insuranceClaimNumber} placeholder="e.g. CLM-9943201" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Location Section */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Location</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Street Address</label>
+                        <input type="text" defaultValue={editingAccident.location?.streetAddress} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">City</label>
+                        <input type="text" defaultValue={editingAccident.location?.city} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">State / Province</label>
+                        <input type="text" defaultValue={editingAccident.location?.stateOrProvince} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Country</label>
+                        <input type="text" defaultValue={editingAccident.location?.country} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Zip / Postal</label>
+                        <input type="text" defaultValue={editingAccident.location?.zip} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Severity */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Severity</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Fatalities</label>
+                        <input type="number" min="0" defaultValue={editingAccident.severity?.fatalities} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Injuries (Non-Fatal)</label>
+                        <input type="number" min="0" defaultValue={editingAccident.severity?.injuriesNonFatal} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Vehicles Towed</label>
+                        <input type="number" min="0" defaultValue={editingAccident.severity?.vehiclesTowed} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Preventability</label>
+                        <select defaultValue={editingAccident.preventability?.value} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all">
+                          <option value="tbd">TBD</option>
+                          <option value="preventable">Preventable</option>
+                          <option value="non_preventable">Non-Preventable</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Costs */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Costs</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Company Costs ($)</label>
+                        <input type="number" min="0" defaultValue={editingAccident.costs?.companyCostsFromDollarOne} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Insurance Paid ($)</label>
+                        <input type="number" min="0" defaultValue={editingAccident.costs?.insuranceCostsPaid} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Insurance Reserves ($)</label>
+                        <input type="number" min="0" defaultValue={editingAccident.costs?.insuranceReserves} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Total Cost ($)</label>
+                        <input type="number" min="0" defaultValue={editingAccident.costs?.totalAccidentCosts} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-slate-50 text-slate-500 transition-all" disabled />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Follow Up */}
+                  <div>
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Follow Up</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Action Taken</label>
+                        <textarea defaultValue={editingAccident.followUp?.action} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1.5">Comments</label>
+                        <textarea defaultValue={editingAccident.followUp?.comments} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Footer */}
+                <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                  <button onClick={() => setEditingAccident(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Cancel</button>
+                  <button onClick={() => setEditingAccident(null)} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Save Changes</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Modals placed outside main layout */}
         <AddExpenseModal 

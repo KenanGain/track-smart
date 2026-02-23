@@ -78,6 +78,7 @@ export interface AssetViolationRecord {
   linkedDriverId?: string;
   linkedDriverName?: string;
   inspectorId?: string;
+  inspectionId?: string;   // If set, this violation came from an inspection event
   notes?: string;
 }
 

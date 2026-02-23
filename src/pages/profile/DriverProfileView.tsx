@@ -12,6 +12,10 @@ import { PaystubsPage } from '../finance/PaystubsPage';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
 import { MOCK_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
+import { INCIDENTS } from '@/pages/incidents/incidents.data';
+import { inspectionsData } from '@/pages/inspections/inspectionsData';
+import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
+import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -752,11 +756,84 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   const [isLicensesModalOpen, setIsLicensesModalOpen] = useState(false);
   const [isTravelDocsModalOpen, setIsTravelDocsModalOpen] = useState(false);
   const [isEmploymentModalOpen, setIsEmploymentModalOpen] = useState(false);
+  const [viewingAccident, setViewingAccident] = useState<any>(null);
+  const [editingAccident, setEditingAccident] = useState<any>(null);
+  const [viewingViolation, setViewingViolation] = useState<any>(null);
+  const [editingViolation, setEditingViolation] = useState<any>(null);
+  const [expandedInspection, setExpandedInspection] = useState<string | null>(null);
+  const [viewingInspection, setViewingInspection] = useState<any>(null);
 
   // Key Number Modal State
   const [isKeyNumberModalOpen, setIsKeyNumberModalOpen] = useState(false);
   const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
   const [keyNumberModalMode, setKeyNumberModalMode] = useState<'add' | 'edit'>('edit');
+
+  // Accidents Tab State
+  const [accQ, setAccQ] = useState('');
+  const [accPage, setAccPage] = useState(1);
+  const [accRpp, setAccRpp] = useState(10);
+  const [accCols, setAccCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'incident', label: 'Incident', visible: true },
+    { id: 'type', label: 'Type / Cause', visible: true },
+    { id: 'location', label: 'Location', visible: true },
+    { id: 'severity', label: 'Severity', visible: true },
+    { id: 'preventability', label: 'Preventability', visible: true },
+    { id: 'status', label: 'Status', visible: true },
+    { id: 'cost', label: 'Cost', visible: true },
+  ]);
+  useEffect(() => { setAccPage(1); }, [accQ, accRpp]);
+
+  // Inspections Tab State
+  const [insQ, setInsQ] = useState('');
+  const [insPage, setInsPage] = useState(1);
+  const [insRpp, setInsRpp] = useState(10);
+  const [insCols, setInsCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'report', label: 'Report #', visible: true },
+    { id: 'level', label: 'Level', visible: true },
+    { id: 'state', label: 'State', visible: true },
+    { id: 'vehicle', label: 'Vehicle', visible: true },
+    { id: 'violations', label: 'Violations', visible: true },
+    { id: 'oos', label: 'OOS', visible: true },
+    { id: 'result', label: 'Result', visible: true },
+  ]);
+  useEffect(() => { setInsPage(1); }, [insQ, insRpp]);
+
+  // Violations Tab State
+  const [violQ, setViolQ] = useState('');
+  const [violPage, setViolPage] = useState(1);
+  const [violRpp, setViolRpp] = useState(10);
+  const [violCols, setViolCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'code', label: 'Code', visible: true },
+    { id: 'description', label: 'Description', visible: true },
+    { id: 'state', label: 'State', visible: true },
+    { id: 'asset', label: 'Asset', visible: true },
+    { id: 'result', label: 'Result', visible: true },
+    { id: 'oos', label: 'OOS', visible: true },
+    { id: 'status', label: 'Status', visible: true },
+    { id: 'fine', label: 'Fine', visible: true },
+  ]);
+  useEffect(() => { setViolPage(1); }, [violQ, violRpp]);
+
+  // Tickets Tab State
+  const [tickQ, setTickQ] = useState('');
+  const [tickPage, setTickPage] = useState(1);
+  const [tickRpp, setTickRpp] = useState(10);
+  const [tickCols, setTickCols] = useState<ColumnDef[]>([
+    { id: 'date', label: 'Date', visible: true },
+    { id: 'offense', label: 'Offense #', visible: true },
+    { id: 'type', label: 'Type', visible: true },
+    { id: 'location', label: 'Location', visible: true },
+    { id: 'asset', label: 'Asset', visible: true },
+    { id: 'fine', label: 'Fine', visible: true },
+    { id: 'status', label: 'Status', visible: true },
+    { id: 'docs', label: 'Docs', visible: true },
+  ]);
+  const [viewingTicket, setViewingTicket] = useState<any>(null);
+  const [editingTicket2, setEditingTicket2] = useState<any>(null);
+  useEffect(() => { setTickPage(1); }, [tickQ, tickRpp]);
 
   // Document State
 
@@ -1286,6 +1363,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Trips', label: 'Trips', icon: Route },
         { id: 'Tickets', label: 'Tickets', icon: Ticket },
         { id: 'Accidents', label: 'Accidents', icon: Car },
+        { id: 'Inspections', label: 'Inspections', icon: FileCheck },
         { id: 'Safety', label: 'Safety', icon: AlertOctagon },
         { id: 'Violations', label: 'Violations', icon: AlertTriangle },
         { id: 'Paystubs', label: 'Paystubs', icon: DollarSign },
@@ -1847,8 +1925,1292 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 </div>
             )}
 
-            {/* PLACEHOLDER TABS */}
-            {['Training', 'Certificates', 'Trips', 'Tickets', 'Accidents', 'Safety', 'HoursOfService', 'MileageReport'].includes(activeTab) && (() => {
+            {/* ACCIDENTS TAB */}
+            {activeTab === 'Accidents' && (() => {
+              const driverIncidents = INCIDENTS.filter((inc: any) => inc.driver?.driverId === driverData.id);
+              const totalCost = driverIncidents.reduce((sum: number, inc: any) => sum + (inc.costs?.totalAccidentCosts || 0), 0);
+              const preventableCount = driverIncidents.filter((inc: any) => inc.preventability?.value === 'preventable').length;
+              const tbdCount = driverIncidents.filter((inc: any) => inc.preventability?.value === 'tbd').length;
+
+              const accColVis = (id: string) => accCols.find(c => c.id === id)?.visible;
+              const accFiltered = driverIncidents.filter((inc: any) => {
+                if (!accQ) return true;
+                const s = accQ.toLowerCase();
+                return inc.incidentId?.toLowerCase().includes(s) || inc.cause?.incidentType?.toLowerCase().includes(s) || inc.location?.city?.toLowerCase().includes(s);
+              });
+              const accPaged = accFiltered.slice((accPage - 1) * accRpp, accPage * accRpp);
+
+              return (
+              <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                          <Car className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Accidents</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{driverIncidents.length}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-emerald-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                          <DollarSign className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Costs</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(totalCost)}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Preventable<br />Accidents</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{preventableCount}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Pending<br />(TBD)</span>
+                      </div>
+                      <div className="text-lg font-bold text-slate-900">{tbdCount}</div>
+                    </div>
+                  </div>
+
+                  {/* Table Card */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <DataListToolbar searchValue={accQ} onSearchChange={setAccQ} searchPlaceholder="Search incidents..." columns={accCols} onToggleColumn={(id) => setAccCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={accFiltered.length} currentPage={accPage} rowsPerPage={accRpp} onPageChange={setAccPage} onRowsPerPageChange={setAccRpp} />
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50/80 border-b border-slate-200">
+                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                            {accColVis('date') && <th className="px-5 py-3">Date</th>}
+                            {accColVis('incident') && <th className="px-5 py-3">Incident</th>}
+                            {accColVis('type') && <th className="px-5 py-3">Type / Cause</th>}
+                            {accColVis('location') && <th className="px-5 py-3">Location</th>}
+                            {accColVis('severity') && <th className="px-5 py-3 text-center">Severity</th>}
+                            {accColVis('preventability') && <th className="px-5 py-3 text-center">Preventability</th>}
+                            {accColVis('status') && <th className="px-5 py-3 text-center">Status</th>}
+                            {accColVis('cost') && <th className="px-5 py-3 text-right">Cost</th>}
+                            <th className="px-5 py-3 text-center w-[90px]">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {accPaged.length > 0 ? accPaged.map((inc: any) => (
+                               <tr key={inc.incidentId} className="group hover:bg-blue-50/40 transition-all duration-150 cursor-pointer" onClick={() => setViewingAccident(inc)}>
+                                 {accColVis('date') && (<td className="px-5 py-3.5 whitespace-nowrap">
+                                   <div className="font-semibold text-slate-900 text-sm">{new Date(inc.occurredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                   <div className="text-[11px] text-slate-400 mt-0.5">{new Date(inc.occurredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+                                 </td>)}
+                                 {accColVis('incident') && (<td className="px-5 py-3.5">
+                                   <code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{inc.incidentId}</code>
+                                   {inc.insuranceClaimNumber && (<div className="text-[10px] text-slate-400 mt-1 font-medium">Claim: {inc.insuranceClaimNumber}</div>)}
+                                 </td>)}
+                                 {accColVis('type') && (<td className="px-5 py-3.5">
+                                   <div className="font-semibold text-slate-800 text-sm">{inc.cause?.incidentType || '—'}</div>
+                                   <div className="text-[11px] text-slate-400 mt-0.5">{inc.cause?.primaryCause}</div>
+                                 </td>)}
+                                 {accColVis('location') && (<td className="px-5 py-3.5">
+                                   <div className="flex items-start gap-1.5">
+                                     <MapPin className="w-3.5 h-3.5 text-slate-300 mt-0.5 flex-shrink-0" />
+                                     <div>
+                                       <div className="text-sm font-medium text-slate-700">{inc.location?.city}, {inc.location?.stateOrProvince}</div>
+                                       <div className="text-[10px] text-slate-400">{inc.location?.country}</div>
+                                     </div>
+                                   </div>
+                                 </td>)}
+                                 {accColVis('severity') && (<td className="px-5 py-3.5 text-center">
+                                   <div className="flex flex-col items-center gap-1">
+                                     {inc.severity?.fatalities > 0 && <Badge variant="danger">Fatal ({inc.severity.fatalities})</Badge>}
+                                     {inc.severity?.injuriesNonFatal > 0 && <Badge variant="warning">Injuries ({inc.severity.injuriesNonFatal})</Badge>}
+                                     {inc.severity?.towAway && <Badge variant="neutral">Tow Away</Badge>}
+                                     {!inc.severity?.fatalities && !inc.severity?.injuriesNonFatal && !inc.severity?.towAway && <span className="text-[11px] text-slate-400">Minor</span>}
+                                   </div>
+                                 </td>)}
+                                 {accColVis('preventability') && (<td className="px-5 py-3.5 text-center">
+                                   <Badge variant={inc.preventability?.value === 'preventable' ? 'danger' : inc.preventability?.value === 'non_preventable' ? 'success' : 'pending'}>
+                                     {inc.preventability?.value === 'preventable' ? 'Preventable' : inc.preventability?.value === 'non_preventable' ? 'Non-Preventable' : 'TBD'}
+                                   </Badge>
+                                 </td>)}
+                                 {accColVis('status') && (<td className="px-5 py-3.5 text-center">
+                                   <Badge variant={inc.status?.value === 'active' ? 'warning' : 'success'}>{inc.status?.label || inc.status?.value}</Badge>
+                                 </td>)}
+                                 {accColVis('cost') && (<td className="px-5 py-3.5 text-right">
+                                   <span className="font-bold text-slate-900">{inc.costs?.totalAccidentCosts > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: inc.costs?.currency || 'USD' }).format(inc.costs.totalAccidentCosts) : '—'}</span>
+                                 </td>)}
+                                 <td className="px-5 py-3.5 text-center">
+                                   <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                     <button onClick={(e) => { e.stopPropagation(); setViewingAccident(inc); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="View Details"><Eye className="w-4 h-4" /></button>
+                                     <button onClick={(e) => { e.stopPropagation(); setEditingAccident(inc); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                                   </div>
+                                 </td>
+                               </tr>
+                          )) : (
+                              <tr>
+                                <td colSpan={9} className="px-6 py-16 text-center text-slate-400">
+                                  <div className="flex flex-col items-center justify-center gap-3">
+                                    <div className="p-4 bg-slate-50 rounded-2xl"><Car size={32} className="opacity-30" /></div>
+                                    <div>
+                                      <span className="text-sm font-semibold text-slate-500 block">No accidents recorded</span>
+                                      <span className="text-xs text-slate-400 mt-1 block">Driver accidents records and management will appear here.</span>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <PaginationBar totalItems={accFiltered.length} currentPage={accPage} rowsPerPage={accRpp} onPageChange={setAccPage} onRowsPerPageChange={setAccRpp} />
+                  </div>
+              </div>
+              );
+            })()}
+
+            {/* ACCIDENT DETAIL POPUP */}
+            {viewingAccident && (() => {
+              const inc = viewingAccident;
+              const fmtDT = (d: string) => d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+              const fmtCur = (v: number) => v != null ? `$${v.toLocaleString()}` : '—';
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setViewingAccident(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[680px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-slate-400 font-medium">Driver Profile / Accidents</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h2 className="text-lg font-bold text-slate-900">Crash Report</h2>
+                          <code className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{inc.incidentId}</code>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">Details of the event, vehicle, and driver information.</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => { setViewingAccident(null); setEditingAccident(inc); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                          <Edit className="w-3.5 h-3.5" /> Edit
+                        </button>
+                        <button onClick={() => setViewingAccident(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                          <X className="w-4 h-4 text-slate-500" />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Scrollable body */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                      {/* Location Map Placeholder */}
+                      <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 h-[80px] flex items-center justify-center">
+                        <div className="text-center text-slate-400 flex items-center gap-2">
+                          <MapPin className="w-4 h-4" />
+                          <p className="text-xs font-medium">{inc.location?.full}</p>
+                        </div>
+                      </div>
+                      {/* Event Details */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Event Details</h4>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Timestamp</p><p className="text-sm font-medium text-slate-900">{fmtDT(inc.occurredAt)}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Accident Type</p><p className="text-sm font-medium text-slate-900">{inc.cause?.incidentType || '—'}</p></div>
+                          <div className="col-span-2"><p className="text-[11px] text-slate-400 mb-0.5">Address</p><p className="text-sm font-medium text-slate-900">{inc.location?.full || '—'}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Primary Cause</p><p className="text-sm font-medium text-slate-900">{inc.cause?.primaryCause || '—'}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Location Type</p><p className="text-sm font-medium text-slate-900">{inc.location?.locationType || '—'}</p></div>
+                          <div>
+                            <p className="text-[11px] text-slate-400 mb-1">Preventability</p>
+                            <Badge variant={inc.preventability?.value === 'preventable' ? 'danger' : inc.preventability?.value === 'non_preventable' ? 'success' : 'pending'}>
+                              {inc.preventability?.value === 'preventable' ? 'Preventable' : inc.preventability?.value === 'non_preventable' ? 'Non-Preventable' : 'TBD'}
+                            </Badge>
+                          </div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">FMCSA Reportable</p><p className="text-sm font-medium text-slate-900">{inc.classification?.fmcsaReportable ? 'Yes' : 'No'}</p></div>
+                        </div>
+                      </div>
+                      {/* Vehicles + Driver side by side */}
+                      <div className="grid grid-cols-2 gap-5">
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Vehicles</h4>
+                          {(inc.vehicles || []).map((veh: any, vi: number) => (
+                            <div key={vi} className="space-y-2 mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{inc.vehicles.length > 1 ? `Vehicle ${vi + 1}` : 'Vehicle'}</span>
+                                {veh.assetId && <code className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{veh.assetId}</code>}
+                              </div>
+                              <div className="space-y-1.5">
+                                <div><p className="text-[11px] text-slate-400">Make / Model</p><p className="text-sm font-medium text-slate-800">{veh.make} {veh.model} ({veh.year})</p></div>
+                                <div><p className="text-[11px] text-slate-400">Type</p><p className="text-sm font-medium text-slate-800">{veh.vehicleType}</p></div>
+                                <div><p className="text-[11px] text-slate-400">VIN</p><p className="text-xs font-mono text-slate-600">{veh.vin}</p></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Driver at Time of Incident</h4>
+                          <div className="space-y-1.5">
+                            <div><p className="text-[11px] text-slate-400">Name</p><p className="text-sm font-medium text-slate-800">{inc.driver?.name}</p></div>
+                            <div><p className="text-[11px] text-slate-400">Type</p><p className="text-sm font-medium text-slate-800">{inc.driver?.driverType}</p></div>
+                            <div><p className="text-[11px] text-slate-400">Experience</p><p className="text-sm font-medium text-slate-800">{inc.driver?.drivingExperience}</p></div>
+                            <div><p className="text-[11px] text-slate-400">Hrs Driving / On Duty</p><p className="text-sm font-medium text-slate-800">{inc.driver?.hrsDriving}h / {inc.driver?.hrsOnDuty}h</p></div>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Severity & Costs */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Severity & Costs</h4>
+                        <div className="grid grid-cols-4 gap-2 mb-4">
+                          {[
+                            { label: 'Fatalities', value: inc.severity?.fatalities, bad: inc.severity?.fatalities > 0 },
+                            { label: 'Injuries', value: inc.severity?.injuriesNonFatal, bad: inc.severity?.injuriesNonFatal > 0 },
+                            { label: 'Tow Away', value: inc.severity?.towAway ? 'Yes' : 'No', bad: inc.severity?.towAway },
+                            { label: 'HAZMAT', value: inc.severity?.hazmatReleased ? 'Yes' : 'No', bad: inc.severity?.hazmatReleased },
+                          ].map((s, i) => (
+                            <div key={i} className={cn('rounded-lg border p-2.5 text-center', s.bad ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600')}>
+                              <p className="text-base font-bold">{s.value}</p>
+                              <p className="text-[10px] font-medium">{s.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-2">
+                          <div><p className="text-[11px] text-slate-400">Company Costs</p><p className="text-sm font-semibold text-slate-900">{fmtCur(inc.costs?.companyCostsFromDollarOne)}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Insurance Paid</p><p className="text-sm font-semibold text-slate-900">{fmtCur(inc.costs?.insuranceCostsPaid)}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Insurance Reserves</p><p className="text-sm font-semibold text-slate-900">{fmtCur(inc.costs?.insuranceReserves)}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Total Costs</p><p className="text-sm font-bold text-blue-700">{fmtCur(inc.costs?.totalAccidentCosts)}</p></div>
+                        </div>
+                      </div>
+                      {/* Road & Conditions */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Road & Conditions</h4>
+                        <div className="grid grid-cols-3 gap-x-5 gap-y-2">
+                          <div><p className="text-[11px] text-slate-400">Road Type</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.roadType}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Weather</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.weatherConditions}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Road Surface</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.roadConditions}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Speed Limit</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.postedSpeedLimitKmh} km/h</p></div>
+                          <div><p className="text-[11px] text-slate-400">Terrain</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.terrain}</p></div>
+                          <div><p className="text-[11px] text-slate-400">Light</p><p className="text-sm font-medium text-slate-800">{inc.roadway?.light}</p></div>
+                        </div>
+                      </div>
+                      {/* Follow Up */}
+                      {(inc.followUp?.action || inc.followUp?.comments) && (
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Follow Up</h4>
+                          <div className="space-y-2">
+                            {inc.followUp?.action && <div><p className="text-[11px] text-slate-400">Action</p><p className="text-sm font-medium text-slate-800">{inc.followUp.action}</p></div>}
+                            {inc.followUp?.comments && <div><p className="text-[11px] text-slate-400">Comments</p><p className="text-sm font-medium text-slate-800">{inc.followUp.comments}</p></div>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {/* Footer */}
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setViewingAccident(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                      <button onClick={() => { setViewingAccident(null); setEditingAccident(inc); }} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Edit Accident</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ACCIDENT EDIT POPUP */}
+            {editingAccident && (() => {
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingAccident(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                          <Edit className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-base font-bold text-slate-900">Edit Accident</h2>
+                          <p className="text-[11px] text-slate-400 font-medium">{editingAccident.incidentId}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingAccident(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                        <X className="w-4 h-4 text-slate-500" />
+                      </button>
+                    </div>
+                    {/* Scrollable form body */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      {/* Event Details Section */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Event Details</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Date & Time of Loss</label>
+                            <input type="datetime-local" defaultValue={editingAccident.occurredAt?.slice(0, 16)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Accident Type</label>
+                            <select defaultValue={editingAccident.cause?.incidentType} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all">
+                              {['Rear-end collision', 'Intersection collision', 'Single vehicle runoff', 'Sideswipe - same direction', 'Sideswipe - opposite direction', 'Backing into structure', 'Load shift / spill', 'Tire blowout / rollover', 'Tire blowout', 'Head-on Collision', 'Pedestrian', 'Animal Strike', 'Equipment Fire'].map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Primary Cause</label>
+                            <select defaultValue={editingAccident.cause?.primaryCause} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all">
+                              {['Unsafe Behaviour', 'Mechanical Failure', 'Third Party', 'Weather', 'Fatigue', 'Load Securement', 'Road Conditions', 'Unknown'].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Insurance Claim #</label>
+                            <input type="text" defaultValue={editingAccident.insuranceClaimNumber} placeholder="e.g. CLM-9943201" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Location Section */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Location</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Street Address</label>
+                            <input type="text" defaultValue={editingAccident.location?.streetAddress} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">City</label>
+                            <input type="text" defaultValue={editingAccident.location?.city} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">State / Province</label>
+                            <input type="text" defaultValue={editingAccident.location?.stateOrProvince} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Country</label>
+                            <input type="text" defaultValue={editingAccident.location?.country} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Zip / Postal</label>
+                            <input type="text" defaultValue={editingAccident.location?.zip} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Severity */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Severity</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Fatalities</label>
+                            <input type="number" min="0" defaultValue={editingAccident.severity?.fatalities} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Injuries (Non-Fatal)</label>
+                            <input type="number" min="0" defaultValue={editingAccident.severity?.injuriesNonFatal} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Vehicles Towed</label>
+                            <input type="number" min="0" defaultValue={editingAccident.severity?.vehiclesTowed} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Preventability</label>
+                            <select defaultValue={editingAccident.preventability?.value} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all">
+                              <option value="tbd">TBD</option>
+                              <option value="preventable">Preventable</option>
+                              <option value="non_preventable">Non-Preventable</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Costs */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Costs</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Company Costs ($)</label>
+                            <input type="number" min="0" defaultValue={editingAccident.costs?.companyCostsFromDollarOne} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Insurance Paid ($)</label>
+                            <input type="number" min="0" defaultValue={editingAccident.costs?.insuranceCostsPaid} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Insurance Reserves ($)</label>
+                            <input type="number" min="0" defaultValue={editingAccident.costs?.insuranceReserves} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Total Cost ($)</label>
+                            <input type="number" min="0" defaultValue={editingAccident.costs?.totalAccidentCosts} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-slate-50 text-slate-500 transition-all" disabled />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Follow Up */}
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Follow Up</h4>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Action Taken</label>
+                            <textarea defaultValue={editingAccident.followUp?.action} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1.5">Comments</label>
+                            <textarea defaultValue={editingAccident.followUp?.comments} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Footer */}
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setEditingAccident(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Cancel</button>
+                      <button onClick={() => setEditingAccident(null)} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Save Changes</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* INSPECTIONS TAB */}
+
+            {activeTab === 'Inspections' && (() => {
+
+              const driverInspections = inspectionsData.filter((ins: any) => ins.driverId === driverData.id);
+
+              const totalViolations = driverInspections.reduce((sum: number, ins: any) => sum + (ins.violations?.length || 0), 0);
+
+              const oosCount = driverInspections.filter((ins: any) => ins.hasOOS).length;
+
+              const cleanCount = driverInspections.filter((ins: any) => ins.isClean).length;
+
+              const insColVis = (id: string) => insCols.find(c => c.id === id)?.visible;
+
+              const insFiltered = driverInspections.filter((ins: any) => {
+
+                if (!insQ) return true;
+
+                const s = insQ.toLowerCase();
+
+                return ins.id?.toLowerCase().includes(s) || ins.vehiclePlate?.toLowerCase().includes(s) || ins.state?.toLowerCase().includes(s);
+
+              });
+
+              const insPaged = insFiltered.slice((insPage - 1) * insRpp, insPage * insRpp);
+
+
+
+              return (
+
+              <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+                  {/* KPI Cards */}
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0"><FileCheck className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Inspections</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{driverInspections.length}</div>
+
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Violations</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{totalViolations}</div>
+
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0"><AlertOctagon className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Out of<br />Service</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{oosCount}</div>
+
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-emerald-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><ShieldCheck className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Clean<br />Inspections</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{cleanCount}</div>
+
+                    </div>
+
+                  </div>
+
+
+
+                  {/* Table Card */}
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+                    <DataListToolbar searchValue={insQ} onSearchChange={setInsQ} searchPlaceholder="Search inspections..." columns={insCols} onToggleColumn={(id) => setInsCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={insFiltered.length} currentPage={insPage} rowsPerPage={insRpp} onPageChange={setInsPage} onRowsPerPageChange={setInsRpp} />
+
+                    <div className="overflow-x-auto">
+
+                      <table className="w-full text-left text-sm">
+
+                        <thead className="bg-slate-50/80 border-b border-slate-200">
+
+                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+
+                            {insColVis('date') && <th className="px-5 py-3">Date</th>}
+
+                            {insColVis('report') && <th className="px-5 py-3">Report #</th>}
+
+                            {insColVis('level') && <th className="px-5 py-3">Level</th>}
+
+                            {insColVis('state') && <th className="px-5 py-3">State</th>}
+
+                            {insColVis('vehicle') && <th className="px-5 py-3">Vehicle</th>}
+
+                            {insColVis('violations') && <th className="px-5 py-3 text-center">Violations</th>}
+
+                            {insColVis('oos') && <th className="px-5 py-3 text-center">OOS</th>}
+
+                            {insColVis('result') && <th className="px-5 py-3 text-center">Result</th>}
+                            <th className="px-5 py-3 text-center w-[80px]">Actions</th>
+                          </tr>
+
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+
+                          {insPaged.length > 0 ? insPaged.map((ins: any) => (
+                            <React.Fragment key={ins.id}>
+                            <tr className="hover:bg-blue-50/30 transition-colors group cursor-pointer" onClick={() => setExpandedInspection(expandedInspection === ins.id ? null : ins.id)}>
+
+                              {insColVis('date') && (<td className="px-5 py-3.5"><div className="font-semibold text-slate-900">{new Date(ins.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div></td>)}
+
+                              {insColVis('report') && (<td className="px-5 py-3.5"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{ins.id}</code></td>)}
+
+                              {insColVis('level') && (<td className="px-5 py-3.5"><span className="text-sm font-medium text-slate-700">{ins.level}</span></td>)}
+
+                              {insColVis('state') && (<td className="px-5 py-3.5"><span className="text-sm font-medium text-slate-700">{ins.state}</span></td>)}
+
+                              {insColVis('vehicle') && (<td className="px-5 py-3.5"><div className="font-medium text-slate-800">{ins.vehiclePlate}</div><div className="text-xs text-slate-400">{ins.vehicleType}</div></td>)}
+
+                              {insColVis('violations') && (<td className="px-5 py-3.5 text-center"><span className={cn('text-sm font-bold', ins.violations?.length > 0 ? 'text-red-600' : 'text-slate-400')}>{ins.violations?.length || 0}</span></td>)}
+
+                              {insColVis('oos') && (<td className="px-5 py-3.5 text-center">{ins.hasOOS ? (<span className="inline-flex items-center px-2 py-0.5 rounded bg-red-50 text-red-700 text-[10px] font-bold border border-red-100">YES</span>) : (<span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-50 text-slate-400 text-[10px] font-bold border border-slate-100">NO</span>)}</td>)}
+
+                              {insColVis('result') && (<td className="px-5 py-3.5 text-center">{ins.isClean ? (<span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">CLEAN</span>) : (<span className="inline-flex items-center px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">VIOLATIONS</span>)}</td>)}
+                              <td className="px-5 py-3.5 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button onClick={(e) => { e.stopPropagation(); setViewingInspection(ins); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100" title="View Details"><Eye className="w-4 h-4" /></button>
+                                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expandedInspection === ins.id ? 'rotate-180' : ''}`} />
+                                </div>
+                              </td>
+                            </tr>
+                            {expandedInspection === ins.id && (
+                              <tr>
+                                <td colSpan={9} className="px-0 py-0 bg-slate-50/70">
+                                  <div className="px-6 py-4 space-y-3 animate-in fade-in duration-200">
+                                    <div className="flex items-center justify-between">
+                                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Violations ({ins.violations?.length || 0})</h4>
+                                      <div className="flex items-center gap-2">
+                                        {ins.hasOOS && <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold rounded border border-red-100">OOS</span>}
+                                        <span className="text-[10px] text-slate-400 font-medium">{ins.level} | {ins.state}</span>
+                                      </div>
+                                    </div>
+                                    {ins.violations?.length > 0 ? (
+                                      <table className="w-full text-left text-sm">
+                                        <thead className="bg-white/80 border-b border-slate-200">
+                                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                                            <th className="px-4 py-2">Code</th>
+                                            <th className="px-4 py-2">Description</th>
+                                            <th className="px-4 py-2">Category</th>
+                                            <th className="px-4 py-2 text-center">Severity</th>
+                                            <th className="px-4 py-2 text-center">Points</th>
+                                            <th className="px-4 py-2 text-center">OOS</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                          {ins.violations.map((viol: any, vi: number) => (
+                                            <tr key={vi} className="bg-white hover:bg-blue-50/30 transition-colors">
+                                              <td className="px-4 py-2"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-semibold">{viol.code}</code></td>
+                                              <td className="px-4 py-2 max-w-[250px]"><div className="text-sm font-medium text-slate-800 truncate">{viol.description}</div></td>
+                                              <td className="px-4 py-2"><span className="text-xs text-slate-500">{viol.category}</span></td>
+                                              <td className="px-4 py-2 text-center"><span className="text-sm font-bold text-slate-700">{viol.severity}</span></td>
+                                              <td className="px-4 py-2 text-center"><span className="text-sm font-bold text-slate-700">{viol.points}</span></td>
+                                              <td className="px-4 py-2 text-center">{viol.oos ? <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold rounded border border-red-100">YES</span> : <span className="text-[10px] text-slate-400">NO</span>}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    ) : (
+                                      <div className="text-center py-4 text-sm text-emerald-600 font-medium bg-white rounded-lg border border-slate-200">Clean Inspection - No violations found</div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
+                          )) : (
+
+                            <tr>
+
+                              <td colSpan={8} className="px-6 py-16 text-center text-slate-400">
+
+                                <div className="flex flex-col items-center justify-center gap-3">
+
+                                  <div className="p-4 bg-slate-50 rounded-2xl"><FileCheck size={32} className="opacity-30" /></div>
+
+                                  <div>
+
+                                    <span className="text-sm font-semibold text-slate-500 block">No inspections recorded</span>
+
+                                    <span className="text-xs text-slate-400 mt-1 block">Driver inspection records will appear here.</span>
+
+                                  </div>
+
+                                </div>
+
+                              </td>
+
+                            </tr>
+
+                          )}
+
+                        </tbody>
+
+                      </table>
+
+                    </div>
+
+                    <PaginationBar totalItems={insFiltered.length} currentPage={insPage} rowsPerPage={insRpp} onPageChange={setInsPage} onRowsPerPageChange={setInsRpp} />
+
+                  </div>
+
+              </div>
+
+              );
+
+            })()}
+
+
+
+            {/* VIOLATIONS TAB */}
+
+            {activeTab === 'Violations' && (() => {
+
+              const driverViolations = MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id);
+
+              const oosCount = driverViolations.filter((v: any) => v.isOos).length;
+
+              const openCount = driverViolations.filter((v: any) => v.status === 'Open').length;
+
+              const totalFines = driverViolations.reduce((sum: number, v: any) => sum + (v.fineAmount || 0), 0);
+
+              const violColVis = (id: string) => violCols.find(c => c.id === id)?.visible;
+
+              const violFiltered = driverViolations.filter((v: any) => {
+
+                if (!violQ) return true;
+
+                const s = violQ.toLowerCase();
+
+                return v.violationCode?.toLowerCase().includes(s) || v.violationType?.toLowerCase().includes(s) || v.locationState?.toLowerCase().includes(s);
+
+              });
+
+              const violPaged = violFiltered.slice((violPage - 1) * violRpp, violPage * violRpp);
+
+
+
+              return (
+
+              <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+                  {/* KPI Cards */}
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0"><AlertTriangle className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Violations</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{driverViolations.length}</div>
+
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0"><AlertOctagon className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">OOS<br />Orders</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{oosCount}</div>
+
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0"><Clock className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Open<br />Cases</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">{openCount}</div>
+
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-emerald-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer">
+
+                      <div className="flex items-center gap-3">
+
+                        <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0"><DollarSign className="w-4 h-4" /></div>
+
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Fines</span>
+
+                      </div>
+
+                      <div className="text-lg font-bold text-slate-900">${totalFines.toLocaleString()}</div>
+
+                    </div>
+
+                  </div>
+
+
+
+                  {/* Table Card */}
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+
+                    <DataListToolbar searchValue={violQ} onSearchChange={setViolQ} searchPlaceholder="Search violations..." columns={violCols} onToggleColumn={(id) => setViolCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={violFiltered.length} currentPage={violPage} rowsPerPage={violRpp} onPageChange={setViolPage} onRowsPerPageChange={setViolRpp} />
+
+                    <div className="overflow-x-auto">
+
+                      <table className="w-full text-left text-sm">
+
+                        <thead className="bg-slate-50/80 border-b border-slate-200">
+
+                          <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+
+                            {violColVis('date') && <th className="px-5 py-3">Date</th>}
+
+                            {violColVis('code') && <th className="px-5 py-3">Code</th>}
+
+                            {violColVis('description') && <th className="px-5 py-3">Description</th>}
+
+                            {violColVis('state') && <th className="px-5 py-3">State</th>}
+
+                            {violColVis('asset') && <th className="px-5 py-3">Asset</th>}
+
+                            {violColVis('result') && <th className="px-5 py-3 text-center">Result</th>}
+
+                            {violColVis('oos') && <th className="px-5 py-3 text-center">OOS</th>}
+
+                            {violColVis('status') && <th className="px-5 py-3 text-center">Status</th>}
+
+                            {violColVis('fine') && <th className="px-5 py-3 text-right">Fine</th>}
+                            <th className="px-5 py-3 text-center w-[80px]">Actions</th>
+                          </tr>
+
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+
+                          {violPaged.length > 0 ? violPaged.map((v: any) => (
+
+                            <tr key={v.id} className="hover:bg-blue-50/30 transition-colors group cursor-pointer" onClick={() => setViewingViolation(v)}>
+
+                              {violColVis('date') && (<td className="px-5 py-3.5"><div className="font-semibold text-slate-900">{new Date(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div><div className="text-[11px] text-slate-400 mt-0.5">{v.time}</div></td>)}
+
+                              {violColVis('code') && (<td className="px-5 py-3.5"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{v.violationCode}</code></td>)}
+
+                              {violColVis('description') && (<td className="px-5 py-3.5 max-w-[200px]"><div className="font-medium text-slate-800 text-sm truncate">{v.violationType}</div><div className="text-[11px] text-slate-400 truncate">{v.violationGroup}</div></td>)}
+
+                              {violColVis('state') && (<td className="px-5 py-3.5"><span className="text-sm font-medium text-slate-700">{v.locationState}</span></td>)}
+
+                              {violColVis('asset') && (<td className="px-5 py-3.5"><span className="text-sm font-medium text-slate-700">{v.assetName || 'â€”'}</span></td>)}
+
+                              {violColVis('result') && (<td className="px-5 py-3.5 text-center"><span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${v.result === 'OOS Order' ? 'bg-red-50 text-red-700 border-red-100' : v.result === 'Citation Issued' ? 'bg-amber-50 text-amber-700 border-amber-100' : v.result === 'Warning' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>{v.result}</span></td>)}
+
+                              {violColVis('oos') && (<td className="px-5 py-3.5 text-center">{v.isOos ? (<span className="inline-flex items-center px-2 py-0.5 rounded bg-red-50 text-red-700 text-[10px] font-bold border border-red-100">YES</span>) : (<span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-50 text-slate-400 text-[10px] font-bold border border-slate-100">NO</span>)}</td>)}
+
+                              {violColVis('status') && (<td className="px-5 py-3.5 text-center"><span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${v.status === 'Open' ? 'bg-amber-50 text-amber-700 border-amber-100' : v.status === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>{v.status}</span></td>)}
+
+                              {violColVis('fine') && (<td className="px-5 py-3.5 text-right"><span className="font-bold text-slate-900">{v.fineAmount > 0 ? `$${v.fineAmount.toLocaleString()}` : 'â€”'}</span></td>)}
+                              <td className="px-5 py-3.5 text-center">
+                                <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={(e) => { e.stopPropagation(); setViewingViolation(v); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="View Details"><Eye className="w-4 h-4" /></button>
+                                  <button onClick={(e) => { e.stopPropagation(); setEditingViolation(v); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
+                                </div>
+                              </td>
+                            </tr>
+
+                          )) : (
+
+                            <tr>
+
+                              <td colSpan={10} className="px-6 py-16 text-center text-slate-400">
+                                <div className="flex flex-col items-center justify-center gap-3">
+                                  <div className="p-4 bg-slate-50 rounded-2xl"><AlertTriangle size={32} className="opacity-30" /></div>
+
+                                  <div>
+
+                                    <span className="text-sm font-semibold text-slate-500 block">No violations recorded</span>
+
+                                    <span className="text-xs text-slate-400 mt-1 block">Driver violation records will appear here.</span>
+
+                                  </div>
+
+                                </div>
+
+                              </td>
+
+                            </tr>
+
+                          )}
+
+                        </tbody>
+
+                      </table>
+
+                    </div>
+
+                    <PaginationBar totalItems={violFiltered.length} currentPage={violPage} rowsPerPage={violRpp} onPageChange={setViolPage} onRowsPerPageChange={setViolRpp} />
+
+                  </div>
+
+              </div>
+
+              );
+
+            })()}
+
+            {/* VIOLATION VIEW POPUP */}
+            {viewingViolation && (() => {
+              const v = viewingViolation;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setViewingViolation(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-slate-400 font-medium">Driver Profile / Violations</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h2 className="text-lg font-bold text-slate-900">Violation Detail</h2>
+                          <code className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{v.id}</code>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => { setViewingViolation(null); setEditingViolation(v); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm"><Edit className="w-3.5 h-3.5" /> Edit</button>
+                        <button onClick={() => setViewingViolation(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Violation Information</h4>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Date</p><p className="text-sm font-medium text-slate-900">{new Date(v.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Time</p><p className="text-sm font-medium text-slate-900">{v.time || '—'}</p></div>
+                          <div className="col-span-2"><p className="text-[11px] text-slate-400 mb-0.5">Description</p><p className="text-sm font-medium text-slate-900">{v.violationType}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Code</p><code className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{v.violationCode}</code></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Group</p><p className="text-sm font-medium text-slate-900">{v.violationGroup}</p></div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-5">
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Location</h4>
+                          <div className="space-y-2">
+                            <div><p className="text-[11px] text-slate-400">State</p><p className="text-sm font-medium text-slate-800">{v.locationState}</p></div>
+                            <div><p className="text-[11px] text-slate-400">City</p><p className="text-sm font-medium text-slate-800">{v.locationCity || '—'}</p></div>
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Asset</h4>
+                          <div className="space-y-2">
+                            <div><p className="text-[11px] text-slate-400">Unit</p><p className="text-sm font-medium text-slate-800">{v.assetName || '—'}</p></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Result & Status</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center"><p className="text-sm font-bold text-slate-700">{v.result}</p><p className="text-[10px] font-medium text-slate-400">Result</p></div>
+                          <div className={`rounded-lg border p-2.5 text-center ${v.isOos ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}><p className="text-sm font-bold">{v.isOos ? 'YES' : 'NO'}</p><p className="text-[10px] font-medium">OOS</p></div>
+                          <div className={`rounded-lg border p-2.5 text-center ${v.status === 'Open' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><p className="text-sm font-bold">{v.status}</p><p className="text-[10px] font-medium">Status</p></div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center"><p className="text-sm font-bold text-slate-700">{v.fineAmount > 0 ? `$${v.fineAmount.toLocaleString()}` : '—'}</p><p className="text-[10px] font-medium text-slate-400">Fine</p></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Risk Assessment</h4>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-2">
+                          <div><p className="text-[11px] text-slate-400">Crash Likelihood</p><p className="text-sm font-semibold text-slate-900">{v.crashLikelihood}%</p></div>
+                          <div><p className="text-[11px] text-slate-400">Risk Category</p><p className="text-sm font-semibold text-slate-900">{v.driverRiskCategory === 1 ? 'High' : v.driverRiskCategory === 2 ? 'Moderate' : 'Lower'}</p></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setViewingViolation(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                      <button onClick={() => { setViewingViolation(null); setEditingViolation(v); }} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Edit Violation</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* VIOLATION EDIT POPUP */}
+            {editingViolation && (() => {
+              const v = editingViolation;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setEditingViolation(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[620px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center"><Edit className="w-4 h-4 text-blue-600" /></div>
+                        <div>
+                          <h2 className="text-base font-bold text-slate-900">Edit Violation</h2>
+                          <p className="text-[11px] text-slate-400 font-medium">{v.id}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setEditingViolation(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Violation Details</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Date</label><input type="date" defaultValue={v.date} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Time</label><input type="time" defaultValue={v.time} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div className="col-span-2"><label className="block text-xs font-medium text-slate-500 mb-1.5">Description</label><input type="text" defaultValue={v.violationType} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Violation Code</label><input type="text" defaultValue={v.violationCode} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">State</label><input type="text" defaultValue={v.locationState} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Result & Fine</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Result</label><select defaultValue={v.result} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all"><option value="Citation Issued">Citation Issued</option><option value="Warning">Warning</option><option value="OOS Order">OOS Order</option><option value="Clean Inspection">Clean Inspection</option></select></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Status</label><select defaultValue={v.status} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white transition-all"><option value="Open">Open</option><option value="Closed">Closed</option><option value="Under Review">Under Review</option></select></div>
+                          <div><label className="block text-xs font-medium text-slate-500 mb-1.5">Fine Amount ($)</label><input type="number" min="0" defaultValue={v.fineAmount} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all" /></div>
+                          <div className="flex items-end pb-1"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" defaultChecked={v.isOos} className="rounded border-slate-300" /><span className="text-sm font-medium text-slate-700">Out of Service</span></label></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setEditingViolation(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Cancel</button>
+                      <button onClick={() => setEditingViolation(null)} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-200 transition-all">Save Changes</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* INSPECTION VIEW POPUP */}
+            {viewingInspection && (() => {
+              const ins = viewingInspection;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setViewingInspection(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[720px] max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-slate-400 font-medium">Driver Profile / Inspections</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <h2 className="text-lg font-bold text-slate-900">Inspection Report</h2>
+                          <code className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-semibold">{ins.id}</code>
+                        </div>
+                      </div>
+                      <button onClick={() => setViewingInspection(null)} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"><X className="w-4 h-4 text-slate-500" /></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Inspection Details</h4>
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Date</p><p className="text-sm font-medium text-slate-900">{new Date(ins.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Level</p><p className="text-sm font-medium text-slate-900">{ins.level}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">State</p><p className="text-sm font-medium text-slate-900">{ins.state}</p></div>
+                          <div><p className="text-[11px] text-slate-400 mb-0.5">Vehicle</p><p className="text-sm font-medium text-slate-900">{ins.vehiclePlate} ({ins.vehicleType})</p></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">OOS Summary</h4>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className={`rounded-lg border p-2.5 text-center ${ins.oosSummary?.driver === 'FAILED' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><p className="text-sm font-bold">{ins.oosSummary?.driver || 'PASSED'}</p><p className="text-[10px] font-medium">Driver</p></div>
+                          <div className={`rounded-lg border p-2.5 text-center ${ins.oosSummary?.vehicle === 'FAILED' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><p className="text-sm font-bold">{ins.oosSummary?.vehicle || 'PASSED'}</p><p className="text-[10px] font-medium">Vehicle</p></div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-center"><p className="text-sm font-bold text-slate-700">{ins.oosSummary?.total || 0}</p><p className="text-[10px] font-medium text-slate-400">Total OOS</p></div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Violations ({ins.violations?.length || 0})</h4>
+                        {ins.violations?.length > 0 ? (
+                          <div className="rounded-lg border border-slate-200 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+                                  <th className="px-4 py-2.5">Code</th>
+                                  <th className="px-4 py-2.5">Description</th>
+                                  <th className="px-4 py-2.5">Category</th>
+                                  <th className="px-4 py-2.5 text-center">Sev</th>
+                                  <th className="px-4 py-2.5 text-center">Pts</th>
+                                  <th className="px-4 py-2.5 text-center">OOS</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {ins.violations.map((viol: any, vi: number) => (
+                                  <tr key={vi} className="hover:bg-blue-50/30 transition-colors">
+                                    <td className="px-4 py-2.5"><code className="text-[11px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-semibold">{viol.code}</code></td>
+                                    <td className="px-4 py-2.5 max-w-[220px]"><div className="text-sm text-slate-800 truncate">{viol.description}</div><div className="text-[10px] text-slate-400">{viol.subDescription || ''}</div></td>
+                                    <td className="px-4 py-2.5"><span className="text-xs text-slate-500">{viol.category}</span></td>
+                                    <td className="px-4 py-2.5 text-center"><span className="font-bold text-slate-700">{viol.severity}</span></td>
+                                    <td className="px-4 py-2.5 text-center"><span className="font-bold text-slate-700">{viol.points}</span></td>
+                                    <td className="px-4 py-2.5 text-center">{viol.oos ? <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold rounded border border-red-100">YES</span> : <span className="text-[10px] text-slate-400">NO</span>}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-sm text-emerald-600 font-medium bg-emerald-50/50 rounded-lg border border-emerald-100">Clean Inspection - No violations recorded</div>
+                        )}
+                      </div>
+                      {ins.units?.length > 0 && (
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 pb-2 border-b border-slate-100">Units Inspected</h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {ins.units.map((unit: any, ui: number) => (
+                              <div key={ui} className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-1">
+                                <div className="flex items-center gap-2"><span className="text-[10px] font-bold text-slate-500 uppercase">{unit.type}</span><code className="text-[10px] font-mono bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">{unit.license}</code></div>
+                                <div><p className="text-[11px] text-slate-400">Make</p><p className="text-sm font-medium text-slate-800">{unit.make}</p></div>
+                                <div><p className="text-[11px] text-slate-400">VIN</p><p className="text-[10px] font-mono text-slate-500">{unit.vin}</p></div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setViewingInspection(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tickets Tab */}
+            {activeTab === 'Tickets' && (() => {
+              const driverTickets = MOCK_TICKETS.filter(t => t.driverId === driverData.id);
+              const q = tickQ.toLowerCase();
+              const filtered = driverTickets.filter(t =>
+                t.offenseNumber.toLowerCase().includes(q) ||
+                t.violationType.toLowerCase().includes(q) ||
+                t.location.toLowerCase().includes(q) ||
+                t.assetId.toLowerCase().includes(q) ||
+                t.status.toLowerCase().includes(q)
+              );
+
+              const paged = filtered.slice((tickPage - 1) * tickRpp, tickPage * tickRpp);
+
+              const outstandingFines = driverTickets.filter(t => t.status === 'Due').reduce((s, t) => s + t.fineAmount, 0);
+              const openOffenses = driverTickets.filter(t => t.status === 'Due').length;
+              const inCourt = driverTickets.filter(t => t.status === 'In Court').length;
+              const paidCount = driverTickets.filter(t => t.status === 'Paid').length;
+
+              const getStatusBadge = (status: string) => {
+                const styles: Record<string, string> = { 'Due': 'bg-yellow-100 text-yellow-800', 'In Court': 'bg-blue-100 text-blue-800', 'Paid': 'bg-green-100 text-green-800', 'Closed': 'bg-slate-100 text-slate-800' };
+                return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[status] || 'bg-slate-100 text-slate-700'}`}>{status}</span>;
+              };
+              const getTypeBadge = (type: string) => {
+                const styles: Record<string, string> = { 'Speeding': 'bg-red-50 text-red-700 border-red-100', 'Overweight': 'bg-orange-50 text-orange-700 border-orange-100', 'Logbook violation': 'bg-purple-50 text-purple-700 border-purple-100', 'Equipment defect': 'bg-slate-100 text-slate-700 border-slate-200', 'Insurance lapse': 'bg-pink-50 text-pink-700 border-pink-100', 'Red Light': 'bg-red-50 text-red-700 border-red-100', 'Parking': 'bg-slate-100 text-slate-700 border-slate-200' };
+                return <span className={`px-2 py-0.5 rounded text-xs font-medium border ${styles[type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>{type}</span>;
+              };
+
+              return (
+                <div className="space-y-4 animate-in fade-in">
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
+                      <div className="w-11 h-11 rounded-lg bg-red-50 flex items-center justify-center text-red-600"><DollarSign className="w-5 h-5" /></div>
+                      <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Outstanding Fines</p><p className="text-xl font-bold text-slate-900">${outstandingFines.toLocaleString()}</p></div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
+                      <div className="w-11 h-11 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600"><AlertTriangle className="w-5 h-5" /></div>
+                      <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Open Offenses</p><p className="text-xl font-bold text-slate-900">{openOffenses}</p></div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
+                      <div className="w-11 h-11 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600"><FileText className="w-5 h-5" /></div>
+                      <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Court</p><p className="text-xl font-bold text-slate-900">{inCourt}</p></div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
+                      <div className="w-11 h-11 rounded-lg bg-green-50 flex items-center justify-center text-green-600"><ShieldCheck className="w-5 h-5" /></div>
+                      <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Paid</p><p className="text-xl font-bold text-slate-900">{paidCount}</p></div>
+                    </div>
+                  </div>
+
+                  {/* Table Card */}
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <DataListToolbar searchValue={tickQ} onSearchChange={setTickQ} searchPlaceholder="Search tickets..." columns={tickCols} onToggleColumn={(id) => setTickCols(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} totalItems={filtered.length} currentPage={tickPage} rowsPerPage={tickRpp} onPageChange={setTickPage} onRowsPerPageChange={setTickRpp} />
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead><tr className="bg-slate-50 border-y border-slate-200">
+                          {tickCols.find(c=>c.id==='date')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</th>}
+                          {tickCols.find(c=>c.id==='offense')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Offense #</th>}
+                          {tickCols.find(c=>c.id==='type')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</th>}
+                          {tickCols.find(c=>c.id==='location')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Location</th>}
+                          {tickCols.find(c=>c.id==='asset')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Asset</th>}
+                          {tickCols.find(c=>c.id==='fine')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fine</th>}
+                          {tickCols.find(c=>c.id==='status')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>}
+                          {tickCols.find(c=>c.id==='docs')?.visible && <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Docs</th>}
+                          <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                        </tr></thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {paged.length > 0 ? paged.map(tk => (
+                            <tr key={tk.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setViewingTicket(tk)}>
+                              {tickCols.find(c=>c.id==='date')?.visible && <td className="px-4 py-3"><div className="text-sm font-medium text-slate-900">{tk.date}</div><div className="text-[11px] text-slate-400">{tk.time}</div></td>}
+                              {tickCols.find(c=>c.id==='offense')?.visible && <td className="px-4 py-3 text-sm font-semibold text-blue-600">{tk.offenseNumber}</td>}
+                              {tickCols.find(c=>c.id==='type')?.visible && <td className="px-4 py-3">{getTypeBadge(tk.violationType)}</td>}
+                              {tickCols.find(c=>c.id==='location')?.visible && <td className="px-4 py-3"><div className="text-sm text-slate-900">{tk.location}</div><div className="text-[11px] text-slate-400 truncate max-w-[180px]">{tk.description}</div></td>}
+                              {tickCols.find(c=>c.id==='asset')?.visible && <td className="px-4 py-3 text-sm font-medium text-slate-700">{tk.assetId}</td>}
+                              {tickCols.find(c=>c.id==='fine')?.visible && <td className="px-4 py-3 text-sm font-bold text-slate-900">{tk.currency === 'CAD' ? 'CA$' : '$'}{tk.fineAmount.toFixed(2)}</td>}
+                              {tickCols.find(c=>c.id==='status')?.visible && <td className="px-4 py-3">{getStatusBadge(tk.status)}</td>}
+                              {tickCols.find(c=>c.id==='docs')?.visible && <td className="px-4 py-3"><div className="flex items-center gap-2">
+                                <span title="Ticket"><FileText className={`w-3.5 h-3.5 ${tk.hasTicketFile ? 'text-green-600' : 'text-slate-200'}`} /></span>
+                                <span title="Receipt"><FileText className={`w-3.5 h-3.5 ${tk.hasReceiptFile ? 'text-green-600' : 'text-slate-200'}`} /></span>
+                                <span title="Notice"><FileText className={`w-3.5 h-3.5 ${tk.hasNoticeFile ? 'text-green-600' : 'text-slate-200'}`} /></span>
+                              </div></td>}
+                              <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => setViewingTicket(tk)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"><Eye className="w-4 h-4" /></button>
+                                  <button onClick={() => setEditingTicket2(tk)} className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"><Edit className="w-4 h-4" /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-400">No tickets found for this driver.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <PaginationBar totalItems={filtered.length} currentPage={tickPage} rowsPerPage={tickRpp} onPageChange={setTickPage} onRowsPerPageChange={setTickRpp} />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Ticket View Popup */}
+            {viewingTicket && (() => {
+              const tk = viewingTicket;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setViewingTicket(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center"><Ticket className="w-5 h-5 text-blue-600" /></div>
+                        <div><h3 className="text-base font-bold text-slate-900">Ticket Details</h3><p className="text-xs text-slate-500">{tk.offenseNumber}</p></div>
+                      </div>
+                      <button onClick={() => setViewingTicket(null)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
+                    </div>
+                    <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><p className="text-[10px] font-bold text-slate-400 uppercase">Offense #</p><p className="text-sm font-semibold text-slate-900 mt-0.5">{tk.offenseNumber}</p></div>
+                        <div><p className="text-[10px] font-bold text-slate-400 uppercase">Date & Time</p><p className="text-sm font-semibold text-slate-900 mt-0.5">{tk.date} at {tk.time}</p></div>
+                        <div><p className="text-[10px] font-bold text-slate-400 uppercase">Violation Type</p><p className="text-sm font-semibold text-slate-900 mt-0.5">{tk.violationType}</p></div>
+                        <div><p className="text-[10px] font-bold text-slate-400 uppercase">Status</p><div className="mt-0.5">{(() => { const styles: Record<string, string> = { 'Due': 'bg-yellow-100 text-yellow-800', 'In Court': 'bg-blue-100 text-blue-800', 'Paid': 'bg-green-100 text-green-800', 'Closed': 'bg-slate-100 text-slate-800' }; return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${styles[tk.status] || 'bg-slate-100 text-slate-700'}`}>{tk.status}</span>; })()}</div></div>
+                        <div><p className="text-[10px] font-bold text-slate-400 uppercase">Fine Amount</p><p className="text-sm font-bold text-slate-900 mt-0.5">{tk.currency === 'CAD' ? 'CA$' : '$'}{tk.fineAmount.toFixed(2)}</p></div>
+                        <div><p className="text-[10px] font-bold text-slate-400 uppercase">Asset</p><p className="text-sm font-semibold text-slate-900 mt-0.5">{tk.assetId}</p></div>
+                        <div className="col-span-2"><p className="text-[10px] font-bold text-slate-400 uppercase">Location</p><p className="text-sm font-semibold text-slate-900 mt-0.5">{tk.location}</p></div>
+                        <div className="col-span-2"><p className="text-[10px] font-bold text-slate-400 uppercase">Description</p><p className="text-sm text-slate-700 mt-0.5">{tk.description}</p></div>
+                      </div>
+                      <div className="border-t border-slate-100 pt-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Documents</p>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-1.5"><FileText className={`w-4 h-4 ${tk.hasTicketFile ? 'text-green-600' : 'text-slate-300'}`} /><span className="text-xs text-slate-600">Ticket</span></div>
+                          <div className="flex items-center gap-1.5"><FileText className={`w-4 h-4 ${tk.hasReceiptFile ? 'text-green-600' : 'text-slate-300'}`} /><span className="text-xs text-slate-600">Receipt</span></div>
+                          <div className="flex items-center gap-1.5"><FileText className={`w-4 h-4 ${tk.hasNoticeFile ? 'text-green-600' : 'text-slate-300'}`} /><span className="text-xs text-slate-600">Notice</span></div>
+                        </div>
+                      </div>
+                      {tk.assignedToThirdParty && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          <span className="text-xs font-medium text-amber-800">Assigned to Third Party</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => { setViewingTicket(null); setEditingTicket2(tk); }} className="px-4 py-2 text-sm font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors">Edit</button>
+                      <button onClick={() => setViewingTicket(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Close</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Ticket Edit Popup */}
+            {editingTicket2 && (() => {
+              const tk = editingTicket2;
+              return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setEditingTicket2(null)}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center"><Edit className="w-5 h-5 text-amber-600" /></div>
+                        <div><h3 className="text-base font-bold text-slate-900">Edit Ticket</h3><p className="text-xs text-slate-500">{tk.offenseNumber}</p></div>
+                      </div>
+                      <button onClick={() => setEditingTicket2(null)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
+                    </div>
+                    <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Offense #</label><input className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.offenseNumber} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Date</label><input type="date" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.date} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Violation Type</label>
+                          <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.violationType}>
+                            <option>Speeding</option><option>Overweight</option><option>Logbook violation</option><option>Equipment defect</option><option>Insurance lapse</option><option>Red Light</option><option>Parking</option>
+                          </select>
+                        </div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Status</label>
+                          <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.status}>
+                            <option>Due</option><option>In Court</option><option>Paid</option><option>Closed</option>
+                          </select>
+                        </div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Fine Amount</label><input type="number" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.fineAmount} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Currency</label>
+                          <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.currency}><option>USD</option><option>CAD</option></select>
+                        </div>
+                        <div className="col-span-2"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Location</label><input className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.location} /></div>
+                        <div className="col-span-2"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Description</label><textarea className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 resize-none" rows={2} defaultValue={tk.description} /></div>
+                        <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Asset</label><input className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50" defaultValue={tk.assetId} /></div>
+                        <div className="flex items-center gap-2 self-end pb-2"><input type="checkbox" defaultChecked={tk.assignedToThirdParty} className="rounded border-slate-300" /><label className="text-xs text-slate-600">Assigned to Third Party</label></div>
+                      </div>
+                    </div>
+                    <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2 flex-shrink-0">
+                      <button onClick={() => setEditingTicket2(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 transition-colors">Cancel</button>
+                      <button onClick={() => setEditingTicket2(null)} className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Save Changes</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {['Training', 'Certificates', 'Trips', 'Safety', 'HoursOfService', 'MileageReport'].includes(activeTab) && (() => {
                 const tabConfig = tabs.find(t => t.id === activeTab);
                 const TabIcon = tabConfig?.icon || FileText;
                 return (
@@ -1865,66 +3227,6 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                     </div>
                 );
             })()}
-            {activeTab === 'Violations' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base">Driver Violations</h3>
-                      <p className="text-xs font-medium text-slate-500">Track and manage violations associated with this driver.</p>
-                    </div>
-                  </div>
-
-                  <Card className="overflow-hidden border-slate-200 shadow-sm" icon={AlertTriangle} title="Driver Violations">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 border-b border-slate-200 uppercase tracking-wider text-xs font-bold text-slate-500">
-                          <tr>
-                            <th className="px-6 py-4">Date</th>
-                            <th className="px-6 py-4">Violation Type</th>
-                            <th className="px-6 py-4">Code</th>
-                            <th className="px-6 py-4 text-center">Status</th>
-                            <th className="px-6 py-4 text-right">Fine</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id || v.driverName === `${driverData.firstName} ${driverData.lastName}`).length > 0 ? MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id || v.driverName === `${driverData.firstName} ${driverData.lastName}`).map((violation: any) => (
-                               <tr key={violation.id} className="hover:bg-slate-50/50 transition-colors">
-                                 <td className="px-6 py-4 font-medium text-slate-900">
-                                   {new Date(violation.date).toLocaleDateString()}
-                                 </td>
-                                 <td className="px-6 py-4">
-                                     <div className="font-medium text-slate-900 line-clamp-2">{violation.violationType}</div>
-                                     <div className="text-xs text-slate-500 mt-1">{violation.violationGroup}</div>
-                                 </td>
-                                 <td className="px-6 py-4">
-                                     <code className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-800">{violation.violationCode}</code>
-                                 </td>
-                                 <td className="px-6 py-4 text-center flex items-center justify-center">
-                                      <Badge variant={violation.status === 'Closed' ? 'success' : violation.status === 'Open' ? 'warning' : 'neutral'}>
-                                          {violation.status}
-                                      </Badge>
-                                      {violation.isOos && <Badge variant="danger" className="ml-2 w-auto">OOS</Badge>}
-                                 </td>
-                                 <td className="px-6 py-4 text-right font-bold text-slate-900">
-                                     {violation.fineAmount > 0 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: violation.currency || 'USD' }).format(violation.fineAmount) : '—'}
-                                 </td>
-                               </tr>
-                          )) : (
-                              <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <div className="p-3 bg-slate-50 rounded-full"><AlertTriangle size={24} className="opacity-30" /></div>
-                                    <span className="text-sm font-medium">No violations recorded for this driver</span>
-                                  </div>
-                                </td>
-                              </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
-              </div>
-            )}
         </div>
       
         <KeyNumberModal 
@@ -2126,3 +3428,5 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
     </div>
   );
 };
+
+

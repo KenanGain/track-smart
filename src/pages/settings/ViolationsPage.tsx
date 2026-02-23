@@ -457,8 +457,8 @@ export function ViolationsPage() {
                     const isExpanded = expandedId === item.id;
                     
                     const authorities = Array.from(new Set([
-                        ...item.regulatoryCodes.usa.map(r => r.authority),
-                        ...item.regulatoryCodes.canada.map(r => r.authority)
+                        ...item.regulatoryCodes.usa?.map(r => r.authority) || [],
+                        ...(item.regulatoryCodes.canada?.map(r => r.authority) || [])
                     ])).slice(0, 3);
                     
                     return (
@@ -682,7 +682,7 @@ export function ViolationsPage() {
                                     <div className="space-y-6">
                                       <div className="grid md:grid-cols-3 gap-6">
                                         <div className="md:col-span-1 bg-emerald-50 border border-emerald-100 p-6 rounded-xl flex flex-col justify-center items-center text-center">
-                                          <div className="text-4xl font-bold text-emerald-700 mb-1">{item.canadaEnforcement.points.nsc}</div>
+                                          <div className="text-4xl font-bold text-emerald-700 mb-1">{item.canadaEnforcement?.points?.nsc ?? '-'}</div>
                                           <div className="text-xs font-bold text-emerald-800 uppercase tracking-wide">NSC Points</div>
                                           <div className="text-[10px] text-emerald-600 mt-2">National Safety Code Standard</div>
                                         </div>
@@ -701,10 +701,10 @@ export function ViolationsPage() {
                                               </p>
                                               <div className="mt-2 flex gap-2">
                                                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">
-                                                  Code: {item.canadaEnforcement.code}
+                                                  Code: {item.canadaEnforcement?.code}
                                                 </span>
                                                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">
-                                                  CCMTA: {item.canadaEnforcement.ccmtaCode}
+                                                  CCMTA: {item.canadaEnforcement?.ccmtaCode}
                                                 </span>
                                               </div>
                                             </>
@@ -721,7 +721,7 @@ export function ViolationsPage() {
                                             <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Provincial & Criminal References</h4>
                                         </div>
                                         <div className="divide-y divide-slate-100">
-                                            {item.regulatoryCodes.canada.map((reg, idx) => (
+                                            {(item.regulatoryCodes.canada || []).map((reg, idx) => (
                                             <div key={idx} className="p-6 hover:bg-slate-50 transition-colors">
                                                 <div className="flex flex-col md:flex-row md:items-start gap-4">
                                                 <div className="md:w-56 shrink-0">

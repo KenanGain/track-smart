@@ -21,6 +21,11 @@ interface AppDataContextType {
     keyNumberValues: Record<string, KeyNumberValue>;
     updateKeyNumberValue: (id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[]) => void;
     getDocumentTypeById: (id: string) => DocumentType | undefined;
+    // Thresholds
+    csaThresholds: { warning: number; critical: number };
+    setCsaThresholds: React.Dispatch<React.SetStateAction<{ warning: number; critical: number }>>;
+    cvorThresholds: { warning: number; intervention: number; showCause: number; seizure: number };
+    setCvorThresholds: React.Dispatch<React.SetStateAction<{ warning: number; intervention: number; showCause: number; seizure: number }>>;
     // Document Actions
     addDocument: (doc: DocumentType) => void;
     updateDocument: (id: string, updates: Partial<DocumentType>) => void;
@@ -93,6 +98,10 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
     const [tagSections, setTagSections] = useState<TagSection[]>(INITIAL_TAG_SECTIONS);
     const [keyNumbers, setKeyNumbers] = useState<KeyNumberConfig[]>(INITIAL_KEY_NUMBERS);
     const [keyNumberValues, setKeyNumberValues] = useState<Record<string, KeyNumberValue>>({});
+    
+    // Thresholds State
+    const [csaThresholds, setCsaThresholds] = useState({ warning: 65, critical: 85 });
+    const [cvorThresholds, setCvorThresholds] = useState({ warning: 35, intervention: 50, showCause: 85, seizure: 100 });
 
     // --- ACTIONS ---
 
@@ -238,6 +247,10 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
         keyNumberValues,
         updateKeyNumberValue,
         getDocumentTypeById,
+        csaThresholds,
+        setCsaThresholds,
+        cvorThresholds,
+        setCvorThresholds,
         addDocument,
         updateDocument,
         assignDocumentToFolder,

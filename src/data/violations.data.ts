@@ -1110,7 +1110,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -1170,7 +1170,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -1230,7 +1230,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -1290,7 +1290,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5482,7 +5482,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5542,7 +5542,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5602,7 +5602,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5662,7 +5662,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5722,7 +5722,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5782,7 +5782,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5842,7 +5842,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5902,7 +5902,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -5962,7 +5962,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6022,7 +6022,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6082,7 +6082,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6142,7 +6142,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6202,7 +6202,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6262,7 +6262,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6322,7 +6322,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6382,7 +6382,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6442,7 +6442,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6502,7 +6502,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6562,7 +6562,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6622,7 +6622,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6682,7 +6682,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6742,7 +6742,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6802,7 +6802,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6862,7 +6862,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6922,7 +6922,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -6982,7 +6982,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -7042,7 +7042,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -7102,7 +7102,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -7162,7 +7162,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20329,7 +20329,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20389,7 +20389,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20449,7 +20449,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20509,7 +20509,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20569,7 +20569,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20629,7 +20629,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20689,7 +20689,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20749,7 +20749,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20809,7 +20809,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20869,7 +20869,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20929,7 +20929,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -20989,7 +20989,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21049,7 +21049,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21109,7 +21109,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21169,7 +21169,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21229,7 +21229,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21289,7 +21289,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21349,7 +21349,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21409,7 +21409,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21469,7 +21469,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21529,7 +21529,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21589,7 +21589,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21649,7 +21649,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21709,7 +21709,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21769,7 +21769,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21829,7 +21829,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21889,7 +21889,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -21949,7 +21949,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22009,7 +22009,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22069,7 +22069,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22129,7 +22129,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22189,7 +22189,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22508,7 +22508,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22568,7 +22568,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22628,7 +22628,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22688,7 +22688,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22748,7 +22748,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22808,7 +22808,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22868,7 +22868,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22928,7 +22928,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -22988,7 +22988,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23048,7 +23048,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23108,7 +23108,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23168,7 +23168,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23228,7 +23228,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23288,7 +23288,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23348,7 +23348,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23408,7 +23408,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23468,7 +23468,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23528,7 +23528,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23588,7 +23588,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23648,7 +23648,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23708,7 +23708,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23768,7 +23768,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23828,7 +23828,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23888,7 +23888,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -23948,7 +23948,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24008,7 +24008,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24068,7 +24068,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24128,7 +24128,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24188,7 +24188,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24248,7 +24248,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24308,7 +24308,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -24367,7 +24367,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -24384,7 +24385,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         }
       ]
@@ -28262,7 +28264,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28322,7 +28324,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28382,7 +28384,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28442,7 +28444,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28502,7 +28504,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28562,7 +28564,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28622,7 +28624,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28682,7 +28684,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28742,7 +28744,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28802,7 +28804,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28862,7 +28864,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28922,7 +28924,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -28982,7 +28984,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29042,7 +29044,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29102,7 +29104,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29162,7 +29164,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29222,7 +29224,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29282,7 +29284,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29342,7 +29344,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29402,7 +29404,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29462,7 +29464,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29522,7 +29524,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29582,7 +29584,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29642,7 +29644,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29702,7 +29704,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29762,7 +29764,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29822,7 +29824,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29882,7 +29884,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -29942,7 +29944,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30002,7 +30004,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30062,7 +30064,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30122,7 +30124,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30182,7 +30184,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30242,7 +30244,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30302,7 +30304,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30362,7 +30364,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30422,7 +30424,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30482,7 +30484,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30542,7 +30544,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30602,7 +30604,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30662,7 +30664,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30722,7 +30724,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30782,7 +30784,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30842,7 +30844,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30902,7 +30904,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -30962,7 +30964,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31022,7 +31024,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31082,7 +31084,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31142,7 +31144,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31202,7 +31204,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31262,7 +31264,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31322,7 +31324,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31382,7 +31384,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31442,7 +31444,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31502,7 +31504,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31562,7 +31564,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31622,7 +31624,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31682,7 +31684,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31742,7 +31744,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31802,7 +31804,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31862,7 +31864,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31922,7 +31924,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -31982,7 +31984,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32042,7 +32044,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32102,7 +32104,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32162,7 +32164,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32222,7 +32224,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32282,7 +32284,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32342,7 +32344,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32402,7 +32404,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32462,7 +32464,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32522,7 +32524,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32582,7 +32584,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32642,7 +32644,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32702,7 +32704,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32762,7 +32764,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32822,7 +32824,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32882,7 +32884,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -32942,7 +32944,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33002,7 +33004,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33062,7 +33064,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33122,7 +33124,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33182,7 +33184,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33242,7 +33244,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33302,7 +33304,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33362,7 +33364,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33422,7 +33424,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33482,7 +33484,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33542,7 +33544,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33602,7 +33604,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33662,7 +33664,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33722,7 +33724,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33782,7 +33784,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33842,7 +33844,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33902,7 +33904,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -33962,7 +33964,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34022,7 +34024,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34082,7 +34084,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34142,7 +34144,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34202,7 +34204,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34262,7 +34264,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34322,7 +34324,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34382,7 +34384,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34442,7 +34444,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34502,7 +34504,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34562,7 +34564,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -34621,7 +34623,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         }
       ]
@@ -64513,7 +64516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64573,7 +64576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64633,7 +64636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64693,7 +64696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64753,7 +64756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64813,7 +64816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64873,7 +64876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64933,7 +64936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -64993,7 +64996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65053,7 +65056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65113,7 +65116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65173,7 +65176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65233,7 +65236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65293,7 +65296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65353,7 +65356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65413,7 +65416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65473,7 +65476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65533,7 +65536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65593,7 +65596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65653,7 +65656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65713,7 +65716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65773,7 +65776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65833,7 +65836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65893,7 +65896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -65953,7 +65956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66013,7 +66016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66073,7 +66076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66133,7 +66136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66193,7 +66196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66253,7 +66256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66313,7 +66316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66373,7 +66376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66433,7 +66436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66493,7 +66496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66553,7 +66556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66613,7 +66616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66673,7 +66676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66733,7 +66736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66793,7 +66796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66853,7 +66856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66913,7 +66916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -66973,7 +66976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67033,7 +67036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67093,7 +67096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67153,7 +67156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67213,7 +67216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67273,7 +67276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67333,7 +67336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67393,7 +67396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67453,7 +67456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67513,7 +67516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67573,7 +67576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67633,7 +67636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67693,7 +67696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67753,7 +67756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67813,7 +67816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67873,7 +67876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67933,7 +67936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -67993,7 +67996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68053,7 +68056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68113,7 +68116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68173,7 +68176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68233,7 +68236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68293,7 +68296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68353,7 +68356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68413,7 +68416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68473,7 +68476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68533,7 +68536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68593,7 +68596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68653,7 +68656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68713,7 +68716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68773,7 +68776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68833,7 +68836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68893,7 +68896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -68953,7 +68956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69013,7 +69016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69073,7 +69076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69133,7 +69136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69193,7 +69196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69253,7 +69256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69313,7 +69316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69373,7 +69376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69433,7 +69436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69493,7 +69496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69553,7 +69556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69613,7 +69616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69673,7 +69676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69733,7 +69736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69793,7 +69796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69853,7 +69856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69913,7 +69916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -69973,7 +69976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70033,7 +70036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70093,7 +70096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70153,7 +70156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70213,7 +70216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70273,7 +70276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70333,7 +70336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70393,7 +70396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70453,7 +70456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70513,7 +70516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70573,7 +70576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70633,7 +70636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70693,7 +70696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70753,7 +70756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70813,7 +70816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70873,7 +70876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70933,7 +70936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -70993,7 +70996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71053,7 +71056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71113,7 +71116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71173,7 +71176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71233,7 +71236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71293,7 +71296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71353,7 +71356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71413,7 +71416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71473,7 +71476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71533,7 +71536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71593,7 +71596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71653,7 +71656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71713,7 +71716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71773,7 +71776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71833,7 +71836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71893,7 +71896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -71953,7 +71956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72013,7 +72016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72073,7 +72076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72133,7 +72136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72193,7 +72196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72253,7 +72256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72313,7 +72316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72373,7 +72376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72433,7 +72436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72493,7 +72496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72553,7 +72556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72613,7 +72616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72673,7 +72676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72733,7 +72736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72793,7 +72796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72853,7 +72856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72913,7 +72916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -72973,7 +72976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73033,7 +73036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73093,7 +73096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73153,7 +73156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73213,7 +73216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73273,7 +73276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73333,7 +73336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73393,7 +73396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73453,7 +73456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73513,7 +73516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73573,7 +73576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73633,7 +73636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73693,7 +73696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73753,7 +73756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73813,7 +73816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73873,7 +73876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73933,7 +73936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -73993,7 +73996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74053,7 +74056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74113,7 +74116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74173,7 +74176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74233,7 +74236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74293,7 +74296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74353,7 +74356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74413,7 +74416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74473,7 +74476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74533,7 +74536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74593,7 +74596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74653,7 +74656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74713,7 +74716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74773,7 +74776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74833,7 +74836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74893,7 +74896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -74953,7 +74956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75013,7 +75016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75073,7 +75076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75133,7 +75136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75193,7 +75196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75253,7 +75256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75313,7 +75316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75373,7 +75376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75433,7 +75436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75493,7 +75496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75553,7 +75556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75613,7 +75616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75673,7 +75676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75733,7 +75736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75793,7 +75796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75853,7 +75856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75913,7 +75916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -75973,7 +75976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76033,7 +76036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76093,7 +76096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76153,7 +76156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76213,7 +76216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76273,7 +76276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76333,7 +76336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76393,7 +76396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76453,7 +76456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76513,7 +76516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76573,7 +76576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76633,7 +76636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76693,7 +76696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76753,7 +76756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76813,7 +76816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76873,7 +76876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76933,7 +76936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -76993,7 +76996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77053,7 +77056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77113,7 +77116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77173,7 +77176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77233,7 +77236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77293,7 +77296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77353,7 +77356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77413,7 +77416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77473,7 +77476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77533,7 +77536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77593,7 +77596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77653,7 +77656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77713,7 +77716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77773,7 +77776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77833,7 +77836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77893,7 +77896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -77953,7 +77956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78013,7 +78016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78073,7 +78076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78133,7 +78136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78193,7 +78196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78253,7 +78256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78313,7 +78316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78373,7 +78376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78433,7 +78436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78493,7 +78496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78553,7 +78556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78613,7 +78616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78673,7 +78676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78733,7 +78736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78793,7 +78796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78853,7 +78856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78913,7 +78916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -78973,7 +78976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79033,7 +79036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79093,7 +79096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79153,7 +79156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79213,7 +79216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79273,7 +79276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79333,7 +79336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79393,7 +79396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79453,7 +79456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79513,7 +79516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79573,7 +79576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79633,7 +79636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79693,7 +79696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79753,7 +79756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79813,7 +79816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79873,7 +79876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79933,7 +79936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -79993,7 +79996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80053,7 +80056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80113,7 +80116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80173,7 +80176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80233,7 +80236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80293,7 +80296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80353,7 +80356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80413,7 +80416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80473,7 +80476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80533,7 +80536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80593,7 +80596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80653,7 +80656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80713,7 +80716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80773,7 +80776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80833,7 +80836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80893,7 +80896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -80953,7 +80956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81013,7 +81016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81073,7 +81076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81133,7 +81136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81193,7 +81196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81253,7 +81256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81313,7 +81316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81373,7 +81376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81433,7 +81436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81493,7 +81496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81553,7 +81556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81613,7 +81616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81673,7 +81676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81733,7 +81736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81793,7 +81796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81853,7 +81856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81913,7 +81916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -81973,7 +81976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82033,7 +82036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82093,7 +82096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82153,7 +82156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82213,7 +82216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82273,7 +82276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82333,7 +82336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82393,7 +82396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82453,7 +82456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82513,7 +82516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82573,7 +82576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82633,7 +82636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82693,7 +82696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82753,7 +82756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82813,7 +82816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82873,7 +82876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82933,7 +82936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -82993,7 +82996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83053,7 +83056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83113,7 +83116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83173,7 +83176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83233,7 +83236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83293,7 +83296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83353,7 +83356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83413,7 +83416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83473,7 +83476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83533,7 +83536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83593,7 +83596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83653,7 +83656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83713,7 +83716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83773,7 +83776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83833,7 +83836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83893,7 +83896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -83953,7 +83956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84013,7 +84016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84073,7 +84076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84133,7 +84136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84193,7 +84196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84253,7 +84256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84313,7 +84316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84373,7 +84376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84433,7 +84436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84493,7 +84496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84553,7 +84556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84613,7 +84616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84673,7 +84676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84733,7 +84736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84793,7 +84796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84853,7 +84856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84913,7 +84916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -84973,7 +84976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85033,7 +85036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85093,7 +85096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85153,7 +85156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85213,7 +85216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85273,7 +85276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85333,7 +85336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85393,7 +85396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85453,7 +85456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85513,7 +85516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85573,7 +85576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85633,7 +85636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85693,7 +85696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85753,7 +85756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85813,7 +85816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85873,7 +85876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85933,7 +85936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -85993,7 +85996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86053,7 +86056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86113,7 +86116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86173,7 +86176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86233,7 +86236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86293,7 +86296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86353,7 +86356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86413,7 +86416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86473,7 +86476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86533,7 +86536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86593,7 +86596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86653,7 +86656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86713,7 +86716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86773,7 +86776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86833,7 +86836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86893,7 +86896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -86953,7 +86956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87013,7 +87016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87073,7 +87076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87133,7 +87136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87193,7 +87196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87253,7 +87256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87313,7 +87316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87373,7 +87376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87433,7 +87436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87493,7 +87496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87553,7 +87556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87613,7 +87616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87673,7 +87676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87733,7 +87736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87793,7 +87796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87853,7 +87856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87913,7 +87916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -87973,7 +87976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88033,7 +88036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88093,7 +88096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88153,7 +88156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88213,7 +88216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88273,7 +88276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88333,7 +88336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88393,7 +88396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88453,7 +88456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88513,7 +88516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88573,7 +88576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88633,7 +88636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88693,7 +88696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88753,7 +88756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88813,7 +88816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88873,7 +88876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88933,7 +88936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -88993,7 +88996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89053,7 +89056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89113,7 +89116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89173,7 +89176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89233,7 +89236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89293,7 +89296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89353,7 +89356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89413,7 +89416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89473,7 +89476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89533,7 +89536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89593,7 +89596,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89653,7 +89656,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89713,7 +89716,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89773,7 +89776,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89833,7 +89836,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89893,7 +89896,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -89953,7 +89956,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90013,7 +90016,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90073,7 +90076,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90133,7 +90136,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90193,7 +90196,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90253,7 +90256,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90313,7 +90316,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90373,7 +90376,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90433,7 +90436,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90493,7 +90496,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90553,7 +90556,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90613,7 +90616,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90673,7 +90676,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90733,7 +90736,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90793,7 +90796,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90853,7 +90856,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90913,7 +90916,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -90973,7 +90976,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91033,7 +91036,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91093,7 +91096,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91153,7 +91156,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91213,7 +91216,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91273,7 +91276,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91333,7 +91336,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91393,7 +91396,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91453,7 +91456,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91513,7 +91516,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91573,7 +91576,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91633,7 +91636,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91693,7 +91696,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91753,7 +91756,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91813,7 +91816,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91873,7 +91876,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91933,7 +91936,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -91993,7 +91996,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92053,7 +92056,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92113,7 +92116,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92173,7 +92176,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92233,7 +92236,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92293,7 +92296,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92353,7 +92356,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92413,7 +92416,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92473,7 +92476,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92533,7 +92536,7 @@ export const VIOLATION_DATA: ViolationData = {
           "isOos": false,
           "regulatoryCodes": {
             "usa": [],
-            "canada": [
+        "canada": [
               {
                 "authority": "PROVINCIAL_HTA",
                 "reference": [
@@ -92592,7 +92595,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92609,7 +92613,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92626,7 +92631,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92643,7 +92649,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92660,7 +92667,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92677,7 +92685,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92694,7 +92703,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92711,7 +92721,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92728,7 +92739,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92745,7 +92757,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92762,7 +92775,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92779,7 +92793,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92796,7 +92811,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92813,7 +92829,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92830,7 +92847,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92847,7 +92865,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92864,7 +92883,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92881,7 +92901,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92898,7 +92919,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92915,7 +92937,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92932,7 +92955,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92949,7 +92973,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92966,7 +92991,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -92983,7 +93009,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93000,7 +93027,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93017,7 +93045,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93034,7 +93063,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93051,7 +93081,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93068,7 +93099,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93085,7 +93117,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93102,7 +93135,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": true,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93119,7 +93153,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         },
         {
@@ -93136,7 +93171,8 @@ export const VIOLATION_DATA: ViolationData = {
           "inDsms": true,
           "isOos": false,
           "regulatoryCodes": {
-            "usa": []
+            "usa": [],
+        "canada": []
           }
         }
       ]
