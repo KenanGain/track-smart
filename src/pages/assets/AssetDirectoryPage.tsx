@@ -4,7 +4,8 @@ import {
     Search, Plus, Download, MoreHorizontal,
     Check, Edit2, FileText,
     RotateCcw, Trash2, Copy, Calendar, Truck,
-    AlertCircle, Briefcase, LayoutGrid, XCircle
+    AlertCircle, Briefcase, LayoutGrid, XCircle,
+    Columns, ChevronDown
 } from 'lucide-react';
 import { INITIAL_ASSETS, type Asset } from './assets.data';
 import { AssetModal } from './AssetModal';
@@ -182,44 +183,16 @@ export function AssetDirectoryPage({ isEmbedded = false }: { isEmbedded?: boolea
             ) : (
                 <div className={isEmbedded ? "w-full flex flex-col bg-[#F8FAFC] text-slate-900" : "h-full flex flex-col bg-[#F8FAFC] text-slate-900 overflow-hidden"}>
                     {/* HEADER SECTION */}
-                    <div className={isEmbedded ? "px-0 pt-0 pb-6 shrink-0 space-y-4 bg-transparent border-b-0 z-20" : "px-6 pt-6 pb-6 shrink-0 space-y-6 bg-white border-b border-slate-200/60 shadow-sm z-20"}>
+                    <div className={isEmbedded ? "px-0 pt-0 pb-6 shrink-0 bg-transparent border-b-0 z-20" : "px-6 pt-6 pb-6 shrink-0 bg-white border-b border-slate-200/60 shadow-sm z-20"}>
                         <div className={isEmbedded ? "flex flex-col gap-4" : "flex flex-col gap-6"}>
-                            <div className="flex justify-between items-center">
-                                <h1 className={isEmbedded ? "hidden" : "text-2xl font-bold text-slate-900 tracking-tight"}>Assets</h1>
-                                <div className={isEmbedded ? "flex items-center gap-3 w-full justify-end" : "flex items-center gap-3"}>
-                                    <Button variant="outline" size="sm" className="gap-2 bg-white border-slate-200 text-slate-600"><Download size={14} /> Export</Button>
-                                    <Button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} size="sm" className="gap-2 px-5 text-xs font-bold uppercase tracking-widest shadow-md">
-                                        <Plus size={16} /> Add Asset
-                                    </Button>
+                            {!isEmbedded && (
+                                <div className="flex justify-between items-center">
+                                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Assets</h1>
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* TAB NAVIGATION */}
-                        <div className="flex items-center gap-8 relative overflow-x-auto scrollbar-hide">
-                            {TABS.map((tab) => (
-                                <div key={tab.id} className="flex items-center gap-1 relative">
-                                    <button
-                                        onClick={() => { setActiveTab(tab.id); }}
-                                        className={cn(
-                                            "flex items-center gap-2 pb-3.5 px-0.5 text-xs font-semibold transition-all relative group",
-                                            activeTab === tab.id ? 'text-[#2563EB]' : 'text-slate-400 hover:text-slate-600'
-                                        )}
-                                    >
-                                        <tab.icon size={14} strokeWidth={2.5} />
-                                        <span>{tab.label}</span>
-                                    </button>
-
-                                    {activeTab === tab.id && <div className="absolute bottom-[-1px] left-0 right-0 h-[2.5px] bg-[#2563EB] rounded-full shadow-sm" />}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* MAIN LIST VIEW */}
-                    <div className={isEmbedded ? "flex flex-col w-full" : "flex-1 flex flex-col overflow-hidden"}>
-                        <div className={isEmbedded ? "pt-6 pb-2" : "px-6 pt-6 pb-2"}>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                            )}
+                            
+                            {/* KPI CARDS (MOVED TO TOP) */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                                 <button onClick={() => setActiveStatusFilter('all')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'all' ? 'ring-1 ring-blue-500 border-l-blue-500' : 'border-l-blue-500 border-slate-200'}`}>
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 rounded-full bg-blue-50 text-blue-600"><LayoutGrid className="w-4 h-4" /></div>
@@ -263,19 +236,65 @@ export function AssetDirectoryPage({ isEmbedded = false }: { isEmbedded?: boolea
                                     <div className="text-xl font-bold text-slate-900">{stats.deactivated}</div>
                                 </button>
                             </div>
+                            
+                            <div className="flex flex-col gap-4 w-full mt-2">
+                                {/* TOOLBAR TOP: SEARCH BAR ALONE */}
+                                <div className="relative w-full sm:w-80 shrink-0">
+                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <Input
+                                        placeholder="Search by Unit #, VIN or Type..."
+                                        className="pl-10 h-10 text-[14px] bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all w-full leading-relaxed rounded-lg"
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                    />
+                                </div>
 
-                            <div className="relative w-full max-w-xl mb-6">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                <Input
-                                    placeholder="Search Unit #, VIN, Plate..."
-                                    className="pl-10 h-11 text-[13px] bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all w-full"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                />
+                                {/* TOOLBAR BOTTOM: TABS AND ACTIONS */}
+                                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 w-full">
+                                    {/* TABS */}
+                                    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide w-full lg:w-auto shrink-0">
+                                        {TABS.map((tab) => (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => { setActiveTab(tab.id); }}
+                                                className={cn(
+                                                    "flex items-center justify-center px-4 h-9 text-[13px] font-semibold transition-all rounded-lg whitespace-nowrap",
+                                                    activeTab === tab.id 
+                                                        ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' 
+                                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
+                                                )}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex items-center gap-4 w-full lg:w-auto shrink-0 justify-start lg:justify-end overflow-x-auto scrollbar-hide">
+                                        {/* DIVIDER */}
+                                        <div className="hidden lg:block w-px h-6 bg-slate-200"></div>
+
+                                        {/* ACTIONS */}
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <Button variant="outline" size="sm" className="h-9 gap-2 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 flex-none justify-center font-medium shadow-sm rounded-lg">
+                                                <Columns size={14} className="text-slate-500" /> Columns <ChevronDown size={14} className="ml-0.5 -mr-1 text-slate-400" />
+                                            </Button>
+                                            <Button variant="outline" size="sm" className="h-9 gap-2 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 flex-none justify-center font-medium shadow-sm rounded-lg">
+                                                <Download size={14} className="text-slate-500" /> Export
+                                            </Button>
+                                            <Button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} size="sm" className="h-9 gap-2 px-4 shadow-sm flex-none justify-center bg-[#2563eb] hover:bg-blue-600 text-white font-medium rounded-lg">
+                                                <Plus size={16} /> Add Asset
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                    </div>
 
-                        <div className={isEmbedded ? "w-full flex flex-col pt-4" : "flex-1 p-6 overflow-hidden flex flex-col"}>
+                    {/* MAIN LIST VIEW */}
+                    {/* MAIN LIST VIEW */}
+                    <div className={isEmbedded ? "flex flex-col w-full" : "flex-1 flex flex-col overflow-hidden"}>
+                        <div className={isEmbedded ? "w-full flex flex-col pt-0" : "flex-1 p-6 pt-0 overflow-hidden flex flex-col"}>
                             <div className={isEmbedded ? "bg-white rounded-2xl border border-slate-200/60 flex flex-col shadow-sm" : "bg-white rounded-2xl border border-slate-200/60 flex-1 flex flex-col overflow-hidden shadow-sm"}>
                                 <div className={isEmbedded ? "overflow-visible" : "flex-1 overflow-auto"}>
                                     <table className="w-full text-left border-collapse min-w-[1300px]">

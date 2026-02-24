@@ -1,5 +1,5 @@
 export type Status = 'Active' | 'Draft' | 'Inactive' | 'On Leave' | 'Terminated';
-export type RelatedTo = 'carrier' | 'asset' | 'driver';
+export type RelatedTo = 'carrier' | 'asset' | 'driver' | 'violation';
 
 export type ColorTheme = 'blue' | 'emerald' | 'amber' | 'violet' | 'rose' | 'indigo' | 'cyan';
 
@@ -1032,6 +1032,33 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
         monitoring: { enabled: true, basedOn: 'expiryDate', recurrence: 'none', reminders: { d90: true, d60: true, d30: true, d7: true }, channels: { email: true, inapp: true, sms: false } },
         isSystem: true
     },
+
+    // Violation Documents — Primary
+    { id: 'viol_ticket', name: 'Violation Ticket / Citation', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required' },
+    { id: 'viol_summons', name: 'Summons / Court Notice', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_notice_offence', name: 'Notice of Offence', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_charge_sheet', name: 'Charge Sheet', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_eticket', name: 'Electronic Ticket (eTicket / eCitation PDF)', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+
+    // Violation Documents — Driver & Carrier Evidence
+    { id: 'viol_officer_report', name: 'Officer Violation Report', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required' },
+    { id: 'viol_driver_statement', name: 'Driver Written Statement', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_witness_statement', name: 'Witness Statement', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_dashcam', name: 'Dashcam / Bodycam Footage', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_photo_evidence', name: 'Photo Evidence (scene, load, equipment)', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+
+    // Violation Documents — Resolution & Legal
+    { id: 'viol_court_disposition', name: 'Court Disposition / Judgment', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_fine_receipt', name: 'Fine Payment Receipt', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_plea_settlement', name: 'Plea or Settlement Document', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_dismissal', name: 'Dismissal / Withdrawal Notice', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_legal_correspondence', name: 'Legal Correspondence', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+
+    // Violation Documents — Corrective Action
+    { id: 'viol_cap', name: 'Corrective Action Plan (CAP)', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_proof_repair', name: 'Proof of Repair', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_training_cert', name: 'Training Certificate', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_policy_ack', name: 'Policy Acknowledgement', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
 ];
 
 export const MOCK_FOLDER_TREE: FolderNode = {

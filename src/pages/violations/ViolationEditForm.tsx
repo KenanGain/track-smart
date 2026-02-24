@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { X, Save, Clock, MapPin, User as UserIcon, Truck, Globe } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Save, Clock, MapPin, User as UserIcon, Truck, Globe, FileText, Upload, Plus } from 'lucide-react';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS } from '@/pages/assets/assets.data';
-import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
+import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 import { type ViolationRecord, ALL_VIOLATIONS } from './violations-list.data';
 import { type AssetViolationRecord, type AssetViolationDef, ASSET_VIOLATION_DEFS } from './asset-violations.data';
 import { Combobox } from '@/components/ui/combobox';
+import { VIOLATION_DATA } from '@/data/violations.data';
+import { useAppData } from '@/context/AppDataContext';
 
 type FormMode = 'driver' | 'asset';
 
@@ -20,10 +22,28 @@ interface ViolationEditFormProps {
 export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: ViolationEditFormProps) => {
     // We use a flexible type for internal state to handle both record types
     const [formData, setFormData] = useState<any>({});
+    const { documents: allDocTypes } = useAppData();
+    const violationDocTypes = useMemo(() => allDocTypes.filter(d => d.relatedTo === 'violation' && d.status === 'Active'), [allDocTypes]);
+    const requiredDocTypes = useMemo(() => violationDocTypes.filter(d => d.requirementLevel === 'required'), [violationDocTypes]);
+    const [attachedDocs, setAttachedDocs] = useState<Array<{ id: string; docTypeId: string; docNumber: string; issueDate: string; includePdf: boolean; fileName: string }>>([]);
 
     useEffect(() => {
         if (record && record.id) {
             setFormData({ ...record });
+            // Load existing attached docs or auto-populate required ones
+            if ((record as any).attachedDocuments?.length) {
+                setAttachedDocs((record as any).attachedDocuments);
+            } else {
+                // Auto-populate required doc types
+                setAttachedDocs(requiredDocTypes.map(dt => ({
+                    id: `doc-${Math.random().toString(36).substr(2, 9)}`,
+                    docTypeId: dt.id,
+                    docNumber: '',
+                    issueDate: '',
+                    includePdf: false,
+                    fileName: ''
+                })));
+            }
         } else {
             // Defaults for new record
             setFormData({
@@ -34,8 +54,42 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                 result: 'Citation Issued',
                 locationCountry: 'US'
             });
+            // Auto-populate required doc types for new records
+            setAttachedDocs(requiredDocTypes.map(dt => ({
+                id: `doc-${Math.random().toString(36).substr(2, 9)}`,
+                docTypeId: dt.id,
+                docNumber: '',
+                issueDate: '',
+                includePdf: false,
+                fileName: ''
+            })));
         }
     }, [record, isOpen, mode]);
+
+    // Build country-aware violation options for driver mode
+    // MUST be before early return to maintain hooks order
+    const isCanada = formData.locationCountry === 'Canada';
+    const driverViolationOptions = useMemo(() => {
+      if (isCanada) {
+        // Show Canadian enforcement codes from VIOLATION_DATA
+        return Object.values(VIOLATION_DATA.categories).flatMap(cat => cat.items)
+          .filter(item => item.canadaEnforcement)
+          .map(item => ({
+            value: item.canadaEnforcement!.code,
+            label: `[${item.canadaEnforcement!.code}] ${item.canadaEnforcement!.descriptions?.full || item.violationDescription}`,
+            description: `${item.canadaEnforcement!.category || item.violationGroup} · CVOR/NSC`,
+            _sourceItem: item
+          }));
+      } else {
+        // Show FMCSA codes (existing behavior)
+        return ALL_VIOLATIONS.map(v => ({
+          value: v.id,
+          label: `[${v.violationCode}] ${v.violationDescription}`,
+          description: `${v.violationGroup} · SMS`,
+          _sourceItem: v
+        }));
+      }
+    }, [isCanada]);
 
     if (!isOpen) return null;
 
@@ -58,7 +112,8 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
         
         onSave({ 
             ...formData, 
-            location: fullLocation // Update legacy string
+            location: fullLocation,
+            attachedDocuments: attachedDocs
         });
         onClose();
     };
@@ -69,6 +124,7 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
 
     const isDriverMode = mode === 'driver';
     const totalAmount = (formData.fineAmount || 0) + (formData.expenseAmount || 0);
+
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -289,8 +345,8 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                         onChange={e => handleChange('locationState', e.target.value)}
                                     >
                                         <option value="">Select...</option>
-                                        {(formData.locationCountry === 'Canada' ? CA_PROVINCES : US_STATES).map(s => (
-                                            <option key={s} value={s}>{s}</option>
+                                        {(formData.locationCountry === 'Canada' ? Object.entries(CA_PROVINCE_ABBREVS) : Object.entries(US_STATE_ABBREVS)).map(([abbr, name]) => (
+                                            <option key={abbr} value={abbr}>{abbr} – {name}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -303,26 +359,35 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                 <label className={labelClass}>Violation Type</label>
                                 {isDriverMode ? (
                                     <Combobox
-                                        options={ALL_VIOLATIONS.map(v => ({
-                                            value: v.id,
-                                            label: `[${v.violationCode}] ${v.violationDescription}`,
-                                            description: v.violationGroup
-                                        }))}
-                                        value={formData.violationDataId}
+                                        options={driverViolationOptions}
+                                        value={isCanada ? formData.violationCode : formData.violationDataId}
                                         onValueChange={(val: string) => {
-                                            const v = ALL_VIOLATIONS.find(v => v.id === val);
-                                            if (v) {
-                                                handleChange('violationDataId', v.id);
-                                                handleChange('violationCode', v.violationCode);
-                                                handleChange('violationType', v.violationDescription);
-                                                handleChange('violationGroup', v.violationGroup);
-                                                handleChange('driverRiskCategory', v.severityWeight.driver > 8 ? 1 : v.severityWeight.driver > 5 ? 2 : 3);
-                                                handleChange('crashLikelihood', v.crashLikelihoodPercent || 0);
-                                                handleChange('isOos', v.isOos);
+                                            if (isCanada) {
+                                                const allItems = Object.values(VIOLATION_DATA.categories).flatMap(cat => cat.items);
+                                                const v = allItems.find(item => item.canadaEnforcement?.code === val);
+                                                if (v) {
+                                                    handleChange('violationCode', v.canadaEnforcement!.code);
+                                                    handleChange('violationType', v.canadaEnforcement!.descriptions?.full || v.violationDescription);
+                                                    handleChange('violationGroup', v.canadaEnforcement!.category || v.violationGroup);
+                                                    handleChange('driverRiskCategory', v.driverRiskCategory || 3);
+                                                    handleChange('crashLikelihood', v.crashLikelihoodPercent || 0);
+                                                    handleChange('isOos', v.isOos);
+                                                }
+                                            } else {
+                                                const v = ALL_VIOLATIONS.find(v => v.id === val);
+                                                if (v) {
+                                                    handleChange('violationDataId', v.id);
+                                                    handleChange('violationCode', v.violationCode);
+                                                    handleChange('violationType', v.violationDescription);
+                                                    handleChange('violationGroup', v.violationGroup);
+                                                    handleChange('driverRiskCategory', v.severityWeight.driver > 8 ? 1 : v.severityWeight.driver > 5 ? 2 : 3);
+                                                    handleChange('crashLikelihood', v.crashLikelihoodPercent || 0);
+                                                    handleChange('isOos', v.isOos);
+                                                }
                                             }
                                         }}
-                                        placeholder="Search violation code or description..."
-                                        searchPlaceholder="Search driver violations..."
+                                        placeholder={isCanada ? 'Search Canadian violation code...' : 'Search SMS violation code...'}
+                                        searchPlaceholder={isCanada ? 'Search CVOR/NSC violations...' : 'Search SMS violations...'}
                                         className="w-full bg-white"
                                     />
                                 ) : (
@@ -458,6 +523,125 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* ===== DOCUMENTS SECTION ===== */}
+                        <div className="p-4 bg-blue-50/30 rounded-xl border border-blue-100 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                                    <FileText size={14} className="text-blue-500" /> Violation Documents
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={() => setAttachedDocs(prev => [...prev, {
+                                        id: `doc-${Math.random().toString(36).substr(2, 9)}`,
+                                        docTypeId: '',
+                                        docNumber: '',
+                                        issueDate: '',
+                                        includePdf: false,
+                                        fileName: ''
+                                    }])}
+                                    className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                                >
+                                    <Plus size={14} /> Add Document
+                                </button>
+                            </div>
+
+                            {attachedDocs.length === 0 && (
+                                <div className="text-center py-6 text-slate-400 text-sm">
+                                    No documents attached. Click "+ Add Document" to add one.
+                                </div>
+                            )}
+
+                            {attachedDocs.map((doc, idx) => {
+                                const isRequired = requiredDocTypes.some(dt => dt.id === doc.docTypeId);
+                                return (
+                                    <div key={doc.id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-4 shadow-sm">
+                                        {/* Row 1: Doc Type + Doc Number + Delete */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className={labelClass}>Document Type {isRequired && <span className="text-red-500">*</span>}</label>
+                                                <select
+                                                    className={inputClass}
+                                                    value={doc.docTypeId}
+                                                    onChange={e => {
+                                                        const newDocs = [...attachedDocs];
+                                                        newDocs[idx] = { ...newDocs[idx], docTypeId: e.target.value };
+                                                        setAttachedDocs(newDocs);
+                                                    }}
+                                                >
+                                                    <option value="">Select type...</option>
+                                                    {violationDocTypes.map(dt => (
+                                                        <option key={dt.id} value={dt.id}>{dt.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Document Number</label>
+                                                <input
+                                                    type="text"
+                                                    className={inputClass}
+                                                    placeholder="e.g. CIT-2024-00123"
+                                                    value={doc.docNumber}
+                                                    onChange={e => {
+                                                        const newDocs = [...attachedDocs];
+                                                        newDocs[idx] = { ...newDocs[idx], docNumber: e.target.value };
+                                                        setAttachedDocs(newDocs);
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Row 2: Issue Date */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className={labelClass}>Issue Date</label>
+                                                <input
+                                                    type="date"
+                                                    className={inputClass}
+                                                    value={doc.issueDate}
+                                                    onChange={e => {
+                                                        const newDocs = [...attachedDocs];
+                                                        newDocs[idx] = { ...newDocs[idx], issueDate: e.target.value };
+                                                        setAttachedDocs(newDocs);
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Upload Documents Area */}
+                                        <div className="bg-slate-50/80 rounded-lg border border-dashed border-slate-300 p-4 space-y-3">
+                                            <span className={labelClass + ' mb-0'}>Upload Documents</span>
+                                            <div className="flex flex-col items-center justify-center py-4 border-2 border-dashed border-blue-200 rounded-lg bg-white hover:bg-blue-50/30 transition-colors cursor-pointer">
+                                                <Upload size={20} className="text-blue-400 mb-1" />
+                                                <span className="text-xs text-blue-500 font-medium">Document PDF</span>
+                                                <label className="mt-2 cursor-pointer">
+                                                    <span className="text-[11px] text-slate-500">Choose File</span>
+                                                    <input
+                                                        type="file"
+                                                        className="hidden"
+                                                        accept=".pdf,.jpg,.jpeg,.png"
+                                                        onChange={e => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                const newDocs = [...attachedDocs];
+                                                                newDocs[idx] = { ...newDocs[idx], fileName: file.name };
+                                                                setAttachedDocs(newDocs);
+                                                            }
+                                                        }}
+                                                    />
+                                                    {doc.fileName && (
+                                                        <span className="ml-2 text-[11px] text-emerald-600 font-medium">{doc.fileName}</span>
+                                                    )}
+                                                    {!doc.fileName && (
+                                                        <span className="ml-2 text-[11px] text-slate-400">No file chosen</span>
+                                                    )}
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
 
                     </form>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import {
+    Columns,
     MapPin,
     CheckSquare,
     Bell,
@@ -1156,22 +1157,31 @@ export function CarrierProfilePage() {
                         </div>
 
                         {/* TOOLBAR */}
-                        <div className="flex flex-col sm:flex-row justify-between gap-4">
-                            <div className="relative max-w-md w-full">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                            {/* LEFT SIDE: SEARCH */}
+                            <div className="relative w-full sm:max-w-md shrink-0">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                 <input
                                     type="text"
                                     placeholder="Search drivers by name, ID, or email..."
                                     value={driverSearch}
                                     onChange={(e) => setDriverSearch(e.target.value)}
-                                    className="pl-9 pr-4 h-10 w-full rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="pl-10 h-10 w-full rounded-lg border border-slate-200 text-[13px] focus:outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all shadow-sm"
                                 />
                             </div>
-                            <div className="flex gap-2">
-                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center gap-2">
-                                    <Download className="w-4 h-4" /> Export
+                            
+                            {/* RIGHT SIDE (SPACING ONLY) / ACTIONS ALIGN TO RIGHT */}
+                            <div className="flex-1"></div>
+
+                            {/* ACTIONS */}
+                            <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-end">
+                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center justify-center gap-2 flex-1 sm:flex-none">
+                                    <Columns size={14} className="text-slate-500" /> Columns <ChevronDown size={14} className="ml-0.5 -mr-1 text-slate-400" />
                                 </button>
-                                <button onClick={handleAddDriver} className="h-10 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors flex items-center gap-2 shadow-sm">
+                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center justify-center gap-2 flex-1 sm:flex-none">
+                                    <Download size={14} className="text-slate-500" /> Export
+                                </button>
+                                <button onClick={handleAddDriver} className="h-10 px-5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none">
                                     <Plus className="w-4 h-4" /> Add Driver
                                 </button>
                             </div>

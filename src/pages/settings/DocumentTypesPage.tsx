@@ -48,7 +48,7 @@ const DocumentTypesPage: React.FC = () => {
 
     const { documents, addDocument, updateDocument, addTagSection, keyNumbers } = useAppData();
 
-    const tabs = ['All', 'Carrier', 'Asset', 'Driver', 'Accidents'];
+    const tabs = ['All', 'Carrier', 'Asset', 'Driver', 'Accidents', 'Violations'];
 
     const filteredDocuments = documents.filter(doc => {
         if (searchQuery && !doc.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -56,6 +56,7 @@ const DocumentTypesPage: React.FC = () => {
         if (activeTab === 'Asset') return doc.relatedTo === 'asset';
         if (activeTab === 'Driver') return doc.relatedTo === 'driver';
         if (activeTab === 'Accidents') return !!(doc as any).isAccidentDoc;
+        if (activeTab === 'Violations') return doc.relatedTo === 'violation';
         // Carrier tab: exclude accident docs so they only appear under Accidents
         return doc.relatedTo === 'carrier' && !(doc as any).isAccidentDoc;
     });

@@ -4,7 +4,6 @@ import {
   AlertTriangle, 
   ShieldAlert, 
   Activity, 
-  MapPin, 
   ChevronDown, 
   ChevronUp, 
   Truck, 
@@ -23,6 +22,10 @@ import {
 import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode } from './inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { useAppData } from '@/context/AppDataContext';
+import { VIOLATION_DATA } from '@/data/violations.data';
+import { MOCK_DRIVERS } from '@/data/mock-app-data';
+import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
+import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 
 // --- REUSABLE COMPONENTS ---
 
@@ -60,7 +63,7 @@ const InfoTooltip = ({ text, title }: { text: string; title?: string }) => (
 );
 
 // Component: Mini KPI Filters
-const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { title: string; value: number; icon: any; active: boolean; onClick: () => void; color: "blue" | "emerald" | "red" | "yellow" | "purple" | "orange" | "gray" }) => {
+const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { title: string; value: number; icon: any; active: boolean; onClick: () => void; color: "blue" | "emerald" | "red" | "yellow" | "purple" | "orange" | "gray" | "indigo" | "cyan" | "rose" | "teal" }) => {
   const colorMap = {
     blue: "text-blue-600 bg-blue-50 border-blue-200",
     emerald: "text-emerald-600 bg-emerald-50 border-emerald-200",
@@ -69,6 +72,15 @@ const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { tit
     purple: "text-purple-600 bg-purple-50 border-purple-200",
     orange: "text-orange-600 bg-orange-50 border-orange-200",
     gray: "text-slate-600 bg-slate-50 border-slate-200",
+    indigo: "text-indigo-600 bg-indigo-50 border-indigo-200",
+    cyan: "text-cyan-600 bg-cyan-50 border-cyan-200",
+    rose: "text-rose-600 bg-rose-50 border-rose-200",
+    teal: "text-teal-600 bg-teal-50 border-teal-200",
+    fuchsia: "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200",
+    violet: "text-violet-600 bg-violet-50 border-violet-200",
+    lime: "text-lime-700 bg-lime-50 border-lime-200",
+    amber: "text-amber-600 bg-amber-50 border-amber-200",
+    slate: "text-slate-600 bg-slate-50 border-slate-200",
   };
 
   const activeStylesMap = {
@@ -79,6 +91,15 @@ const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { tit
     purple: "ring-2 ring-offset-1 ring-purple-400 border-purple-400 shadow-sm",
     orange: "ring-2 ring-offset-1 ring-orange-400 border-orange-400 shadow-sm",
     gray: "ring-2 ring-offset-1 ring-slate-400 border-slate-400 shadow-sm",
+    indigo: "ring-2 ring-offset-1 ring-indigo-400 border-indigo-400 shadow-sm",
+    cyan: "ring-2 ring-offset-1 ring-cyan-400 border-cyan-400 shadow-sm",
+    rose: "ring-2 ring-offset-1 ring-rose-400 border-rose-400 shadow-sm",
+    teal: "ring-2 ring-offset-1 ring-teal-400 border-teal-400 shadow-sm",
+    fuchsia: "ring-2 ring-offset-1 ring-fuchsia-400 border-fuchsia-400 shadow-sm",
+    violet: "ring-2 ring-offset-1 ring-violet-400 border-violet-400 shadow-sm",
+    lime: "ring-2 ring-offset-1 ring-lime-400 border-lime-400 shadow-sm",
+    amber: "ring-2 ring-offset-1 ring-amber-400 border-amber-400 shadow-sm",
+    slate: "ring-2 ring-offset-1 ring-slate-400 border-slate-400 shadow-sm",
   } as const;
 
   const activeStyles = active
@@ -101,6 +122,35 @@ const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { tit
   );
 };
 
+const getInspectionTagSpecs = (jurisdiction: string, levelStr: string) => {
+  const level = levelStr?.replace(/level\s*/i, '') || '1';
+  if (jurisdiction === 'CVOR') {
+    switch (level) {
+      case '1': return 'bg-rose-100 text-rose-800 border-rose-200';
+      case '2': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case '3': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case '4': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case '5': return 'bg-lime-100 text-lime-800 border-lime-200';
+      case '6': return 'bg-green-100 text-green-800 border-green-200';
+      case '7': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case '8': return 'bg-teal-100 text-teal-800 border-teal-200';
+      default: return 'bg-red-100 text-red-800 border-red-200';
+    }
+  } else {
+    switch (level) {
+      case '1': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      case '2': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case '3': return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+      case '4': return 'bg-sky-100 text-sky-800 border-sky-200';
+      case '5': return 'bg-violet-100 text-violet-800 border-violet-200';
+      case '6': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case '7': return 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200';
+      case '8': return 'bg-pink-100 text-pink-800 border-pink-200';
+      default: return 'bg-blue-100 text-blue-800 border-blue-200';
+    }
+  }
+};
+
 // Component: Expandable Inspection Row
 const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any) => void }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -115,45 +165,49 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
       
       {/* ===== DESKTOP MAIN ROW ===== */}
       <div 
-        className="hidden md:grid grid-cols-12 gap-5 px-4 py-4 items-center cursor-pointer border-l-2 border-transparent hover:bg-slate-50/50 transition-colors"
+        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-transparent hover:bg-slate-50/50 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Date */}
-        <div className="col-span-2 pl-2">
-          <span className="text-[13px] font-bold text-slate-800">{record.date}</span>
+        <div className="col-span-1 pl-2">
+          <span className="text-[12px] font-bold text-slate-800">{record.date}</span>
         </div>
 
-        {/* Report ID & State */}
+        {/* Report ID */}
         <div className="col-span-2 min-w-0 flex flex-col justify-center">
-          <span className="text-[13px] font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
-          <span className="text-[10px] text-slate-500 font-medium uppercase mt-0.5 flex items-center gap-1.5">
-            <MapPin size={10}/> {record.state}
-            {getJurisdiction(record.state) === 'CVOR' ? (
-              <span className="px-1.5 py-px rounded text-[8px] font-bold tracking-wider bg-red-100 text-red-700 border border-red-200">CVOR</span>
-            ) : (
-              <span className="px-1.5 py-px rounded text-[8px] font-bold tracking-wider bg-blue-100 text-blue-700 border border-blue-200">CSA</span>
-            )}
+          <span className="text-[12px] font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
+          {getJurisdiction(record.state) === 'CVOR' ? (
+            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR L{record.level?.replace(/level\s*/i, '') || '1'}</span>
+          ) : (
+            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS L{record.level?.replace(/level\s*/i, '') || '1'}</span>
+          )}
+        </div>
+
+        {/* Country + State */}
+        <div className="col-span-1 flex flex-col justify-center">
+          <span className="text-[12px] font-medium text-slate-700">
+            {record.state}, {getJurisdiction(record.state) === 'CVOR' ? 'CAN' : 'USA'}
           </span>
         </div>
 
         {/* Driver */}
-        <div className="col-span-2 flex items-center gap-3 min-w-0">
-          <div className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
-            <User size={14} fill="currentColor" />
+        <div className="col-span-2 flex items-center gap-2 min-w-0">
+          <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
+            <User size={12} fill="currentColor" />
           </div>
           <div className="min-w-0 flex flex-col justify-center">
-            <span className="text-[13px] font-bold text-slate-800 truncate block leading-tight">{record.driver}</span>
-            <span className="text-[10px] text-slate-400 font-medium truncate block mt-0.5">{record.driverId}</span>
+            <span className="text-[12px] font-bold text-slate-800 truncate block leading-tight">{record.driver?.split(',')[0]}</span>
+            <span className="text-[9px] text-slate-400 font-medium truncate block">{record.driverId}</span>
           </div>
         </div>
 
         {/* Asset */}
         <div className="col-span-2 flex flex-col justify-center min-w-0">
-          <span className="text-[13px] font-bold text-slate-800 truncate block leading-tight">
+          <span className="text-[12px] font-bold text-slate-800 truncate block leading-tight">
             {primaryUnit?.license || record.vehiclePlate}
           </span>
-          <span className="text-[10px] text-slate-500 font-medium truncate block mt-0.5">
-            {primaryUnit?.type || record.vehicleType} - Level {record.level?.split(' ')[1] || record.level?.replace('Level ', '') || '1'}
+          <span className="text-[9px] text-slate-500 font-medium truncate block mt-0.5">
+            {primaryUnit?.type || record.vehicleType}
             {unitCount > 1 && <span className="font-bold text-blue-600 ml-1">(+{unitCount - 1})</span>}
           </span>
         </div>
@@ -184,7 +238,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
         </div>
 
         {/* OOS Status & Actions */}
-        <div className="col-span-1 flex items-center justify-between pl-2 pr-4">
+        <div className="col-span-1 flex items-center justify-between pr-2">
            <div className="min-w-[48px]">
              {record.hasOOS && (
                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-red-50/80 rounded text-[10px] font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
@@ -222,9 +276,9 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-bold text-blue-700 font-mono leading-tight">{record.id}</span>
                 {getJurisdiction(record.state) === 'CVOR' ? (
-                  <span className="px-1.5 py-px rounded text-[8px] font-bold tracking-wider bg-red-100 text-red-700 border border-red-200">CVOR</span>
+                  <span className={`px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR LEVEL {record.level?.replace(/level\s*/i, '') || '1'}</span>
                 ) : (
-                  <span className="px-1.5 py-px rounded text-[8px] font-bold tracking-wider bg-blue-100 text-blue-700 border border-blue-200">CSA</span>
+                  <span className={`px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS LEVEL {record.level?.replace(/level\s*/i, '') || '1'}</span>
                 )}
               </div>
               <span className="text-xs text-slate-900 font-medium block mt-0.5">{record.date}</span>
@@ -275,17 +329,15 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                   ? 'bg-red-50/60 border-red-200'
                   : 'bg-blue-50/60 border-blue-200'
               }`}>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider self-start ${
-                  getJurisdiction(record.state) === 'CVOR'
-                    ? 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-blue-100 text-blue-700 border border-blue-200'
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider self-start border ${
+                  getInspectionTagSpecs(getJurisdiction(record.state), record.level)
                 }`}>
-                  {getJurisdiction(record.state)}
+                  {getJurisdiction(record.state)} LEVEL {record.level?.replace(/level\s*/i, '') || '1'}
                 </span>
                 <span className="text-[11px] sm:text-xs text-slate-700 leading-relaxed">
                   {getJurisdiction(record.state) === 'CVOR'
                     ? <>Regulated under <span className="font-bold">Ontario CVOR</span> &mdash; HTA, O.Reg.199/07, O.Reg.555/06, TDG Act</>
-                    : <>Regulated under <span className="font-bold">FMCSA CSA/SMS</span> &mdash; 49 CFR Parts 382-399</>
+                    : <>Regulated under <span className="font-bold">FMCSA SMS</span> &mdash; 49 CFR Parts 382-399</>
                   }
                 </span>
               </div>
@@ -580,7 +632,9 @@ export function InspectionsPage() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [columns, setColumns] = useState<ColumnDef[]>([
     { id: 'date', label: 'Insp. Date', visible: true },
-    { id: 'report', label: 'Report ID & State', visible: true },
+    { id: 'report', label: 'Report ID', visible: true },
+    { id: 'country', label: 'Country', visible: true },
+    { id: 'state', label: 'State', visible: true },
     { id: 'driver', label: 'Driver', visible: true },
     { id: 'asset', label: 'Asset', visible: true },
     { id: 'violations', label: 'Violations', visible: true },
@@ -593,37 +647,59 @@ export function InspectionsPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingInspection, setEditingInspection] = useState<any>(null);
-  const { csaThresholds, cvorThresholds } = useAppData();
+  const { csaThresholds, cvorThresholds, documents: allDocTypes } = useAppData();
 
   // Form state for Add/Edit
   const emptyForm = {
-    id: '', date: '', state: '', driverId: '', driver: '', vehiclePlate: '', vehicleType: 'Truck',
+    id: '', date: '', country: 'US', state: '', locationStreet: '', locationCity: '', locationZip: '',
+    driverId: '', driver: '', vehiclePlate: '', vehicleType: 'Truck',
     assetId: '', level: 'Level 1', isClean: true, hasOOS: false,
     hasVehicleViolations: false, hasDriverViolations: false,
     units: [{ type: 'Truck', make: '', license: '', vin: '' }],
     oosSummary: { driver: 'PASSED', vehicle: 'PASSED', total: 0 },
     violations: [] as any[],
+    fineAmount: '', currency: 'USD',
   };
   const [inspForm, setInspForm] = useState(emptyForm);
   const [formViolations, setFormViolations] = useState<any[]>([]);
 
+  // Violation document types for inspections
+  const violationDocTypes = useMemo(() => allDocTypes.filter(d => d.relatedTo === 'violation' && d.status === 'Active'), [allDocTypes]);
+  const requiredDocTypes = useMemo(() => violationDocTypes.filter(d => d.requirementLevel === 'required'), [violationDocTypes]);
+  const [inspAttachedDocs, setInspAttachedDocs] = useState<Array<{ id: string; docTypeId: string; docNumber: string; issueDate: string; fileName: string }>>([]);
+
   const openAddModal = () => {
     setInspForm(emptyForm);
     setFormViolations([]);
+    setInspAttachedDocs(requiredDocTypes.map(dt => ({
+      id: `doc-${Math.random().toString(36).substr(2, 9)}`,
+      docTypeId: dt.id, docNumber: '', issueDate: '', fileName: ''
+    })));
     setEditingInspection(null);
     setShowAddModal(true);
   };
   const openEditModal = (record: any) => {
     setInspForm({
-      id: record.id, date: record.date, state: record.state, driverId: record.driverId,
+      id: record.id, date: record.date, country: record.country || (getJurisdiction(record.state) === 'CVOR' ? 'Canada' : 'US'),
+      state: record.state, locationStreet: record.locationStreet || '', locationCity: record.locationCity || '', locationZip: record.locationZip || '',
+      driverId: record.driverId,
       driver: record.driver, vehiclePlate: record.vehiclePlate, vehicleType: record.vehicleType,
       assetId: record.assetId, level: record.level, isClean: record.isClean, hasOOS: record.hasOOS,
       hasVehicleViolations: record.hasVehicleViolations, hasDriverViolations: record.hasDriverViolations,
       units: record.units || [{ type: 'Truck', make: '', license: '', vin: '' }],
       oosSummary: record.oosSummary || { driver: 'PASSED', vehicle: 'PASSED', total: 0 },
       violations: [],
+      fineAmount: record.fineAmount || '', currency: record.currency || 'USD',
     });
     setFormViolations(record.violations || []);
+    if (record.attachedDocuments?.length) {
+      setInspAttachedDocs(record.attachedDocuments);
+    } else {
+      setInspAttachedDocs(requiredDocTypes.map(dt => ({
+        id: `doc-${Math.random().toString(36).substr(2, 9)}`,
+        docTypeId: dt.id, docNumber: '', issueDate: '', fileName: ''
+      })));
+    }
     setEditingInspection(record);
     setShowAddModal(true);
   };
@@ -655,7 +731,9 @@ export function InspectionsPage() {
       oos: inspectionsData.filter(i => i.hasOOS).length,
       vehicle: inspectionsData.filter(i => i.hasVehicleViolations).length,
       driver: inspectionsData.filter(i => i.hasDriverViolations).length,
-      severe: inspectionsData.filter(i => i.violations.some(v => v.severity >= 7)).length
+      severe: inspectionsData.filter(i => i.violations.some(v => v.severity >= 7)).length,
+      cvor: inspectionsData.filter(i => getJurisdiction(i.state) === 'CVOR').length,
+      sms: inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA').length,
     };
   }, []);
 
@@ -673,6 +751,8 @@ export function InspectionsPage() {
       case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
       case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
       case 'SEVERE': matchesFilter = insp.violations.some(v => v.severity >= 7); break;
+      case 'CVOR': matchesFilter = getJurisdiction(insp.state) === 'CVOR'; break;
+      case 'SMS': matchesFilter = getJurisdiction(insp.state) === 'CSA'; break;
       default: matchesFilter = true;
     }
 
@@ -812,7 +892,7 @@ export function InspectionsPage() {
                 <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                   <Gauge size={16} className="text-blue-600"/>
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">CSA BASIC Status</h3>
+                <h3 className="text-sm font-bold text-slate-900">SMS BASIC Status</h3>
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">SMS</span>
                 <InfoTooltip text="The carrier's overall safety percentile score based on a 2-year period, ranked against other similar companies." />
               </div>
@@ -996,7 +1076,7 @@ export function InspectionsPage() {
         {/* ===== KPI FILTERS (Mini Rectangles) ===== */}
         <div className="mt-8">
           <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Inspection Filters</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             <MiniKpiCard 
               title="All Insps." value={stats.total} icon={ClipboardCheck} color="blue"
               active={activeFilter === 'ALL'} onClick={() => setActiveFilter('ALL')} 
@@ -1021,13 +1101,21 @@ export function InspectionsPage() {
               title="Severe (7+)" value={stats.severe} icon={AlertTriangle} color="yellow"
               active={activeFilter === 'SEVERE'} onClick={() => setActiveFilter('SEVERE')} 
             />
+            <MiniKpiCard 
+              title="CVOR" value={stats.cvor} icon={ClipboardCheck} color="rose"
+              active={activeFilter === 'CVOR'} onClick={() => setActiveFilter('CVOR')} 
+            />
+            <MiniKpiCard 
+              title="SMS" value={stats.sms} icon={ClipboardCheck} color="indigo"
+              active={activeFilter === 'SMS'} onClick={() => setActiveFilter('SMS')} 
+            />
           </div>
         </div>
 
         {/* ===== MAIN INSPECTION LIST ===== */}
         <div className="mt-8">
           <div className="flex items-center gap-2 mb-4">
-            <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Specific Roadside Inspections</h2>
+            <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Inspections</h2>
             <InfoTooltip 
               title="Individual Events"
               text="These are single events. They apply to one specific driver and one specific vehicle being pulled over on a specific date and time by law enforcement." 
@@ -1050,15 +1138,16 @@ export function InspectionsPage() {
             />
 
             {/* Table Header (Hidden on Mobile) */}
-            <div className="hidden md:grid grid-cols-12 gap-5 px-4 py-3 bg-white border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              <div className="col-span-2 pl-2">Insp. Date</div>
-              <div className="col-span-2">Report ID & State</div>
+            <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              <div className="col-span-1 pl-2">Date</div>
+              <div className="col-span-2">Report ID</div>
+              <div className="col-span-1">Location</div>
               <div className="col-span-2">Driver</div>
               <div className="col-span-2">Asset</div>
               <div className="col-span-1 text-center">Violations</div>
               <div className="col-span-1 text-center">Severity</div>
               <div className="col-span-1 text-center">Points</div>
-              <div className="col-span-1 pl-2">Status</div>
+              <div className="col-span-1">Status</div>
             </div>
 
             {/* List Items */}
@@ -1152,69 +1241,78 @@ export function InspectionsPage() {
                     <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.date} onChange={e => setInspForm(p => ({ ...p, date: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">State/Province</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Country</label>
+                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.country} onChange={e => setInspForm(p => ({ ...p, country: e.target.value, state: '' }))}>
+                      <option value="US">United States</option>
+                      <option value="Canada">Canada</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">State / Province</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.state} onChange={e => setInspForm(p => ({ ...p, state: e.target.value }))}>
-                      <option value="">Select State</option>
-                      <optgroup label="United States">
-                        <option value="MI">MI - Michigan</option>
-                        <option value="TX">TX - Texas</option>
-                        <option value="OH">OH - Ohio</option>
-                        <option value="IN">IN - Indiana</option>
-                        <option value="IL">IL - Illinois</option>
-                        <option value="NY">NY - New York</option>
-                        <option value="PA">PA - Pennsylvania</option>
-                        <option value="CA">CA - California</option>
-                        <option value="FL">FL - Florida</option>
-                      </optgroup>
-                      <optgroup label="Canada">
-                        <option value="ON">ON - Ontario</option>
-                        <option value="QC">QC - Quebec</option>
-                        <option value="AB">AB - Alberta</option>
-                        <option value="BC">BC - British Columbia</option>
-                        <option value="MB">MB - Manitoba</option>
-                        <option value="SK">SK - Saskatchewan</option>
-                      </optgroup>
+                      <option value="">Select...</option>
+                      {Object.entries(inspForm.country === 'Canada' ? CA_PROVINCE_ABBREVS : US_STATE_ABBREVS).map(([abbr, name]) => (
+                        <option key={abbr} value={abbr}>{abbr} – {name}</option>
+                      ))}
                     </select>
                     {inspForm.state && (
                       <div className="flex items-center gap-1.5 mt-1.5">
                         <span className={`px-1.5 py-px rounded text-[9px] font-bold uppercase tracking-wider ${
-                          getJurisdiction(inspForm.state) === 'CVOR'
+                          inspForm.country === 'Canada'
                             ? 'bg-red-100 text-red-700 border border-red-200'
                             : 'bg-blue-100 text-blue-700 border border-blue-200'
                         }`}>
-                          {getJurisdiction(inspForm.state)}
+                          {inspForm.country === 'Canada' ? 'CVOR / NSC' : 'SMS / FMCSA'}
                         </span>
                         <span className="text-[10px] text-slate-500">
-                          {getJurisdiction(inspForm.state) === 'CVOR' ? 'Canadian Regulatory' : 'US Federal (FMCSA)'}
+                          {inspForm.country === 'Canada' ? 'Canadian Regulatory' : 'US Federal'}
                         </span>
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 mt-4">
+                <div className="grid grid-cols-1 gap-4 mt-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-500 uppercase">Level</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.level} onChange={e => setInspForm(p => ({ ...p, level: e.target.value }))}>
-                      <option value="Level 1">Level 1 - Full</option>
-                      <option value="Level 2">Level 2 - Walk-Around</option>
-                      <option value="Level 3">Level 3 - Driver Only</option>
-                      <option value="Level 4">Level 4 - Special</option>
-                      <option value="Level 5">Level 5 - Vehicle Only</option>
-                      <option value="Level 6">Level 6 - Enhanced NAS</option>
+                      {inspForm.country === 'Canada' ? (
+                        <>
+                          <option value="Level 1">CVOR Level 1 – Full Inspection</option>
+                          <option value="Level 2">CVOR Level 2 – Partial Inspection</option>
+                          <option value="NSC">NSC – National Safety Code</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="Level 1">SMS Level I – North American Standard</option>
+                          <option value="Level 2">SMS Level II – Walk-Around</option>
+                          <option value="Level 3">SMS Level III – Driver/Credential</option>
+                          <option value="Level 4">SMS Level IV – Special Inspections</option>
+                          <option value="Level 5">SMS Level V – Vehicle-Only</option>
+                          <option value="Level 6">SMS Level VI – Transuranic/Radioactive</option>
+                          <option value="Level 7">SMS Level VII – Jurisdictional Mandated</option>
+                          <option value="Level 8">SMS Level VIII – Electronic Inspection</option>
+                        </>
+                      )}
                     </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Vehicle Type</label>
-                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.vehicleType} onChange={e => setInspForm(p => ({ ...p, vehicleType: e.target.value }))}>
-                      <option value="Truck">Truck</option>
-                      <option value="Trailer">Trailer</option>
-                      <option value="Non-CMV Vehicle">Non-CMV Vehicle</option>
-                      <option value="Bus">Bus</option>
-                    </select>
+                </div>
+              </div>
+
+              {/* Section: Location Address */}
+              <div className="border-t border-slate-100 pt-5">
+                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Location Address</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5 col-span-3">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Street Address</label>
+                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. 1234 Highway 401" value={inspForm.locationStreet} onChange={e => setInspForm(p => ({ ...p, locationStreet: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Asset ID</label>
-                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. a1" value={inspForm.assetId} onChange={e => setInspForm(p => ({ ...p, assetId: e.target.value }))} />
+                    <label className="text-xs font-bold text-slate-500 uppercase">City</label>
+                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. Toronto" value={inspForm.locationCity} onChange={e => setInspForm(p => ({ ...p, locationCity: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">ZIP / Postal Code</label>
+                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. 90210" value={inspForm.locationZip} onChange={e => setInspForm(p => ({ ...p, locationZip: e.target.value }))} />
                   </div>
                 </div>
               </div>
@@ -1222,60 +1320,87 @@ export function InspectionsPage() {
               {/* Section: Driver */}
               <div className="border-t border-slate-100 pt-5">
                 <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Driver</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Driver ID</label>
-                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. DRV-2001" value={inspForm.driverId} onChange={e => setInspForm(p => ({ ...p, driverId: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Driver Name</label>
-                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="Last, First" value={inspForm.driver} onChange={e => setInspForm(p => ({ ...p, driver: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Vehicle Plate</label>
-                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. P-7762" value={inspForm.vehiclePlate} onChange={e => setInspForm(p => ({ ...p, vehiclePlate: e.target.value }))} />
-                  </div>
+                <div className="space-y-1.5">
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.driverId} onChange={e => {
+                    const d = MOCK_DRIVERS.find(d => d.id === e.target.value);
+                    if (d) {
+                      setInspForm(p => ({ ...p, driverId: d.id, driver: `${d.lastName}, ${d.firstName}` }));
+                    }
+                  }}>
+                    <option value="">Select Driver...</option>
+                    {MOCK_DRIVERS.map(d => (
+                      <option key={d.id} value={d.id}>{d.firstName} {d.lastName} ({d.id})</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {/* Section: Units Inspected */}
+              {/* Section: Asset / Vehicle Units */}
               <div className="border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Units Inspected</h4>
+                  <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Asset / Vehicle Units</h4>
                   <button type="button" onClick={addFormUnit} className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
                     <Plus size={14} /> Add Unit
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {inspForm.units.map((unit, idx) => (
-                    <div key={idx} className="grid grid-cols-5 gap-3 items-end bg-slate-50 border border-slate-100 rounded-lg p-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Type</label>
-                        <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500" value={unit.type} onChange={e => updateFormUnit(idx, 'type', e.target.value)}>
-                          <option>Truck</option><option>Trailer</option><option>SEMI-TRAILER</option><option>Non-CMV Vehicle</option><option>Bus</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Make</label>
-                        <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" placeholder="e.g. Freightliner" value={unit.make} onChange={e => updateFormUnit(idx, 'make', e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">License</label>
-                        <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" placeholder="e.g. P-7762" value={unit.license} onChange={e => updateFormUnit(idx, 'license', e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">VIN</label>
-                        <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder="VIN" value={unit.vin} onChange={e => updateFormUnit(idx, 'vin', e.target.value)} />
-                      </div>
-                      <div className="flex justify-end">
+                  {inspForm.units.map((unit, idx) => {
+                    const unitAny = unit as any;
+                    const hasAsset = !!unitAny.assetId;
+                    return (
+                    <div key={idx} className="bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Unit #{idx + 1}</span>
                         {inspForm.units.length > 1 && (
-                          <button type="button" onClick={() => removeFormUnit(idx)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                          <button type="button" onClick={() => removeFormUnit(idx)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
                             <X size={14} />
                           </button>
                         )}
                       </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Select Asset / Vehicle</label>
+                        <select
+                          className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500"
+                          value={unitAny.assetId || ''}
+                          onChange={e => {
+                            const a = INITIAL_ASSETS.find(a => a.id === e.target.value);
+                            const newUnits = [...inspForm.units];
+                            if (a) {
+                              newUnits[idx] = { type: a.assetType || 'Truck', make: `${a.make} ${a.model}`, license: a.plateNumber, vin: a.vin, assetId: a.id } as any;
+                              setInspForm(p => ({ ...p, units: newUnits, ...(idx === 0 ? { assetId: a.id, vehiclePlate: a.plateNumber, vehicleType: a.assetType } : {}) }));
+                            } else {
+                              newUnits[idx] = { type: 'Truck', make: '', license: '', vin: '' };
+                              setInspForm(p => ({ ...p, units: newUnits }));
+                            }
+                          }}
+                        >
+                          <option value="">Select Asset / Vehicle...</option>
+                          {INITIAL_ASSETS.map(a => (
+                            <option key={a.id} value={a.id}>{a.unitNumber} – {a.make} {a.model} ({a.plateNumber})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Type</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} value={unit.type} onChange={e => !hasAsset && updateFormUnit(idx, 'type', e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Make / Model</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="e.g. Freightliner" value={unit.make} onChange={e => !hasAsset && updateFormUnit(idx, 'make', e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">License</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="e.g. P-7762" value={unit.license} onChange={e => !hasAsset && updateFormUnit(idx, 'license', e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">VIN</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="VIN" value={unit.vin} onChange={e => !hasAsset && updateFormUnit(idx, 'vin', e.target.value)} />
+                        </div>
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1309,11 +1434,11 @@ export function InspectionsPage() {
                     <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Violations ({formViolations.length})</h4>
                     {inspForm.state && (
                       <span className={`px-1.5 py-px rounded text-[8px] font-bold uppercase tracking-wider ${
-                        getJurisdiction(inspForm.state) === 'CVOR'
+                        inspForm.country === 'Canada'
                           ? 'bg-red-50 text-red-600 border border-red-200'
                           : 'bg-blue-50 text-blue-600 border border-blue-200'
                       }`}>
-                        {getJurisdiction(inspForm.state) === 'CVOR' ? 'Canadian Codes' : 'FMCSA Codes'}
+                        {inspForm.country === 'Canada' ? 'Canadian Codes (CVOR/NSC)' : 'FMCSA Codes (SMS)'}
                       </span>
                     )}
                   </div>
@@ -1338,23 +1463,90 @@ export function InspectionsPage() {
                         </div>
                         <div className="grid grid-cols-3 gap-3">
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Code</label>
-                            <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500" placeholder={inspForm.state && getJurisdiction(inspForm.state) === 'CVOR' ? 'e.g. HTA s.84(1)' : 'e.g. 393.47(e)'} value={v.code} onChange={e => updateFormViolation(idx, 'code', e.target.value)} />
-                          </div>
-                          <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Category</label>
-                            <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500" value={v.category} onChange={e => updateFormViolation(idx, 'category', e.target.value)}>
-                              {SUMMARY_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            <select
+                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500 bg-white"
+                              value={v.category || ''}
+                              onChange={e => {
+                                updateFormViolation(idx, 'category', e.target.value);
+                                // Clear code when category changes
+                                updateFormViolation(idx, 'code', '');
+                              }}
+                            >
+                              <option value="">Select Category...</option>
+                              {Object.entries(VIOLATION_DATA.categories).map(([key, _cat]) => (
+                                <option key={key} value={key}>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+                              ))}
                             </select>
                           </div>
                           <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Select Code</label>
+                            <input 
+                              type="text" 
+                              list={`violation-codes-${idx}`}
+                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500" 
+                              placeholder={inspForm.country === 'Canada' ? 'e.g. CC-320.14' : 'e.g. 392.5(c)(2)'} 
+                              value={v.code} 
+                              onChange={(e) => {
+                                const newCode = e.target.value;
+                                const isCvor = inspForm.country === 'Canada';
+                                // Search within selected category first, then all
+                                const selectedCatItems = v.category && VIOLATION_DATA.categories[v.category]
+                                  ? VIOLATION_DATA.categories[v.category].items
+                                  : Object.values(VIOLATION_DATA.categories).flatMap(cat => cat.items);
+                                const match = selectedCatItems.find(item => {
+                                  if (isCvor) {
+                                    return item.canadaEnforcement?.code === newCode || item.violationCode === newCode;
+                                  } else {
+                                    return item.violationCode === newCode || item.id === newCode;
+                                  }
+                                });
+
+                                if (match) {
+                                  const severityWt = match.severityWeight.driver || match.severityWeight.carrier || 3;
+                                  const points = isCvor ? (match.canadaEnforcement?.points?.cvor?.min || 0) : (severityWt * 3);
+                                  
+                                  setFormViolations(prev => prev.map((vi, i) => i === idx ? { 
+                                    ...vi, 
+                                    code: newCode,
+                                    category: Object.entries(VIOLATION_DATA.categories).find(([_, cat]) => cat.items.includes(match))?.[0] || v.category,
+                                    subDescription: isCvor ? match.canadaEnforcement?.category : match.violationGroup,
+                                    description: isCvor ? (match.canadaEnforcement?.descriptions?.full || match.violationDescription) : match.violationDescription,
+                                    severity: severityWt,
+                                    weight: 3,
+                                    points: points,
+                                    driverRiskCategory: match.driverRiskCategory || 3,
+                                    oos: match.isOos || false
+                                  } : vi));
+                                } else {
+                                  updateFormViolation(idx, 'code', newCode);
+                                }
+                              }} 
+                            />
+                            <datalist id={`violation-codes-${idx}`}>
+                              {(() => {
+                                const isCvor = inspForm.country === 'Canada';
+                                const items = v.category && VIOLATION_DATA.categories[v.category]
+                                  ? VIOLATION_DATA.categories[v.category].items
+                                  : Object.values(VIOLATION_DATA.categories).flatMap(cat => cat.items);
+                                return items.map(item => {
+                                  if (isCvor && !item.canadaEnforcement) return null;
+                                  if (!isCvor && (!item.regulatoryCodes?.usa || item.regulatoryCodes.usa.length === 0)) return null;
+                                  const valCode = isCvor ? (item.canadaEnforcement?.code || item.violationCode) : item.violationCode;
+                                  const label = isCvor ? item.canadaEnforcement?.descriptions?.shortForm52 : item.violationDescription;
+                                  return <option key={item.id} value={valCode}>{label}</option>;
+                                });
+                              })()}
+                            </datalist>
+                          </div>
+                          <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Sub-Category</label>
-                            <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" placeholder="e.g. Brakes" value={v.subDescription} onChange={e => updateFormViolation(idx, 'subDescription', e.target.value)} />
+                            <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-slate-50 focus:outline-none" readOnly value={v.subDescription || ''} />
                           </div>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Description</label>
-                          <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" placeholder="Violation description" value={v.description} onChange={e => updateFormViolation(idx, 'description', e.target.value)} />
+                          <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" placeholder="Violation description" value={v.description || ''} onChange={e => updateFormViolation(idx, 'description', e.target.value)} />
                         </div>
                         <div className="grid grid-cols-5 gap-3">
                           <div className="space-y-1">
@@ -1386,6 +1578,132 @@ export function InspectionsPage() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Section: Fine & Expenses */}
+              <div className="border-t border-slate-100 pt-5">
+                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Fine & Expenses</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Currency</label>
+                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.currency} onChange={e => setInspForm(p => ({ ...p, currency: e.target.value }))}>
+                      <option value="USD">USD ($)</option>
+                      <option value="CAD">CAD (C$)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Fine Amount</label>
+                    <input type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="0.00" value={inspForm.fineAmount} onChange={e => setInspForm(p => ({ ...p, fineAmount: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Violation Documents */}
+              <div className="border-t border-slate-100 pt-5">
+                <div className="p-4 bg-blue-50/30 rounded-xl border border-blue-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                      <FileText size={14} className="text-blue-500" /> Violation Documents
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setInspAttachedDocs(prev => [...prev, {
+                        id: `doc-${Math.random().toString(36).substr(2, 9)}`,
+                        docTypeId: '', docNumber: '', issueDate: '', fileName: ''
+                      }])}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                    >
+                      <Plus size={14} /> Add Document
+                    </button>
+                  </div>
+
+                  {inspAttachedDocs.length === 0 && (
+                    <div className="text-center py-6 text-slate-400 text-sm">
+                      No documents attached. Click "+ Add Document" to add one.
+                    </div>
+                  )}
+
+                  {inspAttachedDocs.map((doc, idx) => (
+                    <div key={doc.id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-4 shadow-sm">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Document Type</label>
+                          <select
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500"
+                            value={doc.docTypeId}
+                            onChange={e => {
+                              const newDocs = [...inspAttachedDocs];
+                              newDocs[idx] = { ...newDocs[idx], docTypeId: e.target.value };
+                              setInspAttachedDocs(newDocs);
+                            }}
+                          >
+                            <option value="">Select type...</option>
+                            {violationDocTypes.map(dt => (
+                              <option key={dt.id} value={dt.id}>{dt.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Document Number</label>
+                          <input
+                            type="text"
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                            placeholder="e.g. CIT-2024-00123"
+                            value={doc.docNumber}
+                            onChange={e => {
+                              const newDocs = [...inspAttachedDocs];
+                              newDocs[idx] = { ...newDocs[idx], docNumber: e.target.value };
+                              setInspAttachedDocs(newDocs);
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Issue Date</label>
+                          <input
+                            type="date"
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                            value={doc.issueDate}
+                            onChange={e => {
+                              const newDocs = [...inspAttachedDocs];
+                              newDocs[idx] = { ...newDocs[idx], issueDate: e.target.value };
+                              setInspAttachedDocs(newDocs);
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="bg-slate-50/80 rounded-lg border border-dashed border-slate-300 p-4 space-y-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-0">Upload Documents</span>
+                        <div className="flex flex-col items-center justify-center py-4 border-2 border-dashed border-blue-200 rounded-lg bg-white hover:bg-blue-50/30 transition-colors cursor-pointer">
+                          <Upload size={20} className="text-blue-400 mb-1" />
+                          <span className="text-xs text-blue-500 font-medium">Document PDF</span>
+                          <label className="mt-2 cursor-pointer">
+                            <span className="text-[11px] text-slate-500">Choose File</span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const newDocs = [...inspAttachedDocs];
+                                  newDocs[idx] = { ...newDocs[idx], fileName: file.name };
+                                  setInspAttachedDocs(newDocs);
+                                }
+                              }}
+                            />
+                            {doc.fileName ? (
+                              <span className="ml-2 text-[11px] text-emerald-600 font-medium">{doc.fileName}</span>
+                            ) : (
+                              <span className="ml-2 text-[11px] text-slate-400">No file chosen</span>
+                            )}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
             </div>

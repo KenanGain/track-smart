@@ -5,11 +5,9 @@ import {
     CheckSquare,
     AlertTriangle,
     FileText,
-    Shield,
     Settings,
     KeyRound,
     Wrench,
-    Layers,
     Folder,
     DollarSign,
     Ban,
@@ -52,12 +50,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: DollarSign,
         path: "/paystubs",
     },
-    {
-        key: "safety",
-        label: "Safety",
-        icon: Shield,
-        path: "/safety",
-    },
 
     {
         key: "accidents",
@@ -92,7 +84,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "key-numbers", label: "Key Numbers", icon: KeyRound, path: "/settings/key-numbers" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },
-            { key: "services", label: "Services", icon: Layers, path: "/settings/services" },
             { key: "document-types", label: "Document Types", icon: FileText, path: "/settings/document-types" },
             { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders" },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },

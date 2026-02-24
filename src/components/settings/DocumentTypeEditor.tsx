@@ -12,7 +12,8 @@ import {
     Check,
     X,
     FolderPlus,
-    AlertTriangle
+    AlertTriangle,
+    ShieldAlert
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import {
@@ -322,6 +323,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             root.children = root.children?.filter((c: any) => c.id === 'assets_root');
         } else if (relatedTo === 'driver') {
             root.children = root.children?.filter((c: any) => c.id === 'driver_root');
+        } else if (relatedTo === 'violation') {
+            root.children = root.children?.filter((c: any) => c.id === 'carrier_root');
         }
         return [root];
     };
@@ -399,13 +402,15 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         {relatedTo === 'carrier' && <Building2 className="w-6 h-6 text-slate-500" />}
                                         {relatedTo === 'asset' && <Truck className="w-6 h-6 text-slate-500" />}
                                         {relatedTo === 'driver' && <User className="w-6 h-6 text-slate-500" />}
+                                        {relatedTo === 'violation' && <ShieldAlert className="w-6 h-6 text-slate-500" />}
                                         <span className="font-semibold text-sm text-slate-700 capitalize">{relatedTo}</span>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-2">
                                         <RadioCard selected={relatedTo === 'carrier'} onClick={() => setRelatedTo('carrier')} icon={Building2} label="Carrier" />
                                         <RadioCard selected={relatedTo === 'asset'} onClick={() => setRelatedTo('asset')} icon={Truck} label="Asset" />
                                         <RadioCard selected={relatedTo === 'driver'} onClick={() => setRelatedTo('driver')} icon={User} label="Driver" />
+                                        <RadioCard selected={relatedTo === 'violation'} onClick={() => setRelatedTo('violation')} icon={ShieldAlert} label="Violation" />
                                     </div>
                                 )}
                             </div>
@@ -647,6 +652,7 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     {relatedTo === 'carrier' && 'Carrier Folder Selector'}
                                     {relatedTo === 'asset' && 'Asset Category Folder'}
                                     {relatedTo === 'driver' && 'Driver Folder Selection'}
+                                    {relatedTo === 'violation' && 'Violation Document Folder'}
                                 </Label>
                                 {relatedTo === 'driver' && (
                                     <div className="flex bg-slate-100 rounded-lg p-1">
