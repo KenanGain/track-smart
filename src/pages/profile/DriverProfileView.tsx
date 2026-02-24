@@ -1364,7 +1364,6 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Tickets', label: 'Tickets', icon: Ticket },
         { id: 'Accidents', label: 'Accidents', icon: Car },
         { id: 'Inspections', label: 'Inspections', icon: FileCheck },
-        { id: 'Safety', label: 'Safety', icon: AlertOctagon },
         { id: 'Violations', label: 'Violations', icon: AlertTriangle },
         { id: 'Paystubs', label: 'Paystubs', icon: DollarSign },
         { id: 'HoursOfService', label: 'Hours of Service', icon: Clock },
@@ -3210,7 +3209,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               );
             })()}
 
-            {['Training', 'Certificates', 'Trips', 'Safety', 'HoursOfService', 'MileageReport'].includes(activeTab) && (() => {
+            {['Training', 'Certificates', 'Trips', 'HoursOfService', 'MileageReport'].includes(activeTab) && (() => {
                 const tabConfig = tabs.find(t => t.id === activeTab);
                 const TabIcon = tabConfig?.icon || FileText;
                 return (
