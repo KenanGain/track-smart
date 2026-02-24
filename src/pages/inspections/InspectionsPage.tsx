@@ -40,8 +40,8 @@ const CrashLikelihoodBar = ({ value }: { value: number }) => {
   return (
       <div className="w-24">
           <div className="flex justify-between items-end mb-1">
-              <span className="text-[10px] font-bold text-slate-700 uppercase">{label}</span>
-              <span className="text-[10px] font-bold text-slate-400">{value}%</span>
+              <span className="text-xs font-bold text-slate-700 uppercase">{label}</span>
+              <span className="text-xs font-bold text-slate-400">{value}%</span>
           </div>
           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
               <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${width}%` }} />
@@ -54,7 +54,7 @@ const CrashLikelihoodBar = ({ value }: { value: number }) => {
 const InfoTooltip = ({ text, title }: { text: string; title?: string }) => (
   <div className="group relative inline-flex items-center ml-1.5 cursor-help">
     <Info size={14} className="text-slate-400 hover:text-blue-500 transition-colors" />
-    <div className="hidden group-hover:block absolute z-50 w-64 p-3 bg-slate-900 text-white text-xs rounded-lg shadow-xl bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
+    <div className="hidden group-hover:block absolute z-50 w-64 p-3 bg-slate-900 text-white text-sm rounded-lg shadow-xl bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
       {title && <div className="font-bold text-blue-300 mb-1 tracking-wide uppercase">{title}</div>}
       <div className="leading-relaxed text-slate-200">{text}</div>
       <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-900"></div>
@@ -115,7 +115,7 @@ const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { tit
         <div className={`p-1.5 rounded-md ${colorMap[color]}`}>
           <Icon size={16} />
         </div>
-        <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{title}</span>
+        <span className="text-sm font-bold text-slate-600 uppercase tracking-wide">{title}</span>
       </div>
       <span className="text-lg font-bold text-slate-900">{value}</span>
     </div>
@@ -170,22 +170,22 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
       >
         {/* Date */}
         <div className="col-span-1 pl-2">
-          <span className="text-[12px] font-bold text-slate-800">{record.date}</span>
+          <span className="text-sm font-bold text-slate-800">{record.date}</span>
         </div>
 
         {/* Report ID */}
         <div className="col-span-2 min-w-0 flex flex-col justify-center">
-          <span className="text-[12px] font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
+          <span className="text-sm font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
           {getJurisdiction(record.state) === 'CVOR' ? (
-            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR L{record.level?.replace(/level\s*/i, '') || '1'}</span>
+            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR L{record.level?.replace(/level\s*/i, '') || '1'}</span>
           ) : (
-            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS L{record.level?.replace(/level\s*/i, '') || '1'}</span>
+            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS L{record.level?.replace(/level\s*/i, '') || '1'}</span>
           )}
         </div>
 
         {/* Country + State */}
         <div className="col-span-1 flex flex-col justify-center">
-          <span className="text-[12px] font-medium text-slate-700">
+          <span className="text-sm font-medium text-slate-700">
             {record.state}, {getJurisdiction(record.state) === 'CVOR' ? 'CAN' : 'USA'}
           </span>
         </div>
@@ -196,17 +196,17 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
             <User size={12} fill="currentColor" />
           </div>
           <div className="min-w-0 flex flex-col justify-center">
-            <span className="text-[12px] font-bold text-slate-800 truncate block leading-tight">{record.driver?.split(',')[0]}</span>
-            <span className="text-[9px] text-slate-400 font-medium truncate block">{record.driverId}</span>
+            <span className="text-sm font-bold text-slate-800 truncate block leading-tight">{record.driver?.split(',')[0]}</span>
+            <span className="text-[11px] text-slate-400 font-medium truncate block">{record.driverId}</span>
           </div>
         </div>
 
         {/* Asset */}
         <div className="col-span-2 flex flex-col justify-center min-w-0">
-          <span className="text-[12px] font-bold text-slate-800 truncate block leading-tight">
+          <span className="text-sm font-bold text-slate-800 truncate block leading-tight">
             {primaryUnit?.license || record.vehiclePlate}
           </span>
-          <span className="text-[9px] text-slate-500 font-medium truncate block mt-0.5">
+          <span className="text-[11px] text-slate-500 font-medium truncate block mt-0.5">
             {primaryUnit?.type || record.vehicleType}
             {unitCount > 1 && <span className="font-bold text-blue-600 ml-1">(+{unitCount - 1})</span>}
           </span>
@@ -241,7 +241,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
         <div className="col-span-1 flex items-center justify-between pr-2">
            <div className="min-w-[48px]">
              {record.hasOOS && (
-               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-red-50/80 rounded text-[10px] font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
+               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-red-50/80 rounded text-xs font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
                  <ShieldAlert size={10} className="text-red-500 flex-shrink-0" /> OOS
                </span>
              )}
@@ -276,12 +276,12 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-bold text-blue-700 font-mono leading-tight">{record.id}</span>
                 {getJurisdiction(record.state) === 'CVOR' ? (
-                  <span className={`px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR LEVEL {record.level?.replace(/level\s*/i, '') || '1'}</span>
+                  <span className={`px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR LEVEL {record.level?.replace(/level\s*/i, '') || '1'}</span>
                 ) : (
-                  <span className={`px-1.5 py-px rounded text-[8px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS LEVEL {record.level?.replace(/level\s*/i, '') || '1'}</span>
+                  <span className={`px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS LEVEL {record.level?.replace(/level\s*/i, '') || '1'}</span>
                 )}
               </div>
-              <span className="text-xs text-slate-900 font-medium block mt-0.5">{record.date}</span>
+              <span className="text-sm text-slate-900 font-medium block mt-0.5">{record.date}</span>
             </div>
           </div>
           <button className="text-slate-400 bg-slate-50 border border-slate-200 p-1.5 rounded-full shadow-sm">
@@ -290,22 +290,22 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
         </div>
 
         <div className="flex flex-wrap gap-2 mt-1 pt-2 border-t border-slate-100">
-           <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[11px] font-medium text-slate-600">
+           <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[13px] font-medium text-slate-600">
             <User size={10}/> {record.driver.split(',')[0]}
           </div>
-          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[11px] font-mono font-bold text-slate-700">
+          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[13px] font-mono font-bold text-slate-700">
             <Truck size={10}/> 
             {record.units && record.units.length > 0 ? record.units[0].license.split(' ')[0] : record.vehiclePlate.split(' ')[0]}
             {record.units && record.units.length > 1 && <span className="text-blue-600">+{record.units.length - 1}</span>}
           </div>
-          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[11px] font-semibold text-slate-700">
+          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[13px] font-semibold text-slate-700">
             Sev {maxSeverity}
           </div>
-          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[11px] font-semibold text-slate-700">
+          <div className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[13px] font-semibold text-slate-700">
             Pts {totalPoints}
           </div>
           {record.hasOOS && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
+            <div className="flex items-center gap-1 px-2 py-1 rounded text-[13px] font-bold bg-red-50 text-red-700 border border-red-200">
               OOS
             </div>
           )}
@@ -319,7 +319,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
             <div className="flex flex-col items-center justify-center py-6 text-emerald-600 bg-white rounded-xl border border-slate-200 shadow-sm">
               <CheckCircle2 size={32} className="mb-2 opacity-80" />
               <p className="text-sm font-bold">Clean Inspection</p>
-              <p className="text-xs text-emerald-600/70 mt-1">No violations were recorded during this inspection.</p>
+              <p className="text-sm text-emerald-600/70 mt-1">No violations were recorded during this inspection.</p>
             </div>
           ) : (
             <>
@@ -329,12 +329,12 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                   ? 'bg-red-50/60 border-red-200'
                   : 'bg-blue-50/60 border-blue-200'
               }`}>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider self-start border ${
+                <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider self-start border ${
                   getInspectionTagSpecs(getJurisdiction(record.state), record.level)
                 }`}>
                   {getJurisdiction(record.state)} LEVEL {record.level?.replace(/level\s*/i, '') || '1'}
                 </span>
-                <span className="text-[11px] sm:text-xs text-slate-700 leading-relaxed">
+                <span className="text-[13px] sm:text-sm text-slate-700 leading-relaxed">
                   {getJurisdiction(record.state) === 'CVOR'
                     ? <>Regulated under <span className="font-bold">Ontario CVOR</span> &mdash; HTA, O.Reg.199/07, O.Reg.555/06, TDG Act</>
                     : <>Regulated under <span className="font-bold">FMCSA SMS</span> &mdash; 49 CFR Parts 382-399</>
@@ -345,7 +345,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
               {/* Top Cards: Driver, Asset, Summary, OOS */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <div className="space-y-3">
-                  <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                     <User size={14} className="text-slate-400" /> Driver
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 h-full">
@@ -355,10 +355,10 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">{record.driver}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Driver ID: {record.driverId}</p>
+                        <p className="text-sm text-slate-500 mt-0.5">Driver ID: {record.driverId}</p>
                       </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
                       <div className="bg-slate-50 border border-slate-100 rounded p-2">
                         <p className="text-slate-500 uppercase tracking-wide">Level</p>
                         <p className="text-slate-800 font-semibold mt-0.5">{record.level}</p>
@@ -372,24 +372,24 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                     <Truck size={14} className="text-slate-400" /> Asset Details
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm h-full">
                     <div className="p-3 border-b border-slate-100">
-                      <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">
+                      <div className="text-[13px] font-bold text-blue-700 uppercase tracking-wide">
                         {primaryUnit?.type || record.vehicleType}
                       </div>
                       <div className="mt-1 text-sm font-semibold text-slate-900 font-mono">
                         {primaryUnit?.license || record.vehiclePlate}
                       </div>
-                      <div className="mt-1 text-xs text-slate-500">
+                      <div className="mt-1 text-sm text-slate-500">
                         Asset ID: <span className="font-mono">{record.assetId}</span> - Units: {unitCount}
                       </div>
                     </div>
                     <div className="divide-y divide-gray-100">
                       {(record.units || []).map((unit: any, idx: number) => (
-                        <div key={idx} className="px-3 py-2.5 text-[11px]">
+                        <div key={idx} className="px-3 py-2.5 text-[13px]">
                           <div className="flex justify-between items-center">
                             <span className="text-slate-700 font-medium uppercase">{unit.type}</span>
                             <span className="text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 font-mono">{unit.make}</span>
@@ -409,11 +409,11 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                     <Activity size={14} className="text-slate-400" /> Violation Summary
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm h-full">
-                    <div className="divide-y divide-gray-100 text-[11px]">
+                    <div className="divide-y divide-gray-100 text-[13px]">
                       {SUMMARY_CATEGORIES.map(cat => (
                         <div key={cat} className="flex justify-between items-center px-3 py-2.5">
                           <span className="text-slate-700 font-medium">{cat}</span>
@@ -427,30 +427,30 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                     <AlertTriangle size={14} className="text-slate-400" /> Out of Service (OOS)
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 h-full flex flex-col justify-between">
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
-                        <span className="text-[11px] text-slate-700 font-medium">Driver OOS</span>
+                        <span className="text-[13px] text-slate-700 font-medium">Driver OOS</span>
                         {record.oosSummary?.driver === 'PASSED' ? (
-                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">PASSED</span>
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">PASSED</span>
                         ) : (
-                          <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">FAILED</span>
+                          <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">FAILED</span>
                         )}
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-[11px] text-slate-700 font-medium">Vehicle OOS</span>
+                        <span className="text-[13px] text-slate-700 font-medium">Vehicle OOS</span>
                         {record.oosSummary?.vehicle === 'PASSED' ? (
-                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">PASSED</span>
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">PASSED</span>
                         ) : (
-                          <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">FAILED</span>
+                          <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">FAILED</span>
                         )}
                       </div>
                     </div>
                     <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-end">
-                      <span className="text-xs font-bold text-slate-900 uppercase">Total OOS</span>
+                      <span className="text-sm font-bold text-slate-900 uppercase">Total OOS</span>
                       <span className={`text-2xl font-bold leading-none ${record.oosSummary?.total > 0 ? 'text-red-600' : 'text-slate-500'}`}>
                         {record.oosSummary?.total || 0}
                       </span>
@@ -461,12 +461,12 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
 
               {/* Bottom Panel: Detailed Violations Table */}
               <div className="space-y-4 mt-2">
-                <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
                   <FileText size={14} className="text-slate-400" /> Detailed Violations
                 </h4>
                 <div className="bg-white border border-slate-200 rounded shadow-sm overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-white border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-white border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-xs">
                       <tr>
                         <th className="px-5 py-3.5">Code</th>
                         <th className="px-5 py-3.5">Category</th>
@@ -491,7 +491,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                           <td className="px-5 py-4">
                             <p className="text-slate-800 font-medium leading-snug">{violation.description}</p>
                             {violation.subDescription && (
-                              <p className="text-[10px] text-blue-400/90 mt-1 font-medium">{violation.subDescription}</p>
+                              <p className="text-xs text-blue-400/90 mt-1 font-medium">{violation.subDescription}</p>
                             )}
                           </td>
                           <td className="px-5 py-4 flex justify-center"><CrashLikelihoodBar value={violation.crashLikelihoodPercent || (violation.driverRiskCategory === 1 ? 85 : violation.driverRiskCategory === 2 ? 45 : 15)} /></td>
@@ -522,13 +522,13 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                       <div>
                         <div className="flex items-center gap-2">
                           <h4 className="text-base font-bold text-slate-900">Violation Details</h4>
-                          <span className={`px-1.5 py-px rounded text-[8px] font-bold uppercase tracking-wider ${
+                          <span className={`px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wider ${
                             jurisdiction === 'CVOR'
                               ? 'bg-red-100 text-red-700 border border-red-200'
                               : 'bg-blue-100 text-blue-700 border border-blue-200'
                           }`}>{jurisdiction}</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">Inspection {record.id}</p>
+                        <p className="text-sm text-slate-500 mt-0.5">Inspection {record.id}</p>
                       </div>
                       <button
                         onClick={() => setSelectedViolation(null)}
@@ -541,7 +541,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
 
                     <div className="p-4 space-y-4 text-sm">
                       <div>
-                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        <div className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
                           {jurisdiction === 'CVOR' ? 'Canadian Code' : 'FMCSA Code'}
                         </div>
                         <div className="mt-1 font-mono text-blue-700 font-bold">{selectedViolation.code}</div>
@@ -555,48 +555,48 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                             : 'bg-red-50/50 border-red-200'
                         }`}>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-1.5 py-px rounded text-[8px] font-bold uppercase tracking-wider ${
+                            <span className={`px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wider ${
                               jurisdiction === 'CVOR'
                                 ? 'bg-blue-100 text-blue-700'
                                 : 'bg-red-100 text-red-700'
                             }`}>
                               {jurisdiction === 'CVOR' ? 'CSA' : 'CVOR'} Equivalent
                             </span>
-                            <span className="text-[10px] text-slate-400 font-medium">{equivalent.source}</span>
+                            <span className="text-xs text-slate-400 font-medium">{equivalent.source}</span>
                           </div>
                           <div className="font-mono text-sm font-bold text-slate-800">{equivalent.code}</div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">{equivalent.shortDescription}</div>
+                          <div className="text-[13px] text-slate-500 mt-0.5">{equivalent.shortDescription}</div>
                         </div>
                       )}
 
                       <div>
-                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</div>
+                        <div className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Category</div>
                         <div className="mt-1 text-slate-800">{selectedViolation.category}</div>
                       </div>
 
                       <div>
-                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</div>
+                        <div className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Description</div>
                         <div className="mt-1 text-slate-900 leading-relaxed">{selectedViolation.description}</div>
                         {selectedViolation.subDescription && (
-                          <div className="mt-1 text-xs text-blue-600/90">{selectedViolation.subDescription}</div>
+                          <div className="mt-1 text-sm text-blue-600/90">{selectedViolation.subDescription}</div>
                         )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider">Severity</div>
+                          <div className="text-[13px] text-slate-500 uppercase tracking-wider">Severity</div>
                           <div className="mt-1 font-bold text-slate-900">{selectedViolation.severity}</div>
                         </div>
                         <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider">Weight</div>
+                          <div className="text-[13px] text-slate-500 uppercase tracking-wider">Weight</div>
                           <div className="mt-1 font-bold text-slate-900">{selectedViolation.weight}</div>
                         </div>
                         <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider">Points</div>
+                          <div className="text-[13px] text-slate-500 uppercase tracking-wider">Points</div>
                           <div className="mt-1 font-bold text-slate-900">{selectedViolation.points}</div>
                         </div>
                         <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-                          <div className="text-[11px] text-slate-500 uppercase tracking-wider">OOS</div>
+                          <div className="text-[13px] text-slate-500 uppercase tracking-wider">OOS</div>
                           <div className={`mt-1 font-bold ${selectedViolation.oos ? 'text-red-600' : 'text-slate-700'}`}>
                             {selectedViolation.oos ? 'YES' : 'NO'}
                           </div>
@@ -626,6 +626,14 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
 
 // --- MAIN APP ---
 export function InspectionsPage() {
+  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor'>('overview');
+  const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '12M' | '24M'>('24M');
+  const [smsBasicCategory, setSmsBasicCategory] = useState('All');
+  const [smsSummaryView, setSmsSummaryView] = useState<'PERCENTILES' | 'INSPECTIONS'>('PERCENTILES');
+  const [smsCatDropdownOpen, setSmsCatDropdownOpen] = useState(false);
+  const [smsTopViolSort, setSmsTopViolSort] = useState<'POINTS' | 'COUNT'>('POINTS');
+  const [smsMetricsView, setSmsMetricsView] = useState<'INSPECTIONS' | 'VIOLATIONS' | 'POINTS'>('POINTS');
+  const [metricsSort, setMetricsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'total', dir: 'desc' });
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [page, setPage] = useState(1);
@@ -787,6 +795,31 @@ export function InspectionsPage() {
           </div>
         </div>
 
+        {/* ===== MAIN TAB NAVIGATION ===== */}
+        <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 gap-1 mb-2">
+          {[
+            { id: 'overview' as const, label: 'Full Overview' },
+            { id: 'sms' as const, label: 'SMS (FMCSA)' },
+            { id: 'cvor' as const, label: 'CVOR (Canadian)' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveMainTab(tab.id)}
+              className={`px-5 py-2 text-sm font-semibold rounded-md transition-all ${
+                activeMainTab === tab.id
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ===== TAB: FULL OVERVIEW ===== */}
+        {activeMainTab === 'overview' && (
+        <>
+
         {/* ===== NEW SECTION: COMPANY OVERVIEW DASHBOARD ===== */}
         <div className="space-y-4 pt-2">
           
@@ -803,7 +836,7 @@ export function InspectionsPage() {
             <AlertOctagon className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
             <div>
               <h4 className="text-sm font-bold text-red-800 uppercase tracking-wide">Intervention Warning</h4>
-              <p className="text-xs text-red-700 mt-1 leading-relaxed">
+              <p className="text-sm text-red-700 mt-1 leading-relaxed">
                 The carrier exceeds the FMCSA Intervention Threshold relative to its safety event grouping based on roadside data. This carrier may be prioritized for an intervention action and roadside inspection. Note: No Acute/Critical Violations were discovered during investigation results.
               </p>
             </div>
@@ -814,7 +847,7 @@ export function InspectionsPage() {
             
             {/* Col 1: Safety Rating & OOS */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
                 <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS
                 <InfoTooltip 
                   text="Safety Rating is a company-wide grade. OOS Rates show how often the carrier's vehicles/drivers are pulled off the road compared to the national average." 
@@ -824,7 +857,7 @@ export function InspectionsPage() {
                 Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
               </div>
               <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Type</th>
@@ -855,13 +888,13 @@ export function InspectionsPage() {
 
             {/* Col 2: Licensing */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
                 <FileSignature size={14} className="text-purple-500"/> Licensing
                 <InfoTooltip 
                   text="Applies exclusively to the whole company. Dictates whether the business has the legal authority and financial backing to operate." 
                 />
               </h3>
-              <div className="space-y-2 text-xs">
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-50">
                   <span className="text-slate-600">Property</span>
                   <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
@@ -893,7 +926,7 @@ export function InspectionsPage() {
                   <Gauge size={16} className="text-blue-600"/>
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">SMS BASIC Status</h3>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">SMS</span>
+                <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">SMS</span>
                 <InfoTooltip text="The carrier's overall safety percentile score based on a 2-year period, ranked against other similar companies." />
               </div>
               <div className="space-y-0 flex-1">
@@ -922,17 +955,17 @@ export function InspectionsPage() {
                   return (
                   <div key={idx} className={`flex flex-col justify-center py-2.5 border-b border-slate-50 last:border-0 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className={`text-xs font-medium ${textClass}`}>
+                      <span className={`text-sm font-medium ${textClass}`}>
                         {status.category}
                       </span>
                       <div className="flex items-center gap-2">
-                          {status.measure !== undefined && <span className="text-[10px] text-slate-400 font-mono">Msr: {status.measure}</span>}
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
+                          {status.measure !== undefined && <span className="text-xs text-slate-400 font-mono">Msr: {status.measure}</span>}
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
                           {status.percentile}
                         </span>
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500 truncate" title={status.details}>{status.details}</span>
+                    <span className="text-xs text-slate-500 truncate" title={status.details}>{status.details}</span>
                   </div>
                 )})}
               </div>
@@ -945,7 +978,7 @@ export function InspectionsPage() {
                   <Activity size={16} className="text-red-600"/>
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">CVOR Analysis</h3>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-red-100 text-red-700">CVOR</span>
+                <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-red-100 text-red-700">CVOR</span>
                 <InfoTooltip text="Commercial Vehicle Operator's Registration (CVOR) performance metrics for Ontario-based carriers." />
               </div>
 
@@ -961,13 +994,13 @@ export function InspectionsPage() {
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className={`text-xs font-medium ${rating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</span>
+                      <span className={`text-sm font-medium ${rating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400 font-mono">{rating}%</span>
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ratingClass}`}>{ratingLabel}</span>
+                        <span className="text-xs text-slate-400 font-mono">{rating}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${ratingClass}`}>{ratingLabel}</span>
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500">Composite score from collisions, convictions, and inspections</span>
+                    <span className="text-xs text-slate-500">Composite score from collisions, convictions, and inspections</span>
                   </div>
                 );
               })()}
@@ -983,13 +1016,13 @@ export function InspectionsPage() {
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-xs font-medium text-slate-700">Collisions</span>
+                      <span className="text-sm font-medium text-slate-700">Collisions</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.collisions.weight} | {val}%</span>
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
+                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.collisions.weight} | {val}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500">{carrierProfile.cvorAnalysis.counts.collisions} collisions | {carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points</span>
+                    <span className="text-xs text-slate-500">{carrierProfile.cvorAnalysis.counts.collisions} collisions | {carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points</span>
                   </div>
                 );
               })()}
@@ -1005,13 +1038,13 @@ export function InspectionsPage() {
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-xs font-medium text-slate-700">Convictions</span>
+                      <span className="text-sm font-medium text-slate-700">Convictions</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.convictions.weight} | {val}%</span>
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
+                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.convictions.weight} | {val}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500">{carrierProfile.cvorAnalysis.counts.convictions} convictions | {carrierProfile.cvorAnalysis.counts.convictionPoints} points</span>
+                    <span className="text-xs text-slate-500">{carrierProfile.cvorAnalysis.counts.convictions} convictions | {carrierProfile.cvorAnalysis.counts.convictionPoints} points</span>
                   </div>
                 );
               })()}
@@ -1028,13 +1061,13 @@ export function InspectionsPage() {
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-xs font-medium text-slate-700">Inspections</span>
+                      <span className="text-sm font-medium text-slate-700">Inspections</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.inspections.weight} | {val}%</span>
-                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
+                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.inspections.weight} | {val}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500">OOS: Overall {carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle {carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver {carrierProfile.cvorAnalysis.counts.oosDriver}%</span>
+                    <span className="text-xs text-slate-500">OOS: Overall {carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle {carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver {carrierProfile.cvorAnalysis.counts.oosDriver}%</span>
                   </div>
                 );
               })()}
@@ -1042,26 +1075,26 @@ export function InspectionsPage() {
               {/* Key Counts */}
               <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100">
                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">Collisions</div>
+                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Collisions</div>
                   <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.collisions}</div>
                 </div>
                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">Convictions</div>
+                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Convictions</div>
                   <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.convictions}</div>
                 </div>
                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">Trucks</div>
+                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Trucks</div>
                   <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.trucks}</div>
                 </div>
                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">Miles</div>
+                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Miles</div>
                   <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M</div>
                 </div>
               </div>
 
               {/* Threshold Legend */}
               <div className="mt-3 pt-3 border-t border-slate-100">
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   <span className="text-slate-500"><span className="font-bold text-slate-700">{cvorThresholds.warning}%</span> Warning</span>
                   <span className="text-slate-500"><span className="font-bold text-amber-600">{cvorThresholds.intervention}%</span> Audit</span>
                   <span className="text-slate-500"><span className="font-bold text-red-600">{cvorThresholds.showCause}%</span> Show Cause</span>
@@ -1075,7 +1108,7 @@ export function InspectionsPage() {
 
         {/* ===== KPI FILTERS (Mini Rectangles) ===== */}
         <div className="mt-8">
-          <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Inspection Filters</h3>
+          <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">Inspection Filters</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             <MiniKpiCard 
               title="All Insps." value={stats.total} icon={ClipboardCheck} color="blue"
@@ -1138,7 +1171,7 @@ export function InspectionsPage() {
             />
 
             {/* Table Header (Hidden on Mobile) */}
-            <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
               <div className="col-span-1 pl-2">Date</div>
               <div className="col-span-2">Report ID</div>
               <div className="col-span-1">Location</div>
@@ -1184,7 +1217,1001 @@ export function InspectionsPage() {
           </div>
         </div>
 
+        </>)}
+
       </div>
+
+      {/* ===== TAB: SMS (FMCSA) ===== */}
+      {activeMainTab === 'sms' && (() => {
+        const smsInspections = inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA');
+        const smsStats = {
+          total: smsInspections.length,
+          clean: smsInspections.filter(i => i.isClean).length,
+          oos: smsInspections.filter(i => i.hasOOS).length,
+          vehicle: smsInspections.filter(i => i.hasVehicleViolations).length,
+          driver: smsInspections.filter(i => i.hasDriverViolations).length,
+          severe: smsInspections.filter(i => i.violations.some(v => v.severity >= 7)).length,
+        };
+        const smsFilteredData = smsInspections.filter(insp => {
+          const matchesSearch = insp.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            insp.driver.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            insp.vehiclePlate.toLowerCase().includes(searchTerm.toLowerCase());
+          let matchesFilter = true;
+          switch(activeFilter) {
+            case 'CLEAN': matchesFilter = insp.isClean; break;
+            case 'OOS': matchesFilter = insp.hasOOS; break;
+            case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
+            case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
+            case 'SEVERE': matchesFilter = insp.violations.some(v => v.severity >= 7); break;
+            default: matchesFilter = true;
+          }
+          return matchesSearch && matchesFilter;
+        });
+        const smsPagedData = smsFilteredData.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+        return (
+        <div className="space-y-6">
+
+          {/* ===== SECTION 1: BASIC CATEGORIES SUMMARY BAR ===== */}
+          {(() => {
+            const basics = carrierProfile.basicStatus.filter(b => b.category !== 'Others');
+            const categoryNames = ['All', ...basics.map(b => b.category)];
+            const displayedBasics = smsBasicCategory === 'All' ? basics : basics.filter(b => b.category === smsBasicCategory);
+
+            // Period-filtered SMS inspections for chart data
+            const now = new Date('2025-12-31'); // reference date matching "Updated December 2025"
+            const periodMonths = smsPeriod === '1M' ? 1 : smsPeriod === '3M' ? 3 : smsPeriod === '12M' ? 12 : 24;
+            const cutoff = new Date(now);
+            cutoff.setMonth(cutoff.getMonth() - periodMonths);
+            const periodInspections = smsInspections.filter(i => new Date(i.date) >= cutoff);
+
+            return (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                {/* Category dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setSmsCatDropdownOpen(!smsCatDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 hover:bg-slate-50"
+                  >
+                    {smsBasicCategory === 'All' ? 'All BASIC categories' : smsBasicCategory}
+                    <ChevronDown size={14} className="text-slate-400" />
+                  </button>
+                  {smsCatDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
+                      {categoryNames.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => { setSmsBasicCategory(cat); setSmsCatDropdownOpen(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${cat === smsBasicCategory ? 'font-bold text-blue-600 bg-blue-50' : 'text-slate-700'}`}
+                        >
+                          {cat === 'All' ? 'All BASIC categories' : cat}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Period selector */}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Updated December 2025</span>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    {(['1M', '3M', '12M', '24M'] as const).map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setSmsPeriod(p)}
+                        className={`px-2.5 py-1 text-xs font-bold transition-colors ${smsPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Category percentile cards */}
+              <div className={`grid gap-3 ${displayedBasics.length === 1 ? 'grid-cols-1 max-w-[200px]' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-7'}`}>
+                {displayedBasics.map((b, i) => {
+                  const pct = parseInt(b.percentile) || 0;
+                  const isAlert = b.percentile !== 'N/A' && pct >= csaThresholds.warning;
+                  // Compute actual count from period-filtered data
+                  const catInspections = periodInspections.filter(insp =>
+                    insp.violations.some(v => v.category === b.category)
+                  ).length;
+                  return (
+                    <div key={i} className="text-center p-2 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setSmsBasicCategory(b.category)}>
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 truncate" title={b.category}>{b.category}</div>
+                      <div className={`text-lg font-bold ${isAlert ? 'text-red-600' : 'text-slate-800'}`}>
+                        {b.percentile === 'N/A' ? '0%' : b.percentile}
+                      </div>
+                      {isAlert && <span className="text-[11px] text-red-500 font-bold">▲ {pct}</span>}
+                      <div className="text-[11px] text-slate-400 mt-0.5">{catInspections} insp.</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            );
+          })()}
+
+          {/* ===== SECTION 2: BASIC SUMMARY + OOS DONUT + TOP VIOLATIONS ===== */}
+          {(() => {
+            // Period-filtered inspections
+            const now = new Date('2025-12-31');
+            const periodMonths = smsPeriod === '1M' ? 1 : smsPeriod === '3M' ? 3 : smsPeriod === '12M' ? 12 : 24;
+            const cutoff = new Date(now);
+            cutoff.setMonth(cutoff.getMonth() - periodMonths);
+            const periodInspections = smsInspections.filter(i => new Date(i.date) >= cutoff);
+
+            // Filter by selected basic category if not 'All'
+            const relevantInspections = smsBasicCategory === 'All'
+              ? periodInspections
+              : periodInspections.filter(insp => insp.violations.some(v => v.category === smsBasicCategory));
+
+            return (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+              {/* LEFT: BASIC Summary Chart */}
+              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-bold text-slate-900">BASIC Summary <span className="text-sm font-normal text-slate-400">/ December 2025</span></h3>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    <button
+                      onClick={() => setSmsSummaryView('PERCENTILES')}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${smsSummaryView === 'PERCENTILES' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                    >PERCENTILES</button>
+                    <button
+                      onClick={() => setSmsSummaryView('INSPECTIONS')}
+                      className={`px-3 py-1.5 text-sm font-bold transition-all ${smsSummaryView === 'INSPECTIONS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                    >INSPECTIONS</button>
+                  </div>
+                </div>
+
+                {smsSummaryView === 'PERCENTILES' ? (
+                  <>
+                    {/* Legend */}
+                    <div className="flex items-center gap-5 mb-5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                        <span className="text-slate-600">Under Threshold</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                        <span className="text-slate-600">Over Threshold</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                        <span className="text-slate-600">Intervention Threshold</span>
+                      </div>
+                    </div>
+
+                    {/* Horizontal Bars */}
+                    <div className="space-y-5">
+                      {carrierProfile.basicStatus
+                        .filter(b => b.category !== 'Others')
+                        .filter(b => smsBasicCategory === 'All' || b.category === smsBasicCategory)
+                        .map((b, i) => {
+                        const pct = parseInt(b.percentile) || 0;
+                        const isNA = b.percentile === 'N/A';
+                        let barColor = 'bg-blue-500';
+                        let dotColor = 'bg-blue-500';
+                        let statusLabel = 'Under Threshold';
+                        if (!isNA && pct >= csaThresholds.critical) { barColor = 'bg-red-500'; dotColor = 'bg-red-500'; statusLabel = 'Intervention Threshold'; }
+                        else if (!isNA && pct >= csaThresholds.warning) { barColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; statusLabel = 'Over Threshold'; }
+                        return (
+                          <div key={i} className="group/bar flex items-center gap-3 relative">
+                            <div className="w-40 text-sm font-semibold text-slate-700 truncate" title={b.category}>{b.category}</div>
+                            <div className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${dotColor}`}></div>
+                            <div className="flex-1 relative h-6 bg-slate-100 rounded-full overflow-visible cursor-pointer">
+                              {!isNA && pct > 0 && (
+                                <div className={`absolute left-0 top-0 h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                              )}
+                              <div className="absolute top-0 h-full border-l border-slate-300" style={{ left: `${csaThresholds.warning}%` }}></div>
+                              <div className="absolute top-0 h-full border-l-2 border-red-400" style={{ left: `${csaThresholds.critical}%` }}></div>
+                              {!isNA && pct > 0 && (
+                                <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow ${barColor}`} style={{ left: `calc(${Math.min(pct, 100)}% - 8px)` }}></div>
+                              )}
+                              {/* Hover tooltip */}
+                              <div className="hidden group-hover/bar:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
+                                <div className="bg-slate-900 text-white text-sm rounded-lg px-3.5 py-2.5 shadow-xl whitespace-nowrap">
+                                  <div className="font-bold text-blue-300 mb-0.5">{b.category}</div>
+                                  <div>Percentile: <span className="font-bold">{b.percentile}</span></div>
+                                  <div>Measure: <span className="font-bold">{b.measure}</span></div>
+                                  <div>Status: <span className="font-bold">{isNA ? 'Insufficient Data' : statusLabel}</span></div>
+                                  <div className="text-slate-400 mt-0.5 max-w-[220px] whitespace-normal">{b.details}</div>
+                                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`text-sm font-bold w-12 text-right ${pct >= csaThresholds.critical ? 'text-red-600' : pct >= csaThresholds.warning ? 'text-amber-600' : 'text-slate-500'}`}>
+                              {isNA ? '0%' : b.percentile}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* INSPECTIONS view - Vertical bar chart by month */}
+                    <div className="flex items-center gap-5 mb-5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-sm bg-blue-900"></div>
+                        <span className="text-slate-600">Inspections with Violations</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-sm bg-blue-300"></div>
+                        <span className="text-slate-600">Inspections without Violations</span>
+                      </div>
+                    </div>
+                    {(() => {
+                      // Group period inspections by month
+                      const monthMap: Record<string, { withViol: number; withoutViol: number }> = {};
+                      relevantInspections.forEach(insp => {
+                        const d = new Date(insp.date);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                        if (!monthMap[key]) monthMap[key] = { withViol: 0, withoutViol: 0 };
+                        const hasCategory = smsBasicCategory === 'All'
+                          ? insp.violations.length > 0
+                          : insp.violations.some(v => v.category === smsBasicCategory);
+                        if (hasCategory) monthMap[key].withViol++;
+                        else monthMap[key].withoutViol++;
+                      });
+
+                      // Fill missing months
+                      const months: string[] = [];
+                      const start = new Date(cutoff);
+                      start.setDate(1);
+                      for (let m = new Date(start); m <= now; m.setMonth(m.getMonth() + 1)) {
+                        months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+                      }
+                      const maxVal = Math.max(1, ...months.map(m => (monthMap[m]?.withViol || 0) + (monthMap[m]?.withoutViol || 0)));
+                      const yLabels = Array.from({ length: 5 }, (_, i) => Math.round((maxVal / 4) * (4 - i) * 10) / 10);
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+                      return (
+                        <div className="mt-3">
+                          <div className="text-sm text-slate-400 font-bold uppercase mb-3">{maxVal} inspections</div>
+                          <div className="flex items-end gap-px" style={{ height: 260 }}>
+                            {/* Y-axis labels */}
+                            <div className="flex flex-col justify-between h-full pr-2 text-xs text-slate-400 font-mono w-10 flex-shrink-0">
+                              {yLabels.map((v, i) => <span key={i}>{v}</span>)}
+                              <span>0</span>
+                            </div>
+                            {/* Bars */}
+                            <div className="flex-1 flex items-end gap-1 h-full border-b border-l border-slate-200 px-1 pb-0.5 relative">
+                              {/* Horizontal grid lines */}
+                              {yLabels.map((_, i) => (
+                                <div key={i} className="absolute left-0 right-0 border-t border-slate-100" style={{ bottom: `${((4 - i) / 4) * 100}%` }}></div>
+                              ))}
+                              {months.map(m => {
+                                const data = monthMap[m] || { withViol: 0, withoutViol: 0 };
+                                const hWith = maxVal > 0 ? (data.withViol / maxVal) * 100 : 0;
+                                const hWithout = maxVal > 0 ? (data.withoutViol / maxVal) * 100 : 0;
+                                const [y, mo] = m.split('-');
+                                const label = periodMonths <= 3
+                                  ? `${monthNames[parseInt(mo) - 1]}`
+                                  : `${monthNames[parseInt(mo) - 1]} ${y.slice(2)}`;
+                                return (
+                                  <div key={m} className="group/col flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer">
+                                    <div className="flex gap-0.5 items-end w-full justify-center" style={{ height: '100%' }}>
+                                      {data.withViol > 0 && <div className="bg-blue-900 rounded-t-sm w-4 group-hover/col:opacity-80 transition-opacity" style={{ height: `${hWith}%`, minHeight: data.withViol > 0 ? 4 : 0 }}></div>}
+                                      {data.withoutViol > 0 && <div className="bg-blue-300 rounded-t-sm w-4 group-hover/col:opacity-80 transition-opacity" style={{ height: `${hWithout}%`, minHeight: data.withoutViol > 0 ? 4 : 0 }}></div>}
+                                    </div>
+                                    {(data.withViol > 0 || data.withoutViol > 0) && (
+                                      <div className="hidden group-hover/col:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1 pointer-events-none">
+                                        <div className="bg-slate-900 text-white text-sm rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                          <div className="font-bold text-blue-300 mb-0.5">{label}</div>
+                                          <div>With violations: <span className="font-bold">{data.withViol}</span></div>
+                                          <div>Clean: <span className="font-bold">{data.withoutViol}</span></div>
+                                          <div>Total: <span className="font-bold">{data.withViol + data.withoutViol}</span></div>
+                                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {/* X-axis labels */}
+                          <div className="flex ml-10 mt-1">
+                            {months.length <= 12 ? (
+                              months.map((m, i) => {
+                                const [y, mo] = m.split('-');
+                                return <div key={i} className="flex-1 text-center text-xs text-slate-400">{monthNames[parseInt(mo) - 1]} {y.slice(2)}</div>;
+                              })
+                            ) : (
+                              <>
+                                <div className="flex-none text-xs text-slate-400">{monthNames[new Date(cutoff).getMonth()]} {cutoff.getFullYear()}</div>
+                                <div className="flex-1"></div>
+                                <div className="flex-none text-xs text-slate-400">Dec 2025</div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+
+              {/* RIGHT: OOS Donut + Top Violations */}
+              <div className="space-y-4">
+
+                {/* Out of Service Summary */}
+                {(() => {
+                  const totalViolations = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => smsBasicCategory === 'All' || v.category === smsBasicCategory).length, 0);
+                  const oosViolations = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => v.oos && (smsBasicCategory === 'All' || v.category === smsBasicCategory)).length, 0);
+                  const nonOosViolations = totalViolations - oosViolations;
+                  const oosPercent = totalViolations > 0 ? Math.round((oosViolations / totalViolations) * 100) : 0;
+                  const nonOosPercent = 100 - oosPercent;
+                  const circumference = 2 * Math.PI * 45;
+                  const nonOosStroke = (nonOosPercent / 100) * circumference;
+                  const oosStroke = circumference - nonOosStroke;
+
+                  return (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                    <h3 className="text-base font-bold text-slate-900 mb-4">Out of Service Summary <span className="text-sm font-normal text-slate-400">/ Last {smsPeriod === '24M' ? '24 Months' : smsPeriod === '12M' ? '12 Months' : smsPeriod === '3M' ? '3 Months' : '1 Month'}</span></h3>
+                    <div className="flex items-center gap-6">
+                      <div className="relative flex-shrink-0">
+                        <svg width="110" height="110" viewBox="0 0 110 110">
+                          <circle cx="55" cy="55" r="45" fill="none" stroke="#e2e8f0" strokeWidth="10" />
+                          {totalViolations > 0 && (
+                            <circle cx="55" cy="55" r="45" fill="none" stroke="#3b82f6" strokeWidth="10"
+                              strokeDasharray={`${nonOosStroke} ${oosStroke}`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 55 55)" />
+                          )}
+                          {oosViolations > 0 && (
+                            <circle cx="55" cy="55" r="45" fill="none" stroke="#ef4444" strokeWidth="10"
+                              strokeDasharray={`${oosStroke} ${nonOosStroke}`}
+                              strokeDashoffset={-nonOosStroke}
+                              strokeLinecap="round"
+                              transform="rotate(-90 55 55)" />
+                          )}
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-xl font-bold text-slate-900">{totalViolations}</span>
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Violations</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-sm bg-blue-500"></div>
+                          <span className="text-slate-600">Non OOS</span>
+                          <span className="ml-auto font-bold text-slate-700">{nonOosPercent}%</span>
+                          <span className="text-slate-500 w-6 text-right">{nonOosViolations}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-sm bg-red-500"></div>
+                          <span className="text-slate-600">Out-of-service</span>
+                          <span className="ml-auto font-bold text-slate-700">{oosPercent}%</span>
+                          <span className="text-slate-500 w-6 text-right">{oosViolations}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  );
+                })()}
+
+                {/* Top Violations */}
+                {(() => {
+                  const violationMap: Record<string, { points: number; count: number }> = {};
+                  relevantInspections.forEach(insp => {
+                    insp.violations
+                      .filter(v => smsBasicCategory === 'All' || v.category === smsBasicCategory)
+                      .forEach(v => {
+                        const key = v.description.length > 40 ? v.description.substring(0, 40) + '…' : v.description;
+                        if (!violationMap[key]) violationMap[key] = { points: 0, count: 0 };
+                        violationMap[key].points += v.points;
+                        violationMap[key].count += 1;
+                      });
+                  });
+                  const topViolations = Object.entries(violationMap)
+                    .sort((a, b) => smsTopViolSort === 'POINTS' ? b[1].points - a[1].points : b[1].count - a[1].count)
+                    .slice(0, 5);
+
+                  return (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-bold text-slate-900">Top Violations</h3>
+                      <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                        <button
+                          onClick={() => setSmsTopViolSort('POINTS')}
+                          className={`px-2.5 py-1.5 text-sm font-bold transition-colors ${smsTopViolSort === 'POINTS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                        >POINTS</button>
+                        <button
+                          onClick={() => setSmsTopViolSort('COUNT')}
+                          className={`px-2.5 py-1.5 text-sm font-bold transition-colors ${smsTopViolSort === 'COUNT' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                        >COUNT</button>
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      {topViolations.length > 0 ? topViolations.map(([name, data], i) => (
+                        <div key={i} className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-slate-700 truncate" title={name}>{name}</span>
+                          <span className="font-bold text-slate-900 flex-shrink-0">{smsTopViolSort === 'POINTS' ? data.points : data.count}</span>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-slate-400 text-center py-4">No violations in this period.</p>
+                      )}
+                    </div>
+                  </div>
+                  );
+                })()}
+              </div>
+            </div>
+            );
+          })()}
+
+          {/* ===== SECTION 3: BASIC METRICS BY STATE ===== */}
+          {(() => {
+            const now = new Date('2025-12-31');
+            const periodMonths = smsPeriod === '1M' ? 1 : smsPeriod === '3M' ? 3 : smsPeriod === '12M' ? 12 : 24;
+            const cutoff = new Date(now);
+            cutoff.setMonth(cutoff.getMonth() - periodMonths);
+            const periodInspections = smsInspections.filter(i => new Date(i.date) >= cutoff);
+
+            const stateMap: Record<string, { inspections: number; violations: number; points: number; basics: Record<string, { inspections: number; violations: number; points: number }> }> = {};
+            periodInspections.forEach(insp => {
+              const st = insp.state;
+              if (!stateMap[st]) stateMap[st] = { inspections: 0, violations: 0, points: 0, basics: {} };
+              stateMap[st].inspections += 1;
+              insp.violations.forEach(v => {
+                stateMap[st].violations += 1;
+                stateMap[st].points += v.points;
+                const cat = v.category;
+                if (!stateMap[st].basics[cat]) stateMap[st].basics[cat] = { inspections: 0, violations: 0, points: 0 };
+                stateMap[st].basics[cat].violations += 1;
+                stateMap[st].basics[cat].points += v.points;
+              });
+              // Count inspections per category
+              const cats = new Set(insp.violations.map(v => v.category));
+              cats.forEach(cat => {
+                if (!stateMap[st].basics[cat]) stateMap[st].basics[cat] = { inspections: 0, violations: 0, points: 0 };
+                stateMap[st].basics[cat].inspections += 1;
+              });
+            });
+            const sortKey = smsMetricsView === 'INSPECTIONS' ? 'inspections' : smsMetricsView === 'VIOLATIONS' ? 'violations' : 'points';
+            const stateNames: Record<string, string> = {
+              'MI': 'Michigan', 'TX': 'Texas', 'OH': 'Ohio', 'NY': 'New York', 'IL': 'Illinois',
+              'PA': 'Pennsylvania', 'CA': 'California', 'FL': 'Florida', 'GA': 'Georgia', 'NC': 'North Carolina',
+              'IN': 'Indiana', 'NJ': 'New Jersey', 'VA': 'Virginia', 'WI': 'Wisconsin', 'MO': 'Missouri',
+              'ON': 'Ontario', 'QC': 'Quebec', 'AB': 'Alberta', 'BC': 'British Columbia',
+            };
+            const basicCategories = ['Unsafe Driving', 'Crash Indicator', 'HOS comp.', 'Vehicle maint.', 'Cont. substances', 'Haz. materials', 'Driver fitness'];
+            const basicCategoryKeys: Record<string, string[]> = {
+              'Unsafe Driving': ['Unsafe Driving'],
+              'Crash Indicator': ['Crash Indicator'],
+              'HOS comp.': ['Hours-of-service Compliance'],
+              'Vehicle maint.': ['Vehicle Maintenance'],
+              'Cont. substances': ['Controlled Substances'],
+              'Haz. materials': ['Hazmat compliance'],
+              'Driver fitness': ['Driver Fitness'],
+            };
+
+            // Helper to get a category value for a state row
+            const getCatVal = (data: typeof stateMap[string], cat: string) => {
+              const keys = basicCategoryKeys[cat] || [cat];
+              return keys.reduce((sum, k) => sum + ((data.basics[k] || { inspections: 0, violations: 0, points: 0 })[sortKey] || 0), 0);
+            };
+
+            // Sort rows based on metricsSort state
+            const stateEntries = Object.entries(stateMap);
+            const stateRows = stateEntries.sort((a, b) => {
+              let aVal: number | string;
+              let bVal: number | string;
+              if (metricsSort.col === 'state') {
+                aVal = stateNames[a[0]] || a[0];
+                bVal = stateNames[b[0]] || b[0];
+                return metricsSort.dir === 'asc' ? (aVal as string).localeCompare(bVal as string) : (bVal as string).localeCompare(aVal as string);
+              } else if (metricsSort.col === 'total') {
+                aVal = a[1][sortKey];
+                bVal = b[1][sortKey];
+              } else {
+                aVal = getCatVal(a[1], metricsSort.col);
+                bVal = getCatVal(b[1], metricsSort.col);
+              }
+              return metricsSort.dir === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+            });
+
+            const handleColSort = (col: string) => {
+              setMetricsSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
+            };
+            const sortIcon = (col: string) => metricsSort.col === col ? (metricsSort.dir === 'desc' ? ' ↓' : ' ↑') : '';
+
+            return (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <h3 className="text-base font-bold text-slate-900">BASIC Metrics by State <span className="text-sm font-normal text-slate-400">/ Last {smsPeriod === '24M' ? '24 Months' : smsPeriod === '12M' ? '12 Months' : smsPeriod === '3M' ? '3 Months' : '1 Month'}</span></h3>
+                <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                  {(['INSPECTIONS', 'VIOLATIONS', 'POINTS'] as const).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setSmsMetricsView(v)}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${smsMetricsView === v ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                    >{v === 'POINTS' ? 'CSA POINTS' : v}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded border border-slate-100">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th
+                        className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 select-none transition-colors"
+                        onClick={() => handleColSort('state')}
+                      >State{sortIcon('state')}</th>
+                      {basicCategories.map(cat => (
+                        <th
+                          key={cat}
+                          className="px-2 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-center whitespace-nowrap cursor-pointer hover:text-blue-600 select-none transition-colors"
+                          onClick={() => handleColSort(cat)}
+                        >{cat}{sortIcon(cat)}</th>
+                      ))}
+                      <th
+                        className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-center cursor-pointer hover:text-blue-600 select-none transition-colors"
+                        onClick={() => handleColSort('total')}
+                      >Total{sortIcon('total')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {stateRows.length > 0 ? stateRows.map(([st, data]) => (
+                      <tr key={st} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2.5 font-medium text-blue-600">{stateNames[st] || st}</td>
+                        {basicCategories.map(cat => {
+                          const val = getCatVal(data, cat);
+                          return <td key={cat} className="px-2 py-2.5 text-center text-slate-700">{val}</td>;
+                        })}
+                        <td className="px-3 py-2.5 text-center font-bold text-slate-900">{data[sortKey]}</td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={basicCategories.length + 2} className="px-3 py-8 text-center text-slate-400">No inspection data available for this period.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            );
+          })()}
+
+
+
+          {/* Intervention Warning Banner */}
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
+            <AlertOctagon className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
+            <div>
+              <h4 className="text-sm font-bold text-red-800 uppercase tracking-wide">FMCSA Intervention Warning</h4>
+              <p className="text-sm text-red-700 mt-1 leading-relaxed">
+                The carrier exceeds the FMCSA Intervention Threshold relative to its safety event grouping based on roadside data. This carrier may be prioritized for an intervention action and roadside inspection.
+              </p>
+            </div>
+          </div>
+
+          {/* Top Row: Safety Rating & OOS + Licensing */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Safety Rating & OOS */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
+                <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS Rates
+              </h3>
+              <div className="mb-4 text-sm font-medium text-slate-700">
+                Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
+              </div>
+              <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Type</th>
+                      <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
+                      <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Vehicle</td>
+                      <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Driver</td>
+                      <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Hazmat</td>
+                      <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Licensing */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <FileSignature size={14} className="text-purple-500"/> Licensing
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Property</span>
+                  <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Passenger</span>
+                  <span className="font-medium text-slate-400">No</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Household</span>
+                  <span className="font-medium text-slate-400">No</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Broker</span>
+                  <span className="font-medium text-slate-400">No</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CSA BASIC Status - Full Width */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+            <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Gauge size={16} className="text-blue-600"/>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">SMS BASIC Status</h3>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">SMS</span>
+              <InfoTooltip text="The carrier's FMCSA Safety Measurement System percentile scores based on a 2-year period, ranked against similar carriers." />
+            </div>
+            <div className="space-y-0">
+              {carrierProfile.basicStatus.map((status, idx) => {
+                const numericPercentile = parseInt(status.percentile) || 0;
+                let alertClass = 'bg-slate-100 text-slate-600';
+                let textClass = 'text-slate-700';
+                let borderClass = '';
+                if (status.percentile !== 'N/A') {
+                    if (numericPercentile >= csaThresholds.critical) {
+                        alertClass = 'bg-red-100 text-red-800';
+                        textClass = 'text-red-700 font-bold';
+                        borderClass = 'border-l-2 border-l-red-400 pl-3';
+                    } else if (numericPercentile >= csaThresholds.warning) {
+                        alertClass = 'bg-amber-100 text-amber-800';
+                        textClass = 'text-amber-700 font-bold';
+                        borderClass = 'border-l-2 border-l-amber-400 pl-3';
+                    }
+                } else if (status.alert) {
+                    alertClass = 'bg-red-100 text-red-800';
+                    textClass = 'text-red-700 font-bold';
+                    borderClass = 'border-l-2 border-l-red-400 pl-3';
+                }
+                return (
+                  <div key={idx} className={`flex flex-col justify-center py-2.5 border-b border-slate-50 last:border-0 ${borderClass}`}>
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className={`text-sm font-medium ${textClass}`}>{status.category}</span>
+                      <div className="flex items-center gap-2">
+                        {status.measure !== undefined && <span className="text-xs text-slate-400 font-mono">Msr: {status.measure}</span>}
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{status.percentile}</span>
+                      </div>
+                    </div>
+                    <span className="text-xs text-slate-500 truncate" title={status.details}>{status.details}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Threshold Legend */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className="text-slate-500"><span className="font-bold text-slate-700">{csaThresholds.warning}%</span> Warning</span>
+                <span className="text-slate-500"><span className="font-bold text-red-600">{csaThresholds.critical}%</span> Critical</span>
+              </div>
+            </div>
+          </div>
+
+          {/* SMS Inspection Filters */}
+          <div>
+            <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">SMS Inspection Filters</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <MiniKpiCard title="All SMS" value={smsStats.total} icon={ClipboardCheck} color="blue" active={activeFilter === 'ALL'} onClick={() => setActiveFilter('ALL')} />
+              <MiniKpiCard title="Clean" value={smsStats.clean} icon={CheckCircle2} color="emerald" active={activeFilter === 'CLEAN'} onClick={() => setActiveFilter('CLEAN')} />
+              <MiniKpiCard title="OOS Flags" value={smsStats.oos} icon={ShieldAlert} color="red" active={activeFilter === 'OOS'} onClick={() => setActiveFilter('OOS')} />
+              <MiniKpiCard title="Veh. Issues" value={smsStats.vehicle} icon={Truck} color="orange" active={activeFilter === 'VEHICLE'} onClick={() => setActiveFilter('VEHICLE')} />
+              <MiniKpiCard title="HOS/Driver" value={smsStats.driver} icon={User} color="purple" active={activeFilter === 'DRIVER'} onClick={() => setActiveFilter('DRIVER')} />
+              <MiniKpiCard title="Severe (7+)" value={smsStats.severe} icon={AlertTriangle} color="yellow" active={activeFilter === 'SEVERE'} onClick={() => setActiveFilter('SEVERE')} />
+            </div>
+          </div>
+
+          {/* SMS Inspection List */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">SMS Inspections</h2>
+              <InfoTooltip title="US Inspections" text="Inspections conducted under US federal jurisdiction (FMCSA / SMS)." />
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <DataListToolbar
+                searchValue={searchTerm}
+                onSearchChange={setSearchTerm}
+                searchPlaceholder="Search SMS inspections..."
+                columns={columns}
+                onToggleColumn={(id) => setColumns(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                totalItems={smsFilteredData.length}
+                currentPage={page}
+                rowsPerPage={rowsPerPage}
+                onPageChange={setPage}
+                onRowsPerPageChange={setRowsPerPage}
+              />
+
+              {/* Table Header */}
+              <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <div className="col-span-1 pl-2">Date</div>
+                <div className="col-span-2">Report ID</div>
+                <div className="col-span-1">Location</div>
+                <div className="col-span-2">Driver</div>
+                <div className="col-span-2">Asset</div>
+                <div className="col-span-1 text-center">Violations</div>
+                <div className="col-span-1 text-center">Severity</div>
+                <div className="col-span-1 text-center">Points</div>
+                <div className="col-span-1">Status</div>
+              </div>
+
+              <div className="divide-y divide-slate-200">
+                {smsPagedData.length > 0 ? (
+                  smsPagedData.map(record => (
+                    <InspectionRow key={record.id} record={record} onEdit={openEditModal} />
+                  ))
+                ) : (
+                  <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
+                    <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
+                      <AlertCircle size={32} className="text-slate-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 tracking-wide">No SMS records found</h3>
+                    <p className="text-sm text-slate-500 mt-1 mb-5 max-w-sm">No US/FMCSA inspections match your current search or filter criteria.</p>
+                    <button
+                      onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); }}
+                      className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors text-sm shadow-sm"
+                    >
+                      Clear all filters
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <PaginationBar
+                totalItems={smsFilteredData.length}
+                currentPage={page}
+                rowsPerPage={rowsPerPage}
+                onPageChange={setPage}
+                onRowsPerPageChange={setRowsPerPage}
+              />
+            </div>
+          </div>
+
+        </div>
+        );
+      })()}
+
+      {/* ===== TAB: CVOR (Canadian) ===== */}
+      {activeMainTab === 'cvor' && (() => {
+        const cvorInspections = inspectionsData.filter(i => getJurisdiction(i.state) === 'CVOR');
+        const cvorStats = {
+          total: cvorInspections.length,
+          clean: cvorInspections.filter(i => i.isClean).length,
+          oos: cvorInspections.filter(i => i.hasOOS).length,
+          vehicle: cvorInspections.filter(i => i.hasVehicleViolations).length,
+          driver: cvorInspections.filter(i => i.hasDriverViolations).length,
+          severe: cvorInspections.filter(i => i.violations.some(v => v.severity >= 7)).length,
+        };
+        const cvorFilteredData = cvorInspections.filter(insp => {
+          const matchesSearch = insp.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            insp.driver.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            insp.vehiclePlate.toLowerCase().includes(searchTerm.toLowerCase());
+          let matchesFilter = true;
+          switch(activeFilter) {
+            case 'CLEAN': matchesFilter = insp.isClean; break;
+            case 'OOS': matchesFilter = insp.hasOOS; break;
+            case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
+            case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
+            case 'SEVERE': matchesFilter = insp.violations.some(v => v.severity >= 7); break;
+            default: matchesFilter = true;
+          }
+          return matchesSearch && matchesFilter;
+        });
+        const cvorPagedData = cvorFilteredData.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+        const cvorRating = carrierProfile.cvorAnalysis.rating;
+        let overallRatingClass = 'bg-green-100 text-green-800';
+        let overallRatingLabel = 'OK';
+        if (cvorRating >= cvorThresholds.showCause) { overallRatingClass = 'bg-red-100 text-red-800'; overallRatingLabel = 'CRITICAL'; }
+        else if (cvorRating >= cvorThresholds.intervention) { overallRatingClass = 'bg-amber-100 text-amber-800'; overallRatingLabel = 'HIGH'; }
+        else if (cvorRating >= cvorThresholds.warning) { overallRatingClass = 'bg-yellow-100 text-yellow-800'; overallRatingLabel = 'ALERT'; }
+
+        const renderCvorRow = (label: string, val: number, detail: string, weight?: number) => {
+          let alertClass = 'bg-green-100 text-green-800';
+          let rowLabel = 'OK';
+          let borderClass = '';
+          if (val >= cvorThresholds.showCause) { alertClass = 'bg-red-100 text-red-800'; rowLabel = 'VERY HIGH'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
+          else if (val >= cvorThresholds.intervention) { alertClass = 'bg-amber-100 text-amber-800'; rowLabel = 'HIGH'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
+          else if (val >= cvorThresholds.warning) { alertClass = 'bg-yellow-100 text-yellow-800'; rowLabel = 'ALERT'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
+          return (
+            <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
+              <div className="flex justify-between items-center mb-0.5">
+                <span className="text-sm font-medium text-slate-700">{label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-mono">{weight !== undefined ? `Wt: ${weight} | ` : ''}{val}%</span>
+                  <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{rowLabel}</span>
+                </div>
+              </div>
+              <span className="text-xs text-slate-500">{detail}</span>
+            </div>
+          );
+        };
+
+        return (
+        <div className="space-y-6">
+
+          {/* CVOR Analysis Panel - Full Width */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+            <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+                <Activity size={16} className="text-red-600"/>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">CVOR Analysis</h3>
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-red-100 text-red-700">CVOR</span>
+              <InfoTooltip text="Commercial Vehicle Operator's Registration (CVOR) performance metrics for Ontario-based carriers." />
+            </div>
+
+            {/* Overall Rating */}
+            <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${cvorRating >= cvorThresholds.warning ? 'border-l-2 border-l-amber-400 pl-3' : ''}`}>
+              <div className="flex justify-between items-center mb-0.5">
+                <span className={`text-sm font-medium ${cvorRating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-mono">{cvorRating}%</span>
+                  <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${overallRatingClass}`}>{overallRatingLabel}</span>
+                </div>
+              </div>
+              <span className="text-xs text-slate-500">Composite score from collisions, convictions, and inspections</span>
+            </div>
+
+            {/* Collisions */}
+            {renderCvorRow(
+              'Collisions',
+              carrierProfile.cvorAnalysis.collisions.percentage,
+              `${carrierProfile.cvorAnalysis.counts.collisions} collisions | ${carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points`,
+              carrierProfile.cvorAnalysis.collisions.weight
+            )}
+
+            {/* Convictions */}
+            {renderCvorRow(
+              'Convictions',
+              carrierProfile.cvorAnalysis.convictions.percentage,
+              `${carrierProfile.cvorAnalysis.counts.convictions} convictions | ${carrierProfile.cvorAnalysis.counts.convictionPoints} points`,
+              carrierProfile.cvorAnalysis.convictions.weight
+            )}
+
+            {/* Inspections */}
+            {renderCvorRow(
+              'Inspections',
+              carrierProfile.cvorAnalysis.inspections.percentage,
+              `OOS: Overall ${carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle ${carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver ${carrierProfile.cvorAnalysis.counts.oosDriver}%`,
+              carrierProfile.cvorAnalysis.inspections.weight
+            )}
+
+            {/* Key Counts */}
+            <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100">
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Collisions</div>
+                <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.collisions}</div>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Convictions</div>
+                <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.convictions}</div>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Trucks</div>
+                <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.trucks}</div>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Miles</div>
+                <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M</div>
+              </div>
+            </div>
+
+            {/* Threshold Legend */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className="text-slate-500"><span className="font-bold text-slate-700">{cvorThresholds.warning}%</span> Warning</span>
+                <span className="text-slate-500"><span className="font-bold text-amber-600">{cvorThresholds.intervention}%</span> Audit</span>
+                <span className="text-slate-500"><span className="font-bold text-red-600">{cvorThresholds.showCause}%</span> Show Cause</span>
+                <span className="text-slate-500"><span className="font-bold text-red-800">{cvorThresholds.seizure}%</span> Seizure</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CVOR Inspection Filters */}
+          <div>
+            <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">CVOR Inspection Filters</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <MiniKpiCard title="All CVOR" value={cvorStats.total} icon={ClipboardCheck} color="rose" active={activeFilter === 'ALL'} onClick={() => setActiveFilter('ALL')} />
+              <MiniKpiCard title="Clean" value={cvorStats.clean} icon={CheckCircle2} color="emerald" active={activeFilter === 'CLEAN'} onClick={() => setActiveFilter('CLEAN')} />
+              <MiniKpiCard title="OOS Flags" value={cvorStats.oos} icon={ShieldAlert} color="red" active={activeFilter === 'OOS'} onClick={() => setActiveFilter('OOS')} />
+              <MiniKpiCard title="Veh. Issues" value={cvorStats.vehicle} icon={Truck} color="orange" active={activeFilter === 'VEHICLE'} onClick={() => setActiveFilter('VEHICLE')} />
+              <MiniKpiCard title="HOS/Driver" value={cvorStats.driver} icon={User} color="purple" active={activeFilter === 'DRIVER'} onClick={() => setActiveFilter('DRIVER')} />
+              <MiniKpiCard title="Severe (7+)" value={cvorStats.severe} icon={AlertTriangle} color="yellow" active={activeFilter === 'SEVERE'} onClick={() => setActiveFilter('SEVERE')} />
+            </div>
+          </div>
+
+          {/* CVOR Inspection List */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">CVOR Inspections</h2>
+              <InfoTooltip title="Canadian Inspections" text="Inspections conducted under Canadian jurisdiction (CVOR / NSC)." />
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <DataListToolbar
+                searchValue={searchTerm}
+                onSearchChange={setSearchTerm}
+                searchPlaceholder="Search CVOR inspections..."
+                columns={columns}
+                onToggleColumn={(id) => setColumns(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                totalItems={cvorFilteredData.length}
+                currentPage={page}
+                rowsPerPage={rowsPerPage}
+                onPageChange={setPage}
+                onRowsPerPageChange={setRowsPerPage}
+              />
+
+              {/* Table Header */}
+              <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                <div className="col-span-1 pl-2">Date</div>
+                <div className="col-span-2">Report ID</div>
+                <div className="col-span-1">Location</div>
+                <div className="col-span-2">Driver</div>
+                <div className="col-span-2">Asset</div>
+                <div className="col-span-1 text-center">Violations</div>
+                <div className="col-span-1 text-center">Severity</div>
+                <div className="col-span-1 text-center">Points</div>
+                <div className="col-span-1">Status</div>
+              </div>
+
+              <div className="divide-y divide-slate-200">
+                {cvorPagedData.length > 0 ? (
+                  cvorPagedData.map(record => (
+                    <InspectionRow key={record.id} record={record} onEdit={openEditModal} />
+                  ))
+                ) : (
+                  <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
+                    <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
+                      <AlertCircle size={32} className="text-slate-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 tracking-wide">No CVOR records found</h3>
+                    <p className="text-sm text-slate-500 mt-1 mb-5 max-w-sm">No Canadian inspections match your current search or filter criteria.</p>
+                    <button
+                      onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); }}
+                      className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors text-sm shadow-sm"
+                    >
+                      Clear all filters
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <PaginationBar
+                totalItems={cvorFilteredData.length}
+                currentPage={page}
+                rowsPerPage={rowsPerPage}
+                onPageChange={setPage}
+                onRowsPerPageChange={setRowsPerPage}
+              />
+            </div>
+          </div>
+
+        </div>
+        );
+      })()}
 
       {/* ===== UPLOAD MODAL ===== */}
       {showUploadModal && (
@@ -1202,7 +2229,7 @@ export function InspectionsPage() {
                   <Upload size={20} />
                 </div>
                 <p className="text-sm font-bold text-blue-900 mb-1">Click to upload or drag and drop</p>
-                <p className="text-xs text-blue-600/70">PDF, CSV, or XML (max. 10MB)</p>
+                <p className="text-sm text-blue-600/70">PDF, CSV, or XML (max. 10MB)</p>
               </div>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
@@ -1220,7 +2247,7 @@ export function InspectionsPage() {
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
               <div>
                 <h3 className="font-bold text-lg text-slate-900">{editingInspection ? 'Edit Inspection' : 'Add Inspection'}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{editingInspection ? `Editing ${inspForm.id}` : 'Create a new inspection record manually'}</p>
+                <p className="text-sm text-slate-500 mt-0.5">{editingInspection ? `Editing ${inspForm.id}` : 'Create a new inspection record manually'}</p>
               </div>
               <button onClick={closeFormModal} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-md transition-colors">
                 <X size={18} />
@@ -1230,25 +2257,25 @@ export function InspectionsPage() {
 
               {/* Section: Basic Info */}
               <div>
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Basic Information</h4>
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Basic Information</h4>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Report Number</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Report Number</label>
                     <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. MIGRAHA00829" value={inspForm.id} onChange={e => setInspForm(p => ({ ...p, id: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Inspection Date</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Inspection Date</label>
                     <input type="date" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.date} onChange={e => setInspForm(p => ({ ...p, date: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Country</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Country</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.country} onChange={e => setInspForm(p => ({ ...p, country: e.target.value, state: '' }))}>
                       <option value="US">United States</option>
                       <option value="Canada">Canada</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">State / Province</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">State / Province</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.state} onChange={e => setInspForm(p => ({ ...p, state: e.target.value }))}>
                       <option value="">Select...</option>
                       {Object.entries(inspForm.country === 'Canada' ? CA_PROVINCE_ABBREVS : US_STATE_ABBREVS).map(([abbr, name]) => (
@@ -1257,14 +2284,14 @@ export function InspectionsPage() {
                     </select>
                     {inspForm.state && (
                       <div className="flex items-center gap-1.5 mt-1.5">
-                        <span className={`px-1.5 py-px rounded text-[9px] font-bold uppercase tracking-wider ${
+                        <span className={`px-1.5 py-px rounded text-[11px] font-bold uppercase tracking-wider ${
                           inspForm.country === 'Canada'
                             ? 'bg-red-100 text-red-700 border border-red-200'
                             : 'bg-blue-100 text-blue-700 border border-blue-200'
                         }`}>
                           {inspForm.country === 'Canada' ? 'CVOR / NSC' : 'SMS / FMCSA'}
                         </span>
-                        <span className="text-[10px] text-slate-500">
+                        <span className="text-xs text-slate-500">
                           {inspForm.country === 'Canada' ? 'Canadian Regulatory' : 'US Federal'}
                         </span>
                       </div>
@@ -1273,7 +2300,7 @@ export function InspectionsPage() {
                 </div>
                 <div className="grid grid-cols-1 gap-4 mt-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Level</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Level</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.level} onChange={e => setInspForm(p => ({ ...p, level: e.target.value }))}>
                       {inspForm.country === 'Canada' ? (
                         <>
@@ -1300,18 +2327,18 @@ export function InspectionsPage() {
 
               {/* Section: Location Address */}
               <div className="border-t border-slate-100 pt-5">
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Location Address</h4>
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Location Address</h4>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5 col-span-3">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Street Address</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Street Address</label>
                     <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. 1234 Highway 401" value={inspForm.locationStreet} onChange={e => setInspForm(p => ({ ...p, locationStreet: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">City</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">City</label>
                     <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. Toronto" value={inspForm.locationCity} onChange={e => setInspForm(p => ({ ...p, locationCity: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">ZIP / Postal Code</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">ZIP / Postal Code</label>
                     <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. 90210" value={inspForm.locationZip} onChange={e => setInspForm(p => ({ ...p, locationZip: e.target.value }))} />
                   </div>
                 </div>
@@ -1319,7 +2346,7 @@ export function InspectionsPage() {
 
               {/* Section: Driver */}
               <div className="border-t border-slate-100 pt-5">
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Driver</h4>
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Driver</h4>
                 <div className="space-y-1.5">
                   <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.driverId} onChange={e => {
                     const d = MOCK_DRIVERS.find(d => d.id === e.target.value);
@@ -1338,8 +2365,8 @@ export function InspectionsPage() {
               {/* Section: Asset / Vehicle Units */}
               <div className="border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Asset / Vehicle Units</h4>
-                  <button type="button" onClick={addFormUnit} className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+                  <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider">Asset / Vehicle Units</h4>
+                  <button type="button" onClick={addFormUnit} className="flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">
                     <Plus size={14} /> Add Unit
                   </button>
                 </div>
@@ -1350,7 +2377,7 @@ export function InspectionsPage() {
                     return (
                     <div key={idx} className="bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Unit #{idx + 1}</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase">Unit #{idx + 1}</span>
                         {inspForm.units.length > 1 && (
                           <button type="button" onClick={() => removeFormUnit(idx)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
                             <X size={14} />
@@ -1358,9 +2385,9 @@ export function InspectionsPage() {
                         )}
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Select Asset / Vehicle</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase">Select Asset / Vehicle</label>
                         <select
-                          className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500"
+                          className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-500"
                           value={unitAny.assetId || ''}
                           onChange={e => {
                             const a = INITIAL_ASSETS.find(a => a.id === e.target.value);
@@ -1382,20 +2409,20 @@ export function InspectionsPage() {
                       </div>
                       <div className="grid grid-cols-4 gap-3">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Type</label>
-                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} value={unit.type} onChange={e => !hasAsset && updateFormUnit(idx, 'type', e.target.value)} />
+                          <label className="text-xs font-bold text-slate-400 uppercase">Type</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} value={unit.type} onChange={e => !hasAsset && updateFormUnit(idx, 'type', e.target.value)} />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Make / Model</label>
-                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="e.g. Freightliner" value={unit.make} onChange={e => !hasAsset && updateFormUnit(idx, 'make', e.target.value)} />
+                          <label className="text-xs font-bold text-slate-400 uppercase">Make / Model</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="e.g. Freightliner" value={unit.make} onChange={e => !hasAsset && updateFormUnit(idx, 'make', e.target.value)} />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">License</label>
-                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="e.g. P-7762" value={unit.license} onChange={e => !hasAsset && updateFormUnit(idx, 'license', e.target.value)} />
+                          <label className="text-xs font-bold text-slate-400 uppercase">License</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="e.g. P-7762" value={unit.license} onChange={e => !hasAsset && updateFormUnit(idx, 'license', e.target.value)} />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">VIN</label>
-                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="VIN" value={unit.vin} onChange={e => !hasAsset && updateFormUnit(idx, 'vin', e.target.value)} />
+                          <label className="text-xs font-bold text-slate-400 uppercase">VIN</label>
+                          <input type="text" readOnly={hasAsset} className={`w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-mono ${hasAsset ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white focus:outline-none focus:border-blue-500'}`} placeholder="VIN" value={unit.vin} onChange={e => !hasAsset && updateFormUnit(idx, 'vin', e.target.value)} />
                         </div>
                       </div>
                     </div>
@@ -1406,22 +2433,22 @@ export function InspectionsPage() {
 
               {/* Section: OOS Summary */}
               <div className="border-t border-slate-100 pt-5">
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Out of Service (OOS) Summary</h4>
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Out of Service (OOS) Summary</h4>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Driver OOS</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Driver OOS</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.oosSummary.driver} onChange={e => setInspForm(p => ({ ...p, oosSummary: { ...p.oosSummary, driver: e.target.value } }))}>
                       <option value="PASSED">PASSED</option><option value="FAILED">FAILED</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Vehicle OOS</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Vehicle OOS</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.oosSummary.vehicle} onChange={e => setInspForm(p => ({ ...p, oosSummary: { ...p.oosSummary, vehicle: e.target.value } }))}>
                       <option value="PASSED">PASSED</option><option value="FAILED">FAILED</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Total OOS Count</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Total OOS Count</label>
                     <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.oosSummary.total} onChange={e => setInspForm(p => ({ ...p, oosSummary: { ...p.oosSummary, total: parseInt(e.target.value) || 0 } }))} />
                   </div>
                 </div>
@@ -1431,9 +2458,9 @@ export function InspectionsPage() {
               <div className="border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Violations ({formViolations.length})</h4>
+                    <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider">Violations ({formViolations.length})</h4>
                     {inspForm.state && (
-                      <span className={`px-1.5 py-px rounded text-[8px] font-bold uppercase tracking-wider ${
+                      <span className={`px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wider ${
                         inspForm.country === 'Canada'
                           ? 'bg-red-50 text-red-600 border border-red-200'
                           : 'bg-blue-50 text-blue-600 border border-blue-200'
@@ -1442,30 +2469,30 @@ export function InspectionsPage() {
                       </span>
                     )}
                   </div>
-                  <button type="button" onClick={addFormViolation} className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+                  <button type="button" onClick={addFormViolation} className="flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-800 transition-colors">
                     <Plus size={14} /> Add Violation
                   </button>
                 </div>
                 {formViolations.length === 0 ? (
                   <div className="text-center py-6 bg-emerald-50/50 rounded-lg border border-emerald-100">
                     <CheckCircle2 size={20} className="text-emerald-500 mx-auto mb-1" />
-                    <p className="text-xs font-medium text-emerald-700">Clean Inspection - No violations</p>
+                    <p className="text-sm font-medium text-emerald-700">Clean Inspection - No violations</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {formViolations.map((v, idx) => (
                       <div key={idx} className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Violation #{idx + 1}</span>
+                          <span className="text-xs font-bold text-slate-400 uppercase">Violation #{idx + 1}</span>
                           <button type="button" onClick={() => removeFormViolation(idx)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
                             <X size={14} />
                           </button>
                         </div>
                         <div className="grid grid-cols-3 gap-3">
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Category</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Category</label>
                             <select
-                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500 bg-white"
+                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 bg-white"
                               value={v.category || ''}
                               onChange={e => {
                                 updateFormViolation(idx, 'category', e.target.value);
@@ -1480,11 +2507,11 @@ export function InspectionsPage() {
                             </select>
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Select Code</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Select Code</label>
                             <input 
                               type="text" 
                               list={`violation-codes-${idx}`}
-                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500" 
+                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-blue-500" 
                               placeholder={inspForm.country === 'Canada' ? 'e.g. CC-320.14' : 'e.g. 392.5(c)(2)'} 
                               value={v.code} 
                               onChange={(e) => {
@@ -1540,36 +2567,36 @@ export function InspectionsPage() {
                             </datalist>
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Sub-Category</label>
-                            <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-slate-50 focus:outline-none" readOnly value={v.subDescription || ''} />
+                            <label className="text-xs font-bold text-slate-400 uppercase">Sub-Category</label>
+                            <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-slate-50 focus:outline-none" readOnly value={v.subDescription || ''} />
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Description</label>
-                          <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" placeholder="Violation description" value={v.description || ''} onChange={e => updateFormViolation(idx, 'description', e.target.value)} />
+                          <label className="text-xs font-bold text-slate-400 uppercase">Description</label>
+                          <input type="text" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" placeholder="Violation description" value={v.description || ''} onChange={e => updateFormViolation(idx, 'description', e.target.value)} />
                         </div>
                         <div className="grid grid-cols-5 gap-3">
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Severity</label>
-                            <input type="number" min="0" max="10" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" value={v.severity} onChange={e => updateFormViolation(idx, 'severity', parseInt(e.target.value) || 0)} />
+                            <label className="text-xs font-bold text-slate-400 uppercase">Severity</label>
+                            <input type="number" min="0" max="10" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" value={v.severity} onChange={e => updateFormViolation(idx, 'severity', parseInt(e.target.value) || 0)} />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Weight</label>
-                            <input type="number" min="0" max="10" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" value={v.weight} onChange={e => updateFormViolation(idx, 'weight', parseInt(e.target.value) || 0)} />
+                            <label className="text-xs font-bold text-slate-400 uppercase">Weight</label>
+                            <input type="number" min="0" max="10" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" value={v.weight} onChange={e => updateFormViolation(idx, 'weight', parseInt(e.target.value) || 0)} />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Points</label>
-                            <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500" value={v.points} onChange={e => updateFormViolation(idx, 'points', parseInt(e.target.value) || 0)} />
+                            <label className="text-xs font-bold text-slate-400 uppercase">Points</label>
+                            <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" value={v.points} onChange={e => updateFormViolation(idx, 'points', parseInt(e.target.value) || 0)} />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">Risk Cat.</label>
-                            <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500" value={v.driverRiskCategory} onChange={e => updateFormViolation(idx, 'driverRiskCategory', parseInt(e.target.value))}>
+                            <label className="text-xs font-bold text-slate-400 uppercase">Risk Cat.</label>
+                            <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-500" value={v.driverRiskCategory} onChange={e => updateFormViolation(idx, 'driverRiskCategory', parseInt(e.target.value))}>
                               <option value={1}>1 - High</option><option value={2}>2 - Medium</option><option value={3}>3 - Low</option>
                             </select>
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase">OOS</label>
-                            <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500" value={v.oos ? 'yes' : 'no'} onChange={e => updateFormViolation(idx, 'oos', e.target.value === 'yes')}>
+                            <label className="text-xs font-bold text-slate-400 uppercase">OOS</label>
+                            <select className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-500" value={v.oos ? 'yes' : 'no'} onChange={e => updateFormViolation(idx, 'oos', e.target.value === 'yes')}>
                               <option value="no">No</option><option value="yes">Yes</option>
                             </select>
                           </div>
@@ -1582,17 +2609,17 @@ export function InspectionsPage() {
 
               {/* Section: Fine & Expenses */}
               <div className="border-t border-slate-100 pt-5">
-                <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Fine & Expenses</h4>
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Fine & Expenses</h4>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Currency</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Currency</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.currency} onChange={e => setInspForm(p => ({ ...p, currency: e.target.value }))}>
                       <option value="USD">USD ($)</option>
                       <option value="CAD">CAD (C$)</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Fine Amount</label>
+                    <label className="text-sm font-bold text-slate-500 uppercase">Fine Amount</label>
                     <input type="number" min="0" step="0.01" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="0.00" value={inspForm.fineAmount} onChange={e => setInspForm(p => ({ ...p, fineAmount: e.target.value }))} />
                   </div>
                 </div>
@@ -1602,7 +2629,7 @@ export function InspectionsPage() {
               <div className="border-t border-slate-100 pt-5">
                 <div className="p-4 bg-blue-50/30 rounded-xl border border-blue-100 space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                    <h4 className="text-[13px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
                       <FileText size={14} className="text-blue-500" /> Violation Documents
                     </h4>
                     <button
@@ -1611,7 +2638,7 @@ export function InspectionsPage() {
                         id: `doc-${Math.random().toString(36).substr(2, 9)}`,
                         docTypeId: '', docNumber: '', issueDate: '', fileName: ''
                       }])}
-                      className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                      className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
                     >
                       <Plus size={14} /> Add Document
                     </button>
@@ -1627,9 +2654,9 @@ export function InspectionsPage() {
                     <div key={doc.id} className="bg-white rounded-xl border border-slate-200 p-4 space-y-4 shadow-sm">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Document Type</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase">Document Type</label>
                           <select
-                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-blue-500"
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-500"
                             value={doc.docTypeId}
                             onChange={e => {
                               const newDocs = [...inspAttachedDocs];
@@ -1644,10 +2671,10 @@ export function InspectionsPage() {
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Document Number</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase">Document Number</label>
                           <input
                             type="text"
-                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
                             placeholder="e.g. CIT-2024-00123"
                             value={doc.docNumber}
                             onChange={e => {
@@ -1660,10 +2687,10 @@ export function InspectionsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Issue Date</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase">Issue Date</label>
                           <input
                             type="date"
-                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500"
                             value={doc.issueDate}
                             onChange={e => {
                               const newDocs = [...inspAttachedDocs];
@@ -1674,12 +2701,12 @@ export function InspectionsPage() {
                         </div>
                       </div>
                       <div className="bg-slate-50/80 rounded-lg border border-dashed border-slate-300 p-4 space-y-3">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-0">Upload Documents</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase mb-0">Upload Documents</span>
                         <div className="flex flex-col items-center justify-center py-4 border-2 border-dashed border-blue-200 rounded-lg bg-white hover:bg-blue-50/30 transition-colors cursor-pointer">
                           <Upload size={20} className="text-blue-400 mb-1" />
-                          <span className="text-xs text-blue-500 font-medium">Document PDF</span>
+                          <span className="text-sm text-blue-500 font-medium">Document PDF</span>
                           <label className="mt-2 cursor-pointer">
-                            <span className="text-[11px] text-slate-500">Choose File</span>
+                            <span className="text-[13px] text-slate-500">Choose File</span>
                             <input
                               type="file"
                               className="hidden"
@@ -1694,9 +2721,9 @@ export function InspectionsPage() {
                               }}
                             />
                             {doc.fileName ? (
-                              <span className="ml-2 text-[11px] text-emerald-600 font-medium">{doc.fileName}</span>
+                              <span className="ml-2 text-[13px] text-emerald-600 font-medium">{doc.fileName}</span>
                             ) : (
-                              <span className="ml-2 text-[11px] text-slate-400">No file chosen</span>
+                              <span className="ml-2 text-[13px] text-slate-400">No file chosen</span>
                             )}
                           </label>
                         </div>

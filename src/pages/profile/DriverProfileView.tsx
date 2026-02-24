@@ -2565,7 +2565,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
                             <tr>
 
-                              <td colSpan={8} className="px-6 py-16 text-center text-slate-400">
+                              <td colSpan={9} className="px-6 py-16 text-center text-slate-400">
 
                                 <div className="flex flex-col items-center justify-center gap-3">
 
