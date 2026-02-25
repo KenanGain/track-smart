@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppData } from '@/context/AppDataContext';
-import { ShieldAlert, AlertTriangle, Save, ClipboardCheck } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, Save, ClipboardCheck, Gauge } from 'lucide-react';
 
 export function InspectionsSettingsPage() {
     const { csaThresholds, setCsaThresholds, cvorThresholds, setCvorThresholds } = useAppData();
@@ -86,6 +86,48 @@ export function InspectionsSettingsPage() {
                                 />
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">%</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* CVOR Rating Criteria */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
+                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <Gauge className="w-5 h-5 text-slate-600" />
+                            CVOR Rating Criteria
+                        </h2>
+                        <p className="text-sm text-slate-500 mt-1">Ontario MTO CVOR rating system. Carriers are assigned a rating based on audit results, violation rates, and operational history.</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            {[
+                                { label: 'Excellent', color: 'bg-emerald-50 border-emerald-200', textColor: 'text-emerald-800', dotColor: 'bg-emerald-500',
+                                  criteria: ['Min 24 months operation', 'Audit score ≥ 80% overall', 'Profile scores ≥ 70%', 'Violation rate ≤ 15%', 'Collision rate ≤ 10%'] },
+                                { label: 'Satisfactory', color: 'bg-blue-50 border-blue-200', textColor: 'text-blue-800', dotColor: 'bg-blue-500',
+                                  criteria: ['Min 6 months operation', 'Audit score ≥ 55% overall', 'Profile scores ≥ 50%', 'Violation rate < 70%', 'Downgrade at 20% / 15%'] },
+                                { label: 'Satisfactory Unaudited', color: 'bg-sky-50 border-sky-200', textColor: 'text-sky-800', dotColor: 'bg-sky-500',
+                                  criteria: ['No audit activity', 'Violation rate < 70%', 'Default rating for new carriers'] },
+                                { label: 'Conditional', color: 'bg-amber-50 border-amber-200', textColor: 'text-amber-800', dotColor: 'bg-amber-500',
+                                  criteria: ['Failed audit (< 55%)', 'Profile scores < 50%', 'OR violation rate ≥ 70%', 'Upgrade after 6 mo at ≤ 60%'] },
+                                { label: 'Unsatisfactory', color: 'bg-red-50 border-red-200', textColor: 'text-red-800', dotColor: 'bg-red-500',
+                                  criteria: ['100% violation rate', 'Plate seizure', 'Sanction / cancellation', 'Immediate action required'] },
+                            ].map((tier, idx) => (
+                                <div key={idx} className={`rounded-lg border p-3 ${tier.color}`}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className={`w-2.5 h-2.5 rounded-full ${tier.dotColor}`}></div>
+                                        <span className={`text-xs font-bold uppercase tracking-wider ${tier.textColor}`}>{tier.label}</span>
+                                    </div>
+                                    <ul className="space-y-1">
+                                        {tier.criteria.map((c, ci) => (
+                                            <li key={ci} className="text-[11px] text-slate-600 leading-relaxed flex items-start gap-1.5">
+                                                <span className="text-slate-400 mt-0.5 flex-shrink-0">•</span>
+                                                {c}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

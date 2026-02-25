@@ -15,6 +15,7 @@ import {
   AlertCircle,
   AlertOctagon,
   FileSignature,
+  Pencil,
   Gauge,
   Info,
   X
@@ -152,117 +153,224 @@ const getInspectionTagSpecs = (jurisdiction: string, levelStr: string) => {
 };
 
 // Component: Expandable Inspection Row
-const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any) => void }) => {
+const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?: (record: any) => void; cvorOverride?: { vehPts: number | null; dvrPts: number | null; cvrPts: number } }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedViolation, setSelectedViolation] = useState<any | null>(null);
   const primaryUnit = record.units?.[0];
   const unitCount = record.units?.length || 0;
   const totalPoints = (record.violations || []).reduce((sum: number, violation: any) => sum + (violation.points || 0), 0);
   const maxSeverity = (record.violations || []).reduce((max: number, violation: any) => Math.max(max, violation.severity || 0), 0);
-  
+  const isCvor = !!cvorOverride;
+
   return (
     <div className="group bg-white hover:bg-blue-50/30 transition-colors border-b border-slate-100 last:border-0">
-      
-      {/* ===== DESKTOP MAIN ROW ===== */}
-      <div 
+
+      {/* ===== DESKTOP MAIN ROW - CVOR LAYOUT ===== */}
+      {isCvor ? (
+      <div
         className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-transparent hover:bg-slate-50/50 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        {/* Date */}
-        <div className="col-span-1 pl-2">
+        {/* Date / Time */}
+        <div className="col-span-1 pl-2 flex flex-col justify-center">
           <span className="text-sm font-bold text-slate-800">{record.date}</span>
-        </div>
-
-        {/* Report ID */}
-        <div className="col-span-2 min-w-0 flex flex-col justify-center">
-          <span className="text-sm font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
-          {getJurisdiction(record.state) === 'CVOR' ? (
-            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR L{record.level?.replace(/level\s*/i, '') || '1'}</span>
-          ) : (
-            <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS L{record.level?.replace(/level\s*/i, '') || '1'}</span>
+          {record.startTime && (
+            <span className="text-[10px] text-slate-400 font-mono mt-0.5">{record.startTime}{record.endTime ? ` – ${record.endTime}` : ''}</span>
           )}
         </div>
 
-        {/* Country + State */}
-        <div className="col-span-1 flex flex-col justify-center">
-          <span className="text-sm font-medium text-slate-700">
-            {record.state}, {getJurisdiction(record.state) === 'CVOR' ? 'CAN' : 'USA'}
-          </span>
+        {/* Report ID */}
+        <div className="col-span-1 min-w-0 flex flex-col justify-center">
+          <span className="text-xs font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
+          <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CVOR', record.level)}`}>CVOR L{record.level?.replace(/level\s*/i, '') || '1'}</span>
         </div>
 
-        {/* Driver */}
+        {/* Location */}
+        <div className="col-span-1 flex flex-col justify-center">
+          {record.location ? (
+            <>
+              <span className="text-sm font-medium text-slate-700 truncate">{record.location.city}</span>
+              <span className="text-[10px] text-slate-400">{record.location.province}, CAN</span>
+            </>
+          ) : (
+            <span className="text-sm font-medium text-slate-700">{record.state}, CAN</span>
+          )}
+        </div>
+
+        {/* Driver / Licence */}
         <div className="col-span-2 flex items-center gap-2 min-w-0">
           <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
             <User size={12} fill="currentColor" />
           </div>
           <div className="min-w-0 flex flex-col justify-center">
             <span className="text-sm font-bold text-slate-800 truncate block leading-tight">{record.driver?.split(',')[0]}</span>
-            <span className="text-[11px] text-slate-400 font-medium truncate block">{record.driverId}</span>
+            <span className="text-[10px] text-slate-400 font-mono truncate block">{record.driverLicense || record.driverId}</span>
           </div>
         </div>
 
-        {/* Asset */}
+        {/* Power Unit / Defects */}
         <div className="col-span-2 flex flex-col justify-center min-w-0">
           <span className="text-sm font-bold text-slate-800 truncate block leading-tight">
             {primaryUnit?.license || record.vehiclePlate}
           </span>
-          <span className="text-[11px] text-slate-500 font-medium truncate block mt-0.5">
-            {primaryUnit?.type || record.vehicleType}
-            {unitCount > 1 && <span className="font-bold text-blue-600 ml-1">(+{unitCount - 1})</span>}
-          </span>
+          {record.powerUnitDefects ? (
+            <span className="text-[10px] text-amber-600 font-medium truncate block mt-0.5" title={record.powerUnitDefects}>{record.powerUnitDefects}</span>
+          ) : (
+            <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">No defects</span>
+          )}
         </div>
 
         {/* Violations Count */}
         <div className="col-span-1 flex justify-center items-center">
           {record.isClean ? (
-            <span className="text-[13px] font-bold text-emerald-600">
-              Clean
-            </span>
+            <span className="text-[13px] font-bold text-emerald-600">Clean</span>
           ) : (
-            <span className="text-[13px] font-bold text-orange-600">
-              {record.violations.length}
-            </span>
+            <span className="text-[13px] font-bold text-orange-600">{record.violations.length}</span>
           )}
         </div>
 
-        {/* Max Severity */}
+        {/* Vehicle Points */}
         <div className="col-span-1 flex justify-center items-center">
-             <span className={`text-[13px] font-bold ${maxSeverity >= 7 ? 'text-red-600' : 'text-slate-500'}`}>
-               {record.isClean ? 0 : maxSeverity}
-             </span>
+          <span className={`text-[13px] font-bold ${(cvorOverride.vehPts || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+            {cvorOverride.vehPts ?? '—'}
+          </span>
         </div>
 
-        {/* Points */}
-        <div className="col-span-1 flex justify-center items-center text-[13px] font-bold text-slate-900">
-          {totalPoints}
+        {/* Driver Points */}
+        <div className="col-span-1 flex justify-center items-center">
+          <span className={`text-[13px] font-bold ${(cvorOverride.dvrPts || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+            {cvorOverride.dvrPts ?? '—'}
+          </span>
         </div>
 
-        {/* OOS Status & Actions */}
-        <div className="col-span-1 flex items-center justify-between pr-2">
+        {/* CVOR Points */}
+        <div className="col-span-1 flex justify-center items-center">
+          <span className={`text-[13px] font-bold ${cvorOverride.cvrPts > 0 ? 'text-red-700' : 'text-slate-400'}`}>
+            {cvorOverride.cvrPts}
+          </span>
+        </div>
+
+        {/* Status & Actions */}
+        <div className="col-span-1 flex items-center justify-between pr-1">
            <div className="min-w-[48px]">
-             {record.hasOOS && (
-               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-red-50/80 rounded text-xs font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
+             {record.hasOOS ? (
+               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50/80 rounded text-xs font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
                  <ShieldAlert size={10} className="text-red-500 flex-shrink-0" /> OOS
                </span>
+             ) : record.isClean ? (
+               <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 rounded text-xs font-bold text-emerald-600 tracking-wide uppercase whitespace-nowrap">OK</span>
+             ) : (
+               <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 rounded text-xs font-bold text-amber-600 tracking-wide uppercase whitespace-nowrap">DEFECT</span>
              )}
            </div>
-
-           <div className="flex items-center gap-1">
+           <div className="ml-auto flex items-center justify-center gap-2">
              {onEdit && (
-               <button
-                 onClick={(e) => { e.stopPropagation(); onEdit(record); }}
-                 className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                 title="Edit inspection"
-               >
-                 <FileSignature size={14} />
-               </button>
+               <button onClick={(e) => { e.stopPropagation(); onEdit(record); }} className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="Edit inspection"><Pencil size={14} /></button>
              )}
-             <div className="text-slate-400">
-               {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-             </div>
+             <div className="w-5 h-5 flex items-center justify-center text-slate-400">{isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</div>
            </div>
         </div>
       </div>
+      ) : (
+      /* ===== DESKTOP MAIN ROW - CSA/SMS LAYOUT ===== */
+      <div
+        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-transparent hover:bg-slate-50/50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        {/* Date / Time */}
+        <div className="col-span-1 pl-2 flex flex-col justify-center">
+          <span className="text-sm font-bold text-slate-800">{record.date}</span>
+          {record.startTime && (
+            <span className="text-[10px] text-slate-400 font-mono mt-0.5">{record.startTime}{record.endTime ? ` – ${record.endTime}` : ''}</span>
+          )}
+        </div>
+
+        {/* Report ID */}
+        <div className="col-span-1 min-w-0 flex flex-col justify-center">
+          <span className="text-xs font-bold text-blue-600 block truncate leading-tight">{record.id}</span>
+          <span className={`mt-0.5 inline-flex w-fit px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${getInspectionTagSpecs('CSA', record.level)}`}>SMS L{record.level?.replace(/level\s*/i, '') || '1'}</span>
+        </div>
+
+        {/* Location */}
+        <div className="col-span-1 flex flex-col justify-center">
+          {record.location ? (
+            <>
+              <span className="text-sm font-medium text-slate-700 truncate">{record.location.city}</span>
+              <span className="text-[10px] text-slate-400">{record.location.province}, USA</span>
+            </>
+          ) : (
+            <span className="text-sm font-medium text-slate-700">{record.state}, USA</span>
+          )}
+        </div>
+
+        {/* Driver / Licence */}
+        <div className="col-span-2 flex items-center gap-2 min-w-0">
+          <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
+            <User size={12} fill="currentColor" />
+          </div>
+          <div className="min-w-0 flex flex-col justify-center">
+            <span className="text-sm font-bold text-slate-800 truncate block leading-tight">{record.driver?.split(',')[0]}</span>
+            <span className="text-[10px] text-slate-400 font-mono truncate block">{record.driverLicense || record.driverId}</span>
+          </div>
+        </div>
+
+        {/* Power Unit / Defects */}
+        <div className="col-span-2 flex flex-col justify-center min-w-0">
+          <span className="text-sm font-bold text-slate-800 truncate block leading-tight">
+            {primaryUnit?.license || record.vehiclePlate}
+          </span>
+          {record.powerUnitDefects ? (
+            <span className="text-[10px] text-amber-600 font-medium truncate block mt-0.5" title={record.powerUnitDefects}>{record.powerUnitDefects}</span>
+          ) : (
+            <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">{record.isClean ? 'Clean' : 'No defects'}</span>
+          )}
+        </div>
+
+        {/* Violations Count */}
+        <div className="col-span-1 flex justify-center items-center">
+          {record.isClean ? (
+            <span className="text-[13px] font-bold text-emerald-600">Clean</span>
+          ) : (
+            <span className="text-[13px] font-bold text-orange-600">{record.violations.length}</span>
+          )}
+        </div>
+
+        {/* Vehicle Points */}
+        <div className="col-span-1 flex justify-center items-center">
+          <span className={`text-[13px] font-bold ${(record.smsPoints?.vehicle || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+            {record.smsPoints?.vehicle ?? '—'}
+          </span>
+        </div>
+
+        {/* Driver Points */}
+        <div className="col-span-1 flex justify-center items-center">
+          <span className={`text-[13px] font-bold ${(record.smsPoints?.driver || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+            {record.smsPoints?.driver ?? '—'}
+          </span>
+        </div>
+
+        {/* Status & Actions */}
+        <div className="col-span-1 flex items-center justify-between pr-1">
+           <div className="min-w-[48px]">
+             {record.hasOOS ? (
+               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50/80 rounded text-xs font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
+                 <ShieldAlert size={10} className="text-red-500 flex-shrink-0" /> OOS
+               </span>
+             ) : record.isClean ? (
+               <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 rounded text-xs font-bold text-emerald-600 tracking-wide uppercase whitespace-nowrap">OK</span>
+             ) : (
+               <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 rounded text-xs font-bold text-amber-600 tracking-wide uppercase whitespace-nowrap">DEFECT</span>
+             )}
+           </div>
+           <div className="ml-auto flex items-center justify-center gap-2">
+             {onEdit && (
+               <button onClick={(e) => { e.stopPropagation(); onEdit(record); }} className="p-1 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100" title="Edit inspection"><Pencil size={14} /></button>
+             )}
+             <div className="w-5 h-5 flex items-center justify-center text-slate-400">{isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</div>
+           </div>
+        </div>
+      </div>
+      )}
 
       {/* ===== MOBILE MAIN ROW ===== */}
       <div
@@ -314,7 +422,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
 
       {/* ===== EXPANDED DETAILS (Dropdown View) ===== */}
       {isExpanded && (
-        <div className="bg-slate-50/50 p-5 md:p-8 border-t border-slate-200 shadow-inner flex flex-col gap-8">
+        <div className="bg-slate-50/50 p-3 sm:p-4 md:p-6 border-t border-slate-200 shadow-inner flex flex-col gap-4 md:gap-6">
           {record.isClean ? (
             <div className="flex flex-col items-center justify-center py-6 text-emerald-600 bg-white rounded-xl border border-slate-200 shadow-sm">
               <CheckCircle2 size={32} className="mb-2 opacity-80" />
@@ -342,10 +450,50 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                 </span>
               </div>
 
+              {/* Unified info bar (time, location, points, severity rate) — shown for BOTH SMS and CVOR */}
+              {(record.startTime || record.location || record.severityRate != null) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                  {record.startTime && (
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 sm:p-3 text-center">
+                      <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Inspection Time</div>
+                      <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{record.startTime} – {record.endTime || '—'}</div>
+                    </div>
+                  )}
+                  {record.location && (
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 sm:p-3 text-center">
+                      <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Location</div>
+                      <div className="font-bold text-slate-900 text-sm mt-0.5">{record.location.city}, {record.location.province}</div>
+                    </div>
+                  )}
+                  {record.cvorPoints && (
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 sm:p-3 text-center">
+                      <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">CVOR Points</div>
+                      <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">
+                        Vehicle: <span className={record.cvorPoints.vehicle > 0 ? 'text-red-600' : ''}>{record.cvorPoints.vehicle}</span> | Driver: <span className={record.cvorPoints.driver > 0 ? 'text-red-600' : ''}>{record.cvorPoints.driver}</span>
+                      </div>
+                    </div>
+                  )}
+                  {record.smsPoints && (
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 sm:p-3 text-center">
+                      <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">SMS Points</div>
+                      <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">
+                        Vehicle: <span className={record.smsPoints.vehicle > 0 ? 'text-red-600' : ''}>{record.smsPoints.vehicle}</span> | Driver: <span className={record.smsPoints.driver > 0 ? 'text-red-600' : ''}>{record.smsPoints.driver}</span> | Carrier: <span className={record.smsPoints.carrier > 0 ? 'text-orange-600' : ''}>{record.smsPoints.carrier}</span>
+                      </div>
+                    </div>
+                  )}
+                  {record.severityRate != null && (
+                    <div className="bg-white border border-slate-200 rounded-lg p-2.5 sm:p-3 text-center">
+                      <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Severity Rate</div>
+                      <div className={`font-mono font-bold text-sm mt-0.5 ${record.severityRate >= 5 ? 'text-red-600' : record.severityRate >= 3 ? 'text-amber-600' : 'text-slate-900'}`}>{record.severityRate}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Top Cards: Driver, Asset, Summary, OOS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <div className="space-y-3">
-                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+              <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-4 md:gap-5 items-stretch">
+                <div className="flex flex-col gap-3 h-full">
+                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
                     <User size={14} className="text-slate-400" /> Driver
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 h-full">
@@ -356,6 +504,7 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">{record.driver}</p>
                         <p className="text-sm text-slate-500 mt-0.5">Driver ID: {record.driverId}</p>
+                        {record.driverLicense && <p className="text-sm text-slate-500 mt-0.5">Licence: <span className="font-mono font-bold">{record.driverLicense}</span></p>}
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
@@ -371,8 +520,8 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                <div className="flex flex-col gap-3 h-full">
+                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
                     <Truck size={14} className="text-slate-400" /> Asset Details
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm h-full">
@@ -405,11 +554,24 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                         </div>
                       ))}
                     </div>
+                    {/* CVOR Power Unit / Trailer Defects */}
+                    {record.powerUnitDefects && (
+                      <div className="px-3 py-2 border-t border-slate-100 bg-amber-50/50">
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">Power Unit Defects</div>
+                        <div className="text-xs text-amber-700 font-medium">{record.powerUnitDefects}</div>
+                      </div>
+                    )}
+                    {record.trailerDefects && record.trailerDefects !== 'NONE' && (
+                      <div className="px-3 py-2 border-t border-slate-100 bg-amber-50/50">
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">Trailer Defects</div>
+                        <div className="text-xs text-amber-700 font-medium">{record.trailerDefects}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                <div className="flex flex-col gap-3 h-full">
+                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
                     <Activity size={14} className="text-slate-400" /> Violation Summary
                   </h4>
                   <div className="bg-white border border-slate-200 rounded-lg shadow-sm h-full">
@@ -426,11 +588,11 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider">
+                <div className="flex flex-col gap-3 h-full">
+                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
                     <AlertTriangle size={14} className="text-slate-400" /> Out of Service (OOS)
                   </h4>
-                  <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 h-full flex flex-col justify-between">
+                  <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 flex flex-col justify-between h-full">
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-[13px] text-slate-700 font-medium">Driver OOS</span>
@@ -642,6 +804,7 @@ export function InspectionsPage() {
   // Expandable BASIC row states
   const [expandedBasic, setExpandedBasic] = useState<string | null>(null);
   const [basicChartView, setBasicChartView] = useState<Record<string, 'MEASURE' | 'INSPECTIONS'>>({});
+  // Expandable CVOR Analysis row states
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [page, setPage] = useState(1);
@@ -731,13 +894,17 @@ export function InspectionsPage() {
   // Form state for Add/Edit
   const emptyForm = {
     id: '', date: '', country: 'US', state: '', locationStreet: '', locationCity: '', locationZip: '',
-    driverId: '', driver: '', vehiclePlate: '', vehicleType: 'Truck',
+    startTime: '', endTime: '',
+    driverId: '', driver: '', driverLicense: '',
+    vehiclePlate: '', vehicleType: 'Truck',
     assetId: '', level: 'Level 1', isClean: true, hasOOS: false,
     hasVehicleViolations: false, hasDriverViolations: false,
     units: [{ type: 'Truck', make: '', license: '', vin: '' }],
     oosSummary: { driver: 'PASSED', vehicle: 'PASSED', total: 0 },
     violations: [] as any[],
     fineAmount: '', currency: 'USD',
+    powerUnitDefects: '', trailerDefects: '',
+    vehiclePoints: 0, driverPoints: 0, carrierPoints: 0,
   };
   const [inspForm, setInspForm] = useState(emptyForm);
   const [formViolations, setFormViolations] = useState<any[]>([]);
@@ -758,17 +925,22 @@ export function InspectionsPage() {
     setShowAddModal(true);
   };
   const openEditModal = (record: any) => {
+    const pts = record.smsPoints || record.cvorPoints || {};
     setInspForm({
       id: record.id, date: record.date, country: record.country || (getJurisdiction(record.state) === 'CVOR' ? 'Canada' : 'US'),
-      state: record.state, locationStreet: record.locationStreet || '', locationCity: record.locationCity || '', locationZip: record.locationZip || '',
+      state: record.state, locationStreet: record.locationStreet || '', locationCity: record.location?.city || record.locationCity || '', locationZip: record.locationZip || '',
+      startTime: record.startTime || '', endTime: record.endTime || '',
       driverId: record.driverId,
-      driver: record.driver, vehiclePlate: record.vehiclePlate, vehicleType: record.vehicleType,
+      driver: record.driver, driverLicense: record.driverLicense || '',
+      vehiclePlate: record.vehiclePlate, vehicleType: record.vehicleType,
       assetId: record.assetId, level: record.level, isClean: record.isClean, hasOOS: record.hasOOS,
       hasVehicleViolations: record.hasVehicleViolations, hasDriverViolations: record.hasDriverViolations,
       units: record.units || [{ type: 'Truck', make: '', license: '', vin: '' }],
       oosSummary: record.oosSummary || { driver: 'PASSED', vehicle: 'PASSED', total: 0 },
       violations: [],
       fineAmount: record.fineAmount || '', currency: record.currency || 'USD',
+      powerUnitDefects: record.powerUnitDefects || '', trailerDefects: record.trailerDefects || '',
+      vehiclePoints: pts.vehicle || 0, driverPoints: pts.driver || 0, carrierPoints: pts.carrier || pts.cvor || 0,
     });
     setFormViolations(record.violations || []);
     if (record.attachedDocuments?.length) {
@@ -818,10 +990,14 @@ export function InspectionsPage() {
 
   // Filter Logic
   const filteredData = inspectionsData.filter(insp => {
-    const matchesSearch = 
-      insp.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      insp.driver.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      insp.vehiclePlate.toLowerCase().includes(searchTerm.toLowerCase());
+    const st = searchTerm.toLowerCase();
+    const matchesSearch =
+      insp.id.toLowerCase().includes(st) ||
+      insp.driver.toLowerCase().includes(st) ||
+      insp.vehiclePlate.toLowerCase().includes(st) ||
+      (insp.driverLicense && insp.driverLicense.toLowerCase().includes(st)) ||
+      (insp.location?.city && insp.location.city.toLowerCase().includes(st)) ||
+      (insp.location?.raw && insp.location.raw.toLowerCase().includes(st));
     
     let matchesFilter = true;
     switch(activeFilter) {
@@ -916,44 +1092,89 @@ export function InspectionsPage() {
           {/* Top Row: Safety Rating & OOS and Licensing */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
-            {/* Col 1: Safety Rating & OOS */}
+            {/* Col 1: Combined Safety Rating & OOS (SMS + CVOR) */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
                 <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS
-                <InfoTooltip 
-                  text="Safety Rating is a company-wide grade. OOS Rates show how often the carrier's vehicles/drivers are pulled off the road compared to the national average." 
+                <InfoTooltip
+                  text="SMS and CVOR safety ratings are calculated differently. This combined card keeps both in one place with clear tags."
                 />
               </h3>
-              <div className="mb-4 text-sm font-medium text-slate-700">
-                Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
-              </div>
-              <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Type</th>
-                      <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
-                      <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Vehicle</td>
-                      <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Driver</td>
-                      <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Hazmat</td>
-                      <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
-                    </tr>
-                  </tbody>
-                </table>
+
+              <div className="space-y-4">
+                <div className="p-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600">SMS</span>
+                    <span className="text-sm font-medium text-slate-700">
+                      Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded border border-slate-100">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Type</th>
+                          <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
+                          <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        <tr>
+                          <td className="px-3 py-2 text-slate-700">Vehicle</td>
+                          <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
+                          <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 text-slate-700">Driver</td>
+                          <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
+                          <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 text-slate-700">Hazmat</td>
+                          <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
+                          <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3 p-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600">CVOR</span>
+                    <span className="text-sm font-medium text-slate-700">
+                      Current Rating: <span className={`font-bold px-2 py-0.5 rounded border ${carrierProfile.cvorAnalysis.rating >= 70 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-green-100 text-green-800 border-green-200'}`}>{carrierProfile.cvorAnalysis.rating >= 70 ? 'CONDITIONAL' : 'OK'}</span>
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded border border-slate-100">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Type</th>
+                          <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
+                          <th className="px-3 py-2 font-semibold text-center">Threshold</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        <tr>
+                          <td className="px-3 py-2 text-slate-700">Overall OOS</td>
+                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > 30 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
+                          <td className="px-3 py-2 text-center text-slate-500">&gt;30%</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 text-slate-700">Vehicle OOS</td>
+                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > 25 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
+                          <td className="px-3 py-2 text-center text-slate-500">&gt;25%</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 text-slate-700">Driver OOS</td>
+                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > 10 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
+                          <td className="px-3 py-2 text-center text-slate-500">&gt;10%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -962,13 +1183,29 @@ export function InspectionsPage() {
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
                 <FileSignature size={14} className="text-purple-500"/> Licensing
                 <InfoTooltip 
-                  text="Applies exclusively to the whole company. Dictates whether the business has the legal authority and financial backing to operate." 
+                  text="Combined licensing details from SMS and CVOR views for one full company overview." 
                 />
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Property</span>
+                  <span className="text-slate-600">CVOR Number</span>
+                  <span className="font-bold font-mono text-slate-900">{carrierProfile.cvor}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">USDOT Number</span>
+                  <span className="font-bold font-mono text-slate-900">{carrierProfile.id}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Property Carrier</span>
                   <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Fleet Size</span>
+                  <span className="font-bold text-slate-900">{carrierProfile.cvorAnalysis.counts.trucks} Power Units</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Total Mileage</span>
+                  <span className="font-bold font-mono text-blue-600">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M mi</span>
                 </div>
                 <div className="flex justify-between items-center pb-2 border-b border-slate-50">
                   <span className="text-slate-600">Passenger</span>
@@ -1073,18 +1310,22 @@ export function InspectionsPage() {
               {(() => {
                 const rating = carrierProfile.cvorAnalysis.rating;
                 let ratingClass = 'bg-green-100 text-green-800';
-                let ratingLabel = 'OK';
                 let borderClass = '';
-                if (rating >= cvorThresholds.showCause) { ratingClass = 'bg-red-100 text-red-800'; ratingLabel = 'CRITICAL'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (rating >= cvorThresholds.intervention) { ratingClass = 'bg-amber-100 text-amber-800'; ratingLabel = 'HIGH'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-                else if (rating >= cvorThresholds.warning) { ratingClass = 'bg-yellow-100 text-yellow-800'; ratingLabel = 'ALERT'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
+                if (rating >= cvorThresholds.showCause) { ratingClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
+                else if (rating >= cvorThresholds.intervention) { ratingClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
+                else if (rating >= cvorThresholds.warning) { ratingClass = 'bg-yellow-100 text-yellow-800'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
                       <span className={`text-sm font-medium ${rating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400 font-mono">{rating}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${ratingClass}`}>{ratingLabel}</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${ratingClass}`}>
+                          {rating >= cvorThresholds.showCause && 'Show Cause'}
+                          {rating >= cvorThresholds.intervention && rating < cvorThresholds.showCause && 'Audit'}
+                          {rating >= cvorThresholds.warning && rating < cvorThresholds.intervention && 'Warning'}
+                          {rating < cvorThresholds.warning && 'OK'}
+                        </span>
                       </div>
                     </div>
                     <span className="text-xs text-slate-500">Composite score from collisions, convictions, and inspections</span>
@@ -1096,17 +1337,20 @@ export function InspectionsPage() {
               {(() => {
                 const val = carrierProfile.cvorAnalysis.collisions.percentage;
                 let alertClass = 'bg-green-100 text-green-800';
-                let label = 'OK';
                 let borderClass = '';
-                if (val >= cvorThresholds.intervention) { alertClass = 'bg-red-100 text-red-800'; label = 'HIGH'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (val >= cvorThresholds.warning) { alertClass = 'bg-amber-100 text-amber-800'; label = 'ALERT'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
+                if (val >= cvorThresholds.intervention) { alertClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
+                else if (val >= cvorThresholds.warning) { alertClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-sm font-medium text-slate-700">Collisions</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.collisions.weight} | {val}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
+                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.collisions.weight}% | {val}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
+                          {val >= cvorThresholds.intervention && 'Audit'}
+                          {val >= cvorThresholds.warning && val < cvorThresholds.intervention && 'Warning'}
+                          {val < cvorThresholds.warning && 'OK'}
+                        </span>
                       </div>
                     </div>
                     <span className="text-xs text-slate-500">{carrierProfile.cvorAnalysis.counts.collisions} collisions | {carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points</span>
@@ -1118,17 +1362,20 @@ export function InspectionsPage() {
               {(() => {
                 const val = carrierProfile.cvorAnalysis.convictions.percentage;
                 let alertClass = 'bg-green-100 text-green-800';
-                let label = 'OK';
                 let borderClass = '';
-                if (val >= cvorThresholds.intervention) { alertClass = 'bg-red-100 text-red-800'; label = 'HIGH'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (val >= cvorThresholds.warning) { alertClass = 'bg-amber-100 text-amber-800'; label = 'ALERT'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
+                if (val >= cvorThresholds.intervention) { alertClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
+                else if (val >= cvorThresholds.warning) { alertClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-sm font-medium text-slate-700">Convictions</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.convictions.weight} | {val}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
+                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.convictions.weight}% | {val}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
+                          {val >= cvorThresholds.intervention && 'Audit'}
+                          {val >= cvorThresholds.warning && val < cvorThresholds.intervention && 'Warning'}
+                          {val < cvorThresholds.warning && 'OK'}
+                        </span>
                       </div>
                     </div>
                     <span className="text-xs text-slate-500">{carrierProfile.cvorAnalysis.counts.convictions} convictions | {carrierProfile.cvorAnalysis.counts.convictionPoints} points</span>
@@ -1140,18 +1387,22 @@ export function InspectionsPage() {
               {(() => {
                 const val = carrierProfile.cvorAnalysis.inspections.percentage;
                 let alertClass = 'bg-green-100 text-green-800';
-                let label = 'OK';
                 let borderClass = '';
-                if (val >= cvorThresholds.showCause) { alertClass = 'bg-red-100 text-red-800'; label = 'VERY HIGH'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (val >= cvorThresholds.intervention) { alertClass = 'bg-amber-100 text-amber-800'; label = 'HIGH'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-                else if (val >= cvorThresholds.warning) { alertClass = 'bg-yellow-100 text-yellow-800'; label = 'ALERT'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
+                if (val >= cvorThresholds.showCause) { alertClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
+                else if (val >= cvorThresholds.intervention) { alertClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
+                else if (val >= cvorThresholds.warning) { alertClass = 'bg-yellow-100 text-yellow-800'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
                 return (
                   <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-sm font-medium text-slate-700">Inspections</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.inspections.weight} | {val}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{label}</span>
+                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.inspections.weight}% | {val}%</span>
+                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
+                          {val >= cvorThresholds.showCause && 'Show Cause'}
+                          {val >= cvorThresholds.intervention && val < cvorThresholds.showCause && 'Audit'}
+                          {val >= cvorThresholds.warning && val < cvorThresholds.intervention && 'Warning'}
+                          {val < cvorThresholds.warning && 'OK'}
+                        </span>
                       </div>
                     </div>
                     <span className="text-xs text-slate-500">OOS: Overall {carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle {carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver {carrierProfile.cvorAnalysis.counts.oosDriver}%</span>
@@ -1259,14 +1510,14 @@ export function InspectionsPage() {
 
             {/* Table Header (Hidden on Mobile) */}
             <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <div className="col-span-1 pl-2">Date</div>
-              <div className="col-span-2">Report ID</div>
+              <div className="col-span-1 pl-2">Date / Time</div>
+              <div className="col-span-1">Report</div>
               <div className="col-span-1">Location</div>
-              <div className="col-span-2">Driver</div>
-              <div className="col-span-2">Asset</div>
+              <div className="col-span-2">Driver / Licence</div>
+              <div className="col-span-2">Power Unit / Defects</div>
               <div className="col-span-1 text-center">Violations</div>
-              <div className="col-span-1 text-center">Severity</div>
-              <div className="col-span-1 text-center">Points</div>
+              <div className="col-span-1 text-center">Veh Pts</div>
+              <div className="col-span-1 text-center">Dvr Pts</div>
               <div className="col-span-1">Status</div>
             </div>
 
@@ -1320,9 +1571,13 @@ export function InspectionsPage() {
           severe: smsInspections.filter(i => i.violations.some(v => v.severity >= 7)).length,
         };
         const smsFilteredData = smsInspections.filter(insp => {
-          const matchesSearch = insp.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            insp.driver.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            insp.vehiclePlate.toLowerCase().includes(searchTerm.toLowerCase());
+          const st = searchTerm.toLowerCase();
+          const matchesSearch = insp.id.toLowerCase().includes(st) ||
+            insp.driver.toLowerCase().includes(st) ||
+            insp.vehiclePlate.toLowerCase().includes(st) ||
+            (insp.driverLicense && insp.driverLicense.toLowerCase().includes(st)) ||
+            (insp.location?.city && insp.location.city.toLowerCase().includes(st)) ||
+            (insp.location?.raw && insp.location.raw.toLowerCase().includes(st));
           let matchesFilter = true;
           switch(activeFilter) {
             case 'CLEAN': matchesFilter = insp.isClean; break;
@@ -1421,6 +1676,13 @@ export function InspectionsPage() {
               <div className="flex items-center justify-end mb-4 flex-wrap gap-3">
                 {/* Period selector */}
                 <div className="flex items-center gap-3">
+                  <div className="inline-flex items-center px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
+                    Percentile Formula
+                    <InfoTooltip
+                      title="How Percentile Is Calculated"
+                      text="1) BASIC violations are weighted by severity and recency (0-6 months = 3x, 6-12 = 2x, 12-24 = 1x). 2) Weighted violations are normalized by exposure (inspections/power units). 3) The normalized score is ranked against similar carriers in the same peer group. 4) That rank is shown as percentile, where higher percentile means higher risk."
+                    />
+                  </div>
                   <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Updated December 2025</span>
                   <div className="inline-flex bg-slate-100 rounded-md p-0.5">
                     {(['1M', '3M', '12M', '24M'] as const).map(p => (
@@ -2323,14 +2585,14 @@ export function InspectionsPage() {
 
               {/* Table Header */}
               <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                <div className="col-span-1 pl-2">Date</div>
-                <div className="col-span-2">Report ID</div>
+                <div className="col-span-1 pl-2">Date / Time</div>
+                <div className="col-span-1">Report</div>
                 <div className="col-span-1">Location</div>
-                <div className="col-span-2">Driver</div>
-                <div className="col-span-2">Asset</div>
+                <div className="col-span-2">Driver / Licence</div>
+                <div className="col-span-2">Power Unit / Defects</div>
                 <div className="col-span-1 text-center">Violations</div>
-                <div className="col-span-1 text-center">Severity</div>
-                <div className="col-span-1 text-center">Points</div>
+                <div className="col-span-1 text-center">Veh Pts</div>
+                <div className="col-span-1 text-center">Dvr Pts</div>
                 <div className="col-span-1">Status</div>
               </div>
 
@@ -2382,9 +2644,13 @@ export function InspectionsPage() {
           severe: cvorInspections.filter(i => i.violations.some(v => v.severity >= 7)).length,
         };
         const cvorFilteredData = cvorInspections.filter(insp => {
-          const matchesSearch = insp.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            insp.driver.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            insp.vehiclePlate.toLowerCase().includes(searchTerm.toLowerCase());
+          const st = searchTerm.toLowerCase();
+          const matchesSearch = insp.id.toLowerCase().includes(st) ||
+            insp.driver.toLowerCase().includes(st) ||
+            insp.vehiclePlate.toLowerCase().includes(st) ||
+            (insp.driverLicense && insp.driverLicense.toLowerCase().includes(st)) ||
+            (insp.location?.city && insp.location.city.toLowerCase().includes(st)) ||
+            (insp.location?.raw && insp.location.raw.toLowerCase().includes(st));
           let matchesFilter = true;
           switch(activeFilter) {
             case 'CLEAN': matchesFilter = insp.isClean; break;
@@ -2404,20 +2670,24 @@ export function InspectionsPage() {
         if (cvorRating >= cvorThresholds.showCause) { overallRatingClass = 'bg-red-100 text-red-800'; overallRatingLabel = 'CRITICAL'; }
         else if (cvorRating >= cvorThresholds.intervention) { overallRatingClass = 'bg-amber-100 text-amber-800'; overallRatingLabel = 'HIGH'; }
         else if (cvorRating >= cvorThresholds.warning) { overallRatingClass = 'bg-yellow-100 text-yellow-800'; overallRatingLabel = 'ALERT'; }
+        // CVOR rating criteria for the Safety Rating card: Conditional starts at 70%.
+        const cvorSafetyStatus = cvorRating >= 70 ? 'CONDITIONAL' : 'OK';
+        const cvorSafetyStatusClass = cvorRating >= 70
+          ? 'bg-amber-100 text-amber-800 border-amber-200'
+          : 'bg-green-100 text-green-800 border-green-200';
 
         const renderCvorRow = (label: string, val: number, detail: string, weight?: number) => {
           let alertClass = 'bg-green-100 text-green-800';
           let rowLabel = 'OK';
-          let borderClass = '';
-          if (val >= cvorThresholds.showCause) { alertClass = 'bg-red-100 text-red-800'; rowLabel = 'VERY HIGH'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-          else if (val >= cvorThresholds.intervention) { alertClass = 'bg-amber-100 text-amber-800'; rowLabel = 'HIGH'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-          else if (val >= cvorThresholds.warning) { alertClass = 'bg-yellow-100 text-yellow-800'; rowLabel = 'ALERT'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
+          if (val >= cvorThresholds.showCause) { alertClass = 'bg-red-100 text-red-800'; rowLabel = 'Show Cause'; }
+          else if (val >= cvorThresholds.intervention) { alertClass = 'bg-amber-100 text-amber-800'; rowLabel = 'Audit'; }
+          else if (val >= cvorThresholds.warning) { alertClass = 'bg-yellow-100 text-yellow-800'; rowLabel = 'Warning'; }
           return (
-            <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
+            <div className="flex flex-col justify-center py-2.5 border-b border-slate-50 last:border-b-0">
               <div className="flex justify-between items-center mb-0.5">
                 <span className="text-sm font-medium text-slate-700">{label}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-mono">{weight !== undefined ? `Wt: ${weight} | ` : ''}{val}%</span>
+                  <span className="text-xs text-slate-400 font-mono">{weight !== undefined ? `Wt: ${weight}% | ` : ''}{val.toFixed(2)}%</span>
                   <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{rowLabel}</span>
                 </div>
               </div>
@@ -2429,55 +2699,120 @@ export function InspectionsPage() {
         return (
         <div className="space-y-6">
 
-          {/* CVOR Analysis Panel - Full Width */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-            <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-slate-100">
+          {/* ===== CVOR Top Row: Safety Rating & OOS + Licensing ===== */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
+                <ShieldAlert size={14} className="text-red-500"/> Safety Rating & OOS
+              </h3>
+              <div className="mb-3 text-sm font-medium text-slate-700">
+                Current Rating: <span className={`font-bold px-2 py-0.5 rounded border ${cvorSafetyStatusClass}`}>{cvorSafetyStatus}</span>
+              </div>
+              <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Type</th>
+                      <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
+                      <th className="px-3 py-2 font-semibold text-center">Threshold</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Overall OOS</td>
+                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > 30 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
+                      <td className="px-3 py-2 text-center text-slate-500">30%</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Vehicle OOS</td>
+                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > 25 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
+                      <td className="px-3 py-2 text-center text-slate-500">25%</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Driver OOS</td>
+                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > 10 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
+                      <td className="px-3 py-2 text-center text-slate-500">10%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <FileSignature size={14} className="text-purple-500"/> Licensing
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">CVOR Number</span>
+                  <span className="font-bold font-mono text-slate-900">{carrierProfile.cvor}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">USDOT Number</span>
+                  <span className="font-bold font-mono text-slate-900">{carrierProfile.id}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Property Carrier</span>
+                  <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Fleet Size</span>
+                  <span className="font-bold text-slate-900">{carrierProfile.cvorAnalysis.counts.trucks} Power Units</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Total Mileage</span>
+                  <span className="font-bold font-mono text-blue-600">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M mi</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== CVOR Summary (List Style) ===== */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
                 <Activity size={16} className="text-red-600"/>
               </div>
-              <h3 className="text-sm font-bold text-slate-900">CVOR Analysis</h3>
+              <h3 className="text-base font-bold text-slate-900">CVOR Analysis</h3>
               <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-red-100 text-red-700">CVOR</span>
-              <InfoTooltip text="Commercial Vehicle Operator's Registration (CVOR) performance metrics for Ontario-based carriers." />
+              <InfoTooltip text="Ontario CVOR score combines collisions, convictions, and inspections with assigned weights." />
             </div>
 
-            {/* Overall Rating */}
-            <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${cvorRating >= cvorThresholds.warning ? 'border-l-2 border-l-amber-400 pl-3' : ''}`}>
-              <div className="flex justify-between items-center mb-0.5">
-                <span className={`text-sm font-medium ${cvorRating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-mono">{cvorRating}%</span>
-                  <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${overallRatingClass}`}>{overallRatingLabel}</span>
+            <div className="mt-4 space-y-0">
+              <div className={`rounded-lg border-l-2 p-3 mb-1 ${cvorRating >= cvorThresholds.warning ? 'border-l-amber-400 bg-amber-50/30' : 'border-l-slate-300 bg-slate-50/50'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className={`text-sm font-medium ${cvorRating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</div>
+                    <div className="text-xs text-slate-500 mt-1">Composite score from collisions, convictions, and inspections</div>
+                  </div>
+                  <div className="text-right flex items-center gap-2">
+                    <div className="text-xs text-slate-400 font-mono">{cvorRating.toFixed(2)}%</div>
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-sm font-bold ${overallRatingClass}`}>{overallRatingLabel === 'CRITICAL' ? 'Show Cause' : overallRatingLabel === 'HIGH' ? 'Audit' : overallRatingLabel === 'ALERT' ? 'Warning' : 'OK'}</span>
+                  </div>
                 </div>
               </div>
-              <span className="text-xs text-slate-500">Composite score from collisions, convictions, and inspections</span>
-            </div>
 
-            {/* Collisions */}
-            {renderCvorRow(
-              'Collisions',
-              carrierProfile.cvorAnalysis.collisions.percentage,
-              `${carrierProfile.cvorAnalysis.counts.collisions} collisions | ${carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points`,
-              carrierProfile.cvorAnalysis.collisions.weight
-            )}
+              {renderCvorRow(
+                'Collisions',
+                carrierProfile.cvorAnalysis.collisions.percentage,
+                `${carrierProfile.cvorAnalysis.counts.collisions} collisions | ${carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points`,
+                carrierProfile.cvorAnalysis.collisions.weight
+              )}
 
-            {/* Convictions */}
-            {renderCvorRow(
-              'Convictions',
-              carrierProfile.cvorAnalysis.convictions.percentage,
-              `${carrierProfile.cvorAnalysis.counts.convictions} convictions | ${carrierProfile.cvorAnalysis.counts.convictionPoints} points`,
-              carrierProfile.cvorAnalysis.convictions.weight
-            )}
+              {renderCvorRow(
+                'Convictions',
+                carrierProfile.cvorAnalysis.convictions.percentage,
+                `${carrierProfile.cvorAnalysis.counts.convictions} convictions | ${carrierProfile.cvorAnalysis.counts.convictionPoints} points`,
+                carrierProfile.cvorAnalysis.convictions.weight
+              )}
 
-            {/* Inspections */}
-            {renderCvorRow(
-              'Inspections',
-              carrierProfile.cvorAnalysis.inspections.percentage,
-              `OOS: Overall ${carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle ${carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver ${carrierProfile.cvorAnalysis.counts.oosDriver}%`,
-              carrierProfile.cvorAnalysis.inspections.weight
-            )}
-
-            {/* Key Counts */}
-            <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100">
+              {renderCvorRow(
+                'Inspections',
+                carrierProfile.cvorAnalysis.inspections.percentage,
+                `OOS: Overall ${carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle ${carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver ${carrierProfile.cvorAnalysis.counts.oosDriver}%`,
+                carrierProfile.cvorAnalysis.inspections.weight
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100">
               <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
                 <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Collisions</div>
                 <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.collisions}</div>
@@ -2495,17 +2830,89 @@ export function InspectionsPage() {
                 <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M</div>
               </div>
             </div>
-
-            {/* Threshold Legend */}
-            <div className="mt-3 pt-3 border-t border-slate-100">
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                <span className="text-slate-500"><span className="font-bold text-slate-700">{cvorThresholds.warning}%</span> Warning</span>
-                <span className="text-slate-500"><span className="font-bold text-amber-600">{cvorThresholds.intervention}%</span> Audit</span>
-                <span className="text-slate-500"><span className="font-bold text-red-600">{cvorThresholds.showCause}%</span> Show Cause</span>
-                <span className="text-slate-500"><span className="font-bold text-red-800">{cvorThresholds.seizure}%</span> Seizure</span>
-              </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+              <span className="text-slate-500"><span className="font-bold text-slate-700">{cvorThresholds.warning}%</span> Warning</span>
+              <span className="text-slate-500"><span className="font-bold text-amber-600">{cvorThresholds.intervention}%</span> Audit</span>
+              <span className="text-slate-500"><span className="font-bold text-red-600">{cvorThresholds.showCause}%</span> Show Cause</span>
+              <span className="text-slate-500"><span className="font-bold text-red-800">{cvorThresholds.seizure}%</span> Seizure</span>
             </div>
           </div>
+          </div>
+
+          {/* ===== CVOR SECTION 1: CATEGORY SUMMARY BAR (SMS-STYLE) ===== */}
+          {(() => {
+            const now = new Date('2025-12-31');
+            const periodMonths = cvorPeriod === '1M' ? 1 : cvorPeriod === '3M' ? 3 : cvorPeriod === '12M' ? 12 : 24;
+            const cutoff = new Date(now);
+            cutoff.setMonth(cutoff.getMonth() - periodMonths);
+            const periodInspections = cvorInspections.filter(i => new Date(i.date) >= cutoff);
+
+            const catMap: Record<string, { points: number; inspections: number }> = {};
+            periodInspections.forEach(insp => {
+              const cats = new Set<string>();
+              insp.violations.forEach(v => {
+                if (!catMap[v.category]) catMap[v.category] = { points: 0, inspections: 0 };
+                catMap[v.category].points += v.points || 0;
+                cats.add(v.category);
+              });
+              cats.forEach(cat => { catMap[cat].inspections += 1; });
+            });
+
+            const rows = Object.entries(catMap)
+              .map(([category, data]) => ({ category, ...data }))
+              .sort((a, b) => b.points - a.points)
+              .slice(0, 7);
+            const maxPoints = Math.max(1, ...rows.map(r => r.points));
+
+            return (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+              <div className="flex items-center justify-end mb-4 flex-wrap gap-3">
+                <div className="inline-flex items-center px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
+                  Percentile Formula
+                  <InfoTooltip
+                    title="How CVOR Percentile Is Calculated"
+                    text="Category points in the selected period are normalized against the highest category point total in that period. Percentile = category points / max category points × 100."
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Updated December 2025</span>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    {(['1M', '3M', '12M', '24M'] as const).map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setCvorPeriod(p)}
+                        className={`px-2.5 py-1 text-xs font-bold transition-colors ${cvorPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`grid gap-3 ${rows.length <= 1 ? 'grid-cols-1 max-w-[200px]' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-7'}`}>
+                {rows.map((r, i) => {
+                  const pct = Math.round((r.points / maxPoints) * 100);
+                  const isAlert = pct >= cvorThresholds.warning;
+                  return (
+                    <div key={i} className="group relative text-center p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 truncate" title={r.category}>{r.category}</div>
+                      <div className={`text-lg font-bold ${isAlert ? 'text-red-600' : 'text-slate-800'}`}>{pct}%</div>
+                      {isAlert && <span className="text-[11px] text-red-500 font-bold">▲ {pct}</span>}
+                      <div className="text-[11px] text-slate-400 mt-0.5">{r.inspections} insp.</div>
+                      <div className="pointer-events-none absolute z-20 left-1/2 top-full mt-2 -translate-x-1/2 w-56 rounded-lg border border-slate-200 bg-white p-2.5 text-left shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                        <div className="text-[11px] font-bold text-slate-700">{r.category}</div>
+                        <div className="mt-1 text-[11px] text-slate-500">Percentile: <span className="font-semibold text-slate-700">{pct}%</span></div>
+                        <div className="text-[11px] text-slate-500">Inspections: <span className="font-semibold text-slate-700">{r.inspections}</span></div>
+                        <div className="text-[11px] text-slate-500">Status: <span className={`font-semibold ${isAlert ? 'text-amber-600' : 'text-emerald-600'}`}>{isAlert ? 'Over Threshold' : 'Within Threshold'}</span></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            );
+          })()}
 
           {/* ===== CVOR SECTION 2: VIOLATION SUMMARY CHARTS ===== */}
           {(() => {
@@ -2533,28 +2940,16 @@ export function InspectionsPage() {
 
             return (
             <>
-            {/* Period Toggle */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">CVOR Violation Analysis</h2>
-              <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                {(['1M', '3M', '12M', '24M'] as const).map(p => (
-                  <button key={p} onClick={() => setCvorPeriod(p)}
-                    className={`px-3 py-1.5 text-sm font-bold transition-colors ${cvorPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                  >{p === '1M' ? '1 Mo' : p === '3M' ? '3 Mo' : p === '12M' ? '12 Mo' : '24 Mo'}</button>
-                ))}
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
               {/* LEFT: Category Summary Chart */}
               <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-bold text-slate-900">Violation Categories <span className="text-sm font-normal text-slate-400">/ CVOR</span></h3>
+                  <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-bold text-slate-900">BASIC Summary <span className="text-sm font-normal text-slate-400">/ December 2025</span></h3>
                   <div className="inline-flex bg-slate-100 rounded-md p-0.5">
                     <button onClick={() => setCvorSummaryView('CATEGORIES')}
                       className={`px-3 py-1.5 text-sm font-bold transition-colors ${cvorSummaryView === 'CATEGORIES' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                    >CATEGORIES</button>
+                    >PERCENTILES</button>
                     <button onClick={() => setCvorSummaryView('INSPECTIONS')}
                       className={`px-3 py-1.5 text-sm font-bold transition-all ${cvorSummaryView === 'INSPECTIONS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
                     >INSPECTIONS</button>
@@ -2566,16 +2961,16 @@ export function InspectionsPage() {
                     {/* Legend */}
                     <div className="flex items-center gap-5 mb-5 text-sm">
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                        <span className="text-slate-600">High Severity</span>
+                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                        <span className="text-slate-600">Under Threshold</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                        <span className="text-slate-600">Medium</span>
+                        <span className="text-slate-600">Over Threshold</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                        <span className="text-slate-600">Low</span>
+                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                        <span className="text-slate-600">Intervention Threshold</span>
                       </div>
                     </div>
 
@@ -2585,8 +2980,8 @@ export function InspectionsPage() {
                         const pct = maxPoints > 0 ? (data.points / maxPoints) * 100 : 0;
                         let barColor = 'bg-blue-500';
                         let dotColor = 'bg-blue-500';
-                        if (data.oosCount > 0 && data.points > 30) { barColor = 'bg-red-500'; dotColor = 'bg-red-500'; }
-                        else if (data.points > 15) { barColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; }
+                        if (pct >= cvorThresholds.intervention) { barColor = 'bg-red-500'; dotColor = 'bg-red-500'; }
+                        else if (pct >= cvorThresholds.warning) { barColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; }
                         return (
                           <div key={i} className="group/bar flex items-center gap-3 relative">
                             <div className="w-40 text-sm font-semibold text-slate-700 truncate" title={cat}>{cat}</div>
@@ -2595,6 +2990,8 @@ export function InspectionsPage() {
                               {pct > 0 && (
                                 <div className={`absolute left-0 top-0 h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
                               )}
+                              <div className="absolute top-0 h-full border-l border-slate-300" style={{ left: `${cvorThresholds.warning}%` }}></div>
+                              <div className="absolute top-0 h-full border-l-2 border-red-400" style={{ left: `${cvorThresholds.intervention}%` }}></div>
                               {pct > 0 && (
                                 <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow ${barColor}`} style={{ left: `calc(${Math.min(pct, 100)}% - 8px)` }}></div>
                               )}
@@ -2604,14 +3001,15 @@ export function InspectionsPage() {
                                   <div className="font-bold text-red-300 mb-0.5">{cat}</div>
                                   <div>Violations: <span className="font-bold">{data.violations}</span></div>
                                   <div>Points: <span className="font-bold">{data.points}</span></div>
+                                  <div>Percentile: <span className="font-bold">{Math.round(pct)}%</span></div>
                                   <div>OOS: <span className="font-bold">{data.oosCount}</span></div>
                                   <div>Inspections: <span className="font-bold">{data.inspections}</span></div>
                                   <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
                                 </div>
                               </div>
                             </div>
-                            <span className={`text-sm font-bold w-12 text-right ${data.oosCount > 0 ? 'text-red-600' : 'text-slate-500'}`}>
-                              {data.points} pts
+                            <span className={`text-sm font-bold w-12 text-right ${pct >= cvorThresholds.intervention ? 'text-red-600' : pct >= cvorThresholds.warning ? 'text-amber-600' : 'text-slate-500'}`}>
+                              {Math.round(pct)}%
                             </span>
                           </div>
                         );
@@ -2965,24 +3363,33 @@ export function InspectionsPage() {
                 onRowsPerPageChange={setRowsPerPage}
               />
 
-              {/* Table Header */}
+              {/* Table Header - CVOR specific with extra fields */}
               <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                <div className="col-span-1 pl-2">Date</div>
-                <div className="col-span-2">Report ID</div>
+                <div className="col-span-1 pl-2">Date / Time</div>
+                <div className="col-span-1">Report</div>
                 <div className="col-span-1">Location</div>
-                <div className="col-span-2">Driver</div>
-                <div className="col-span-2">Asset</div>
+                <div className="col-span-2">Driver / Licence</div>
+                <div className="col-span-2">Power Unit / Defects</div>
                 <div className="col-span-1 text-center">Violations</div>
-                <div className="col-span-1 text-center">Severity</div>
-                <div className="col-span-1 text-center">Points</div>
+                <div className="col-span-1 text-center">Veh Pts</div>
+                <div className="col-span-1 text-center">Dvr Pts</div>
+                <div className="col-span-1 text-center">CVOR Pts</div>
                 <div className="col-span-1">Status</div>
               </div>
 
               <div className="divide-y divide-slate-200">
                 {cvorPagedData.length > 0 ? (
-                  cvorPagedData.map(record => (
-                    <InspectionRow key={record.id} record={record} onEdit={openEditModal} />
-                  ))
+                  cvorPagedData.map(record => {
+                    const totalPts = (record.violations || []).reduce((s: number, v: any) => s + (v.points || 0), 0);
+                    const vehPts = record.cvorPoints?.vehicle ?? null;
+                    const dvrPts = record.cvorPoints?.driver ?? null;
+                    const cvrPts = record.cvorPoints?.cvor ?? (vehPts !== null && dvrPts !== null ? vehPts + dvrPts : totalPts);
+                    return (
+                      <InspectionRow key={record.id} record={record} onEdit={openEditModal}
+                        cvorOverride={{ vehPts, dvrPts, cvrPts }}
+                      />
+                    );
+                  })
                 ) : (
                   <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
                     <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
@@ -3099,7 +3506,15 @@ export function InspectionsPage() {
                     )}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-4 mt-4">
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Start Time</label>
+                    <input type="time" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.startTime} onChange={e => setInspForm(p => ({ ...p, startTime: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">End Time</label>
+                    <input type="time" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.endTime} onChange={e => setInspForm(p => ({ ...p, endTime: e.target.value }))} />
+                  </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-slate-500 uppercase">Level</label>
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.level} onChange={e => setInspForm(p => ({ ...p, level: e.target.value }))}>
@@ -3148,18 +3563,25 @@ export function InspectionsPage() {
               {/* Section: Driver */}
               <div className="border-t border-slate-100 pt-5">
                 <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Driver</h4>
-                <div className="space-y-1.5">
-                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.driverId} onChange={e => {
-                    const d = MOCK_DRIVERS.find(d => d.id === e.target.value);
-                    if (d) {
-                      setInspForm(p => ({ ...p, driverId: d.id, driver: `${d.lastName}, ${d.firstName}` }));
-                    }
-                  }}>
-                    <option value="">Select Driver...</option>
-                    {MOCK_DRIVERS.map(d => (
-                      <option key={d.id} value={d.id}>{d.firstName} {d.lastName} ({d.id})</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Select Driver</label>
+                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.driverId} onChange={e => {
+                      const d = MOCK_DRIVERS.find(d => d.id === e.target.value);
+                      if (d) {
+                        setInspForm(p => ({ ...p, driverId: d.id, driver: `${d.lastName}, ${d.firstName}` }));
+                      }
+                    }}>
+                      <option value="">Select Driver...</option>
+                      {MOCK_DRIVERS.map(d => (
+                        <option key={d.id} value={d.id}>{d.firstName} {d.lastName} ({d.id})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Driver Licence #</label>
+                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. PA72341" value={inspForm.driverLicense} onChange={e => setInspForm(p => ({ ...p, driverLicense: e.target.value }))} />
+                  </div>
                 </div>
               </div>
 
@@ -3251,6 +3673,40 @@ export function InspectionsPage() {
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-slate-500 uppercase">Total OOS Count</label>
                     <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.oosSummary.total} onChange={e => setInspForm(p => ({ ...p, oosSummary: { ...p.oosSummary, total: parseInt(e.target.value) || 0 } }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Defects */}
+              <div className="border-t border-slate-100 pt-5">
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Defects</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Power Unit Defects</label>
+                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. BRAKES, TIRES, LIGHTING" value={inspForm.powerUnitDefects} onChange={e => setInspForm(p => ({ ...p, powerUnitDefects: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Trailer Defects</label>
+                    <input type="text" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="e.g. REFLECTIVE SHEETING, LIGHTING" value={inspForm.trailerDefects} onChange={e => setInspForm(p => ({ ...p, trailerDefects: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: Points Breakdown */}
+              <div className="border-t border-slate-100 pt-5">
+                <h4 className="text-[13px] font-bold text-slate-400 uppercase tracking-wider mb-3">Points Breakdown</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Vehicle Points</label>
+                    <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.vehiclePoints} onChange={e => setInspForm(p => ({ ...p, vehiclePoints: parseInt(e.target.value) || 0 }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">Driver Points</label>
+                    <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.driverPoints} onChange={e => setInspForm(p => ({ ...p, driverPoints: parseInt(e.target.value) || 0 }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-bold text-slate-500 uppercase">{inspForm.country === 'Canada' ? 'CVOR Points' : 'Carrier Points'}</label>
+                    <input type="number" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={inspForm.carrierPoints} onChange={e => setInspForm(p => ({ ...p, carrierPoints: parseInt(e.target.value) || 0 }))} />
                   </div>
                 </div>
               </div>
@@ -3548,4 +4004,5 @@ export function InspectionsPage() {
     </div>
   );
 }
+
 

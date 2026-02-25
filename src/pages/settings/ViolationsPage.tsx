@@ -173,6 +173,9 @@ export function ViolationsPage() {
           case 'risk': aVal = a.driverRiskCategory; bVal = b.driverRiskCategory; break;
           case 'sev': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
           case 'crash': aVal = a.crashLikelihoodPercent || 0; bVal = b.crashLikelihoodPercent || 0; break;
+          case 'vehPts': aVal = a.severityWeight.carrier; bVal = b.severityWeight.carrier; break;
+          case 'dvrPts': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
+          case 'carPts': aVal = (a.severityWeight.driver || 0) + (a.severityWeight.carrier || 0); bVal = (b.severityWeight.driver || 0) + (b.severityWeight.carrier || 0); break;
           case 'status': aVal = a.inDsms ? 1 : 0; bVal = b.inDsms ? 1 : 0; break;
           default: return 0;
         }
@@ -425,14 +428,34 @@ export function ViolationsPage() {
                   >
                     <div className="flex items-center justify-center gap-1">Risk {getSortIcon('risk')}</div>
                   </th>
-                  <th 
-                    scope="col" 
+                  <th
+                    scope="col"
                     className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
                     onClick={() => requestSort('sev')}
                   >
                     <div className="flex items-center justify-center gap-1">Sev (D/C) {getSortIcon('sev')}</div>
                   </th>
-
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('vehPts')}
+                  >
+                    <div className="flex items-center justify-center gap-1">Veh Pts {getSortIcon('vehPts')}</div>
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('dvrPts')}
+                  >
+                    <div className="flex items-center justify-center gap-1">Dvr Pts {getSortIcon('dvrPts')}</div>
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => requestSort('carPts')}
+                  >
+                    <div className="flex items-center justify-center gap-1">Car Pts {getSortIcon('carPts')}</div>
+                  </th>
 
                   <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
                     Actions
@@ -445,7 +468,7 @@ export function ViolationsPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={11} className="px-6 py-12 text-center">
                       <Search className="mx-auto h-10 w-10 text-slate-300 mb-3" />
                       <h3 className="text-slate-900 font-medium">No violations found in this category</h3>
                       <p className="text-slate-500 text-sm mt-1">Try switching categories or adjusting filters.</p>
@@ -523,8 +546,32 @@ export function ViolationsPage() {
                             </div>
                           </td>
 
+                          {/* Vehicle Points */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <span className={`text-sm font-bold font-mono ${item.severityWeight.carrier > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                              {item.severityWeight.carrier || 0}
+                            </span>
+                          </td>
 
+                          {/* Driver Points */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <span className={`text-sm font-bold font-mono ${item.severityWeight.driver > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                              {item.severityWeight.driver || 0}
+                            </span>
+                          </td>
 
+                          {/* Carrier Points (sum of driver + carrier severity or CVOR points if available) */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            {(() => {
+                              const cvorPts = item.canadaEnforcement?.points?.cvor;
+                              const total = cvorPts ? (cvorPts.min ?? 0) : (item.severityWeight.driver || 0) + (item.severityWeight.carrier || 0);
+                              return (
+                                <span className={`text-sm font-bold font-mono ${total > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
+                                  {total}
+                                </span>
+                              );
+                            })()}
+                          </td>
 
 
                           {/* Actions Column */}
@@ -549,7 +596,7 @@ export function ViolationsPage() {
                         {/* Expanded Row */}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={8} className="p-0 border-t border-slate-100 bg-slate-50/50">
+                            <td colSpan={11} className="p-0 border-t border-slate-100 bg-slate-50/50">
                                <div className="px-6 py-6 animate-in slide-in-from-top-2 duration-200">
                                 <div className="flex gap-1 bg-white p-1 rounded-lg border border-slate-200 w-fit mb-6">
                                   <button 
