@@ -628,12 +628,20 @@ const InspectionRow = ({ record, onEdit }: { record: any; onEdit?: (record: any)
 export function InspectionsPage() {
   const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor'>('overview');
   const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '12M' | '24M'>('24M');
-  const [smsBasicCategory, setSmsBasicCategory] = useState('All');
+  const smsBasicCategory = 'All';
   const [smsSummaryView, setSmsSummaryView] = useState<'PERCENTILES' | 'INSPECTIONS'>('PERCENTILES');
-  const [smsCatDropdownOpen, setSmsCatDropdownOpen] = useState(false);
   const [smsTopViolSort, setSmsTopViolSort] = useState<'POINTS' | 'COUNT'>('POINTS');
   const [smsMetricsView, setSmsMetricsView] = useState<'INSPECTIONS' | 'VIOLATIONS' | 'POINTS'>('POINTS');
   const [metricsSort, setMetricsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'total', dir: 'desc' });
+  // CVOR tab chart states
+  const [cvorPeriod, setCvorPeriod] = useState<'1M' | '3M' | '12M' | '24M'>('24M');
+  const [cvorSummaryView, setCvorSummaryView] = useState<'CATEGORIES' | 'INSPECTIONS'>('CATEGORIES');
+  const [cvorTopViolSort, setCvorTopViolSort] = useState<'POINTS' | 'COUNT'>('POINTS');
+  const [cvorMetricsView, setCvorMetricsView] = useState<'INSPECTIONS' | 'VIOLATIONS' | 'POINTS'>('POINTS');
+  const [cvorMetricsSort, setCvorMetricsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'total', dir: 'desc' });
+  // Expandable BASIC row states
+  const [expandedBasic, setExpandedBasic] = useState<string | null>(null);
+  const [basicChartView, setBasicChartView] = useState<Record<string, 'MEASURE' | 'INSPECTIONS'>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [page, setPage] = useState(1);
@@ -656,6 +664,69 @@ export function InspectionsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingInspection, setEditingInspection] = useState<any>(null);
   const { csaThresholds, cvorThresholds, documents: allDocTypes } = useAppData();
+
+  // FMCSA SMS Time Weight: 3 for 0-6 months, 2 for 6-12 months, 1 for 12-24 months
+  const getTimeWeightTop = (inspDate: string, ref: Date): number => {
+    const d = new Date(inspDate);
+    const diffMonths = (ref.getTime() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+    if (diffMonths <= 6) return 3;
+    if (diffMonths <= 12) return 2;
+    if (diffMonths <= 24) return 1;
+    return 0;
+  };
+
+  // Compute BASIC measures from actual inspection data (shared across tabs)
+  const computedBasicOverview = useMemo(() => {
+    const smsInsp = inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA');
+    const ref = new Date('2026-01-30');
+    const peerThresholds: Record<string, { p50: number; p65: number; p75: number; p80: number; p90: number; p95: number }> = {
+      'Unsafe Driving':              { p50: 2.0, p65: 4.0, p75: 6.0, p80: 8.0, p90: 12.0, p95: 18.0 },
+      'Hours-of-service Compliance':  { p50: 1.5, p65: 3.0, p75: 5.0, p80: 7.0, p90: 10.0, p95: 15.0 },
+      'Vehicle Maintenance':          { p50: 5.0, p65: 10.0, p75: 15.0, p80: 18.0, p90: 22.0, p95: 26.0 },
+      'Controlled Substances':        { p50: 0.5, p65: 1.0, p75: 2.0, p80: 3.0, p90: 5.0, p95: 8.0 },
+      'Driver Fitness':               { p50: 1.0, p65: 2.0, p75: 4.0, p80: 5.0, p90: 8.0, p95: 12.0 },
+      'Hazmat compliance':            { p50: 1.0, p65: 2.0, p75: 3.0, p80: 5.0, p90: 7.0, p95: 10.0 },
+      'Crash Indicator':              { p50: 0.5, p65: 1.0, p75: 1.5, p80: 2.0, p90: 3.0, p95: 5.0 },
+    };
+
+    return carrierProfile.basicStatus.map(status => {
+      const cat = status.category;
+      const inspWithCat = smsInsp.filter(insp =>
+        insp.violations.some(v => v.category === cat) && getTimeWeightTop(insp.date, ref) > 0
+      );
+      const numInsp = inspWithCat.length;
+      let totalWeightedSev = 0;
+      inspWithCat.forEach(insp => {
+        const tw = getTimeWeightTop(insp.date, ref);
+        insp.violations.filter(v => v.category === cat).forEach(v => {
+          totalWeightedSev += (v.severity || 0) * tw;
+        });
+      });
+      const computedMeasure = numInsp > 0 ? Math.round((totalWeightedSev / numInsp) * 100) / 100 : 0;
+      const peers = peerThresholds[cat];
+      let computedPercentile = 'N/A';
+      if (numInsp >= 3 && peers) {
+        const m = computedMeasure;
+        if (m >= peers.p95) computedPercentile = `${Math.min(99, 95 + Math.round((m - peers.p95) / peers.p95 * 4))}%`;
+        else if (m >= peers.p90) computedPercentile = `${90 + Math.round((m - peers.p90) / (peers.p95 - peers.p90) * 5)}%`;
+        else if (m >= peers.p80) computedPercentile = `${80 + Math.round((m - peers.p80) / (peers.p90 - peers.p80) * 10)}%`;
+        else if (m >= peers.p75) computedPercentile = `${75 + Math.round((m - peers.p75) / (peers.p80 - peers.p75) * 5)}%`;
+        else if (m >= peers.p65) computedPercentile = `${65 + Math.round((m - peers.p65) / (peers.p75 - peers.p65) * 10)}%`;
+        else if (m >= peers.p50) computedPercentile = `${50 + Math.round((m - peers.p50) / (peers.p65 - peers.p50) * 15)}%`;
+        else computedPercentile = `${Math.max(1, Math.round(m / peers.p50 * 50))}%`;
+      }
+      const isAlert = computedPercentile !== 'N/A' && parseInt(computedPercentile) >= (csaThresholds?.critical || 80);
+      return {
+        ...status,
+        measure: computedMeasure > 0 ? computedMeasure.toString() : '0',
+        percentile: computedPercentile,
+        alert: isAlert,
+        details: numInsp === 0 ? 'No violations'
+          : numInsp < 3 ? `< 3 inspections with violations (${numInsp} found)`
+          : `${numInsp} inspections with violations | Weighted Severity: ${totalWeightedSev}`,
+      };
+    });
+  }, [csaThresholds]);
 
   // Form state for Add/Edit
   const emptyForm = {
@@ -930,7 +1001,7 @@ export function InspectionsPage() {
                 <InfoTooltip text="The carrier's overall safety percentile score based on a 2-year period, ranked against other similar companies." />
               </div>
               <div className="space-y-0 flex-1">
-                {carrierProfile.basicStatus.map((status, idx) => {
+                {computedBasicOverview.map((status, idx) => {
                   const numericPercentile = parseInt(status.percentile) || 0;
                   let alertClass = 'bg-slate-100 text-slate-600';
                   let textClass = 'text-slate-700';
@@ -952,20 +1023,36 @@ export function InspectionsPage() {
                       borderClass = 'border-l-2 border-l-red-400 pl-3';
                   }
 
+                  const isExp = expandedBasic === status.category;
                   return (
-                  <div key={idx} className={`flex flex-col justify-center py-2.5 border-b border-slate-50 last:border-0 ${borderClass}`}>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className={`text-sm font-medium ${textClass}`}>
-                        {status.category}
-                      </span>
-                      <div className="flex items-center gap-2">
+                  <div key={idx} className={`border-b border-slate-50 last:border-0 ${borderClass}`}>
+                    <div
+                      className="flex flex-col justify-center py-2.5 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                      onClick={() => setExpandedBasic(isExp ? null : status.category)}
+                    >
+                      <div className="flex justify-between items-center mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <ChevronDown size={12} className={`text-slate-400 transition-transform ${isExp ? 'rotate-180' : ''}`} />
+                          <span className={`text-sm font-medium ${textClass}`}>{status.category}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
                           {status.measure !== undefined && <span className="text-xs text-slate-400 font-mono">Msr: {status.measure}</span>}
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
-                          {status.percentile}
-                        </span>
+                          <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{status.percentile}</span>
+                        </div>
                       </div>
+                      <span className="text-xs text-slate-500 truncate pl-5" title={status.details}>{status.details}</span>
                     </div>
-                    <span className="text-xs text-slate-500 truncate" title={status.details}>{status.details}</span>
+                    {isExp && (
+                      <div className="pb-3 pl-5 pr-1">
+                        <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 text-xs text-slate-500">
+                          <div className="font-bold text-slate-700 mb-1">{status.category}</div>
+                          <div>Measure: <span className="font-mono font-bold text-slate-800">{status.measure}</span></div>
+                          <div>Percentile: <span className="font-mono font-bold text-slate-800">{status.percentile}</span></div>
+                          <div className="mt-1 text-slate-400">{status.details}</div>
+                          <div className="mt-2 text-blue-500 text-xs">Switch to SMS tab for detailed charts →</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )})}
               </div>
@@ -1251,11 +1338,75 @@ export function InspectionsPage() {
 
         return (
         <div className="space-y-6">
+          {/* Top Row: Safety Rating & OOS + Licensing */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Safety Rating & OOS */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
+                <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS Rates
+              </h3>
+              <div className="mb-4 text-sm font-medium text-slate-700">
+                Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
+              </div>
+              <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Type</th>
+                      <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
+                      <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Vehicle</td>
+                      <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Driver</td>
+                      <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 text-slate-700">Hazmat</td>
+                      <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Licensing */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <FileSignature size={14} className="text-purple-500"/> Licensing
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Property</span>
+                  <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Passenger</span>
+                  <span className="font-medium text-slate-400">No</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Household</span>
+                  <span className="font-medium text-slate-400">No</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Broker</span>
+                  <span className="font-medium text-slate-400">No</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* ===== SECTION 1: BASIC CATEGORIES SUMMARY BAR ===== */}
           {(() => {
-            const basics = carrierProfile.basicStatus.filter(b => b.category !== 'Others');
-            const categoryNames = ['All', ...basics.map(b => b.category)];
+            const basics = computedBasicOverview.filter(b => b.category !== 'Others');
             const displayedBasics = smsBasicCategory === 'All' ? basics : basics.filter(b => b.category === smsBasicCategory);
 
             // Period-filtered SMS inspections for chart data
@@ -1267,31 +1418,7 @@ export function InspectionsPage() {
 
             return (
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                {/* Category dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setSmsCatDropdownOpen(!smsCatDropdownOpen)}
-                    className="flex items-center gap-2 px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 hover:bg-slate-50"
-                  >
-                    {smsBasicCategory === 'All' ? 'All BASIC categories' : smsBasicCategory}
-                    <ChevronDown size={14} className="text-slate-400" />
-                  </button>
-                  {smsCatDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
-                      {categoryNames.map(cat => (
-                        <button
-                          key={cat}
-                          onClick={() => { setSmsBasicCategory(cat); setSmsCatDropdownOpen(false); }}
-                          className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${cat === smsBasicCategory ? 'font-bold text-blue-600 bg-blue-50' : 'text-slate-700'}`}
-                        >
-                          {cat === 'All' ? 'All BASIC categories' : cat}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
+              <div className="flex items-center justify-end mb-4 flex-wrap gap-3">
                 {/* Period selector */}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Updated December 2025</span>
@@ -1319,13 +1446,19 @@ export function InspectionsPage() {
                     insp.violations.some(v => v.category === b.category)
                   ).length;
                   return (
-                    <div key={i} className="text-center p-2 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => setSmsBasicCategory(b.category)}>
+                    <div key={i} className="group relative text-center p-2 rounded-lg hover:bg-slate-50 transition-colors">
                       <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 truncate" title={b.category}>{b.category}</div>
                       <div className={`text-lg font-bold ${isAlert ? 'text-red-600' : 'text-slate-800'}`}>
                         {b.percentile === 'N/A' ? '0%' : b.percentile}
                       </div>
                       {isAlert && <span className="text-[11px] text-red-500 font-bold">▲ {pct}</span>}
                       <div className="text-[11px] text-slate-400 mt-0.5">{catInspections} insp.</div>
+                      <div className="pointer-events-none absolute z-20 left-1/2 top-full mt-2 -translate-x-1/2 w-56 rounded-lg border border-slate-200 bg-white p-2.5 text-left shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                        <div className="text-[11px] font-bold text-slate-700">{b.category}</div>
+                        <div className="mt-1 text-[11px] text-slate-500">Percentile: <span className="font-semibold text-slate-700">{b.percentile === 'N/A' ? '0%' : b.percentile}</span></div>
+                        <div className="text-[11px] text-slate-500">Inspections: <span className="font-semibold text-slate-700">{catInspections}</span></div>
+                        <div className="text-[11px] text-slate-500">Status: <span className={`font-semibold ${isAlert ? 'text-red-600' : 'text-emerald-600'}`}>{isAlert ? 'Over Threshold' : 'Within Threshold'}</span></div>
+                      </div>
                     </div>
                   );
                 })}
@@ -1387,7 +1520,7 @@ export function InspectionsPage() {
 
                     {/* Horizontal Bars */}
                     <div className="space-y-5">
-                      {carrierProfile.basicStatus
+                      {computedBasicOverview
                         .filter(b => b.category !== 'Others')
                         .filter(b => smsBasicCategory === 'All' || b.category === smsBasicCategory)
                         .map((b, i) => {
@@ -1789,73 +1922,25 @@ export function InspectionsPage() {
             </div>
           </div>
 
-          {/* Top Row: Safety Rating & OOS + Licensing */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Safety Rating & OOS */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
-                <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS Rates
-              </h3>
-              <div className="mb-4 text-sm font-medium text-slate-700">
-                Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
-              </div>
-              <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Type</th>
-                      <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
-                      <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Vehicle</td>
-                      <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Driver</td>
-                      <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Hazmat</td>
-                      <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Licensing */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <FileSignature size={14} className="text-purple-500"/> Licensing
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Property</span>
-                  <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Passenger</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Household</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600">Broker</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* CSA BASIC Status - Full Width */}
+          {(() => {
+            const chartCategories = ['Unsafe Driving', 'Hours-of-service Compliance', 'Vehicle Maintenance', 'Controlled Substances', 'Driver Fitness'];
+            const smsInsp = inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            // Use shared computed BASIC status from useMemo
+            // Time weight function for expanded chart computations
+            const getTimeWeight = (inspDate: string, ref: Date): number => {
+              const d = new Date(inspDate);
+              const diffMonths = (ref.getTime() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+              if (diffMonths <= 6) return 3;
+              if (diffMonths <= 12) return 2;
+              if (diffMonths <= 24) return 1;
+              return 0;
+            };
+            const refDate = new Date('2026-01-30');
+
+            return (
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
             <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-slate-100">
               <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -1863,10 +1948,10 @@ export function InspectionsPage() {
               </div>
               <h3 className="text-sm font-bold text-slate-900">SMS BASIC Status</h3>
               <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">SMS</span>
-              <InfoTooltip text="The carrier's FMCSA Safety Measurement System percentile scores based on a 2-year period, ranked against similar carriers." />
+              <InfoTooltip text="The carrier's FMCSA Safety Measurement System percentile scores based on a 2-year period, ranked against similar carriers. Click a row to expand." />
             </div>
             <div className="space-y-0">
-              {carrierProfile.basicStatus.map((status, idx) => {
+              {computedBasicOverview.map((status, idx) => {
                 const numericPercentile = parseInt(status.percentile) || 0;
                 let alertClass = 'bg-slate-100 text-slate-600';
                 let textClass = 'text-slate-700';
@@ -1886,16 +1971,306 @@ export function InspectionsPage() {
                     textClass = 'text-red-700 font-bold';
                     borderClass = 'border-l-2 border-l-red-400 pl-3';
                 }
+                const isExpanded = expandedBasic === status.category;
+                const hasCharts = chartCategories.includes(status.category);
+                const chartView = basicChartView[status.category] || 'MEASURE';
+
                 return (
-                  <div key={idx} className={`flex flex-col justify-center py-2.5 border-b border-slate-50 last:border-0 ${borderClass}`}>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className={`text-sm font-medium ${textClass}`}>{status.category}</span>
-                      <div className="flex items-center gap-2">
-                        {status.measure !== undefined && <span className="text-xs text-slate-400 font-mono">Msr: {status.measure}</span>}
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{status.percentile}</span>
+                  <div key={idx} className={`border-b border-slate-50 last:border-0 ${borderClass}`}>
+                    {/* Row header - clickable */}
+                    <div
+                      className="flex flex-col justify-center py-2.5 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                      onClick={() => setExpandedBasic(isExpanded ? null : status.category)}
+                    >
+                      <div className="flex justify-between items-center mb-0.5">
+                        <div className="flex items-center gap-2">
+                          <ChevronDown size={14} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          <span className={`text-sm font-medium ${textClass}`}>{status.category}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {status.measure !== undefined && <span className="text-xs text-slate-400 font-mono">Msr: {status.measure}</span>}
+                          <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{status.percentile}</span>
+                        </div>
                       </div>
+                      <span className="text-xs text-slate-500 truncate pl-6" title={status.details}>{status.details}</span>
                     </div>
-                    <span className="text-xs text-slate-500 truncate" title={status.details}>{status.details}</span>
+
+                    {/* Expanded content */}
+                    {isExpanded && (() => {
+                      // Compute from actual inspections using proper time weights
+                      const inspWithCat = smsInsp.filter(insp =>
+                        insp.violations.some(v => v.category === status.category) && getTimeWeight(insp.date, refDate) > 0
+                      );
+                      const numInsp = inspWithCat.length;
+
+                      // Breakdown by time weight bucket for tooltip
+                      let tw3Sev = 0, tw3Count = 0, tw2Sev = 0, tw2Count = 0, tw1Sev = 0, tw1Count = 0;
+                      inspWithCat.forEach(insp => {
+                        const tw = getTimeWeight(insp.date, refDate);
+                        const viols = insp.violations.filter(v => v.category === status.category);
+                        const sevSum = viols.reduce((s, v) => s + (v.severity || 0), 0);
+                        if (tw === 3) { tw3Sev += sevSum * 3; tw3Count += viols.length; }
+                        else if (tw === 2) { tw2Sev += sevSum * 2; tw2Count += viols.length; }
+                        else { tw1Sev += sevSum; tw1Count += viols.length; }
+                      });
+                      const totalWeightedSev = tw3Sev + tw2Sev + tw1Sev;
+                      const totalViolCount = tw3Count + tw2Count + tw1Count;
+                      const currentMeasure = numInsp > 0 ? Math.round((totalWeightedSev / numInsp) * 100) / 100 : 0;
+
+                      const segLabel = numInsp > 20 ? '21+' : numInsp > 8 ? '9-21' : numInsp > 0 ? '1-8' : '0';
+                      const safetyEventGroup = numInsp > 0
+                        ? `${segLabel} inspections with ${status.category} violations`
+                        : `No inspections with ${status.category} violations`;
+
+                      // Dynamic measure history: compute at each monthly snapshot using proper time weights
+                      const dynamicHistory: { date: string; measure: number }[] = [];
+                      const histNow = new Date('2026-01-30');
+                      for (let i = 5; i >= 0; i--) {
+                        const snapDate = new Date(histNow);
+                        snapDate.setMonth(snapDate.getMonth() - i);
+                        const cutoff24 = new Date(snapDate);
+                        cutoff24.setMonth(cutoff24.getMonth() - 24);
+                        // Find inspections within 24-month window of this snapshot
+                        const windowInsp = smsInsp.filter(insp => {
+                          const id = new Date(insp.date);
+                          return id >= cutoff24 && id <= snapDate && insp.violations.some(v => v.category === status.category);
+                        });
+                        let wSev = 0;
+                        windowInsp.forEach(insp => {
+                          const tw = getTimeWeight(insp.date, snapDate);
+                          insp.violations.filter(v => v.category === status.category).forEach(v => {
+                            wSev += (v.severity || 0) * tw;
+                          });
+                        });
+                        const msr = windowInsp.length > 0 ? Math.round((wSev / windowInsp.length) * 100) / 100 : 0;
+                        dynamicHistory.push({ date: snapDate.toISOString().slice(0, 10), measure: msr });
+                      }
+
+                      return (
+                      <div className="pb-4 pt-1 pl-6 pr-2">
+                        <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                          <div className="flex items-start gap-5">
+                            {/* Left: On-Road Performance info */}
+                            <div className="w-56 flex-shrink-0 border-r border-slate-200 pr-4">
+                              <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 mb-3 w-full">
+                                <div className="bg-blue-600 text-white px-3 py-2 rounded-md w-full text-center">
+                                  <div className="text-xs font-bold uppercase tracking-wider">BASIC: {status.category.length > 18 ? status.category.substring(0, 18) + '…' : status.category}</div>
+                                </div>
+                              </div>
+                              <h4 className="text-sm font-bold text-slate-800 mb-2">On-Road Performance</h4>
+                              <div className="text-sm text-slate-600 mb-1 group relative">
+                                Measure: <span className="font-bold text-slate-900">{status.measure}</span>
+                                <span className="ml-1 text-slate-400 cursor-help">?</span>
+                                <div className="hidden group-hover:block absolute z-40 left-0 top-full mt-1 w-72 p-3 bg-slate-900 text-white text-xs rounded-lg shadow-xl pointer-events-none">
+                                  <div className="font-bold text-blue-300 mb-1">FMCSA SMS Measure Calculation</div>
+                                  <div className="leading-relaxed text-slate-200 mb-2">
+                                    <span className="font-bold">Measure = Σ(Severity × Time Weight) / Number of Inspections</span>
+                                  </div>
+                                  <div className="text-slate-300 mb-1.5 leading-relaxed">
+                                    <span className="font-bold text-blue-300">Time Weights:</span> 3× (0-6 mo), 2× (6-12 mo), 1× (12-24 mo)
+                                  </div>
+                                  <div className="border-t border-slate-700 pt-1.5 mt-1.5 space-y-0.5">
+                                    <div className="text-slate-400">This carrier breakdown:</div>
+                                    {tw3Count > 0 && <div className="text-green-400">0-6 mo: {tw3Count} violations × TW 3 = <span className="font-bold">{tw3Sev}</span></div>}
+                                    {tw2Count > 0 && <div className="text-yellow-300">6-12 mo: {tw2Count} violations × TW 2 = <span className="font-bold">{tw2Sev}</span></div>}
+                                    {tw1Count > 0 && <div className="text-orange-300">12-24 mo: {tw1Count} violations × TW 1 = <span className="font-bold">{tw1Sev}</span></div>}
+                                    <div className="border-t border-slate-700 pt-1 mt-1 font-bold text-white">
+                                      Total: {totalWeightedSev} / {numInsp} inspections = <span className="text-blue-300">{currentMeasure}</span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-1.5 text-slate-500 text-[10px]">Lower measure = better safety performance</div>
+                                  <div className="absolute bottom-full left-4 border-4 border-transparent border-b-slate-900"></div>
+                                </div>
+                              </div>
+                              <div className="text-sm text-slate-600 mb-1">Percentile: <span className="font-bold text-slate-900">{status.percentile}</span></div>
+                              <div className="text-xs text-slate-500 mb-1">Safety Event Group: {safetyEventGroup}</div>
+                              <div className="text-xs text-slate-500 mb-1">{totalViolCount} violations across {numInsp} inspections</div>
+                              <div className="text-xs text-slate-500 mb-3 leading-relaxed">{status.details}</div>
+                              <h4 className="text-sm font-bold text-slate-800 mb-1">Investigation Results</h4>
+                              <div className="text-xs text-slate-500">
+                                {numericPercentile >= csaThresholds.critical
+                                  ? 'Alert — carrier exceeds intervention threshold'
+                                  : 'No Acute/Critical Violations Discovered'}
+                              </div>
+                            </div>
+
+                            {/* Right: Chart area */}
+                            <div className="flex-1 min-w-0">
+                              {hasCharts ? (
+                                <>
+                                  {/* Chart toggle - pill style */}
+                                  <div className="flex justify-center mb-4">
+                                    <div className="inline-flex bg-slate-100 rounded-lg p-1 gap-1">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setBasicChartView(prev => ({ ...prev, [status.category]: 'MEASURE' })); }}
+                                        className={`px-4 py-1.5 text-xs font-bold transition-all rounded-md ${chartView === 'MEASURE' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                      >CARRIER MEASURE OVER TIME</button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setBasicChartView(prev => ({ ...prev, [status.category]: 'INSPECTIONS' })); }}
+                                        className={`px-4 py-1.5 text-xs font-bold transition-all rounded-md ${chartView === 'INSPECTIONS' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                      >INSPECTION RESULTS</button>
+                                    </div>
+                                  </div>
+
+                                  {chartView === 'MEASURE' ? (
+                                    /* Carrier Measure Over Time - Dynamic Line chart */
+                                    (() => {
+                                      const history = dynamicHistory;
+                                      const measures = history.map(h => h.measure);
+                                      const maxMeasure = Math.max(1, ...measures) * 1.3;
+                                      const minMeasure = Math.min(0, ...measures) - 1;
+                                      const range = maxMeasure - minMeasure || 1;
+                                      const yLabels = Array.from({ length: 6 }, (_, i) => Math.round((minMeasure + range * (1 - i / 5)) * 100) / 100);
+
+                                      return (
+                                        <div>
+                                          <h4 className="text-sm font-bold text-slate-800 text-center uppercase tracking-wide mb-1">Carrier Measure Over Time</h4>
+                                          <div className="text-xs text-slate-400 mb-3 text-center leading-relaxed">Based on 24 months of on-road performance. Zero indicates best performance.</div>
+                                          <div className="flex items-end" style={{ height: 210 }}>
+                                            <div className="flex flex-col justify-between h-full pr-2 text-xs text-slate-400 font-mono w-10 flex-shrink-0 items-end">
+                                              {yLabels.map((v, i) => <span key={i}>{v}</span>)}
+                                            </div>
+                                            <div className="flex-1 relative h-full border-b border-l border-slate-300">
+                                              {yLabels.map((_, i) => (
+                                                <div key={i} className="absolute left-0 right-0 border-t border-slate-200 border-dashed" style={{ bottom: `${(i / 5) * 100}%` }}></div>
+                                              ))}
+                                              {/* Connecting line */}
+                                              <svg className="absolute inset-0 w-full h-full overflow-visible">
+                                                <polyline
+                                                  fill="none"
+                                                  stroke="#94a3b8"
+                                                  strokeWidth="2"
+                                                  points={history.map((h, i) => {
+                                                    const x = history.length > 1 ? 30 + (i / (history.length - 1)) * (100 - 60) : 50;
+                                                    const y = 100 - ((h.measure - minMeasure) / range) * 100;
+                                                    return `${x}%,${y}%`;
+                                                  }).join(' ')}
+                                                />
+                                              </svg>
+                                              {/* Data points */}
+                                              {history.map((h, i) => {
+                                                const leftPct = history.length > 1 ? 30 + (i / (history.length - 1)) * (100 - 60) : 50;
+                                                const bottomPct = ((h.measure - minMeasure) / range) * 100;
+                                                const prev = i > 0 ? history[i - 1].measure : h.measure;
+                                                const delta = h.measure - prev;
+                                                const deltaStr = delta > 0 ? `+${delta.toFixed(2)}` : delta < 0 ? delta.toFixed(2) : '—';
+                                                return (
+                                                  <div key={i} className="absolute group/pt" style={{ left: `${leftPct}%`, bottom: `${bottomPct}%`, transform: 'translate(-50%, 50%)' }}>
+                                                    <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                                                      <span className="text-[8px] font-bold text-white">{h.measure}</span>
+                                                    </div>
+                                                    <div className="hidden group-hover/pt:block absolute z-40 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
+                                                      <div className="bg-slate-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                                        <div className="font-bold text-blue-300 mb-0.5">{new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                                        <div>Measure: <span className="font-bold">{h.measure}</span></div>
+                                                        <div>Change: <span className={`font-bold ${delta > 0 ? 'text-red-400' : delta < 0 ? 'text-green-400' : 'text-slate-400'}`}>{deltaStr}</span></div>
+                                                        <div>Percentile: <span className="font-bold">{status.percentile}</span></div>
+                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                          <div className="flex mt-2" style={{ marginLeft: 40 }}>
+                                            {history.map((h, i) => {
+                                              const d = new Date(h.date);
+                                              return <div key={i} className="flex-1 text-center text-xs text-slate-500 font-medium">{monthNames[d.getMonth()].toUpperCase()} {d.getDate()}<br/><span className="text-slate-400 text-[10px]">{d.getFullYear()}</span></div>;
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()
+                                  ) : (
+                                    /* Inspection Results - Dynamic monthly bar chart */
+                                    (() => {
+                                      const now2 = new Date('2025-12-31');
+                                      const months: string[] = [];
+                                      for (let i = 11; i >= 0; i--) {
+                                        const d = new Date(now2);
+                                        d.setMonth(d.getMonth() - i);
+                                        months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                                      }
+                                      // Count inspections with AND without violations for this BASIC per month
+                                      const monthData: Record<string, { withViol: number; clean: number }> = {};
+                                      smsInsp.forEach(insp => {
+                                        const d = new Date(insp.date);
+                                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                                        if (!months.includes(key)) return;
+                                        if (!monthData[key]) monthData[key] = { withViol: 0, clean: 0 };
+                                        if (insp.violations.some(v => v.category === status.category)) monthData[key].withViol++;
+                                        else monthData[key].clean++;
+                                      });
+                                      const maxVal = Math.max(1, ...months.map(m => (monthData[m]?.withViol || 0) + (monthData[m]?.clean || 0)));
+                                      const yLabels = Array.from({ length: 5 }, (_, i) => Math.round((maxVal / 4) * (4 - i)));
+
+                                      return (
+                                        <div>
+                                          <h4 className="text-sm font-bold text-slate-800 text-center uppercase tracking-wide mb-1">Inspection Results</h4>
+                                          <div className="text-xs text-slate-400 mb-3 text-center leading-relaxed">Inspections received for this BASIC, with or without violations.</div>
+                                          <div className="flex items-end" style={{ height: 210 }}>
+                                            <div className="flex flex-col justify-between h-full pr-2 text-xs text-slate-400 font-mono w-8 flex-shrink-0 items-end">
+                                              {yLabels.map((v, i) => <span key={i}>{v}</span>)}
+                                              <span>0</span>
+                                            </div>
+                                            <div className="flex-1 flex items-end gap-1 h-full border-b border-l border-slate-300 px-1 pb-0.5 relative">
+                                              {yLabels.map((_, i) => (
+                                                <div key={i} className="absolute left-0 right-0 border-t border-slate-200 border-dashed" style={{ bottom: `${((4 - i) / 4) * 100}%` }}></div>
+                                              ))}
+                                              {months.map(m => {
+                                                const data = monthData[m] || { withViol: 0, clean: 0 };
+                                                const total = data.withViol + data.clean;
+                                                const hPct = maxVal > 0 ? (total / maxVal) * 100 : 0;
+                                                const [, mo] = m.split('-');
+                                                return (
+                                                  <div key={m} className="group/col flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer">
+                                                    <div className="flex items-end w-full justify-center" style={{ height: '100%' }}>
+                                                      {total > 0 && <div className={`rounded-t-sm w-5 group-hover/col:opacity-80 transition-opacity ${data.withViol > 0 ? 'bg-amber-500' : 'bg-slate-400'}`} style={{ height: `${hPct}%`, minHeight: 4 }}></div>}
+                                                    </div>
+                                                    {total > 0 && (
+                                                      <div className="hidden group-hover/col:block absolute z-40 bottom-full left-1/2 -translate-x-1/2 mb-1 pointer-events-none">
+                                                        <div className="bg-slate-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                                          <div className="font-bold text-blue-300 mb-0.5">{monthNames[parseInt(mo) - 1]} {m.split('-')[0]}</div>
+                                                          <div>With violations: <span className="font-bold text-amber-400">{data.withViol}</span></div>
+                                                          <div>Clean: <span className="font-bold text-green-400">{data.clean}</span></div>
+                                                          <div>Total: <span className="font-bold">{total}</span></div>
+                                                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                          <div className="flex ml-8 mt-1">
+                                            {months.map((m, i) => {
+                                              const [y, mo] = m.split('-');
+                                              return <div key={i} className="flex-1 text-center text-[10px] text-slate-400 font-medium">{monthNames[parseInt(mo) - 1].toUpperCase()}<br/>{y}</div>;
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()
+                                  )}
+                                </>
+                              ) : (
+                                /* Simple categories - no chart, just summary */
+                                <div className="flex items-center justify-center h-32 text-sm text-slate-400">
+                                  <div className="text-center">
+                                    <div className="text-slate-500 font-medium mb-1">{status.category}</div>
+                                    <div>{status.details}</div>
+                                    <div className="mt-2 text-xs">Measure: <span className="font-mono font-bold">{status.measure}</span> | Percentile: <span className="font-mono font-bold">{status.percentile}</span></div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -1909,6 +2284,8 @@ export function InspectionsPage() {
               </div>
             </div>
           </div>
+            );
+          })()}
 
           {/* SMS Inspection Filters */}
           <div>
@@ -2129,6 +2506,430 @@ export function InspectionsPage() {
               </div>
             </div>
           </div>
+
+          {/* ===== CVOR SECTION 2: VIOLATION SUMMARY CHARTS ===== */}
+          {(() => {
+            const now = new Date('2025-12-31');
+            const periodMonths = cvorPeriod === '1M' ? 1 : cvorPeriod === '3M' ? 3 : cvorPeriod === '12M' ? 12 : 24;
+            const cutoff = new Date(now);
+            cutoff.setMonth(cutoff.getMonth() - periodMonths);
+            const periodInspections = cvorInspections.filter(i => new Date(i.date) >= cutoff);
+
+            // Category breakdown for CVOR inspections
+            const categoryMap: Record<string, { violations: number; points: number; inspections: number; oosCount: number }> = {};
+            periodInspections.forEach(insp => {
+              const cats = new Set<string>();
+              insp.violations.forEach(v => {
+                if (!categoryMap[v.category]) categoryMap[v.category] = { violations: 0, points: 0, inspections: 0, oosCount: 0 };
+                categoryMap[v.category].violations += 1;
+                categoryMap[v.category].points += v.points;
+                if (v.oos) categoryMap[v.category].oosCount += 1;
+                cats.add(v.category);
+              });
+              cats.forEach(cat => { categoryMap[cat].inspections += 1; });
+            });
+            const categoryRows = Object.entries(categoryMap).sort((a, b) => b[1].points - a[1].points);
+            const maxPoints = Math.max(1, ...categoryRows.map(([, d]) => d.points));
+
+            return (
+            <>
+            {/* Period Toggle */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">CVOR Violation Analysis</h2>
+              <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                {(['1M', '3M', '12M', '24M'] as const).map(p => (
+                  <button key={p} onClick={() => setCvorPeriod(p)}
+                    className={`px-3 py-1.5 text-sm font-bold transition-colors ${cvorPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                  >{p === '1M' ? '1 Mo' : p === '3M' ? '3 Mo' : p === '12M' ? '12 Mo' : '24 Mo'}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+              {/* LEFT: Category Summary Chart */}
+              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-bold text-slate-900">Violation Categories <span className="text-sm font-normal text-slate-400">/ CVOR</span></h3>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    <button onClick={() => setCvorSummaryView('CATEGORIES')}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${cvorSummaryView === 'CATEGORIES' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                    >CATEGORIES</button>
+                    <button onClick={() => setCvorSummaryView('INSPECTIONS')}
+                      className={`px-3 py-1.5 text-sm font-bold transition-all ${cvorSummaryView === 'INSPECTIONS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                    >INSPECTIONS</button>
+                  </div>
+                </div>
+
+                {cvorSummaryView === 'CATEGORIES' ? (
+                  <>
+                    {/* Legend */}
+                    <div className="flex items-center gap-5 mb-5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                        <span className="text-slate-600">High Severity</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                        <span className="text-slate-600">Medium</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                        <span className="text-slate-600">Low</span>
+                      </div>
+                    </div>
+
+                    {/* Horizontal Bars */}
+                    <div className="space-y-5">
+                      {categoryRows.length > 0 ? categoryRows.map(([cat, data], i) => {
+                        const pct = maxPoints > 0 ? (data.points / maxPoints) * 100 : 0;
+                        let barColor = 'bg-blue-500';
+                        let dotColor = 'bg-blue-500';
+                        if (data.oosCount > 0 && data.points > 30) { barColor = 'bg-red-500'; dotColor = 'bg-red-500'; }
+                        else if (data.points > 15) { barColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; }
+                        return (
+                          <div key={i} className="group/bar flex items-center gap-3 relative">
+                            <div className="w-40 text-sm font-semibold text-slate-700 truncate" title={cat}>{cat}</div>
+                            <div className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${dotColor}`}></div>
+                            <div className="flex-1 relative h-6 bg-slate-100 rounded-full overflow-visible cursor-pointer">
+                              {pct > 0 && (
+                                <div className={`absolute left-0 top-0 h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                              )}
+                              {pct > 0 && (
+                                <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow ${barColor}`} style={{ left: `calc(${Math.min(pct, 100)}% - 8px)` }}></div>
+                              )}
+                              {/* Hover tooltip */}
+                              <div className="hidden group-hover/bar:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
+                                <div className="bg-slate-900 text-white text-sm rounded-lg px-3.5 py-2.5 shadow-xl whitespace-nowrap">
+                                  <div className="font-bold text-red-300 mb-0.5">{cat}</div>
+                                  <div>Violations: <span className="font-bold">{data.violations}</span></div>
+                                  <div>Points: <span className="font-bold">{data.points}</span></div>
+                                  <div>OOS: <span className="font-bold">{data.oosCount}</span></div>
+                                  <div>Inspections: <span className="font-bold">{data.inspections}</span></div>
+                                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`text-sm font-bold w-12 text-right ${data.oosCount > 0 ? 'text-red-600' : 'text-slate-500'}`}>
+                              {data.points} pts
+                            </span>
+                          </div>
+                        );
+                      }) : (
+                        <p className="text-sm text-slate-400 text-center py-6">No violations in this period.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* INSPECTIONS view - Monthly bar chart */}
+                    <div className="flex items-center gap-5 mb-5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-sm bg-red-800"></div>
+                        <span className="text-slate-600">Inspections with Violations</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-sm bg-red-300"></div>
+                        <span className="text-slate-600">Clean Inspections</span>
+                      </div>
+                    </div>
+                    {(() => {
+                      const monthMap: Record<string, { withViol: number; withoutViol: number }> = {};
+                      periodInspections.forEach(insp => {
+                        const d = new Date(insp.date);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                        if (!monthMap[key]) monthMap[key] = { withViol: 0, withoutViol: 0 };
+                        if (insp.violations.length > 0) monthMap[key].withViol++;
+                        else monthMap[key].withoutViol++;
+                      });
+
+                      const months: string[] = [];
+                      const start = new Date(cutoff);
+                      start.setDate(1);
+                      for (let m = new Date(start); m <= now; m.setMonth(m.getMonth() + 1)) {
+                        months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+                      }
+                      const maxVal = Math.max(1, ...months.map(m => (monthMap[m]?.withViol || 0) + (monthMap[m]?.withoutViol || 0)));
+                      const yLabels = Array.from({ length: 5 }, (_, i) => Math.round((maxVal / 4) * (4 - i) * 10) / 10);
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+                      return (
+                        <div className="mt-3">
+                          <div className="text-sm text-slate-400 font-bold uppercase mb-3">{periodInspections.length} inspections</div>
+                          <div className="flex items-end gap-px" style={{ height: 260 }}>
+                            <div className="flex flex-col justify-between h-full pr-2 text-xs text-slate-400 font-mono w-10 flex-shrink-0">
+                              {yLabels.map((v, i) => <span key={i}>{v}</span>)}
+                              <span>0</span>
+                            </div>
+                            <div className="flex-1 flex items-end gap-1 h-full border-b border-l border-slate-200 px-1 pb-0.5 relative">
+                              {yLabels.map((_, i) => (
+                                <div key={i} className="absolute left-0 right-0 border-t border-slate-100" style={{ bottom: `${((4 - i) / 4) * 100}%` }}></div>
+                              ))}
+                              {months.map(m => {
+                                const data = monthMap[m] || { withViol: 0, withoutViol: 0 };
+                                const hWith = maxVal > 0 ? (data.withViol / maxVal) * 100 : 0;
+                                const hWithout = maxVal > 0 ? (data.withoutViol / maxVal) * 100 : 0;
+                                const [y, mo] = m.split('-');
+                                const label = periodMonths <= 3 ? `${monthNames[parseInt(mo) - 1]}` : `${monthNames[parseInt(mo) - 1]} ${y.slice(2)}`;
+                                return (
+                                  <div key={m} className="group/col flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer">
+                                    <div className="flex gap-0.5 items-end w-full justify-center" style={{ height: '100%' }}>
+                                      {data.withViol > 0 && <div className="bg-red-800 rounded-t-sm w-4 group-hover/col:opacity-80 transition-opacity" style={{ height: `${hWith}%`, minHeight: 4 }}></div>}
+                                      {data.withoutViol > 0 && <div className="bg-red-300 rounded-t-sm w-4 group-hover/col:opacity-80 transition-opacity" style={{ height: `${hWithout}%`, minHeight: 4 }}></div>}
+                                    </div>
+                                    {(data.withViol > 0 || data.withoutViol > 0) && (
+                                      <div className="hidden group-hover/col:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1 pointer-events-none">
+                                        <div className="bg-slate-900 text-white text-sm rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                                          <div className="font-bold text-red-300 mb-0.5">{label}</div>
+                                          <div>With violations: <span className="font-bold">{data.withViol}</span></div>
+                                          <div>Clean: <span className="font-bold">{data.withoutViol}</span></div>
+                                          <div>Total: <span className="font-bold">{data.withViol + data.withoutViol}</span></div>
+                                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="flex ml-12 mt-1">
+                            {months.length <= 12 ? (
+                              months.map((m, i) => {
+                                const [y, mo] = m.split('-');
+                                return <div key={i} className="flex-1 text-center text-xs text-slate-400">{monthNames[parseInt(mo) - 1]} {y.slice(2)}</div>;
+                              })
+                            ) : (
+                              <>
+                                <div className="flex-none text-xs text-slate-400">{monthNames[new Date(cutoff).getMonth()]} {cutoff.getFullYear()}</div>
+                                <div className="flex-1"></div>
+                                <div className="flex-none text-xs text-slate-400">Dec 2025</div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+
+              {/* RIGHT: OOS Donut + Top Violations */}
+              <div className="space-y-4">
+
+                {/* Out of Service Summary */}
+                {(() => {
+                  const totalViolations = periodInspections.reduce((sum, insp) => sum + insp.violations.length, 0);
+                  const oosViolations = periodInspections.reduce((sum, insp) => sum + insp.violations.filter(v => v.oos).length, 0);
+                  const nonOosViolations = totalViolations - oosViolations;
+                  const oosPercent = totalViolations > 0 ? Math.round((oosViolations / totalViolations) * 100) : 0;
+                  const nonOosPercent = 100 - oosPercent;
+                  const circumference = 2 * Math.PI * 45;
+                  const nonOosStroke = (nonOosPercent / 100) * circumference;
+                  const oosStroke = circumference - nonOosStroke;
+
+                  return (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                    <h3 className="text-base font-bold text-slate-900 mb-4">OOS Summary <span className="text-sm font-normal text-slate-400">/ CVOR</span></h3>
+                    <div className="flex items-center gap-6">
+                      <div className="relative flex-shrink-0">
+                        <svg width="110" height="110" viewBox="0 0 110 110">
+                          <circle cx="55" cy="55" r="45" fill="none" stroke="#e2e8f0" strokeWidth="10" />
+                          {totalViolations > 0 && (
+                            <circle cx="55" cy="55" r="45" fill="none" stroke="#ef4444" strokeWidth="10"
+                              strokeDasharray={`${nonOosStroke} ${oosStroke}`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 55 55)" />
+                          )}
+                          {oosViolations > 0 && (
+                            <circle cx="55" cy="55" r="45" fill="none" stroke="#991b1b" strokeWidth="10"
+                              strokeDasharray={`${oosStroke} ${nonOosStroke}`}
+                              strokeDashoffset={-nonOosStroke}
+                              strokeLinecap="round"
+                              transform="rotate(-90 55 55)" />
+                          )}
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-xl font-bold text-slate-900">{totalViolations}</span>
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Violations</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-sm bg-red-500"></div>
+                          <span className="text-slate-600">Non OOS</span>
+                          <span className="ml-auto font-bold text-slate-700">{nonOosPercent}%</span>
+                          <span className="text-slate-500 w-6 text-right">{nonOosViolations}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-sm bg-red-900"></div>
+                          <span className="text-slate-600">Out-of-service</span>
+                          <span className="ml-auto font-bold text-slate-700">{oosPercent}%</span>
+                          <span className="text-slate-500 w-6 text-right">{oosViolations}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  );
+                })()}
+
+                {/* Top Violations */}
+                {(() => {
+                  const violationMap: Record<string, { points: number; count: number }> = {};
+                  periodInspections.forEach(insp => {
+                    insp.violations.forEach(v => {
+                      const key = v.description.length > 40 ? v.description.substring(0, 40) + '…' : v.description;
+                      if (!violationMap[key]) violationMap[key] = { points: 0, count: 0 };
+                      violationMap[key].points += v.points;
+                      violationMap[key].count += 1;
+                    });
+                  });
+                  const topViolations = Object.entries(violationMap)
+                    .sort((a, b) => cvorTopViolSort === 'POINTS' ? b[1].points - a[1].points : b[1].count - a[1].count)
+                    .slice(0, 5);
+
+                  return (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-bold text-slate-900">Top Violations</h3>
+                      <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                        <button onClick={() => setCvorTopViolSort('POINTS')}
+                          className={`px-2.5 py-1.5 text-sm font-bold transition-colors ${cvorTopViolSort === 'POINTS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                        >POINTS</button>
+                        <button onClick={() => setCvorTopViolSort('COUNT')}
+                          className={`px-2.5 py-1.5 text-sm font-bold transition-colors ${cvorTopViolSort === 'COUNT' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                        >COUNT</button>
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      {topViolations.length > 0 ? topViolations.map(([name, data], i) => (
+                        <div key={i} className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-slate-700 truncate" title={name}>{name}</span>
+                          <span className="font-bold text-slate-900 flex-shrink-0">{cvorTopViolSort === 'POINTS' ? data.points : data.count}</span>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-slate-400 text-center py-4">No violations in this period.</p>
+                      )}
+                    </div>
+                  </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* ===== CVOR SECTION 3: METRICS BY PROVINCE ===== */}
+            {(() => {
+              const sortKey2 = cvorMetricsView === 'INSPECTIONS' ? 'inspections' : cvorMetricsView === 'VIOLATIONS' ? 'violations' : 'points';
+              const provinceNames: Record<string, string> = {
+                'ON': 'Ontario', 'QC': 'Quebec', 'AB': 'Alberta', 'BC': 'British Columbia',
+                'MB': 'Manitoba', 'SK': 'Saskatchewan', 'NB': 'New Brunswick', 'NS': 'Nova Scotia',
+                'PE': 'Prince Edward Island', 'NL': 'Newfoundland', 'NT': 'Northwest Territories', 'YT': 'Yukon', 'NU': 'Nunavut',
+              };
+              const cvorCategories = ['Vehicle Maintenance', 'HOS Compliance', 'Driver Fitness', 'Unsafe Driving', 'Hazmat'];
+              const cvorCategoryKeys: Record<string, string[]> = {
+                'Vehicle Maintenance': ['Vehicle Maintenance'],
+                'HOS Compliance': ['Hours-of-service Compliance'],
+                'Driver Fitness': ['Driver Fitness'],
+                'Unsafe Driving': ['Unsafe Driving'],
+                'Hazmat': ['Hazmat compliance'],
+              };
+
+              const provMap: Record<string, { inspections: number; violations: number; points: number; basics: Record<string, { inspections: number; violations: number; points: number }> }> = {};
+              periodInspections.forEach(insp => {
+                const st = insp.state;
+                if (!provMap[st]) provMap[st] = { inspections: 0, violations: 0, points: 0, basics: {} };
+                provMap[st].inspections += 1;
+                insp.violations.forEach(v => {
+                  provMap[st].violations += 1;
+                  provMap[st].points += v.points;
+                  const cat = v.category;
+                  if (!provMap[st].basics[cat]) provMap[st].basics[cat] = { inspections: 0, violations: 0, points: 0 };
+                  provMap[st].basics[cat].violations += 1;
+                  provMap[st].basics[cat].points += v.points;
+                });
+                const cats = new Set(insp.violations.map(v => v.category));
+                cats.forEach(cat => {
+                  if (!provMap[st].basics[cat]) provMap[st].basics[cat] = { inspections: 0, violations: 0, points: 0 };
+                  provMap[st].basics[cat].inspections += 1;
+                });
+              });
+
+              const getCatVal2 = (data: typeof provMap[string], cat: string) => {
+                const keys = cvorCategoryKeys[cat] || [cat];
+                return keys.reduce((sum, k) => sum + ((data.basics[k] || { inspections: 0, violations: 0, points: 0 })[sortKey2] || 0), 0);
+              };
+
+              const provEntries = Object.entries(provMap);
+              const provRows = provEntries.sort((a, b) => {
+                let aVal: number | string;
+                let bVal: number | string;
+                if (cvorMetricsSort.col === 'state') {
+                  aVal = provinceNames[a[0]] || a[0];
+                  bVal = provinceNames[b[0]] || b[0];
+                  return cvorMetricsSort.dir === 'asc' ? (aVal as string).localeCompare(bVal as string) : (bVal as string).localeCompare(aVal as string);
+                } else if (cvorMetricsSort.col === 'total') {
+                  aVal = a[1][sortKey2];
+                  bVal = b[1][sortKey2];
+                } else {
+                  aVal = getCatVal2(a[1], cvorMetricsSort.col);
+                  bVal = getCatVal2(b[1], cvorMetricsSort.col);
+                }
+                return cvorMetricsSort.dir === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+              });
+
+              const handleCvorColSort = (col: string) => {
+                setCvorMetricsSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
+              };
+              const cvorSortIcon = (col: string) => cvorMetricsSort.col === col ? (cvorMetricsSort.dir === 'desc' ? ' ↓' : ' ↑') : '';
+
+              return (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                  <h3 className="text-base font-bold text-slate-900">Metrics by Province <span className="text-sm font-normal text-slate-400">/ Last {cvorPeriod === '24M' ? '24 Months' : cvorPeriod === '12M' ? '12 Months' : cvorPeriod === '3M' ? '3 Months' : '1 Month'}</span></h3>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    {(['INSPECTIONS', 'VIOLATIONS', 'POINTS'] as const).map(v => (
+                      <button key={v} onClick={() => setCvorMetricsView(v)}
+                        className={`px-3 py-1.5 text-sm font-bold transition-colors ${cvorMetricsView === v ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                      >{v}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-x-auto rounded border border-slate-100">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-blue-600 select-none transition-colors"
+                          onClick={() => handleCvorColSort('state')}>Province{cvorSortIcon('state')}</th>
+                        {cvorCategories.map(cat => (
+                          <th key={cat} className="px-2 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-center whitespace-nowrap cursor-pointer hover:text-blue-600 select-none transition-colors"
+                            onClick={() => handleCvorColSort(cat)}>{cat}{cvorSortIcon(cat)}</th>
+                        ))}
+                        <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-center cursor-pointer hover:text-blue-600 select-none transition-colors"
+                          onClick={() => handleCvorColSort('total')}>Total{cvorSortIcon('total')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {provRows.length > 0 ? provRows.map(([st, data]) => (
+                        <tr key={st} className="hover:bg-slate-50/50">
+                          <td className="px-3 py-2.5 font-medium text-blue-600">{provinceNames[st] || st}</td>
+                          {cvorCategories.map(cat => {
+                            const val = getCatVal2(data, cat);
+                            return <td key={cat} className="px-2 py-2.5 text-center text-slate-700">{val}</td>;
+                          })}
+                          <td className="px-3 py-2.5 text-center font-bold text-slate-900">{data[sortKey2]}</td>
+                        </tr>
+                      )) : (
+                        <tr><td colSpan={cvorCategories.length + 2} className="px-3 py-8 text-center text-slate-400">No CVOR inspection data for this period.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              );
+            })()}
+            </>
+            );
+          })()}
 
           {/* CVOR Inspection Filters */}
           <div>
@@ -2747,3 +3548,4 @@ export function InspectionsPage() {
     </div>
   );
 }
+

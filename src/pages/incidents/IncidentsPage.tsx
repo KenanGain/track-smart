@@ -13,17 +13,19 @@ import {
   Activity,
   X,
   Search,
-  Filter,
+  Calendar,
   Edit,
   MapPin,
 
   SlidersHorizontal,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Plus,
   Upload,
   UploadCloud,
   FileText,
+  User,
   UserX,
   Truck,
   Camera,
@@ -183,31 +185,6 @@ const Avatar = ({ name }: { name: string }) => {
     </div>
   );
 };
-
-// --- SYNTHESIZED HELPERS ---
-
-const Chips = ({ l, opts, sel, onTog }: any) => (
-  <div>
-    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{l}</label>
-    <div className="flex flex-wrap gap-2">
-      {opts.map((o: any) => (
-        <button
-          key={o.v}
-          onClick={() => onTog(o.v)}
-          className={`px-3 py-1.5 rounded-md text-xs font-bold border transition-all ${
-            sel.includes(o.v)
-              ? "bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm"
-              : "bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-          }`}
-        >
-          {o.l}
-        </button>
-      ))}
-    </div>
-  </div>
-);
-
-
 
 // --- MODALS ---
 
@@ -1552,22 +1529,19 @@ export function AccidentsPage() {
   const [editing, setEditing] = useState<any>(null);
 
   // Filters
-  const [showFilters, setShowFilters] = useState(false);
-  const [flt, setFlt] = useState({
-    prev: [] as string[],
+  const [dateRange, setDateRange] = useState({
+    start: "",
+    end: "",
   });
+  const [driverFilter, setDriverFilter] = useState("All");
+  const [driverMenu, setDriverMenu] = useState(false);
 
-
-
-  const togF = (k: string, v: any) =>
-    setFlt((p: any) => ({
-      ...p,
-      [k]: p[k].includes(v)
-        ? p[k].filter((x: any) => x !== v)
-        : [...p[k], v],
-    }));
 
   const [activeTab, setActiveTab] = useState("all");
+  const driverOptions = useMemo(
+    () => ["All", ...Array.from(new Set(data.map((item) => item.driver.name))).sort()],
+    [data]
+  );
 
   const filtered = useMemo(() => {
     return data.filter((item) => {
@@ -1589,13 +1563,17 @@ export function AccidentsPage() {
       if (activeTab === "injuries" && item.severity.injuriesNonFatal === 0) return false;
       if (activeTab === "fatalities" && item.severity.fatalities === 0) return false;
 
-      // 3. Preventability Filter (Chips)
-      if (flt.prev.length > 0 && !flt.prev.includes(item.preventability.value))
-        return false;
+      // 3. Date Period Filter
+      const occurred = new Date(item.occurredDate);
+      if (dateRange.start && occurred < new Date(`${dateRange.start}T00:00:00`)) return false;
+      if (dateRange.end && occurred > new Date(`${dateRange.end}T23:59:59`)) return false;
+
+      // 4. Driver Filter
+      if (driverFilter !== "All" && item.driver.name !== driverFilter) return false;
 
       return true;
     });
-  }, [data, q, flt, activeTab]);
+  }, [data, q, activeTab, dateRange, driverFilter]);
 
   // Sorting
   const [sortCol] = useState("date");
@@ -1692,14 +1670,23 @@ export function AccidentsPage() {
   const colVis = (id: string) => cols.find((c) => c.id === id)?.checked;
 
   const colRef = useRef<any>(null);
+  const driverRef = useRef<any>(null);
   useEffect(() => {
     const h = (e: any) => {
       if (colRef.current && !colRef.current.contains(e.target))
         setColMenu(false);
+      if (driverRef.current && !driverRef.current.contains(e.target))
+        setDriverMenu(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   });
+
+  const resetFilters = () => {
+    setDateRange({ start: "", end: "" });
+    setDriverFilter("All");
+    setQ("");
+  };
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
@@ -1793,97 +1780,134 @@ export function AccidentsPage() {
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-5">
-        <div className="relative w-full lg:w-96">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            placeholder="Search incident ID, driver, city, asset..."
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
-          />
-        </div>
-        <div className="flex items-center gap-2 w-full lg:w-auto flex-wrap">
-
-          
-          <div className="relative" ref={colRef}>
-            <button
-              onClick={() => setColMenu(!colMenu)}
-              className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm shrink-0"
-            >
-              <SlidersHorizontal size={16} /> Columns
-            </button>
-            {colMenu && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-2">
-                <p className="text-xs font-bold text-gray-500 px-2 py-1 uppercase tracking-wider">
-                  Show Columns
-                </p>
-                {cols.map((c: any) => (
-                  <label
-                    key={c.id}
-                    className="flex items-center px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={c.checked}
-                      onChange={() =>
-                        setCols((p) =>
-                          p.map((x) =>
-                            x.id === c.id ? { ...x, checked: !x.checked } : x
-                          )
-                        )
-                      }
-                      className="mr-2 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    {c.label}
-                  </label>
-                ))}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-5">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-4 border-b border-gray-200">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
+                  className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                />
               </div>
-            )}
-          </div>
+              <span className="text-gray-400">-</span>
+              <div className="relative">
+                <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
+                  className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                />
+              </div>
+            </div>
 
-          <button 
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm font-medium shadow-sm shrink-0 transition-colors ${
-              showFilters 
-                ? "bg-blue-50 border-blue-200 text-blue-700" 
-                : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            <Filter size={16} /> Filters
-          </button>
+            <div className="relative z-20" ref={driverRef}>
+              <button
+                onClick={() => setDriverMenu(!driverMenu)}
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:border-blue-600 transition-all shadow-sm"
+              >
+                <User size={16} />
+                <span>Driver</span>
+                <span className="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-gray-100 rounded text-gray-700 min-w-[20px] text-center">
+                  {driverFilter === "All" ? "All" : "1"}
+                </span>
+                <ChevronDown size={16} className="text-gray-400" />
+              </button>
+              {driverMenu && (
+                <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-xl py-1 max-h-60 overflow-y-auto">
+                  {driverOptions.map((name) => (
+                    <button
+                      key={name}
+                      onClick={() => {
+                        setDriverFilter(name);
+                        setDriverMenu(false);
+                      }}
+                      className={`block w-full text-left px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-600 ${
+                        driverFilter === name ? "bg-blue-50 text-blue-600 font-medium" : "text-gray-700"
+                      }`}
+                    >
+                      {name === "All" ? "All Drivers" : name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="relative" ref={colRef}>
+              <button
+                onClick={() => setColMenu(!colMenu)}
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm"
+              >
+                <SlidersHorizontal size={16} /> Columns <ChevronDown size={16} className="text-gray-400" />
+              </button>
+              {colMenu && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-2">
+                  <p className="text-xs font-bold text-gray-500 px-2 py-1 uppercase tracking-wider">
+                    Show Columns
+                  </p>
+                  {cols.map((c: any) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={c.checked}
+                        onChange={() =>
+                          setCols((p) =>
+                            p.map((x) =>
+                              x.id === c.id ? { ...x, checked: !x.checked } : x
+                            )
+                          )
+                        }
+                        className="mr-2 rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="h-6 w-px bg-gray-300 mx-1 hidden sm:block" />
+            <button
+              onClick={resetFilters}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline"
+            >
+              Reset filters
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4">
+          <div className="relative w-full md:w-[420px]">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              placeholder="Search incident ID, driver, city, asset..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
+            />
+          </div>
+          <div className="text-sm text-gray-500 whitespace-nowrap md:border-l md:border-gray-200 md:pl-4">
+            <span className="font-semibold text-gray-900">{filtered.length}</span> Records Found
+          </div>
         </div>
       </div>
-
-      {/* Filters Panel - Only Preventability remaining */}
-      {showFilters && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center gap-2 mb-3">
-              <Filter size={14} className="text-gray-400" />
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Additional Filters</span>
-          </div>
-          <Chips
-            l="PREVENTABILITY"
-            opts={[
-              { v: "preventable", l: "Preventable" },
-              { v: "non_preventable", l: "Non-Preventable" },
-              { v: "tbd", l: "TBD" },
-            ]}
-            sel={flt.prev}
-            onTog={(v: string) => togF("prev", v)}
-          />
-        </div>
-      )}
 
       {/* Table List View */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 border-b border-gray-200 font-semibold text-gray-700">
+              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-3 w-10">
                     <input

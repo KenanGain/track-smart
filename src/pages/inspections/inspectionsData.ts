@@ -125,6 +125,50 @@ export function getEquivalentCode(violationCode: string): RegulatoryEquivalent |
   return REGULATORY_CROSS_REFERENCE[violationCode] || null;
 }
 
+// --- BASIC MEASURE HISTORY (6 months of carrier measure snapshots) ---
+export const basicMeasureHistory: Record<string, { date: string; measure: number }[]> = {
+  "Unsafe Driving": [
+    { date: "2025-08-29", measure: 2.17 },
+    { date: "2025-09-26", measure: 2.07 },
+    { date: "2025-10-31", measure: 2.15 },
+    { date: "2025-11-28", measure: 1.83 },
+    { date: "2025-12-26", measure: 2.07 },
+    { date: "2026-01-30", measure: 1.93 },
+  ],
+  "Hours-of-service Compliance": [
+    { date: "2025-08-29", measure: 1.05 },
+    { date: "2025-09-26", measure: 0.92 },
+    { date: "2025-10-31", measure: 0.88 },
+    { date: "2025-11-28", measure: 0.95 },
+    { date: "2025-12-26", measure: 0.88 },
+    { date: "2026-01-30", measure: 0.88 },
+  ],
+  "Vehicle Maintenance": [
+    { date: "2025-08-29", measure: 18.5 },
+    { date: "2025-09-26", measure: 20.1 },
+    { date: "2025-10-31", measure: 21.3 },
+    { date: "2025-11-28", measure: 22.8 },
+    { date: "2025-12-26", measure: 23.5 },
+    { date: "2026-01-30", measure: 24.0 },
+  ],
+  "Controlled Substances": [
+    { date: "2025-08-29", measure: 0 },
+    { date: "2025-09-26", measure: 0 },
+    { date: "2025-10-31", measure: 0 },
+    { date: "2025-11-28", measure: 0 },
+    { date: "2025-12-26", measure: 0 },
+    { date: "2026-01-30", measure: 0 },
+  ],
+  "Driver Fitness": [
+    { date: "2025-08-29", measure: 0 },
+    { date: "2025-09-26", measure: 0 },
+    { date: "2025-10-31", measure: 0 },
+    { date: "2025-11-28", measure: 0 },
+    { date: "2025-12-26", measure: 0 },
+    { date: "2026-01-30", measure: 0 },
+  ],
+};
+
 // --- SINGLE CARRIER DATA ---
 export const carrierProfile = {
   id: "2789727",
