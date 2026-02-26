@@ -211,9 +211,26 @@ export const carrierProfile = {
         oosVehicle: 33.33,
         oosDriver: 3.12,
         trucks: 20,
-        onMiles: 1377520,
-        canadaMiles: 373323,
-        totalMiles: 2237881,
+        // Canada miles breakdown
+        onMiles: 16388058,
+        canadaMiles: 666469,
+        totalCanadaMiles: 17054528,
+        // USA miles breakdown
+        miMiles: 3242100,
+        nyMiles: 1185460,
+        paMiles: 892340,
+        ohMiles: 754200,
+        totalUSMiles: 6074100,
+        // Combined total
+        totalMiles: 23128628,
+        // Per-period miles (keyed by period label)
+        milesByPeriod: {
+          '1M':  { onMiles: 1342580, canadaMiles: 53120, totalCanadaMiles: 1395700, miMiles: 268320, nyMiles: 97850, paMiles: 74600, ohMiles: 62100, totalUSMiles: 502870, totalMiles: 1898570 },
+          '3M':  { onMiles: 4012740, canadaMiles: 162400, totalCanadaMiles: 4175140, miMiles: 812640, nyMiles: 296380, paMiles: 223060, ohMiles: 188550, totalUSMiles: 1520630, totalMiles: 5695770 },
+          '6M':  { onMiles: 8195030, canadaMiles: 333235, totalCanadaMiles: 8528265, miMiles: 1621050, nyMiles: 592730, paMiles: 446170, ohMiles: 377100, totalUSMiles: 3037050, totalMiles: 11565315 },
+          '12M': { onMiles: 12407962, canadaMiles: 3372498, totalCanadaMiles: 15780460, miMiles: 2430750, nyMiles: 889080, paMiles: 669255, ohMiles: 565650, totalUSMiles: 4554735, totalMiles: 20335195 },
+          '24M': { onMiles: 16388058, canadaMiles: 666469, totalCanadaMiles: 17054528, miMiles: 3242100, nyMiles: 1185460, paMiles: 892340, ohMiles: 754200, totalUSMiles: 6074100, totalMiles: 23128628 },
+        },
         collisionPointsWithPoints: 5,
         collisionPointsWithoutPoints: 0,
         totalCollisionPoints: 10,
@@ -1027,6 +1044,589 @@ export const inspectionsData = [
     severityRate: 1.0,
     violations: [
       { code: "HTA s.78(2)", category: "Vehicle Maintenance", description: "Tire with cord or fabric exposed, or flat/deflated tire", subDescription: "Tires - Flat/Leaking", severity: 8, weight: 3, points: 24, oos: false, driverRiskCategory: 1 }
+    ]
+  },
+
+  // ===== SMS Level 4 – Special Inspection =====
+  {
+    id: "GAATLAN17001",
+    date: "2024-11-05",
+    state: "GA",
+    driverId: "DRV-2001",
+    driver: "John Smith",
+    driverLicense: "S530-4120-6789",
+    vehiclePlate: "P-7762",
+    vehicleType: "Truck",
+    assetId: "a1",
+    level: "Level 4",
+    startTime: "08:00",
+    endTime: "08:45",
+    location: { city: "ATLANTA", province: "GA", raw: "1580 FULTON INDUSTRIAL BLVD, ATLANTA, GA 30336" },
+    smsPoints: { vehicle: 0, driver: 18, carrier: 18 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 3.0,
+    hasVehicleViolations: false,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Freightliner", license: "P-7762", vin: "1M8GDM9A6HP05X12" }
+    ],
+    violationSummary: { "Hazmat compliance": 2 },
+    oosSummary: { driver: "PASSED", vehicle: "N/A", total: 0 },
+    violations: [
+      { code: "173.24B", category: "Hazmat compliance", description: "Package not conforming to specification or having components damaged", subDescription: "Hazmat Package", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 },
+      { code: "172.800A", category: "Hazmat compliance", description: "No security plan or plan not in accordance with regulation", subDescription: "Hazmat Security", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== SMS Level 5 – Vehicle Only =====
+  {
+    id: "TNMEMPH17002",
+    date: "2024-09-18",
+    state: "TN",
+    driverId: "DRV-2004",
+    driver: "Mike Johnson",
+    driverLicense: "J525-8810-1234",
+    vehiclePlate: "TRK-5589",
+    vehicleType: "Truck",
+    assetId: "a4",
+    level: "Level 5",
+    startTime: "13:10",
+    endTime: "13:55",
+    location: { city: "MEMPHIS", province: "TN", raw: "2200 AIRWAYS BLVD, MEMPHIS, TN 38114" },
+    smsPoints: { vehicle: 42, driver: 0, carrier: 42 },
+    isClean: false,
+    hasOOS: true,
+    powerUnitDefects: "FRAME CRACKED, STEERING LINKAGE WORN",
+    trailerDefects: null,
+    severityRate: 7.0,
+    hasVehicleViolations: true,
+    hasDriverViolations: false,
+    units: [
+      { type: "Truck", make: "Peterbilt", license: "TRK-5589", vin: "2NP2HN0X19M77T412" }
+    ],
+    violationSummary: { "Vehicle Maintenance": 3 },
+    oosSummary: { driver: "N/A", vehicle: "FAILED", total: 2 },
+    violations: [
+      { code: "393.201A-FC", category: "Vehicle Maintenance", description: "Frame - Cracked, broken, loose, or sagging", subDescription: "Frame", severity: 8, weight: 3, points: 24, oos: true, driverRiskCategory: 1 },
+      { code: "393.209A-SLBW", category: "Vehicle Maintenance", description: "Steering - Linkage ball and socket joint worn", subDescription: "Steering", severity: 5, weight: 3, points: 15, oos: true, driverRiskCategory: 1 },
+      { code: "396.3A1-TF", category: "Vehicle Maintenance", description: "Tire - Flat or underinflated", subDescription: "Tires", severity: 1, weight: 3, points: 3, oos: false, driverRiskCategory: 3 }
+    ]
+  },
+
+  // ===== SMS Level 6 – Enhanced NAS Radioactive =====
+  {
+    id: "SCCHARL17003",
+    date: "2024-07-12",
+    state: "SC",
+    driverId: "DRV-2006",
+    driver: "Robert Chen",
+    driverLicense: "C550-9980-5678",
+    vehiclePlate: "HZ-4411",
+    vehicleType: "Truck",
+    assetId: "a6",
+    level: "Level 6",
+    startTime: "06:30",
+    endTime: "08:20",
+    location: { city: "CHARLESTON", province: "SC", raw: "4755 RIVERS AVE, NORTH CHARLESTON, SC 29405" },
+    smsPoints: { vehicle: 9, driver: 27, carrier: 36 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 4.5,
+    hasVehicleViolations: true,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Kenworth", license: "HZ-4411", vin: "3WKAD49X89F401456" },
+      { type: "SEMI-TRAILER", make: "UTILITY", license: "HZ-T903 (SC)", vin: "1UYVS2536BU801990" }
+    ],
+    violationSummary: { "Hazmat compliance": 2, "Vehicle Maintenance": 1, "Hours-of-service Compliance": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "PASSED", total: 0 },
+    violations: [
+      { code: "173.441A", category: "Hazmat compliance", description: "Radioactive material - TI exceeds allowable", subDescription: "Radioactive", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 1 },
+      { code: "172.704A", category: "Hazmat compliance", description: "Hazmat employee not trained as required", subDescription: "Hazmat Training", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 },
+      { code: "393.9A-LTLI", category: "Vehicle Maintenance", description: "Lighting - Turn signal lamp inoperative", subDescription: "Lighting", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 3 },
+      { code: "395.8E1", category: "Hours-of-service Compliance", description: "ELD not compliant with FMCSA specifications", subDescription: "ELD", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== CVOR Level 3 – Driver Only =====
+  {
+    id: "ONLONDN17004",
+    date: "2025-01-15",
+    state: "ON",
+    driverId: "DRV-3001",
+    driver: "Gurwinder Singh",
+    driverLicense: "GS82140",
+    vehiclePlate: "BN19 4TW",
+    vehicleType: "Truck",
+    assetId: "a10",
+    level: "Level 3",
+    startTime: "11:00",
+    endTime: "11:30",
+    location: { city: "LONDON", province: "ON", raw: "1155 WELLINGTON RD S, LONDON, ON N6E 1M2" },
+    cvorPoints: { vehicle: 0, driver: 3, cvor: 3 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 5.0,
+    hasVehicleViolations: false,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Volvo", license: "BN19 4TW", vin: "4V4NC9EJ3EN167832" }
+    ],
+    violationSummary: { "Hours-of-service Compliance": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "N/A", total: 0 },
+    violations: [
+      { code: "HTA s.190(3)", category: "Hours-of-service Compliance", description: "Driver failed to maintain daily log as required", subDescription: "Daily Log", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== CVOR Level 4 – Special Inspection =====
+  {
+    id: "ONBRANT17005",
+    date: "2024-12-03",
+    state: "ON",
+    driverId: "DRV-3003",
+    driver: "Davinder Singh",
+    driverLicense: "RK33018",
+    vehiclePlate: "AR72 MKN",
+    vehicleType: "Truck",
+    assetId: "a12",
+    level: "Level 4",
+    startTime: "14:15",
+    endTime: "15:00",
+    location: { city: "BRANTFORD", province: "ON", raw: "100 SAVANNAH OAKS DR, BRANTFORD, ON N3V 1E8" },
+    cvorPoints: { vehicle: 2, driver: 0, cvor: 2 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: "CARGO SECUREMENT DEFICIENCY",
+    trailerDefects: null,
+    severityRate: 4.0,
+    hasVehicleViolations: true,
+    hasDriverViolations: false,
+    units: [
+      { type: "Truck", make: "Mack", license: "AR72 MKN", vin: "1M1AW07Y88N007123" },
+      { type: "Flatbed", make: "MANAC", license: "FB-3921 (ON)", vin: "2M592088XCA302111" }
+    ],
+    violationSummary: { "Cargo Securement": 2 },
+    oosSummary: { driver: "N/A", vehicle: "PASSED", total: 0 },
+    violations: [
+      { code: "O.Reg 363/04 s.14", category: "Cargo Securement", description: "Cargo not properly secured – insufficient tiedowns for commodity", subDescription: "Tiedowns", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 },
+      { code: "O.Reg 363/04 s.11", category: "Cargo Securement", description: "Cargo securement system not adequate for load", subDescription: "Load Security", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== CVOR Level 5 – Vehicle Only =====
+  {
+    id: "ONKITCH17006",
+    date: "2024-10-20",
+    state: "ON",
+    driverId: "DRV-3004",
+    driver: "Anterpreet Singh",
+    driverLicense: "AA91257",
+    vehiclePlate: "AX83 JRE",
+    vehicleType: "Truck",
+    assetId: "a13",
+    level: "Level 5",
+    startTime: "09:00",
+    endTime: "09:50",
+    location: { city: "KITCHENER", province: "ON", raw: "4220 KING ST E, KITCHENER, ON N2P 2G5" },
+    cvorPoints: { vehicle: 4, driver: 0, cvor: 4 },
+    isClean: false,
+    hasOOS: true,
+    powerUnitDefects: "BRAKES - AIR COMPRESSOR DEFECTIVE, EXHAUST LEAK",
+    trailerDefects: "FRAME - CRACKED CROSSMEMBER",
+    severityRate: 7.5,
+    hasVehicleViolations: true,
+    hasDriverViolations: false,
+    units: [
+      { type: "Truck", make: "International", license: "AX83 JRE", vin: "3HSDJAPR5CN603844" },
+      { type: "SEMI-TRAILER", make: "GREAT DANE", license: "GD-2088 (ON)", vin: "1GRAA0626DB256901" }
+    ],
+    violationSummary: { "Vehicle Maintenance": 3 },
+    oosSummary: { driver: "N/A", vehicle: "FAILED", total: 2 },
+    violations: [
+      { code: "O.Reg 199/07 s.6(1)", category: "Vehicle Maintenance", description: "Air brake system - Air compressor defective or inoperative", subDescription: "Air Compressor", severity: 8, weight: 3, points: 24, oos: true, driverRiskCategory: 1 },
+      { code: "HTA s.84(1)", category: "Vehicle Maintenance", description: "Exhaust system – leak or defective component", subDescription: "Exhaust", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 2 },
+      { code: "O.Reg 199/07 s.13(1)", category: "Vehicle Maintenance", description: "Frame or body – Cracked crossmember on trailer frame", subDescription: "Frame", severity: 8, weight: 3, points: 24, oos: true, driverRiskCategory: 1 }
+    ]
+  },
+
+  // ===== Additional SMS – Level 1 with full address =====
+  {
+    id: "NCRALGH17007",
+    date: "2025-02-18",
+    state: "NC",
+    driverId: "DRV-2003",
+    driver: "James Sullivan",
+    driverLicense: "S840-5501-9012",
+    vehiclePlate: "NC-8421",
+    vehicleType: "Truck",
+    assetId: "a3",
+    level: "Level 1",
+    startTime: "07:15",
+    endTime: "09:00",
+    location: { city: "RALEIGH", province: "NC", raw: "3901 CAPITAL BLVD, RALEIGH, NC 27604" },
+    smsPoints: { vehicle: 54, driver: 21, carrier: 75 },
+    isClean: false,
+    hasOOS: true,
+    powerUnitDefects: "BRAKES DEFECTIVE, TIRE TREAD DEPTH",
+    trailerDefects: "LIGHTING INOPERATIVE",
+    severityRate: 5.5,
+    hasVehicleViolations: true,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Volvo", license: "NC-8421", vin: "4V4NC9EH3FN188904" },
+      { type: "SEMI-TRAILER", make: "WABASH", license: "WB-T221 (NC)", vin: "1JJV532D6FL888340" }
+    ],
+    violationSummary: { "Vehicle Maintenance": 4, "Unsafe Driving": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "FAILED", total: 2 },
+    violations: [
+      { code: "393.47E", category: "Vehicle Maintenance", description: "Brake Out of Adjustment - steer axle", subDescription: "Brakes", severity: 6, weight: 3, points: 18, oos: true, driverRiskCategory: 1 },
+      { code: "393.75A2", category: "Vehicle Maintenance", description: "Tire - Tread depth less than 4/32 on steer axle", subDescription: "Tires", severity: 5, weight: 3, points: 15, oos: true, driverRiskCategory: 1 },
+      { code: "393.9A-LTI", category: "Vehicle Maintenance", description: "Lighting - Tail lamp inoperative on trailer", subDescription: "Lighting", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 3 },
+      { code: "393.100-CSIB", category: "Vehicle Maintenance", description: "Cargo not properly secured - insufficient blocking", subDescription: "Cargo", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 },
+      { code: "392.2-SPDZ", category: "Unsafe Driving", description: "Speeding in a construction/work zone", subDescription: "Speed", severity: 7, weight: 3, points: 21, oos: false, driverRiskCategory: 1 }
+    ]
+  },
+
+  // ===== Additional CVOR – Level 1 with full address =====
+  {
+    id: "ONOTTAW17008",
+    date: "2025-02-05",
+    state: "ON",
+    driverId: "DRV-3002",
+    driver: "Jashandeep Singh",
+    driverLicense: "JD72503",
+    vehiclePlate: "BV68 9XK",
+    vehicleType: "Truck",
+    assetId: "a11",
+    level: "Level 1",
+    startTime: "08:30",
+    endTime: "10:15",
+    location: { city: "OTTAWA", province: "ON", raw: "2760 LANCASTER RD, OTTAWA, ON K1B 4T7" },
+    cvorPoints: { vehicle: 5, driver: 2, cvor: 7 },
+    isClean: false,
+    hasOOS: true,
+    powerUnitDefects: "BRAKES DEFECTIVE, STEERING COMPONENTS WORN",
+    trailerDefects: "LIGHTING INOPERATIVE, MUDFLAP MISSING",
+    severityRate: 6.0,
+    hasVehicleViolations: true,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Freightliner", license: "BV68 9XK", vin: "1FUJHHDR8CLBR8877" },
+      { type: "SEMI-TRAILER", make: "STOUGHTON", license: "ST-7729 (ON)", vin: "1DW1A532X6S694001" }
+    ],
+    violationSummary: { "Vehicle Maintenance": 4, "Hours-of-service Compliance": 1, "Unsafe Driving": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "FAILED", total: 3 },
+    violations: [
+      { code: "O.Reg 199/07 s.4(1)a", category: "Vehicle Maintenance", description: "Brake – Pushrod stroke exceeds adjustment limit", subDescription: "Brakes", severity: 7, weight: 3, points: 21, oos: true, driverRiskCategory: 1 },
+      { code: "O.Reg 199/07 s.7(1)", category: "Vehicle Maintenance", description: "Steering components – worn or improperly adjusted", subDescription: "Steering", severity: 6, weight: 3, points: 18, oos: true, driverRiskCategory: 1 },
+      { code: "HTA s.62(17)", category: "Vehicle Maintenance", description: "Tail lamp or stop lamp not working on trailer", subDescription: "Lighting", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 3 },
+      { code: "O.Reg 199/07 s.12", category: "Vehicle Maintenance", description: "Mudflap or splash guard missing or defective", subDescription: "Body", severity: 2, weight: 3, points: 6, oos: false, driverRiskCategory: 3 },
+      { code: "HTA s.190(3)", category: "Hours-of-service Compliance", description: "Driver failed to maintain daily log as required", subDescription: "Daily Log", severity: 5, weight: 3, points: 15, oos: true, driverRiskCategory: 2 },
+      { code: "HTA s.128", category: "Unsafe Driving", description: "Speeding – exceed posted limit by more than 15 km/h", subDescription: "Speed", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 1 }
+    ]
+  },
+
+  // ===== Additional CVOR – Level 2 clean =====
+  {
+    id: "ONTHUNB17009",
+    date: "2024-08-14",
+    state: "ON",
+    driverId: "DRV-3005",
+    driver: "Bhupinder Singh",
+    driverLicense: "PA46096",
+    vehiclePlate: "X3203Z",
+    vehicleType: "Truck",
+    assetId: "a15",
+    level: "Level 2",
+    startTime: "15:45",
+    endTime: "16:10",
+    location: { city: "THUNDER BAY", province: "ON", raw: "1000 DAWSON RD, THUNDER BAY, ON P7B 5E1" },
+    cvorPoints: { vehicle: 0, driver: 0, cvor: 0 },
+    isClean: true,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: null,
+    hasVehicleViolations: false,
+    hasDriverViolations: false,
+    units: [
+      { type: "Truck", make: "Kenworth", license: "X3203Z", vin: "1XKAD49X39J267001" }
+    ],
+    violationSummary: {},
+    oosSummary: { driver: "PASSED", vehicle: "PASSED", total: 0 },
+    violations: []
+  },
+
+  // ===== Additional SMS – Level 3 clean =====
+  {
+    id: "AZPHOEN17010",
+    date: "2024-12-10",
+    state: "AZ",
+    driverId: "DRV-2005",
+    driver: "Elena Rodriguez",
+    driverLicense: "R362-1150-3456",
+    vehiclePlate: "AZ-3019",
+    vehicleType: "Truck",
+    assetId: "a5",
+    level: "Level 3",
+    startTime: "10:00",
+    endTime: "10:25",
+    location: { city: "PHOENIX", province: "AZ", raw: "2402 W MCDOWELL RD, PHOENIX, AZ 85009" },
+    smsPoints: { vehicle: 0, driver: 0, carrier: 0 },
+    isClean: true,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: null,
+    hasVehicleViolations: false,
+    hasDriverViolations: false,
+    units: [
+      { type: "Truck", make: "Peterbilt", license: "AZ-3019", vin: "2NP2HN0X09M771140" }
+    ],
+    violationSummary: {},
+    oosSummary: { driver: "PASSED", vehicle: "N/A", total: 0 },
+    violations: []
+  },
+
+  // ===== Additional CVOR – Level 3 with violations =====
+  {
+    id: "ONBARRI17011",
+    date: "2024-06-22",
+    state: "ON",
+    driverId: "DRV-3004",
+    driver: "Anterpreet Singh",
+    driverLicense: "AA91257",
+    vehiclePlate: "AX83 JRE",
+    vehicleType: "Truck",
+    assetId: "a13",
+    level: "Level 3",
+    startTime: "12:30",
+    endTime: "13:00",
+    location: { city: "BARRIE", province: "ON", raw: "55 CEDAR POINTE DR, BARRIE, ON L4N 5R7" },
+    cvorPoints: { vehicle: 0, driver: 2, cvor: 2 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 4.0,
+    hasVehicleViolations: false,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "International", license: "AX83 JRE", vin: "3HSDJAPR5CN603844" }
+    ],
+    violationSummary: { "Driver Fitness": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "N/A", total: 0 },
+    violations: [
+      { code: "HTA s.32(2)", category: "Driver Fitness", description: "Driver not holding proper class of licence for vehicle operated", subDescription: "Licence Class", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== Additional SMS – Level 4 =====
+  {
+    id: "WASEATT17012",
+    date: "2024-04-25",
+    state: "WA",
+    driverId: "DRV-2008",
+    driver: "Michael Brown",
+    driverLicense: "B650-4409-7890",
+    vehiclePlate: "WA-7801",
+    vehicleType: "Truck",
+    assetId: "a8",
+    level: "Level 4",
+    startTime: "16:00",
+    endTime: "16:40",
+    location: { city: "SEATTLE", province: "WA", raw: "3200 S 216TH ST, SEATTLE, WA 98198" },
+    smsPoints: { vehicle: 0, driver: 12, carrier: 12 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 4.0,
+    hasVehicleViolations: false,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Mack", license: "WA-7801", vin: "1M2AX04C57M001290" }
+    ],
+    violationSummary: { "Controlled Substances": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "N/A", total: 0 },
+    violations: [
+      { code: "382.301D", category: "Controlled Substances", description: "Failing to implement random controlled substances testing program", subDescription: "Drug Test", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== Additional SMS – Level 5 =====
+  {
+    id: "CODENVE17013",
+    date: "2024-08-01",
+    state: "CO",
+    driverId: "DRV-2002",
+    driver: "Sarah Miller",
+    driverLicense: "M460-2287-3456",
+    vehiclePlate: "CO-2245",
+    vehicleType: "Trailer",
+    assetId: "a2",
+    level: "Level 5",
+    startTime: "11:30",
+    endTime: "12:15",
+    location: { city: "DENVER", province: "CO", raw: "5001 E 56TH AVE, DENVER, CO 80216" },
+    smsPoints: { vehicle: 24, driver: 0, carrier: 24 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: "TIRES WORN, REFLECTIVE TAPE MISSING",
+    severityRate: 4.0,
+    hasVehicleViolations: true,
+    hasDriverViolations: false,
+    units: [
+      { type: "SEMI-TRAILER", make: "HYUNDAI", license: "CO-2245", vin: "3H3V532D2FL060291" }
+    ],
+    violationSummary: { "Vehicle Maintenance": 2 },
+    oosSummary: { driver: "N/A", vehicle: "PASSED", total: 0 },
+    violations: [
+      { code: "393.75C", category: "Vehicle Maintenance", description: "Tire - Worn, tread depth less than 2/32 on drive axle", subDescription: "Tires", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 2 },
+      { code: "393.11A1-CSLRR", category: "Vehicle Maintenance", description: "Lower rear retro-reflective sheeting missing", subDescription: "Conspicuity", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 3 }
+    ]
+  },
+
+  // ===== SMS Level 7 – Jurisdictional Mandated =====
+  {
+    id: "MNMINNE18001",
+    date: "2025-01-08",
+    state: "MN",
+    driverId: "DRV-2003",
+    driver: "James Sullivan",
+    driverLicense: "S840-5501-9012",
+    vehiclePlate: "MN-6104",
+    vehicleType: "Truck",
+    assetId: "a3",
+    level: "Level 7",
+    startTime: "09:45",
+    endTime: "10:30",
+    location: { city: "MINNEAPOLIS", province: "MN", raw: "7150 HUMPHREY DR, MINNEAPOLIS, MN 55450" },
+    smsPoints: { vehicle: 18, driver: 9, carrier: 27 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: "TIRE TREAD DEPTH",
+    trailerDefects: null,
+    severityRate: 3.0,
+    hasVehicleViolations: true,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Volvo", license: "MN-6104", vin: "4V4NC9EH7FN192847" },
+      { type: "SEMI-TRAILER", make: "UTILITY", license: "UT-3310 (MN)", vin: "1UYVS253XBU801556" }
+    ],
+    violationSummary: { "Vehicle Maintenance": 2, "Driver Fitness": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "PASSED", total: 0 },
+    violations: [
+      { code: "393.75A2", category: "Vehicle Maintenance", description: "Tire - Tread depth less than 4/32 on steer axle", subDescription: "Tires", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 2 },
+      { code: "396.17C", category: "Vehicle Maintenance", description: "Operating a CMV without periodic inspection", subDescription: "Periodic Inspection", severity: 1, weight: 3, points: 3, oos: false, driverRiskCategory: 3 },
+      { code: "391.11B4", category: "Driver Fitness", description: "Failing to have valid medical certificate in driver's possession", subDescription: "Medical Certificate", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== SMS Level 7 – Jurisdictional Mandated (clean) =====
+  {
+    id: "OKCITYO18002",
+    date: "2024-06-30",
+    state: "OK",
+    driverId: "DRV-2005",
+    driver: "Elena Rodriguez",
+    driverLicense: "R362-1150-3456",
+    vehiclePlate: "OK-9022",
+    vehicleType: "Truck",
+    assetId: "a5",
+    level: "Level 7",
+    startTime: "14:00",
+    endTime: "14:25",
+    location: { city: "OKLAHOMA CITY", province: "OK", raw: "4501 MARTIN LUTHER KING AVE, OKLAHOMA CITY, OK 73111" },
+    smsPoints: { vehicle: 0, driver: 0, carrier: 0 },
+    isClean: true,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: null,
+    hasVehicleViolations: false,
+    hasDriverViolations: false,
+    units: [
+      { type: "Truck", make: "Kenworth", license: "OK-9022", vin: "1XKAD49X09J267301" }
+    ],
+    violationSummary: {},
+    oosSummary: { driver: "PASSED", vehicle: "PASSED", total: 0 },
+    violations: []
+  },
+
+  // ===== SMS Level 8 – Electronic Inspection =====
+  {
+    id: "VARICHN18003",
+    date: "2025-02-12",
+    state: "VA",
+    driverId: "DRV-2004",
+    driver: "Mike Johnson",
+    driverLicense: "J525-8810-1234",
+    vehiclePlate: "VA-1137",
+    vehicleType: "Truck",
+    assetId: "a4",
+    level: "Level 8",
+    startTime: "06:00",
+    endTime: "06:10",
+    location: { city: "RICHMOND", province: "VA", raw: "3160 COMMERCE RD, RICHMOND, VA 23234" },
+    smsPoints: { vehicle: 0, driver: 9, carrier: 9 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 3.0,
+    hasVehicleViolations: false,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Freightliner", license: "VA-1137", vin: "1FUJHHDR5DLBR2210" }
+    ],
+    violationSummary: { "Hours-of-service Compliance": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "N/A", total: 0 },
+    violations: [
+      { code: "395.8E5", category: "Hours-of-service Compliance", description: "ELD data transfer – unable to produce electronic output at roadside", subDescription: "ELD Transfer", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+
+  // ===== SMS Level 8 – Electronic Inspection (with violations) =====
+  {
+    id: "MOKASNC18004",
+    date: "2024-10-15",
+    state: "MO",
+    driverId: "DRV-2008",
+    driver: "Michael Brown",
+    driverLicense: "B650-4409-7890",
+    vehiclePlate: "MO-3380",
+    vehicleType: "Truck",
+    assetId: "a8",
+    level: "Level 8",
+    startTime: "17:30",
+    endTime: "17:42",
+    location: { city: "KANSAS CITY", province: "MO", raw: "1200 E 18TH ST, KANSAS CITY, MO 64108" },
+    smsPoints: { vehicle: 0, driver: 21, carrier: 21 },
+    isClean: false,
+    hasOOS: true,
+    powerUnitDefects: null,
+    trailerDefects: null,
+    severityRate: 7.0,
+    hasVehicleViolations: false,
+    hasDriverViolations: true,
+    units: [
+      { type: "Truck", make: "Mack", license: "MO-3380", vin: "1M2AX04C97M001401" }
+    ],
+    violationSummary: { "Hours-of-service Compliance": 2 },
+    oosSummary: { driver: "FAILED", vehicle: "N/A", total: 1 },
+    violations: [
+      { code: "395.3A2", category: "Hours-of-service Compliance", description: "Driving beyond 14-hour duty period", subDescription: "Duty Period", severity: 7, weight: 3, points: 21, oos: true, driverRiskCategory: 1 },
+      { code: "395.8E1", category: "Hours-of-service Compliance", description: "ELD not compliant with FMCSA specifications", subDescription: "ELD Compliance", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 }
     ]
   }
 ];

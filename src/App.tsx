@@ -20,6 +20,7 @@ import { TicketsPage } from '@/pages/tickets/TicketsPage'
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
 import { ViolationsListPage } from '@/pages/violations/ViolationsListPage'
 import { InspectionsPage } from '@/pages/inspections/InspectionsPage'
+import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -106,6 +107,9 @@ function App() {
         }
         if (path === "/tickets") {
             return <TicketsPage />
+        }
+        if (path === "/safety-events") {
+            return <SafetyEventsPage />
         }
         if (path === "/compliance") {
             return (
