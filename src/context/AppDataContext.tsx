@@ -26,6 +26,14 @@ interface AppDataContextType {
     setCsaThresholds: React.Dispatch<React.SetStateAction<{ warning: number; critical: number }>>;
     cvorThresholds: { warning: number; intervention: number; showCause: number; seizure: number };
     setCvorThresholds: React.Dispatch<React.SetStateAction<{ warning: number; intervention: number; showCause: number; seizure: number }>>;
+    csaOosThresholds: { overallEnabled: boolean; overall: number; vehicleEnabled: boolean; vehicle: number; driverEnabled: boolean; driver: number };
+    setCsaOosThresholds: React.Dispatch<React.SetStateAction<{ overallEnabled: boolean; overall: number; vehicleEnabled: boolean; vehicle: number; driverEnabled: boolean; driver: number }>>;
+    cvorOosThresholds: { overallEnabled: boolean; overall: number; vehicleEnabled: boolean; vehicle: number; driverEnabled: boolean; driver: number };
+    setCvorOosThresholds: React.Dispatch<React.SetStateAction<{ overallEnabled: boolean; overall: number; vehicleEnabled: boolean; vehicle: number; driverEnabled: boolean; driver: number }>>;
+    csaCategoryThresholds: Record<string, { warningEnabled: boolean; warning: number; criticalEnabled: boolean; critical: number }>;
+    setCsaCategoryThresholds: React.Dispatch<React.SetStateAction<Record<string, { warningEnabled: boolean; warning: number; criticalEnabled: boolean; critical: number }>>>;
+    cvorCategoryThresholds: Record<string, { warningEnabled: boolean; warning: number; auditEnabled: boolean; audit: number; showCauseEnabled: boolean; showCause: number; seizureEnabled: boolean; seizure: number }>;
+    setCvorCategoryThresholds: React.Dispatch<React.SetStateAction<Record<string, { warningEnabled: boolean; warning: number; auditEnabled: boolean; audit: number; showCauseEnabled: boolean; showCause: number; seizureEnabled: boolean; seizure: number }>>>;
     // Document Actions
     addDocument: (doc: DocumentType) => void;
     updateDocument: (id: string, updates: Partial<DocumentType>) => void;
@@ -102,6 +110,24 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
     // Thresholds State
     const [csaThresholds, setCsaThresholds] = useState({ warning: 65, critical: 85 });
     const [cvorThresholds, setCvorThresholds] = useState({ warning: 35, intervention: 50, showCause: 85, seizure: 100 });
+    const [csaOosThresholds, setCsaOosThresholds] = useState({ overallEnabled: true, overall: 30, vehicleEnabled: true, vehicle: 25, driverEnabled: true, driver: 10 });
+    const [cvorOosThresholds, setCvorOosThresholds] = useState({ overallEnabled: true, overall: 30, vehicleEnabled: true, vehicle: 25, driverEnabled: true, driver: 10 });
+    const [csaCategoryThresholds, setCsaCategoryThresholds] = useState<Record<string, { warningEnabled: boolean; warning: number; criticalEnabled: boolean; critical: number }>>({
+        'Unsafe Driving': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+        'Crash Indicator': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+        'Hours-of-Service Compliance': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+        'Vehicle Maintenance': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+        'Controlled Substances and Alcohol': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+        'Hazmat Compliance': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+        'Driver Fitness': { warningEnabled: true, warning: 65, criticalEnabled: true, critical: 85 },
+    });
+    const [cvorCategoryThresholds, setCvorCategoryThresholds] = useState<Record<string, { warningEnabled: boolean; warning: number; auditEnabled: boolean; audit: number; showCauseEnabled: boolean; showCause: number; seizureEnabled: boolean; seizure: number }>>({
+        'Vehicle Maintenance': { warningEnabled: true, warning: 35, auditEnabled: true, audit: 50, showCauseEnabled: true, showCause: 85, seizureEnabled: true, seizure: 100 },
+        'HOS Compliance': { warningEnabled: true, warning: 35, auditEnabled: true, audit: 50, showCauseEnabled: true, showCause: 85, seizureEnabled: true, seizure: 100 },
+        'Driver Fitness': { warningEnabled: true, warning: 35, auditEnabled: true, audit: 50, showCauseEnabled: true, showCause: 85, seizureEnabled: true, seizure: 100 },
+        'Unsafe Driving': { warningEnabled: true, warning: 35, auditEnabled: true, audit: 50, showCauseEnabled: true, showCause: 85, seizureEnabled: true, seizure: 100 },
+        'Hazmat': { warningEnabled: true, warning: 35, auditEnabled: true, audit: 50, showCauseEnabled: true, showCause: 85, seizureEnabled: true, seizure: 100 },
+    });
 
     // --- ACTIONS ---
 
@@ -251,6 +277,14 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
         setCsaThresholds,
         cvorThresholds,
         setCvorThresholds,
+        csaOosThresholds,
+        setCsaOosThresholds,
+        cvorOosThresholds,
+        setCvorOosThresholds,
+        csaCategoryThresholds,
+        setCsaCategoryThresholds,
+        cvorCategoryThresholds,
+        setCvorCategoryThresholds,
         addDocument,
         updateDocument,
         assignDocumentToFolder,

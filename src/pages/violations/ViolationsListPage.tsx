@@ -330,9 +330,10 @@ const ViolationDetailModal = ({ record, onClose }: { record: ViolationRecord | A
                                 <div className="text-lg text-slate-700 font-medium leading-relaxed">{record.violationType}</div>
                             </div>
                             
-                            {/* Detailed Regulatory Info */}
+                            {/* Detailed Regulatory Info — USA */}
                             {fullViolation && fullViolation.regulatoryCodes && (
                                 <div className="grid gap-3 mt-4">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">🇺🇸 USA Regulatory Codes</p>
                                     {fullViolation.regulatoryCodes.usa?.map((code: any, i: number) => (
                                         <div key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                                             <div className="flex items-center gap-2 mb-1">
@@ -342,6 +343,73 @@ const ViolationDetailModal = ({ record, onClose }: { record: ViolationRecord | A
                                             <p className="text-sm text-slate-600 italic">"{code.description}"</p>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* Canadian Regulatory Codes */}
+                            {fullViolation?.regulatoryCodes?.canada && fullViolation.regulatoryCodes.canada.length > 0 && (
+                                <div className="grid gap-3 mt-4">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">🇨🇦 Canada Regulatory Codes</p>
+                                    {fullViolation.regulatoryCodes.canada.map((code: any, i: number) => (
+                                        <div key={i} className="p-3 bg-red-50/30 rounded-lg border border-red-100">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded uppercase">{code.authority}</span>
+                                                <span className="text-xs font-mono font-bold text-slate-600">{code.reference?.[0] || 'N/A'}</span>
+                                                {code.province?.map((p: string) => (
+                                                    <span key={p} className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1 py-0.5 rounded">{p}</span>
+                                                ))}
+                                            </div>
+                                            <p className="text-sm text-slate-600 italic">"{code.description}"</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Canadian Enforcement Detail Card */}
+                            {fullViolation?.canadaEnforcement && (
+                                <div className="mt-4 p-4 bg-gradient-to-br from-red-50/50 to-white rounded-xl border border-red-200/60">
+                                    <h5 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        🇨🇦 Canadian Enforcement
+                                    </h5>
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">CCMTA Code</div>
+                                            <div className="text-xl font-bold text-purple-700">{fullViolation.canadaEnforcement.ccmtaCode}</div>
+                                        </div>
+                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Offence Code</div>
+                                            <div className="text-sm font-mono font-bold text-slate-900">{fullViolation.canadaEnforcement.code}</div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">NSC Points</div>
+                                            <div className={`text-xl font-bold font-mono ${(fullViolation.canadaEnforcement.points.nsc || 0) >= 5 ? 'text-red-600' : 'text-slate-800'}`}>
+                                                {fullViolation.canadaEnforcement.points.nsc ?? '—'}
+                                            </div>
+                                        </div>
+                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
+                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">CVOR Points</div>
+                                            <div className={`text-xl font-bold font-mono ${(fullViolation.canadaEnforcement.points.cvor?.max || 0) >= 10 ? 'text-red-600' : 'text-slate-800'}`}>
+                                                {fullViolation.canadaEnforcement.points.cvor
+                                                    ? (fullViolation.canadaEnforcement.points.cvor.min === fullViolation.canadaEnforcement.points.cvor.max
+                                                        ? fullViolation.canadaEnforcement.points.cvor.min
+                                                        : `${fullViolation.canadaEnforcement.points.cvor.min}–${fullViolation.canadaEnforcement.points.cvor.max}`)
+                                                    : '—'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5 text-sm">
+                                        <div className="flex justify-between"><span className="text-slate-500">Act</span><span className="font-semibold text-slate-900">{fullViolation.canadaEnforcement.act}</span></div>
+                                        <div className="flex justify-between"><span className="text-slate-500">Section</span><span className="font-mono text-xs text-slate-700">{fullViolation.canadaEnforcement.section}</span></div>
+                                        {fullViolation.canadaEnforcement.category && <div className="flex justify-between"><span className="text-slate-500">Category</span><span className="text-xs text-slate-700">{fullViolation.canadaEnforcement.category}</span></div>}
+                                        {fullViolation.canadaEnforcement.cvorClassification && (
+                                            <div className="flex justify-between"><span className="text-slate-500">Conviction Type</span><span className="text-xs font-bold text-slate-700">{fullViolation.canadaEnforcement.cvorClassification.convictionType}</span></div>
+                                        )}
+                                        {fullViolation.canadaEnforcement.descriptions?.conviction && (
+                                            <div className="flex justify-between"><span className="text-slate-500">Conviction</span><span className="text-xs text-slate-700 italic">{fullViolation.canadaEnforcement.descriptions.conviction}</span></div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -449,7 +517,8 @@ export function ViolationsListPage() {
     const [driverVisibleColumns, setDriverVisibleColumns] = useState<Set<string>>(new Set([
         'date', 'time', 'driverName', 'driverType', 'assetName', 
         'locationCity', 'locationState', 'locationFull',
-        'violationType', 'crashLikelihood', 'result', 'totalCost', 'actions'
+        'violationType', 'violationGroup', 'ccmtaCode', 'offenceCode',
+        'crashLikelihood', 'result', 'totalCost', 'actions'
     ]));
 
     const [assetVisibleColumns, setAssetVisibleColumns] = useState<Set<string>>(new Set([
@@ -740,6 +809,13 @@ export function ViolationsListPage() {
                                 { id: 'locationState', label: 'State' },
                                 { id: 'locationFull', label: 'Full Address' },
                                 { id: 'violationType', label: 'Violation Type' },
+                                { id: 'violationGroup', label: 'Violation Group' },
+                                { id: 'ccmtaCode', label: 'CCMTA Code' },
+                                { id: 'offenceCode', label: 'Offence Code' },
+                                { id: 'cfrCode', label: 'CFR' },
+                                { id: 'authority', label: 'Authority' },
+                                { id: 'nscPoints', label: 'NSC Points' },
+                                { id: 'cvorPoints', label: 'CVOR Points' },
                                 { id: 'crashLikelihood', label: 'Risk Level' },
                                 { id: 'result', label: 'Result' },
                                 { id: 'totalCost', label: 'Total (Fine & Expenses)' },
@@ -782,6 +858,13 @@ export function ViolationsListPage() {
                                     {visibleColumns.has('locationState') && <TH className="w-[80px] text-center">State</TH>}
                                     {visibleColumns.has('locationFull') && <TH className="w-[200px]">Address</TH>}
                                     {visibleColumns.has('violationType') && <TH className="w-[250px]" sortable sorted={sortField === 'violationType' ? sortOrder : null} onSort={() => handleSort('violationType')}>Violation</TH>}
+                                    {visibleColumns.has('violationGroup') && <TH className="w-[130px]">Group</TH>}
+                                    {visibleColumns.has('ccmtaCode') && <TH className="w-[90px]" align="center">CCMTA</TH>}
+                                    {visibleColumns.has('offenceCode') && <TH className="w-[140px]">Offence Code</TH>}
+                                    {visibleColumns.has('cfrCode') && <TH className="w-[160px]">CFR</TH>}
+                                    {visibleColumns.has('authority') && <TH className="w-[100px]" align="center">Authority</TH>}
+                                    {visibleColumns.has('nscPoints') && <TH className="w-[80px]" align="center">NSC Pts</TH>}
+                                    {visibleColumns.has('cvorPoints') && <TH className="w-[90px]" align="center">CVOR Pts</TH>}
                                     {visibleColumns.has('crashLikelihood') && <TH sortable sorted={sortField === 'crashLikelihood' ? sortOrder : null} onSort={() => handleSort('crashLikelihood')}>Risk Level</TH>}
                                     {visibleColumns.has('result') && <TH>Result</TH>}
                                     {visibleColumns.has('totalCost') && <TH align="right" sortable sorted={sortField === 'fineAmount' ? sortOrder : null} onSort={() => handleSort('fineAmount')}>Total (Fine & Expenses)</TH>}
@@ -791,7 +874,10 @@ export function ViolationsListPage() {
                             <tbody className="divide-y divide-slate-100 text-slate-600">
                                 {driverPageData.length > 0 ? driverPageData.map(r => {
                                     const totalCost = (r.fineAmount || 0) + (r.expenseAmount || 0);
-                                    const currency = r.currency || 'USD'; 
+                                    const currency = r.currency || 'USD';
+                                    const fullV = getViolation(r.violationDataId);
+                                    const caEnf = fullV?.canadaEnforcement;
+                                    const usaCfr = fullV?.regulatoryCodes?.usa?.[0];
                                     
                                     return (
                                     <tr 
@@ -841,6 +927,53 @@ export function ViolationsListPage() {
                                                     </span>
                                                 )}
                                             </div>
+                                        </TD>}
+                                        {visibleColumns.has('violationGroup') && <TD>
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold uppercase tracking-wide truncate max-w-[120px]" title={r.violationGroup}>
+                                                {r.violationGroup}
+                                            </span>
+                                        </TD>}
+                                        {visibleColumns.has('ccmtaCode') && <TD align="center">
+                                            {caEnf?.ccmtaCode ? (
+                                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold uppercase tracking-wide">
+                                                    {caEnf.ccmtaCode}
+                                                </span>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
+                                        </TD>}
+                                        {visibleColumns.has('offenceCode') && <TD>
+                                            {caEnf?.code ? (
+                                                <span className="font-mono text-[11px] font-bold text-slate-700" title={caEnf.descriptions?.full}>
+                                                    {caEnf.code}
+                                                </span>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
+                                        </TD>}
+                                        {visibleColumns.has('cfrCode') && <TD>
+                                            {usaCfr?.cfr?.[0] ? (
+                                                <span className="font-mono text-[11px] text-blue-600 font-semibold" title={usaCfr.description}>
+                                                    {usaCfr.cfr[0]}
+                                                </span>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
+                                        </TD>}
+                                        {visibleColumns.has('authority') && <TD align="center">
+                                            {usaCfr?.authority ? (
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-bold uppercase">
+                                                    {usaCfr.authority}
+                                                </span>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
+                                        </TD>}
+                                        {visibleColumns.has('nscPoints') && <TD align="center">
+                                            {caEnf?.points?.nsc != null ? (
+                                                <span className={`font-mono font-bold text-sm ${caEnf.points.nsc >= 5 ? 'text-red-600' : caEnf.points.nsc >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                                    {caEnf.points.nsc}
+                                                </span>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
+                                        </TD>}
+                                        {visibleColumns.has('cvorPoints') && <TD align="center">
+                                            {caEnf?.points?.cvor ? (
+                                                <span className={`font-mono font-bold text-sm ${(caEnf.points.cvor.max || 0) >= 10 ? 'text-red-600' : (caEnf.points.cvor.max || 0) >= 5 ? 'text-amber-600' : 'text-slate-700'}`} title={`Raw: ${caEnf.points.cvor.raw}`}>
+                                                    {caEnf.points.cvor.min === caEnf.points.cvor.max ? caEnf.points.cvor.min : `${caEnf.points.cvor.min}–${caEnf.points.cvor.max}`}
+                                                </span>
+                                            ) : <span className="text-slate-300 text-xs">—</span>}
                                         </TD>}
                                         {visibleColumns.has('crashLikelihood') && <TD>
                                             <CrashLikelihoodBar value={r.crashLikelihood} />

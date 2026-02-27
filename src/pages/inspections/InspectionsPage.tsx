@@ -852,7 +852,7 @@ export function InspectionsPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingInspection, setEditingInspection] = useState<any>(null);
-  const { csaThresholds, cvorThresholds, documents: allDocTypes } = useAppData();
+  const { csaThresholds, cvorThresholds, cvorOosThresholds, documents: allDocTypes } = useAppData();
 
   // FMCSA SMS Time Weight: 3 for 0-6 months, 2 for 6-12 months, 1 for 12-24 months
   const getTimeWeightTop = (inspDate: string, ref: Date): number => {
@@ -1184,18 +1184,18 @@ export function InspectionsPage() {
                       <tbody className="divide-y divide-gray-100">
                         <tr>
                           <td className="px-3 py-2 text-slate-700">Overall OOS</td>
-                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > 30 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
-                          <td className="px-3 py-2 text-center text-slate-500">&gt;30%</td>
+                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > cvorOosThresholds.overall ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
+                          <td className="px-3 py-2 text-center text-slate-500">&gt;{cvorOosThresholds.overall}%</td>
                         </tr>
                         <tr>
                           <td className="px-3 py-2 text-slate-700">Vehicle OOS</td>
-                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > 25 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
-                          <td className="px-3 py-2 text-center text-slate-500">&gt;25%</td>
+                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > cvorOosThresholds.vehicle ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
+                          <td className="px-3 py-2 text-center text-slate-500">&gt;{cvorOosThresholds.vehicle}%</td>
                         </tr>
                         <tr>
                           <td className="px-3 py-2 text-slate-700">Driver OOS</td>
-                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > 10 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
-                          <td className="px-3 py-2 text-center text-slate-500">&gt;10%</td>
+                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > cvorOosThresholds.driver ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
+                          <td className="px-3 py-2 text-center text-slate-500">&gt;{cvorOosThresholds.driver}%</td>
                         </tr>
                       </tbody>
                     </table>
@@ -3163,8 +3163,9 @@ export function InspectionsPage() {
                     <ChevronDown size={14} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                     <span className={`text-sm font-medium ${textClass}`}>{label}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 font-mono">Wt: {weight}% | {val.toFixed(2)}%</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400">Weight: <span className="font-mono font-semibold text-slate-500">{weight}%</span></span>
+                    <span className="text-xs text-slate-400">Overall Contribution: <span className="font-mono font-semibold text-slate-500">{val.toFixed(2)}%</span></span>
                     <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{rowLabel}</span>
                   </div>
                 </div>
@@ -3176,23 +3177,41 @@ export function InspectionsPage() {
                   <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                     <div className="flex items-start gap-5">
                       {/* Left: Info Panel */}
-                      <div className="w-56 flex-shrink-0 border-r border-slate-200 pr-4">
+                      <div className="w-64 flex-shrink-0 border-r border-slate-200 pr-4">
                         <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 mb-3 w-full">
-                          <div className="bg-blue-600 text-white px-3 py-2 rounded-md w-full text-center">
+                          <div className="bg-red-600 text-white px-3 py-2 rounded-md w-full text-center">
                             <div className="text-xs font-bold uppercase tracking-wider">CVOR: {label}</div>
                           </div>
                         </div>
                         <h4 className="text-sm font-bold text-slate-800 mb-2">Performance Summary</h4>
-                        <div className="text-sm text-slate-600 mb-1">Score: <span className="font-bold text-slate-900">{val.toFixed(2)}%</span></div>
-                        <div className="text-sm text-slate-600 mb-2">Weight: <span className="font-bold text-slate-900">{weight}%</span></div>
+
+                        {/* CVOR Performance Table */}
+                        <div className="rounded-md border border-slate-200 overflow-hidden mb-3">
+                          <table className="w-full text-xs">
+                            <tbody className="divide-y divide-slate-100">
+                              <tr className="bg-slate-50">
+                                <td className="px-2 py-1.5 text-slate-500">% of set Threshold</td>
+                                <td className="px-2 py-1.5 text-right font-bold text-slate-800">{(val / (weight / 100)).toFixed(2)}%</td>
+                              </tr>
+                              <tr>
+                                <td className="px-2 py-1.5 text-slate-500">% Weight</td>
+                                <td className="px-2 py-1.5 text-right font-bold text-slate-800">{weight}%</td>
+                              </tr>
+                              <tr className="bg-slate-50">
+                                <td className="px-2 py-1.5 text-slate-500">% Overall Contribution</td>
+                                <td className="px-2 py-1.5 text-right font-bold text-slate-800">{val.toFixed(2)}%</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
 
                         <div className="space-y-1.5 mb-3">
                           <div className="flex justify-between text-xs">
-                            <span className="text-slate-500">Inspections</span>
+                            <span className="text-slate-500">{key === 'inspections' ? 'Total Inspections' : key === 'collisions' ? 'Total Collisions' : 'Total Convictions'}</span>
                             <span className="font-bold text-slate-800">{catInspCount}</span>
                           </div>
                           <div className="flex justify-between text-xs">
-                            <span className="text-slate-500">Violations</span>
+                            <span className="text-slate-500">Violations Found</span>
                             <span className="font-bold text-slate-800">{violationCount}</span>
                           </div>
                           <div className="flex justify-between text-xs">
@@ -3200,7 +3219,7 @@ export function InspectionsPage() {
                             <span className="font-bold text-slate-800">{totalPoints}</span>
                           </div>
                           <div className="flex justify-between text-xs">
-                            <span className="text-slate-500">OOS Count</span>
+                            <span className="text-slate-500">Out-of-Service</span>
                             <span className={`font-bold ${oosCount > 0 ? 'text-red-600' : 'text-slate-800'}`}>{oosCount}</span>
                           </div>
                           <div className="flex justify-between text-xs">
@@ -3208,12 +3227,42 @@ export function InspectionsPage() {
                             <span className={`font-bold ${oosRate >= 30 ? 'text-red-600' : oosRate >= 15 ? 'text-amber-600' : 'text-emerald-600'}`}>{oosRate}%</span>
                           </div>
                           <div className="flex justify-between text-xs">
-                            <span className="text-slate-500">Clean</span>
+                            <span className="text-slate-500">Clean Inspections</span>
                             <span className="font-bold text-emerald-600">{cleanCount}</span>
                           </div>
                         </div>
 
-                        <div className="text-xs text-slate-500 mb-3 leading-relaxed">{detail}</div>
+                        {key === 'inspections' && (
+                          <div className="rounded-md border border-slate-200 overflow-hidden mb-3">
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                  <th className="px-2 py-1.5 text-left text-slate-500 font-semibold">Type</th>
+                                  <th className="px-2 py-1.5 text-center text-slate-500 font-semibold">Carrier %</th>
+                                  <th className="px-2 py-1.5 text-center text-slate-500 font-semibold">Threshold</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                <tr>
+                                  <td className="px-2 py-1.5 text-slate-700">Overall OOS</td>
+                                  <td className={`px-2 py-1.5 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > cvorOosThresholds.overall ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
+                                  <td className="px-2 py-1.5 text-center text-slate-500">{cvorOosThresholds.overall}%</td>
+                                </tr>
+                                <tr className="bg-slate-50">
+                                  <td className="px-2 py-1.5 text-slate-700">Vehicle OOS</td>
+                                  <td className={`px-2 py-1.5 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > cvorOosThresholds.vehicle ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
+                                  <td className="px-2 py-1.5 text-center text-slate-500">{cvorOosThresholds.vehicle}%</td>
+                                </tr>
+                                <tr>
+                                  <td className="px-2 py-1.5 text-slate-700">Driver OOS</td>
+                                  <td className={`px-2 py-1.5 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > cvorOosThresholds.driver ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
+                                  <td className="px-2 py-1.5 text-center text-slate-500">{cvorOosThresholds.driver}%</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
                         <h4 className="text-sm font-bold text-slate-800 mb-1">Threshold Status</h4>
                         <div className="text-xs text-slate-500">
                           {val >= cvorThresholds.showCause
@@ -3410,18 +3459,18 @@ export function InspectionsPage() {
                   <tbody className="divide-y divide-gray-100">
                     <tr>
                       <td className="px-3 py-2 text-slate-700">Overall OOS</td>
-                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > 30 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
-                      <td className="px-3 py-2 text-center text-slate-500">30%</td>
+                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > cvorOosThresholds.overall ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{cvorOosThresholds.overall}%</td>
                     </tr>
                     <tr>
                       <td className="px-3 py-2 text-slate-700">Vehicle OOS</td>
-                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > 25 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
-                      <td className="px-3 py-2 text-center text-slate-500">25%</td>
+                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > cvorOosThresholds.vehicle ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{cvorOosThresholds.vehicle}%</td>
                     </tr>
                     <tr>
                       <td className="px-3 py-2 text-slate-700">Driver OOS</td>
-                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > 10 ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
-                      <td className="px-3 py-2 text-center text-slate-500">10%</td>
+                      <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > cvorOosThresholds.driver ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
+                      <td className="px-3 py-2 text-center text-slate-500">{cvorOosThresholds.driver}%</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3530,17 +3579,128 @@ export function InspectionsPage() {
             </div>
 
             <div className="mt-4 space-y-0">
-              <div className={`rounded-lg border-l-2 p-3 mb-1 ${cvorRating >= cvorThresholds.warning ? 'border-l-amber-400 bg-amber-50/30' : 'border-l-slate-300 bg-slate-50/50'}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className={`text-sm font-medium ${cvorRating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</div>
-                    <div className="text-xs text-slate-500 mt-1">Composite score from collisions, convictions, and inspections</div>
-                  </div>
-                  <div className="text-right flex items-center gap-2">
-                    <div className="text-xs text-slate-400 font-mono">{cvorRating.toFixed(2)}%</div>
-                    <span className={`inline-flex px-1.5 py-0.5 rounded text-sm font-bold ${overallRatingClass}`}>{overallRatingLabel === 'CRITICAL' ? 'Show Cause' : overallRatingLabel === 'HIGH' ? 'Audit' : overallRatingLabel === 'ALERT' ? 'Warning' : 'OK'}</span>
+              {/* Overall CVOR Rating - Expandable */}
+              <div className={`rounded-lg border-l-2 mb-1 ${cvorRating >= cvorThresholds.warning ? 'border-l-amber-400 bg-amber-50/30' : 'border-l-slate-300 bg-slate-50/50'}`}>
+                <div
+                  className="p-3 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                  onClick={() => setExpandedCvorAnalysis(expandedCvorAnalysis === 'overall' ? null : 'overall')}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ChevronDown size={14} className={`text-slate-400 transition-transform ${expandedCvorAnalysis === 'overall' ? 'rotate-180' : ''}`} />
+                      <div>
+                        <div className={`text-sm font-medium ${cvorRating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</div>
+                        <div className="text-xs text-slate-500 mt-1">Composite score from collisions, convictions, and inspections</div>
+                      </div>
+                    </div>
+                    <div className="text-right flex items-center gap-2">
+                      <div className="text-xs text-slate-400 font-mono">{cvorRating.toFixed(2)}%</div>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-sm font-bold ${overallRatingClass}`}>{overallRatingLabel === 'CRITICAL' ? 'Show Cause' : overallRatingLabel === 'HIGH' ? 'Audit' : overallRatingLabel === 'ALERT' ? 'Warning' : 'OK'}</span>
+                    </div>
                   </div>
                 </div>
+
+                {expandedCvorAnalysis === 'overall' && (
+                  <div className="px-3 pb-4 pt-1 pl-8">
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        {/* Performance Summary Table */}
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800 mb-3">Performance Summary <span className="text-xs font-normal text-slate-400">/ {cvorPeriod === '24M' ? '24 Months' : cvorPeriod === '12M' ? '12 Months' : cvorPeriod === '6M' ? '6 Months' : cvorPeriod === '3M' ? '3 Months' : '1 Month'}</span></h4>
+                          <div className="rounded-lg border border-slate-200 overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-semibold text-xs">Event Type</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-xs">% of set Threshold</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-xs">% Weight</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-xs">% Overall Contribution</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                <tr className="bg-white hover:bg-slate-50">
+                                  <td className="px-3 py-2 font-medium text-slate-700">Collision</td>
+                                  <td className="px-3 py-2 text-center font-mono text-slate-800">{(carrierProfile.cvorAnalysis.collisions.percentage / (carrierProfile.cvorAnalysis.collisions.weight / 100)).toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-center font-mono text-slate-800">{carrierProfile.cvorAnalysis.collisions.weight}</td>
+                                  <td className="px-3 py-2 text-center font-mono font-bold text-slate-900">{carrierProfile.cvorAnalysis.collisions.percentage.toFixed(2)}</td>
+                                </tr>
+                                <tr className="bg-slate-50 hover:bg-slate-100">
+                                  <td className="px-3 py-2 font-medium text-slate-700">Conviction</td>
+                                  <td className="px-3 py-2 text-center font-mono text-slate-800">{(carrierProfile.cvorAnalysis.convictions.percentage / (carrierProfile.cvorAnalysis.convictions.weight / 100)).toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-center font-mono text-slate-800">{carrierProfile.cvorAnalysis.convictions.weight}</td>
+                                  <td className="px-3 py-2 text-center font-mono font-bold text-slate-900">{carrierProfile.cvorAnalysis.convictions.percentage.toFixed(2)}</td>
+                                </tr>
+                                <tr className="bg-white hover:bg-slate-50">
+                                  <td className="px-3 py-2 font-medium text-slate-700">Inspection</td>
+                                  <td className="px-3 py-2 text-center font-mono text-slate-800">{(carrierProfile.cvorAnalysis.inspections.percentage / (carrierProfile.cvorAnalysis.inspections.weight / 100)).toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-center font-mono text-slate-800">{carrierProfile.cvorAnalysis.inspections.weight}</td>
+                                  <td className="px-3 py-2 text-center font-mono font-bold text-slate-900">{carrierProfile.cvorAnalysis.inspections.percentage.toFixed(2)}</td>
+                                </tr>
+                                <tr className="bg-blue-50 text-blue-900 border-t border-blue-100">
+                                  <td className="px-3 py-2 font-bold" colSpan={3}>Overall Violation Rate %</td>
+                                  <td className="px-3 py-2 text-center font-mono font-bold text-lg">{cvorRating.toFixed(2)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* OOS Summary + Key Counts */}
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800 mb-3">Out-of-Service Summary</h4>
+                          <div className="rounded-lg border border-slate-200 overflow-hidden mb-4">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-semibold text-xs text-slate-500">Type</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-xs text-slate-500">Carrier %</th>
+                                  <th className="px-3 py-2 text-center font-semibold text-xs text-slate-500">Threshold</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                <tr>
+                                  <td className="px-3 py-2 text-slate-700">Overall OOS</td>
+                                  <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > cvorOosThresholds.overall ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
+                                  <td className="px-3 py-2 text-center text-slate-500">{cvorOosThresholds.overall}%</td>
+                                </tr>
+                                <tr className="bg-slate-50">
+                                  <td className="px-3 py-2 text-slate-700">Vehicle OOS</td>
+                                  <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > cvorOosThresholds.vehicle ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
+                                  <td className="px-3 py-2 text-center text-slate-500">{cvorOosThresholds.vehicle}%</td>
+                                </tr>
+                                <tr>
+                                  <td className="px-3 py-2 text-slate-700">Driver OOS</td>
+                                  <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > cvorOosThresholds.driver ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
+                                  <td className="px-3 py-2 text-center text-slate-500">{cvorOosThresholds.driver}%</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <h4 className="text-sm font-bold text-slate-800 mb-2">Threshold Levels</h4>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-white border border-slate-200 rounded-lg p-2 text-center">
+                              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Warning</div>
+                              <div className="font-mono font-bold text-slate-700 text-sm">{cvorThresholds.warning}%</div>
+                            </div>
+                            <div className="bg-white border border-amber-200 rounded-lg p-2 text-center">
+                              <div className="text-[10px] text-amber-600 uppercase tracking-wider font-bold">Audit</div>
+                              <div className="font-mono font-bold text-amber-600 text-sm">{cvorThresholds.intervention}%</div>
+                            </div>
+                            <div className="bg-white border border-red-200 rounded-lg p-2 text-center">
+                              <div className="text-[10px] text-red-600 uppercase tracking-wider font-bold">Show Cause</div>
+                              <div className="font-mono font-bold text-red-600 text-sm">{cvorThresholds.showCause}%</div>
+                            </div>
+                            <div className="bg-white border border-red-300 rounded-lg p-2 text-center">
+                              <div className="text-[10px] text-red-800 uppercase tracking-wider font-bold">Seizure</div>
+                              <div className="font-mono font-bold text-red-800 text-sm">{cvorThresholds.seizure}%</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {renderCvorAnalysisRow(
@@ -4903,5 +5063,6 @@ export function InspectionsPage() {
     </div>
   );
 }
+
 
 

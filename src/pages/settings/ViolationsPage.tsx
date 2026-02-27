@@ -18,7 +18,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Edit2
+  Edit2,
+  LayoutGrid
 } from 'lucide-react';
 import { VIOLATION_DATA } from '@/data/violations.data';
 
@@ -33,6 +34,7 @@ const TABS_CONFIG = [
   { key: 'driver_fitness', label: 'Driver Fitness' },
   { key: 'hazmat_compliance', label: 'Hazmat compliance' },
   { key: 'controlled_substances_alcohol', label: 'Controlled Substances' },
+  { key: 'canada_provincial', label: 'Canadian Provincial' },
   { key: 'other', label: 'Other' }
 ];
 
@@ -62,6 +64,69 @@ const normalizeText = (text: string): string => {
   return normalized;
 };
 
+// ─── Column Definitions ───────────────────────────────────────────────────────
+const ALL_COLUMN_OPTIONS = [
+  { id: 'code', label: 'Code' },
+  { id: 'description', label: 'Description' },
+  { id: 'regulatory', label: 'Regulatory' },
+  { id: 'group', label: 'Group' },
+  { id: 'ccmtaCode', label: 'CCMTA Code' },
+  { id: 'offenceCode', label: 'Offence Code' },
+  { id: 'cfrCode', label: 'CFR' },
+  { id: 'nscPoints', label: 'NSC Points' },
+  { id: 'cvorPoints', label: 'CVOR Points' },
+  { id: 'risk', label: 'Risk' },
+  { id: 'crashPct', label: 'Crash %' },
+  { id: 'severity', label: 'Sev (D/C)' },
+  { id: 'vehPts', label: 'Veh Pts' },
+  { id: 'dvrPts', label: 'Dvr Pts' },
+  { id: 'carPts', label: 'Car Pts' },
+  { id: 'actions', label: 'Actions' },
+];
+
+const DEFAULT_VISIBLE = new Set([
+  'code', 'description', 'regulatory', 'group',
+  'ccmtaCode', 'offenceCode',
+  'risk', 'crashPct', 'severity', 'vehPts', 'dvrPts', 'carPts', 'actions'
+]);
+
+// ─── Column Selector Component ────────────────────────────────────────────────
+const ColumnSelector = ({ visibleColumns, onChange }: { visibleColumns: Set<string>, onChange: (cols: Set<string>) => void }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const toggle = (id: string) => {
+    const next = new Set(visibleColumns);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(next);
+  };
+  return (
+    <div className="relative">
+      <button onClick={() => setIsOpen(!isOpen)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 shadow-sm transition-colors">
+        <LayoutGrid size={16} /> Columns
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-50 p-2 animate-in fade-in zoom-in-95 duration-100">
+            <div className="flex justify-between items-center px-2 py-1 mb-1">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Visible Columns</span>
+              <button onClick={() => onChange(new Set(DEFAULT_VISIBLE))} className="text-[10px] font-bold text-blue-600 hover:underline">Reset</button>
+            </div>
+            <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-0.5">
+              {ALL_COLUMN_OPTIONS.map(opt => (
+                <label key={opt.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer text-sm text-slate-700 select-none">
+                  <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4" checked={visibleColumns.has(opt.id)} onChange={() => toggle(opt.id)} />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export function ViolationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -80,6 +145,9 @@ export function ViolationsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(50);
 
+  // Column Visibility State
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
+
   const data = VIOLATION_DATA;
 
   const currentCategoryData = useMemo(() => {
@@ -96,36 +164,72 @@ export function ViolationsPage() {
     return data.categories[activeCategory] || { _stats: { total: 0, high_risk: 0, moderate_risk: 0, lower_risk: 0 }, items: [] };
   }, [activeCategory, data.categories]);
 
-  // Deep search: build a flat searchable string for each item (all nested fields)
+  // Ultimate deep search: indexes EVERY field in the violation data structure
   const buildSearchableText = (item: typeof currentCategoryData.items[0]): string => {
+    const ce = item.canadaEnforcement;
     const parts: string[] = [
+      // ─── Core fields ───
+      item.id,
       item.violationCode,
       item.violationDescription,
       item.violationGroup,
-      item.id,
-      item.isOos ? 'oos out-of-service' : '',
-      item.inDsms ? 'dsms' : '',
+      item._source || '',
+
+      // ─── Status flags (with aliases) ───
+      item.isOos ? 'oos out-of-service out of service' : 'not-oos',
+      item.inDsms ? 'dsms in-dsms monitored' : 'not-dsms',
+
+      // ─── Risk category (with human labels) ───
       `risk ${item.driverRiskCategory}`,
-      // USA regulatory
+      item.driverRiskCategory === 1 ? 'high risk high-risk critical' : '',
+      item.driverRiskCategory === 2 ? 'moderate risk moderate-risk medium elevated' : '',
+      item.driverRiskCategory === 3 ? 'lower risk lower-risk low minor' : '',
+
+      // ─── Severity & Crash stats ───
+      `severity driver:${item.severityWeight.driver} carrier:${item.severityWeight.carrier}`,
+      `crash ${item.crashLikelihoodPercent ?? 0}%`,
+      (item.crashLikelihoodPercent ?? 0) > 60 ? 'extreme-crash extreme crash danger' : '',
+
+      // ─── USA regulatory (all nested fields) ───
       ...(item.regulatoryCodes?.usa?.flatMap(r => [
         r.authority,
         r.description,
         ...(r.cfr || []),
         ...(r.statute || []),
       ]) || []),
-      // Canada regulatory
+
+      // ─── Canada regulatory (all nested fields) ───
       ...(item.regulatoryCodes?.canada?.flatMap(r => [
         r.authority,
         r.description,
         ...(r.reference || []),
         ...(r.province || []),
       ]) || []),
-      // Canada enforcement
-      item.canadaEnforcement?.act || '',
-      item.canadaEnforcement?.section || '',
-      item.canadaEnforcement?.code || '',
-      item.canadaEnforcement?.ccmtaCode || '',
-      item.canadaEnforcement?.descriptions?.full || '',
+
+      // ─── Canada enforcement (every sub-field) ───
+      ce?.act || '',
+      ce?.section || '',
+      ce?.code || '',
+      ce?.ccmtaCode || '',
+      ce?.category || '',
+
+      // All description variants
+      ce?.descriptions?.full || '',
+      ce?.descriptions?.conviction || '',
+      ce?.descriptions?.shortForm52 || '',
+
+      // Points (searchable as text)
+      ce?.points?.nsc != null ? `nsc:${ce.points.nsc} nsc-points:${ce.points.nsc}` : '',
+      ce?.points?.revised != null ? `revised:${ce.points.revised}` : '',
+      ce?.points?.cvor ? `cvor:${ce.points.cvor.raw} cvor-min:${ce.points.cvor.min} cvor-max:${ce.points.cvor.max}` : '',
+
+      // CVOR classification
+      ce?.cvorClassification?.convictionType || '',
+      ce?.cvorClassification?.alternativeGroup || '',
+
+      // Raw source (if available)
+      ce?.rawSource?.rawLine || '',
+      ce?.rawSource?.rawMatch || '',
     ];
     return parts.filter(Boolean).join(' ').toLowerCase();
   };
@@ -379,11 +483,17 @@ export function ViolationsPage() {
               </div>
               <input
                 type="text"
-                placeholder="Deep search — code, description, CFR, authority, province..."
+                placeholder="Search everything — code, description, CFR, CCMTA, offence code, act, section, province, conviction, risk level..."
                 className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-md bg-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <ColumnSelector visibleColumns={visibleColumns} onChange={setVisibleColumns} />
+              <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 whitespace-nowrap">
+                {filteredItems.length} / {currentCategoryData._stats.total}
+              </span>
             </div>
           </div>
 
@@ -397,69 +507,54 @@ export function ViolationsPage() {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50 select-none">
                 <tr>
-                  <th 
-                    scope="col" 
-                    className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('code')}
-                  >
+                  {visibleColumns.has('code') && <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('code')}>
                     <div className="flex items-center gap-1">Code {getSortIcon('code')}</div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[200px] cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('desc')}
-                  >
+                  </th>}
+                  {visibleColumns.has('description') && <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[200px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('desc')}>
                     <div className="flex items-center gap-1">Description {getSortIcon('desc')}</div>
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[120px]">
+                  </th>}
+                  {visibleColumns.has('regulatory') && <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[120px]">
                     Regulatory
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[120px] cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('group')}
-                  >
+                  </th>}
+                  {visibleColumns.has('group') && <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[120px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('group')}>
                     <div className="flex items-center gap-1">Group {getSortIcon('group')}</div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('risk')}
-                  >
+                  </th>}
+                  {visibleColumns.has('ccmtaCode') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24">
+                    CCMTA
+                  </th>}
+                  {visibleColumns.has('offenceCode') && <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-36">
+                    Offence Code
+                  </th>}
+                  {visibleColumns.has('cfrCode') && <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-36">
+                    CFR
+                  </th>}
+                  {visibleColumns.has('nscPoints') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
+                    NSC Pts
+                  </th>}
+                  {visibleColumns.has('cvorPoints') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24">
+                    CVOR Pts
+                  </th>}
+                  {visibleColumns.has('risk') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('risk')}>
                     <div className="flex items-center justify-center gap-1">Risk {getSortIcon('risk')}</div>
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('sev')}
-                  >
+                  </th>}
+                  {visibleColumns.has('crashPct') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-28 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('crash')}>
+                    <div className="flex items-center justify-center gap-1">Crash % {getSortIcon('crash')}</div>
+                  </th>}
+                  {visibleColumns.has('severity') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-24 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('sev')}>
                     <div className="flex items-center justify-center gap-1">Sev (D/C) {getSortIcon('sev')}</div>
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('vehPts')}
-                  >
+                  </th>}
+                  {visibleColumns.has('vehPts') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('vehPts')}>
                     <div className="flex items-center justify-center gap-1">Veh Pts {getSortIcon('vehPts')}</div>
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('dvrPts')}
-                  >
+                  </th>}
+                  {visibleColumns.has('dvrPts') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('dvrPts')}>
                     <div className="flex items-center justify-center gap-1">Dvr Pts {getSortIcon('dvrPts')}</div>
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => requestSort('carPts')}
-                  >
+                  </th>}
+                  {visibleColumns.has('carPts') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('carPts')}>
                     <div className="flex items-center justify-center gap-1">Car Pts {getSortIcon('carPts')}</div>
-                  </th>
-
-                  <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
+                  </th>}
+                  {visibleColumns.has('actions') && <th scope="col" className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-20">
                     Actions
-                  </th>
+                  </th>}
                   <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider w-10">
                     
                   </th>
@@ -468,7 +563,7 @@ export function ViolationsPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center">
+                    <td colSpan={20} className="px-6 py-12 text-center">
                       <Search className="mx-auto h-10 w-10 text-slate-300 mb-3" />
                       <h3 className="text-slate-900 font-medium">No violations found in this category</h3>
                       <p className="text-slate-500 text-sm mt-1">Try switching categories or adjusting filters.</p>
@@ -490,19 +585,19 @@ export function ViolationsPage() {
                           className={`group hover:bg-slate-50 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}
                           onClick={() => toggleRow(item.id)}
                         >
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          {visibleColumns.has('code') && <td className="px-4 py-3 whitespace-nowrap">
                             <span className="font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded text-xs">
                               {item.violationCode}
                             </span>
-                          </td>
+                          </td>}
 
-                          <td className="px-4 py-3">
+                          {visibleColumns.has('description') && <td className="px-4 py-3">
                             <div className="text-sm font-medium text-slate-900 leading-tight">
                               { normalizeText(item.violationDescription)}
                             </div>
-                          </td>
+                          </td>}
 
-                          <td className="px-4 py-3">
+                          {visibleColumns.has('regulatory') && <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1.5">
                               {authorities.map(auth => (
                                   <span key={auth} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getAuthStyle(auth)}`}>
@@ -510,19 +605,65 @@ export function ViolationsPage() {
                                   </span>
                               ))}
                             </div>
-                          </td>
+                          </td>}
 
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          {visibleColumns.has('group') && <td className="px-4 py-3 whitespace-nowrap">
                              <span className="text-xs text-slate-600 font-medium">{item.violationGroup}</span>
-                          </td>
+                          </td>}
 
-                          <td className="px-4 py-3 whitespace-nowrap text-left">
-                            <div className="flex flex-col gap-2">
+                          {/* CCMTA Code */}
+                          {visibleColumns.has('ccmtaCode') && <td className="px-4 py-3 whitespace-nowrap text-center">
+                            {item.canadaEnforcement?.ccmtaCode ? (
+                              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold uppercase tracking-wide">
+                                {item.canadaEnforcement.ccmtaCode}
+                              </span>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>}
+
+                          {/* Offence Code */}
+                          {visibleColumns.has('offenceCode') && <td className="px-4 py-3 whitespace-nowrap">
+                            {item.canadaEnforcement?.code ? (
+                              <span className="font-mono text-[11px] font-bold text-slate-700" title={item.canadaEnforcement.descriptions?.full}>
+                                {item.canadaEnforcement.code}
+                              </span>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>}
+
+                          {/* CFR Code */}
+                          {visibleColumns.has('cfrCode') && <td className="px-4 py-3 whitespace-nowrap">
+                            {item.regulatoryCodes?.usa?.[0]?.cfr?.[0] ? (
+                              <span className="font-mono text-[11px] text-blue-600 font-semibold" title={item.regulatoryCodes.usa[0].description}>
+                                {item.regulatoryCodes.usa[0].cfr[0]}
+                              </span>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>}
+
+                          {/* NSC Points */}
+                          {visibleColumns.has('nscPoints') && <td className="px-4 py-3 whitespace-nowrap text-center">
+                            {item.canadaEnforcement?.points?.nsc != null ? (
+                              <span className={`font-mono font-bold text-sm ${item.canadaEnforcement.points.nsc >= 5 ? 'text-red-600' : item.canadaEnforcement.points.nsc >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                {item.canadaEnforcement.points.nsc}
+                              </span>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>}
+
+                          {/* CVOR Points */}
+                          {visibleColumns.has('cvorPoints') && <td className="px-4 py-3 whitespace-nowrap text-center">
+                            {item.canadaEnforcement?.points?.cvor ? (
+                              <span className={`font-mono font-bold text-sm ${(item.canadaEnforcement.points.cvor.max || 0) >= 10 ? 'text-red-600' : (item.canadaEnforcement.points.cvor.max || 0) >= 5 ? 'text-amber-600' : 'text-slate-700'}`} title={`Raw: ${item.canadaEnforcement.points.cvor.raw}`}>
+                                {item.canadaEnforcement.points.cvor.min === item.canadaEnforcement.points.cvor.max ? item.canadaEnforcement.points.cvor.min : `${item.canadaEnforcement.points.cvor.min}–${item.canadaEnforcement.points.cvor.max}`}
+                              </span>
+                            ) : <span className="text-slate-300 text-xs">—</span>}
+                          </td>}
+
+                          {visibleColumns.has('risk') && <td className="px-4 py-3 whitespace-nowrap text-left">
                               <span className={`inline-flex w-fit items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${styles.badge} border-transparent uppercase tracking-wide`}>
                                 {data.riskCategories[String(item.driverRiskCategory)]?.label || `Risk ${item.driverRiskCategory}`}
                               </span>
-                              
-                              <div className="w-24">
+                          </td>}
+
+                          {visibleColumns.has('crashPct') && <td className="px-4 py-3 whitespace-nowrap text-center">
+                              <div className="w-24 mx-auto">
                                   <div className="flex justify-between items-end mb-1">
                                       <span className="text-[9px] font-bold text-slate-400 uppercase">Crash Prob.</span>
                                       <span className="text-[10px] font-bold text-slate-700">{item.crashLikelihoodPercent ?? 0}%</span>
@@ -534,34 +675,33 @@ export function ViolationsPage() {
                                       />
                                   </div>
                               </div>
-                            </div>
-                          </td>
+                          </td>}
 
                           {/* Simplified Severity (No Charts) */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          {visibleColumns.has('severity') && <td className="px-4 py-3 whitespace-nowrap text-center">
                             <div className="text-xs font-mono text-slate-600">
                                 <span className="font-bold text-slate-800">{item.severityWeight.driver}</span>
                                 <span className="mx-1 text-slate-300">/</span>
                                 <span className="font-bold text-slate-800">{item.severityWeight.carrier}</span>
                             </div>
-                          </td>
+                          </td>}
 
                           {/* Vehicle Points */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          {visibleColumns.has('vehPts') && <td className="px-4 py-3 whitespace-nowrap text-center">
                             <span className={`text-sm font-bold font-mono ${item.severityWeight.carrier > 0 ? 'text-red-600' : 'text-slate-400'}`}>
                               {item.severityWeight.carrier || 0}
                             </span>
-                          </td>
+                          </td>}
 
                           {/* Driver Points */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          {visibleColumns.has('dvrPts') && <td className="px-4 py-3 whitespace-nowrap text-center">
                             <span className={`text-sm font-bold font-mono ${item.severityWeight.driver > 0 ? 'text-red-600' : 'text-slate-400'}`}>
                               {item.severityWeight.driver || 0}
                             </span>
-                          </td>
+                          </td>}
 
                           {/* Carrier Points (sum of driver + carrier severity or CVOR points if available) */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          {visibleColumns.has('carPts') && <td className="px-4 py-3 whitespace-nowrap text-center">
                             {(() => {
                               const cvorPts = item.canadaEnforcement?.points?.cvor;
                               const total = cvorPts ? (cvorPts.min ?? 0) : (item.severityWeight.driver || 0) + (item.severityWeight.carrier || 0);
@@ -571,11 +711,11 @@ export function ViolationsPage() {
                                 </span>
                               );
                             })()}
-                          </td>
+                          </td>}
 
 
                           {/* Actions Column */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          {visibleColumns.has('actions') && <td className="px-4 py-3 whitespace-nowrap text-center">
                             <button
                               onClick={(e) => { e.stopPropagation(); console.log('Edit violation:', item.id); }}
                               className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
@@ -583,7 +723,7 @@ export function ViolationsPage() {
                             >
                               <Edit2 size={14} />
                             </button>
-                          </td>
+                          </td>}
 
                           {/* Expand Trigger Column */}
                           <td className="px-4 py-3 whitespace-nowrap text-right">
@@ -596,7 +736,7 @@ export function ViolationsPage() {
                         {/* Expanded Row */}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={11} className="p-0 border-t border-slate-100 bg-slate-50/50">
+                            <td colSpan={20} className="p-0 border-t border-slate-100 bg-slate-50/50">
                                <div className="px-6 py-6 animate-in slide-in-from-top-2 duration-200">
                                 <div className="flex gap-1 bg-white p-1 rounded-lg border border-slate-200 w-fit mb-6">
                                   <button 
