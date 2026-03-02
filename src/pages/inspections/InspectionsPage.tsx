@@ -830,7 +830,7 @@ export function InspectionsPage() {
   // Independent period filters for Level Comparison blocks
   const [smsLevelPeriod, setSmsLevelPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('24M');
   const [cvorLevelPeriod, setCvorLevelPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('24M');
-  const [overviewMilesPeriod, setOverviewMilesPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('12M');
+  const [mileageUnit, setMileageUnit] = useState<'km' | 'mi'>('km');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [page, setPage] = useState(1);
@@ -1231,7 +1231,7 @@ export function InspectionsPage() {
                 </div>
                 <div className="flex justify-between items-center pb-2 border-b border-slate-50">
                   <span className="text-slate-600">Total Mileage</span>
-                  <span className="font-bold font-mono text-blue-600">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M mi</span>
+                  <span className="font-bold font-mono text-blue-600">{((mileageUnit === 'km' ? carrierProfile.cvorAnalysis.counts.totalMiles * 1.60934 : carrierProfile.cvorAnalysis.counts.totalMiles) / 1000000).toFixed(1)}M {mileageUnit === 'km' ? 'km' : 'mi'}</span>
                 </div>
                 <div className="flex justify-between items-center pb-2 border-b border-slate-50">
                   <span className="text-slate-600">Passenger</span>
@@ -1252,8 +1252,10 @@ export function InspectionsPage() {
 
           {/* ===== Full Overview: Combined Mileage Summary ===== */}
           {(() => {
-            const mp = (carrierProfile.cvorAnalysis.counts as any).milesByPeriod?.[overviewMilesPeriod] || carrierProfile.cvorAnalysis.counts;
-            const fmt = (n: number) => n.toLocaleString();
+            const mp = carrierProfile.cvorAnalysis.counts;
+            const conv = (n: number) => mileageUnit === 'km' ? Math.round(n * 1.60934) : n;
+            const fmt = (n: number) => conv(n).toLocaleString();
+            const unit = mileageUnit === 'km' ? 'Kms' : 'Miles';
             return (
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -1261,76 +1263,42 @@ export function InspectionsPage() {
                     <Truck size={14} className="text-blue-500"/> Mileage Summary
                   </h3>
                   <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                    {(['1M', '3M', '6M', '12M', '24M'] as const).map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setOverviewMilesPeriod(p)}
-                        className={`px-2.5 py-1 text-xs font-bold transition-colors ${overviewMilesPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        {p}
+                    {(['km', 'mi'] as const).map(u => (
+                      <button key={u} onClick={() => setMileageUnit(u)} className={`px-2.5 py-1 text-xs font-bold transition-colors ${mileageUnit === u ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {u === 'km' ? 'KM' : 'MI'}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Canada Miles */}
-                  <div className="border border-slate-100 rounded-lg overflow-hidden">
-                    <div className="bg-red-50 px-3 py-1.5 border-b border-slate-100">
-                      <span className="text-xs font-bold text-red-700 uppercase tracking-wider">🇨🇦 Canada Miles</span>
-                    </div>
-                    <table className="w-full text-sm">
-                      <tbody className="divide-y divide-slate-50">
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Ontario (ON) Miles</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Other Canada Miles</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
-                        </tr>
-                        <tr className="bg-red-50/50">
-                          <td className="px-3 py-2 font-bold text-slate-800">Total Canada</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-red-700">{fmt(mp.totalCanadaMiles)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  {/* USA Miles */}
-                  <div className="border border-slate-100 rounded-lg overflow-hidden">
-                    <div className="bg-blue-50 px-3 py-1.5 border-b border-slate-100">
-                      <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">🇺🇸 USA Miles</span>
-                    </div>
-                    <table className="w-full text-sm">
-                      <tbody className="divide-y divide-slate-50">
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Michigan (MI)</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.miMiles)}</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">New York (NY)</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.nyMiles)}</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Pennsylvania (PA)</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.paMiles)}</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Ohio (OH)</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.ohMiles)}</td>
-                        </tr>
-                        <tr className="bg-blue-50/50">
-                          <td className="px-3 py-2 font-bold text-slate-800">Total USA</td>
-                          <td className="px-3 py-2 text-right font-bold font-mono text-blue-700">{fmt(mp.totalUSMiles)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">{unit} Travelled</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">Ontario {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">Rest of Canada {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">US / Mexico {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.totalUSMiles)}</td>
+                      </tr>
+                      <tr className="bg-slate-50 border-t-2 border-slate-300">
+                        <td className="px-4 py-3 font-bold text-slate-800">Total {unit}* Travelled</td>
+                        <td className="px-4 py-3 text-right font-bold font-mono text-blue-700 text-base">{fmt(mp.totalMiles)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                {/* Grand Total */}
-                <div className="mt-3 bg-gradient-to-r from-slate-50 to-blue-50 border border-slate-200 rounded-lg px-4 py-3 flex justify-between items-center">
-                  <span className="text-sm font-bold text-slate-700 uppercase tracking-wide">Total Miles (All Jurisdictions)</span>
-                  <span className="text-lg font-bold font-mono text-blue-700">{fmt(mp.totalMiles)}</span>
-                </div>
+                <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">*{mileageUnit === 'km' ? 'Kilometres' : 'Miles'} shown are the current annual rates most recently reported by the operator for the last 12 months (could include actual and estimated travel).</p>
               </div>
             );
           })()}
@@ -1538,8 +1506,8 @@ export function InspectionsPage() {
                   <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.trucks}</div>
                 </div>
                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Miles</div>
-                  <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M</div>
+                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">{mileageUnit === 'km' ? 'Kms' : 'Miles'}</div>
+                  <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{((mileageUnit === 'km' ? carrierProfile.cvorAnalysis.counts.totalMiles * 1.60934 : carrierProfile.cvorAnalysis.counts.totalMiles) / 1000000).toFixed(1)}M</div>
                 </div>
               </div>
 
@@ -1772,48 +1740,55 @@ export function InspectionsPage() {
             </div>
           </div>
 
-          {/* ===== SMS Mileage Summary (USA only) ===== */}
+          {/* ===== SMS Mileage Summary ===== */}
           {(() => {
-            const mp = (carrierProfile.cvorAnalysis.counts as any).milesByPeriod?.[smsPeriod] || carrierProfile.cvorAnalysis.counts;
-            const fmt = (n: number) => n.toLocaleString();
+            const mp = carrierProfile.cvorAnalysis.counts;
+            const conv = (n: number) => mileageUnit === 'km' ? Math.round(n * 1.60934) : n;
+            const fmt = (n: number) => conv(n).toLocaleString();
+            const unit = mileageUnit === 'km' ? 'Kms' : 'Miles';
             return (
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-                  <Truck size={14} className="text-blue-500"/> USA Mileage
-                  <span className="text-[10px] font-medium text-slate-400 normal-case tracking-normal">({smsPeriod} period)</span>
-                </h3>
-                <div className="overflow-x-auto rounded border border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Truck size={14} className="text-blue-500"/> Mileage Summary
+                  </h3>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    {(['km', 'mi'] as const).map(u => (
+                      <button key={u} onClick={() => setMileageUnit(u)} className={`px-2.5 py-1 text-xs font-bold transition-colors ${mileageUnit === u ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {u === 'km' ? 'KM' : 'MI'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="w-full text-sm">
-                    <thead className="bg-blue-50 border-b border-slate-100 text-slate-500">
+                    <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-3 py-2 font-semibold text-left">State</th>
-                        <th className="px-3 py-2 font-semibold text-right">Miles</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">{unit} Travelled</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">Michigan (MI)</td>
-                        <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.miMiles)}</td>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">Ontario {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
                       </tr>
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">New York (NY)</td>
-                        <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.nyMiles)}</td>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">Rest of Canada {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
                       </tr>
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">Pennsylvania (PA)</td>
-                        <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.paMiles)}</td>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">US / Mexico {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.totalUSMiles)}</td>
                       </tr>
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">Ohio (OH)</td>
-                        <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.ohMiles)}</td>
-                      </tr>
-                      <tr className="bg-blue-50/50">
-                        <td className="px-3 py-2.5 font-bold text-slate-800">Total USA Miles</td>
-                        <td className="px-3 py-2.5 text-right font-bold font-mono text-blue-700 text-base">{fmt(mp.totalUSMiles)}</td>
+                      <tr className="bg-slate-50 border-t-2 border-slate-300">
+                        <td className="px-4 py-3 font-bold text-slate-800">Total {unit}* Travelled</td>
+                        <td className="px-4 py-3 text-right font-bold font-mono text-blue-700 text-base">{fmt(mp.totalMiles)}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
+                <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">*{mileageUnit === 'km' ? 'Kilometres' : 'Miles'} shown are the current annual rates most recently reported by the operator for the last 12 months (could include actual and estimated travel).</p>
               </div>
             );
           })()}
@@ -3500,46 +3475,61 @@ export function InspectionsPage() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-600">Total Mileage</span>
-                  <span className="font-bold font-mono text-blue-600">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M mi</span>
+                  <span className="font-bold font-mono text-blue-600">{((mileageUnit === 'km' ? carrierProfile.cvorAnalysis.counts.totalMiles * 1.60934 : carrierProfile.cvorAnalysis.counts.totalMiles) / 1000000).toFixed(1)}M {mileageUnit === 'km' ? 'km' : 'mi'}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ===== CVOR Mileage Summary (Canada only) ===== */}
+          {/* ===== CVOR Mileage Summary ===== */}
           {(() => {
-            const mp = (carrierProfile.cvorAnalysis.counts as any).milesByPeriod?.[cvorPeriod] || carrierProfile.cvorAnalysis.counts;
-            const fmt = (n: number) => n.toLocaleString();
+            const mp = carrierProfile.cvorAnalysis.counts;
+            const conv = (n: number) => mileageUnit === 'km' ? Math.round(n * 1.60934) : n;
+            const fmt = (n: number) => conv(n).toLocaleString();
+            const unit = mileageUnit === 'km' ? 'Kms' : 'Miles';
             return (
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-                  <Truck size={14} className="text-red-500"/> Canada Mileage
-                  <span className="text-[10px] font-medium text-slate-400 normal-case tracking-normal">({cvorPeriod} period)</span>
-                </h3>
-                <div className="overflow-x-auto rounded border border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Truck size={14} className="text-red-500"/> Mileage Summary
+                  </h3>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    {(['km', 'mi'] as const).map(u => (
+                      <button key={u} onClick={() => setMileageUnit(u)} className={`px-2.5 py-1 text-xs font-bold transition-colors ${mileageUnit === u ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {u === 'km' ? 'KM' : 'MI'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="w-full text-sm">
-                    <thead className="bg-red-50 border-b border-slate-100 text-slate-500">
+                    <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-3 py-2 font-semibold text-left">Region</th>
-                        <th className="px-3 py-2 font-semibold text-right">Miles</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">{unit} Travelled</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">Ontario (ON) Miles</td>
-                        <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">Ontario {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
                       </tr>
-                      <tr>
-                        <td className="px-3 py-2 text-slate-700">Other Canada Miles</td>
-                        <td className="px-3 py-2 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">Rest of Canada {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
                       </tr>
-                      <tr className="bg-red-50/50">
-                        <td className="px-3 py-2.5 font-bold text-slate-800">Total Canada Miles</td>
-                        <td className="px-3 py-2.5 text-right font-bold font-mono text-red-700 text-base">{fmt(mp.totalCanadaMiles)}</td>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-4 py-2.5 text-slate-700">US / Mexico {unit}* Travelled</td>
+                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.totalUSMiles)}</td>
+                      </tr>
+                      <tr className="bg-slate-50 border-t-2 border-slate-300">
+                        <td className="px-4 py-3 font-bold text-slate-800">Total {unit}* Travelled</td>
+                        <td className="px-4 py-3 text-right font-bold font-mono text-red-700 text-base">{fmt(mp.totalMiles)}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
+                <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">*{mileageUnit === 'km' ? 'Kilometres' : 'Miles'} shown are the current annual rates most recently reported by the operator for the last 12 months (could include actual and estimated travel).</p>
               </div>
             );
           })()}
@@ -3740,8 +3730,8 @@ export function InspectionsPage() {
                 <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.trucks}</div>
               </div>
               <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Miles</div>
-                <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{(carrierProfile.cvorAnalysis.counts.totalMiles / 1000000).toFixed(1)}M</div>
+                <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">{mileageUnit === 'km' ? 'Kms' : 'Miles'}</div>
+                <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{((mileageUnit === 'km' ? carrierProfile.cvorAnalysis.counts.totalMiles * 1.60934 : carrierProfile.cvorAnalysis.counts.totalMiles) / 1000000).toFixed(1)}M</div>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-1 text-sm">

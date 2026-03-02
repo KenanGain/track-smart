@@ -304,12 +304,22 @@ export const ComplianceDocumentsPage = () => {
     const [assetSort, setAssetSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [assetColumns, setAssetColumns] = useState<Record<string, boolean>>({
         unitNumber: true,
-        vin: true,
         type: true,
+        plate: true,
+        plateExpiry: true,
+        vin: true,
+        makeModelYear: true,
+        dateAdded: true,
+        ownership: true,
         compliance: true,
         status: true,
         actions: true
     });
+    const assetColumnLabels: Record<string, string> = {
+        unitNumber: 'Unit #', type: 'Type', plate: 'Plate (No. / State)', plateExpiry: 'Plate Expiry',
+        vin: 'VIN', makeModelYear: 'Make / Model / Year', dateAdded: 'Date Added', ownership: 'Ownership',
+        compliance: 'Compliance', status: 'Status'
+    };
     const [isAssetColumnDropdownOpen, setIsAssetColumnDropdownOpen] = useState(false);
 
     // --- FILTERED ASSETS ---
@@ -340,6 +350,11 @@ export const ComplianceDocumentsPage = () => {
                     case 'unitNumber': aVal = a.unitNumber; bVal = b.unitNumber; break;
                     case 'vin': aVal = a.vin; bVal = b.vin; break;
                     case 'type': aVal = a.assetType; bVal = b.assetType; break;
+                    case 'plate': aVal = a.plateNumber || ''; bVal = b.plateNumber || ''; break;
+                    case 'plateExpiry': aVal = a.registrationExpiryDate || ''; bVal = b.registrationExpiryDate || ''; break;
+                    case 'makeModelYear': aVal = `${a.make} ${a.model}`; bVal = `${b.make} ${b.model}`; break;
+                    case 'dateAdded': aVal = a.dateAdded || ''; bVal = b.dateAdded || ''; break;
+                    case 'ownership': aVal = a.financialStructure || ''; bVal = b.financialStructure || ''; break;
                     case 'status': aVal = a.operationalStatus; bVal = b.operationalStatus; break;
                     default: return 0;
                 }
@@ -856,7 +871,7 @@ export const ComplianceDocumentsPage = () => {
                                                                     onChange={(e) => setAssetColumns(prev => ({ ...prev, [col]: e.target.checked }))}
                                                                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
                                                                 />
-                                                                <span className="text-xs text-slate-700 capitalize">{col === 'unitNumber' ? 'Unit #' : col === 'vin' ? 'VIN' : col}</span>
+                                                                <span className="text-xs text-slate-700">{assetColumnLabels[col] || col}</span>
                                                             </label>
                                                         )
                                                     ))}
@@ -919,23 +934,38 @@ export const ComplianceDocumentsPage = () => {
                             </div>
 
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm table-fixed">
-                                    <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider">
+                                <table className="w-full text-left text-sm" style={{ minWidth: '1300px' }}>
+                                    <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs uppercase font-semibold tracking-wider">
                                         <tr>
-                                            {assetColumns.unitNumber && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'unitNumber', direction: assetSort?.key === 'unitNumber' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                            {assetColumns.unitNumber && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group pl-6" onClick={() => setAssetSort({ key: 'unitNumber', direction: assetSort?.key === 'unitNumber' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
                                                 <div className="flex items-center gap-1">Unit # <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'unitNumber' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
                                             </th>}
-                                            {assetColumns.vin && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'vin', direction: assetSort?.key === 'vin' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
-                                                <div className="flex items-center gap-1">VIN <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'vin' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
-                                            </th>}
-                                            {assetColumns.type && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'type', direction: assetSort?.key === 'type' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                            {assetColumns.type && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'type', direction: assetSort?.key === 'type' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
                                                 <div className="flex items-center gap-1">Type <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'type' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
                                             </th>}
-                                            {assetColumns.compliance && <th className="px-6 py-4">Compliance Status</th>}
-                                            {assetColumns.status && <th className="px-6 py-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'status', direction: assetSort?.key === 'status' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
-                                                <div className="flex items-center gap-1">Vehicle Status <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'status' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            {assetColumns.plate && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'plate', direction: assetSort?.key === 'plate' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Plate (No. / State) <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'plate' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
                                             </th>}
-                                            {assetColumns.actions && <th className="px-6 py-4 text-right">Actions</th>}
+                                            {assetColumns.plateExpiry && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'plateExpiry', direction: assetSort?.key === 'plateExpiry' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Plate Expiry <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'plateExpiry' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.vin && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'vin', direction: assetSort?.key === 'vin' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">VIN <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'vin' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.makeModelYear && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'makeModelYear', direction: assetSort?.key === 'makeModelYear' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Make / Model / Year <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'makeModelYear' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.dateAdded && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'dateAdded', direction: assetSort?.key === 'dateAdded' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Date Added <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'dateAdded' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.ownership && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'ownership', direction: assetSort?.key === 'ownership' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Ownership <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'ownership' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.compliance && <th className="px-4 py-3 text-center">Compliance</th>}
+                                            {assetColumns.status && <th className="px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setAssetSort({ key: 'status', direction: assetSort?.key === 'status' && assetSort.direction === 'asc' ? 'desc' : 'asc' })}>
+                                                <div className="flex items-center gap-1">Status <ArrowUpDown className={`w-3 h-3 ${assetSort?.key === 'status' ? 'text-blue-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`} /></div>
+                                            </th>}
+                                            {assetColumns.actions && <th className="px-4 py-3 text-right pr-6">Actions</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100/50">
@@ -962,27 +992,55 @@ export const ComplianceDocumentsPage = () => {
                                                     {currentAssets.map((asset: Asset) => {
                                                         const stats = getComplianceSummary(asset.id, 'Asset', asset.assetCategory); 
                                                         return (
-                                                        <tr key={asset.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer group" onClick={() => setSelectedAsset(asset)}>
-                                                            {assetColumns.unitNumber && <td className="px-6 py-6 font-bold text-slate-900">{asset.unitNumber}</td>}
-                                                            {assetColumns.vin && <td className="px-6 py-6 text-slate-500 font-mono text-xs">{asset.vin}</td>}
-                                                            {assetColumns.type && <td className="px-6 py-6 text-slate-600">{asset.assetType}</td>}
-                                                            {assetColumns.compliance && <td className="px-6 py-6">
-                                                                <div className="flex gap-1 flex-wrap">
-                                                                    {stats.missingNumbers > 0 && <span className="px-3 py-1.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">{stats.missingNumbers} No. Missing</span>}
-                                                                    {stats.missingDocs > 0 && <span className="px-3 py-1.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">{stats.missingDocs} Doc. Missing</span>}
-                                                                    {stats.expired > 0 && <span className="px-3 py-1.5 rounded bg-orange-50 text-orange-600 text-[11px] font-bold">{stats.expired} Expired</span>}
-                                                                    {stats.expiringSoon > 0 && <span className="px-3 py-1.5 rounded bg-yellow-50 text-yellow-700 text-[11px] font-bold">{stats.expiringSoon} Soon</span>}
-                                                                    {stats.missingNumbers === 0 && stats.missingDocs === 0 && stats.expired === 0 && stats.expiringSoon === 0 && <span className="px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-[11px] font-bold">OK</span>}
+                                                        <tr key={asset.id} className="hover:bg-blue-50/40 transition-colors cursor-pointer group" onClick={() => setSelectedAsset(asset)}>
+                                                            {assetColumns.unitNumber && <td className="px-4 py-3 pl-6">
+                                                                <span className="font-bold text-slate-900 text-sm">{asset.unitNumber}</span>
+                                                            </td>}
+                                                            {assetColumns.type && <td className="px-4 py-3">
+                                                                <span className="text-[12px] font-semibold text-slate-700 bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/30">{asset.assetType} - {asset.vehicleType}</span>
+                                                            </td>}
+                                                            {assetColumns.plate && <td className="px-4 py-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[13px] font-bold text-slate-800">{asset.plateNumber || '—'}</span>
+                                                                    <span className="text-[11px] font-medium text-slate-400">({asset.plateJurisdiction || 'N/A'})</span>
                                                                 </div>
                                                             </td>}
-                                                            {assetColumns.status && <td className="px-6 py-6">
+                                                            {assetColumns.plateExpiry && <td className="px-4 py-3">
+                                                                <span className={`text-[11px] font-bold uppercase ${asset.registrationExpiryDate ? 'text-blue-600' : 'text-slate-300'}`}>
+                                                                    {asset.registrationExpiryDate || 'No Expiry'}
+                                                                </span>
+                                                            </td>}
+                                                            {assetColumns.vin && <td className="px-4 py-3">
+                                                                <code className="text-[11px] font-mono font-bold bg-slate-50 px-2 py-1 rounded-lg text-slate-500 border border-slate-200/50">{asset.vin}</code>
+                                                            </td>}
+                                                            {assetColumns.makeModelYear && <td className="px-4 py-3">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[13px] font-bold text-slate-900 leading-tight">{asset.make} {asset.model}</span>
+                                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">{asset.year} • {asset.color || 'White'}</span>
+                                                                </div>
+                                                            </td>}
+                                                            {assetColumns.dateAdded && <td className="px-4 py-3">
+                                                                <span className="text-xs font-semibold text-slate-500">{asset.dateAdded || '—'}</span>
+                                                            </td>}
+                                                            {assetColumns.ownership && <td className="px-4 py-3">
+                                                                <Badge text={asset.financialStructure || '—'} tone={asset.financialStructure === 'Owned' ? 'gray' : asset.financialStructure === 'Leased' ? 'warning' : asset.financialStructure === 'Financed' ? 'info' : 'purple'} />
+                                                            </td>}
+                                                            {assetColumns.compliance && <td className="px-4 py-3 text-center">
+                                                                <div className="flex gap-1 flex-wrap justify-center">
+                                                                    {stats.missingNumbers > 0 && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">{stats.missingNumbers} No. Missing</span>}
+                                                                    {stats.missingDocs > 0 && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100">{stats.missingDocs} Doc. Missing</span>}
+                                                                    {stats.expired > 0 && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-600 border border-orange-100">{stats.expired} Expired</span>}
+                                                                    {stats.expiringSoon > 0 && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-50 text-yellow-700 border border-yellow-100">{stats.expiringSoon} Soon</span>}
+                                                                    {stats.missingNumbers === 0 && stats.missingDocs === 0 && stats.expired === 0 && stats.expiringSoon === 0 && <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100"><Check size={14} strokeWidth={3} /></div>}
+                                                                </div>
+                                                            </td>}
+                                                            {assetColumns.status && <td className="px-4 py-3">
                                                                 <Badge 
                                                                     text={asset.operationalStatus} 
-                                                                    tone={asset.operationalStatus === 'Active' ? 'success' : asset.operationalStatus === 'Maintenance' ? 'warning' : 'gray'} 
-                                                                    className="rounded-full px-3 py-1"
+                                                                    tone={asset.operationalStatus === 'Active' ? 'success' : asset.operationalStatus === 'Maintenance' ? 'warning' : asset.operationalStatus === 'OutOfService' ? 'yellow' : 'gray'} 
                                                                 />
                                                             </td>}
-                                                            {assetColumns.actions && <td className="px-6 py-6 text-right">
+                                                            {assetColumns.actions && <td className="px-4 py-3 text-right pr-6">
                                                                 <button 
                                                                     onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); }}
                                                                     className="text-blue-600 hover:text-blue-800 font-semibold text-sm hover:underline"
@@ -991,7 +1049,7 @@ export const ComplianceDocumentsPage = () => {
                                                                 </button>
                                                             </td>}
                                                         </tr>
-                                                    )})})
+                                                    )})}
                                                     
                                                     {/* Footer / Pagination */}
                                                     <tr className="border-t border-slate-100">

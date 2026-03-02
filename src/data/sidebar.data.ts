@@ -14,6 +14,7 @@ import {
     Activity,
     GraduationCap,
     Ticket,
+    Fuel,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -49,6 +50,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Paystubs",
         icon: DollarSign,
         path: "/paystubs",
+    },
+    {
+        key: "fuel",
+        label: "Fuel",
+        icon: Fuel,
+        path: "/fuel",
     },
 
     {
