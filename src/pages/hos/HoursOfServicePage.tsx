@@ -1,17 +1,11 @@
 import { useState, useMemo } from 'react';
-import { Download, Clock, BarChart3, FileText, Route, Truck, User, ChevronLeft, ChevronRight, ChevronDown, Search, ArrowUp, ArrowDown } from 'lucide-react';
-import { HOS_DAILY_LOGS, HOS_LOGS, HOS_TRIPS } from './hos.data';
-import { StatCard, StatusBadge, ViewBtn, DetailModal, fmtMs, fmtDatetime, fmtDuration, miToKm, mphToKmh } from './hos-components';
+import React from 'react';
+import { Download, Upload, Clock, Route, Truck, User, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Search, ArrowUp, ArrowDown } from 'lucide-react';
+import { HOS_DAILY_LOGS, type HosDailyLog } from './hos.data';
+import { StatCard, ViewBtn, DetailModal, fmtMs, fmtDatetime, miToKm } from './hos-components';
 
-type TabId = 'daily' | 'logs' | 'trips';
-const TABS: { id: TabId; label: string; icon: typeof BarChart3 }[] = [
-  { id: 'daily', label: 'Daily Logs', icon: BarChart3 },
-  { id: 'logs', label: 'HOS Logs', icon: FileText },
-  { id: 'trips', label: 'Trips', icon: Route },
-];
-
-const STATUS_OPTIONS = ['All', 'off_duty', 'driving', 'on_duty', 'sleeper_berth'];
-const PROVIDER_OPTIONS = ['All', 'geotab', 'samsara', 'verizon-reveal'];
+const DAILY_TIME_OPTIONS = ['All', '00:00-05:59', '06:00-11:59', '12:00-17:59', '18:00-23:59'];
+const DAILY_HOS_HOURS_OPTIONS = ['All', '0-8h', '8-11h', '11h+'];
 
 function SortHeader({ label, field, sortField, sortDir, onSort, align = 'left' }: {
   label: string; field: string; sortField: string; sortDir: 'asc' | 'desc'; onSort: (f: string) => void; align?: string;
@@ -75,98 +69,245 @@ function UnitToggle({ useKm, onChange }: { useKm: boolean; onChange: (v: boolean
   );
 }
 
-// ── Unique drivers & vehicles for filters ──────────────────────────────────────
-const ALL_DRIVERS = [...new Set([...HOS_DAILY_LOGS.map(l => `${l.driver.firstName} ${l.driver.lastName}`), ...HOS_LOGS.map(l => `${l.driver.firstName} ${l.driver.lastName}`),...HOS_TRIPS.map(l => `${l.driver.firstName} ${l.driver.lastName}`)])].sort();
-const ALL_VEHICLES = [...new Set([...HOS_LOGS.map(l => l.vehicle.name), ...HOS_TRIPS.map(l => l.vehicle.name)])].sort();
+// ── ELD 24-hour Duty Status Chart ─────────────────────────────────────────────
+function EldChart({ log, useKm }: { log: HosDailyLog; useKm: boolean }) {
+  const dur = log.statusDurations;
+  const dayMs = 24 * 3600000; // 24 hours in ms
+
+  // Distribute status across 24-hour timeline proportionally
+  // Build segments: each has status + start% + width%
+  const statuses: { key: string; label: string; color: string; ms: number }[] = [
+    { key: 'offDuty', label: 'Off Duty', color: '#94a3b8', ms: dur.offDuty },
+    { key: 'sleeperBed', label: 'Sleeper', color: '#3b82f6', ms: dur.sleeperBed },
+    { key: 'driving', label: 'Driving', color: '#f59e0b', ms: dur.driving },
+    { key: 'onDuty', label: 'On Duty', color: '#10b981', ms: dur.onDuty },
+  ];
+
+  // Build a simple timeline — allocate proportionally across 24h
+  const segments: { lane: number; startPct: number; widthPct: number; color: string }[] = [];
+  
+  // Create a realistic-looking schedule
+  let cursor = 0;
+  
+  // Off duty early morning
+  const offDutyEarlyMs = Math.min(dur.offDuty * 0.3, dayMs * 0.15);
+  if (offDutyEarlyMs > 0) {
+    segments.push({ lane: 0, startPct: 0, widthPct: (offDutyEarlyMs / dayMs) * 100, color: statuses[0].color });
+    cursor += offDutyEarlyMs;
+  }
+  
+  // Sleeper early
+  const sleeperEarlyMs = Math.min(dur.sleeperBed * 0.6, dayMs * 0.25);
+  if (sleeperEarlyMs > 0) {
+    segments.push({ lane: 1, startPct: (cursor / dayMs) * 100, widthPct: (sleeperEarlyMs / dayMs) * 100, color: statuses[1].color });
+    cursor += sleeperEarlyMs;
+  }
+  
+  // Main driving block
+  const drivingMs1 = dur.driving * 0.6;
+  if (drivingMs1 > 0) {
+    segments.push({ lane: 2, startPct: (cursor / dayMs) * 100, widthPct: (drivingMs1 / dayMs) * 100, color: statuses[2].color });
+    cursor += drivingMs1;
+  }
+  
+  // On duty break
+  const onDutyMs1 = dur.onDuty * 0.5;
+  if (onDutyMs1 > 0) {
+    segments.push({ lane: 3, startPct: (cursor / dayMs) * 100, widthPct: (onDutyMs1 / dayMs) * 100, color: statuses[3].color });
+    cursor += onDutyMs1;
+  }
+  
+  // Driving block 2
+  const drivingMs2 = dur.driving * 0.4;
+  if (drivingMs2 > 0) {
+    segments.push({ lane: 2, startPct: (cursor / dayMs) * 100, widthPct: (drivingMs2 / dayMs) * 100, color: statuses[2].color });
+    cursor += drivingMs2;
+  }
+  
+  // On duty block 2
+  const onDutyMs2 = dur.onDuty * 0.5;
+  if (onDutyMs2 > 0) {
+    segments.push({ lane: 3, startPct: (cursor / dayMs) * 100, widthPct: (onDutyMs2 / dayMs) * 100, color: statuses[3].color });
+    cursor += onDutyMs2;
+  }
+  
+  // Sleeper late
+  const sleeperLateMs = dur.sleeperBed * 0.4;
+  if (sleeperLateMs > 0) {
+    segments.push({ lane: 1, startPct: (cursor / dayMs) * 100, widthPct: (sleeperLateMs / dayMs) * 100, color: statuses[1].color });
+    cursor += sleeperLateMs;
+  }
+  
+  // Off duty remaining
+  const offDutyLateMs = dur.offDuty * 0.7;
+  if (offDutyLateMs > 0) {
+    segments.push({ lane: 0, startPct: (cursor / dayMs) * 100, widthPct: (offDutyLateMs / dayMs) * 100, color: statuses[0].color });
+  }
+
+  // Waiting and yard move distributed as small blocks
+  if (dur.waiting > 0) {
+    const waitStart = Math.min(cursor, dayMs * 0.85);
+    segments.push({ lane: 3, startPct: (waitStart / dayMs) * 100, widthPct: (dur.waiting / dayMs) * 100, color: '#6366f1' });
+  }
+
+  const hours = Array.from({ length: 25 }, (_, i) => i);
+  const laneLabels = ['Off Duty', 'Sleeper', 'Driving', 'On Duty'];
+  const laneColors = ['#94a3b8', '#3b82f6', '#f59e0b', '#10b981'];
+
+  const dist = log.distances;
+  const dUnit = useKm ? 'km' : 'mi';
+  const dVal = (v: number) => useKm ? miToKm(v) : v;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      {/* Chart Grid */}
+      <div className="relative">
+        {/* Hour labels at top */}
+        <div className="flex border-b border-slate-200" style={{ marginLeft: 100, marginRight: 80 }}>
+          {hours.map(h => (
+            <div key={h} className="text-[9px] text-slate-400 font-mono text-center" style={{ width: `${100 / 24}%`, minWidth: 0 }}>
+              {h === 0 ? 'MID' : h === 12 ? 'NOON' : h}
+            </div>
+          ))}
+        </div>
+
+        {/* Lanes */}
+        {laneLabels.map((label, laneIdx) => (
+          <div key={label} className="flex items-stretch border-b border-slate-100" style={{ height: 28 }}>
+            {/* Lane label */}
+            <div className="w-[100px] shrink-0 flex items-center px-3 text-[10px] font-bold text-slate-500 bg-slate-50/80 border-r border-slate-200">
+              {label}
+            </div>
+            {/* Chart area */}
+            <div className="flex-1 relative" style={{ background: `repeating-linear-gradient(90deg, transparent, transparent calc(${100/24}% - 1px), #e2e8f0 calc(${100/24}% - 1px), #e2e8f0 calc(${100/24}%))` }}>
+              {/* Fill background with lane color at low opacity */}
+              <div className="absolute inset-0" style={{ backgroundColor: laneColors[laneIdx], opacity: 0.08 }} />
+              {/* Render segments for this lane */}
+              {segments.filter(s => s.lane === laneIdx).map((seg, i) => (
+                <div key={i} className="absolute top-1 bottom-1 rounded-sm" style={{
+                  left: `${Math.min(seg.startPct, 100)}%`,
+                  width: `${Math.min(seg.widthPct, 100 - seg.startPct)}%`,
+                  backgroundColor: seg.color,
+                  opacity: 0.85,
+                  minWidth: seg.widthPct > 0.2 ? 2 : 0,
+                }} />
+              ))}
+            </div>
+            {/* Totals */}
+            <div className="w-[80px] shrink-0 flex items-center justify-end px-2 text-[11px] font-mono font-bold border-l border-slate-200 bg-slate-50/50" style={{ color: laneColors[laneIdx] }}>
+              {fmtMs(statuses[laneIdx].ms)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Legend + Extra info */}
+      <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-4 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-violet-500 inline-block" style={{ borderTop: '1px dashed #8b5cf6', borderBottom: '1px dashed #8b5cf6' }} /> Personal Conveyance / Yard Moves</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-[3px] rounded bg-red-400 inline-block" style={{ borderTop: '1px dashed #f87171', borderBottom: '1px dashed #f87171' }} /> Exemption Mode</span>
+        </div>
+        <div className="flex items-center gap-4 text-[10px] text-slate-500 font-medium">
+          <span>Distance: <span className="font-bold text-slate-700">{dVal(dist.total)} {dUnit}</span></span>
+          {dur.personalConveyance > 0 && <span>PC: <span className="font-bold text-violet-600">{fmtMs(dur.personalConveyance)}</span></span>}
+          {dur.yardMove > 0 && <span>YM: <span className="font-bold text-pink-600">{fmtMs(dur.yardMove)}</span></span>}
+          {dur.waiting > 0 && <span>Wait: <span className="font-bold text-indigo-600">{fmtMs(dur.waiting)}</span></span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Unique drivers for filters ──────────────────────────────────────────
+const ALL_DRIVERS = [...new Set(HOS_DAILY_LOGS.map(l => `${l.driver.firstName} ${l.driver.lastName}`))].sort();
 
 export function HoursOfServicePage() {
-  const [tab, setTab] = useState<TabId>('daily');
   const [selected, setSelected] = useState<{ item: any; type: 'daily' | 'log' | 'trip' } | null>(null);
   const [useKm, setUseKm] = useState(false);
+  const [expandedDaily, setExpandedDaily] = useState<Set<string>>(new Set());
 
   // Filters
   const [driverFilter, setDriverFilter] = useState('All');
-  const [vehicleFilter, setVehicleFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [providerFilter, setProviderFilter] = useState('All');
+  const [dailyFromDate, setDailyFromDate] = useState('');
+  const [dailyToDate, setDailyToDate] = useState('');
+  const [dailyTimeSection, setDailyTimeSection] = useState('All');
+  const [dailyHosHours, setDailyHosHours] = useState('All');
 
   // Sort + search state
   const [dailySearch, setDailySearch] = useState('');
-  const [logSearch, setLogSearch] = useState('');
-  const [tripSearch, setTripSearch] = useState('');
   const [dailySortF, setDailySortF] = useState('date');
   const [dailySortD, setDailySortD] = useState<'asc' | 'desc'>('desc');
-  const [logSortF, setLogSortF] = useState('startedAt');
-  const [logSortD, setLogSortD] = useState<'asc' | 'desc'>('desc');
-  const [tripSortF, setTripSortF] = useState('startedAt');
-  const [tripSortD, setTripSortD] = useState<'asc' | 'desc'>('desc');
   const [dailyPage, setDailyPage] = useState(1); const [dailyPP, setDailyPP] = useState(10);
-  const [logPage, setLogPage] = useState(1); const [logPP, setLogPP] = useState(10);
-  const [tripPage, setTripPage] = useState(1); const [tripPP, setTripPP] = useState(10);
 
   function toggleSort(f: string, cf: string, cd: 'asc' | 'desc', sf: (v: string) => void, sd: (v: 'asc' | 'desc') => void) {
     if (cf === f) sd(cd === 'asc' ? 'desc' : 'asc'); else { sf(f); sd('desc'); }
   }
 
   const dUnit = useKm ? 'km' : 'mi';
-  const sUnit = useKm ? 'km/h' : 'mph';
   const d = (v: number) => useKm ? miToKm(v) : v;
-  const s = (v: number) => useKm ? mphToKmh(v) : v;
+  const toHours = (ms: number) => ms / 3600000;
+  const getServiceHours = (log: HosDailyLog) => toHours((log.statusDurations.driving || 0) + (log.statusDurations.onDuty || 0) + (log.statusDurations.waiting || 0) + (log.statusDurations.yardMove || 0) + (log.statusDurations.personalConveyance || 0));
+  const getHour = (iso: string) => new Date(iso).getUTCHours();
+  const inTimeSection = (iso: string, section: string) => {
+    if (section === 'All') return true;
+    const hour = getHour(iso);
+    if (section === '00:00-05:59') return hour >= 0 && hour < 6;
+    if (section === '06:00-11:59') return hour >= 6 && hour < 12;
+    if (section === '12:00-17:59') return hour >= 12 && hour < 18;
+    if (section === '18:00-23:59') return hour >= 18 && hour < 24;
+    return true;
+  };
+  const inHosHoursBucket = (log: HosDailyLog, bucket: string) => {
+    if (bucket === 'All') return true;
+    const h = getServiceHours(log);
+    if (bucket === '0-8h') return h < 8;
+    if (bucket === '8-11h') return h >= 8 && h < 11;
+    if (bucket === '11h+') return h >= 11;
+    return true;
+  };
 
   // ── Filtered data ──
   const filteredDaily = useMemo(() => {
     let data = [...HOS_DAILY_LOGS];
     if (driverFilter !== 'All') data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}` === driverFilter);
-    if (providerFilter !== 'All') data = data.filter(r => r.provider === providerFilter);
+    if (dailyFromDate) data = data.filter(r => r.date >= dailyFromDate);
+    if (dailyToDate) data = data.filter(r => r.date <= dailyToDate);
+    if (dailyTimeSection !== 'All') data = data.filter(r => inTimeSection(r.metadata?.addedAt || `${r.date}T00:00:00.000Z`, dailyTimeSection));
+    if (dailyHosHours !== 'All') data = data.filter(r => inHosHoursBucket(r, dailyHosHours));
     if (dailySearch.trim()) { const q = dailySearch.toLowerCase(); data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}`.toLowerCase().includes(q) || r.date.includes(q)); }
     return data.sort((a, b) => {
       if (dailySortF === 'date') return dailySortD === 'desc' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
       if (dailySortF === 'driving') return dailySortD === 'desc' ? b.statusDurations.driving - a.statusDurations.driving : a.statusDurations.driving - b.statusDurations.driving;
+      if (dailySortF === 'onDuty') return dailySortD === 'desc' ? b.statusDurations.onDuty - a.statusDurations.onDuty : a.statusDurations.onDuty - b.statusDurations.onDuty;
+      if (dailySortF === 'offDuty') return dailySortD === 'desc' ? b.statusDurations.offDuty - a.statusDurations.offDuty : a.statusDurations.offDuty - b.statusDurations.offDuty;
+      if (dailySortF === 'sleeperBed') return dailySortD === 'desc' ? b.statusDurations.sleeperBed - a.statusDurations.sleeperBed : a.statusDurations.sleeperBed - b.statusDurations.sleeperBed;
+      if (dailySortF === 'personalConveyance') return dailySortD === 'desc' ? b.statusDurations.personalConveyance - a.statusDurations.personalConveyance : a.statusDurations.personalConveyance - b.statusDurations.personalConveyance;
+      if (dailySortF === 'yardMove') return dailySortD === 'desc' ? b.statusDurations.yardMove - a.statusDurations.yardMove : a.statusDurations.yardMove - b.statusDurations.yardMove;
+      if (dailySortF === 'waiting') return dailySortD === 'desc' ? b.statusDurations.waiting - a.statusDurations.waiting : a.statusDurations.waiting - b.statusDurations.waiting;
       if (dailySortF === 'distance') return dailySortD === 'desc' ? b.distances.total - a.distances.total : a.distances.total - b.distances.total;
       if (dailySortF === 'driver') return dailySortD === 'desc' ? b.driver.lastName.localeCompare(a.driver.lastName) : a.driver.lastName.localeCompare(b.driver.lastName);
       return 0;
     });
-  }, [dailySearch, dailySortF, dailySortD, driverFilter, providerFilter]);
-
-  const filteredLogs = useMemo(() => {
-    let data = [...HOS_LOGS];
-    if (driverFilter !== 'All') data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}` === driverFilter);
-    if (vehicleFilter !== 'All') data = data.filter(r => r.vehicle.name === vehicleFilter);
-    if (statusFilter !== 'All') data = data.filter(r => r.status === statusFilter);
-    if (providerFilter !== 'All') data = data.filter(r => r.provider === providerFilter);
-    if (logSearch.trim()) { const q = logSearch.toLowerCase(); data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}`.toLowerCase().includes(q) || r.vehicle.name.toLowerCase().includes(q) || r.status.includes(q) || r.location.name?.toLowerCase().includes(q)); }
-    return data.sort((a, b) => {
-      if (logSortF === 'startedAt') return logSortD === 'desc' ? b.startedAt.localeCompare(a.startedAt) : a.startedAt.localeCompare(b.startedAt);
-      if (logSortF === 'status') return logSortD === 'desc' ? b.status.localeCompare(a.status) : a.status.localeCompare(b.status);
-      if (logSortF === 'driver') return logSortD === 'desc' ? b.driver.lastName.localeCompare(a.driver.lastName) : a.driver.lastName.localeCompare(b.driver.lastName);
-      if (logSortF === 'location') return logSortD === 'desc' ? (b.location.name || '').localeCompare(a.location.name || '') : (a.location.name || '').localeCompare(b.location.name || '');
-      return 0;
-    });
-  }, [logSearch, logSortF, logSortD, driverFilter, vehicleFilter, statusFilter, providerFilter]);
-
-  const filteredTrips = useMemo(() => {
-    let data = [...HOS_TRIPS];
-    if (driverFilter !== 'All') data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}` === driverFilter);
-    if (vehicleFilter !== 'All') data = data.filter(r => r.vehicle.name === vehicleFilter);
-    if (providerFilter !== 'All') data = data.filter(r => r.provider === providerFilter);
-    if (tripSearch.trim()) { const q = tripSearch.toLowerCase(); data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}`.toLowerCase().includes(q) || r.vehicle.name.toLowerCase().includes(q) || r.startLocation.name.toLowerCase().includes(q)); }
-    return data.sort((a, b) => {
-      if (tripSortF === 'startedAt') return tripSortD === 'desc' ? b.startedAt.localeCompare(a.startedAt) : a.startedAt.localeCompare(b.startedAt);
-      if (tripSortF === 'distance') return tripSortD === 'desc' ? b.distance - a.distance : a.distance - b.distance;
-      if (tripSortF === 'duration') return tripSortD === 'desc' ? b.duration - a.duration : a.duration - b.duration;
-      if (tripSortF === 'driver') return tripSortD === 'desc' ? b.driver.lastName.localeCompare(a.driver.lastName) : a.driver.lastName.localeCompare(b.driver.lastName);
-      if (tripSortF === 'avgSpeed') return tripSortD === 'desc' ? b.averageSpeed - a.averageSpeed : a.averageSpeed - b.averageSpeed;
-      return 0;
-    });
-  }, [tripSearch, tripSortF, tripSortD, driverFilter, vehicleFilter, providerFilter]);
+  }, [dailySearch, dailySortF, dailySortD, driverFilter, dailyFromDate, dailyToDate, dailyTimeSection, dailyHosHours]);
 
   // KPI stats
   const totalDriving = HOS_DAILY_LOGS.reduce((a, l) => a + (l.statusDurations?.driving || 0), 0);
-  const totalDist = HOS_TRIPS.reduce((a, l) => a + (l.distance || 0), 0);
-  const activeDrivers = new Set([...HOS_LOGS.filter(l => l.driver.status === 'active').map(l => l.driver.id), ...HOS_TRIPS.filter(l => l.driver.status === 'active').map(l => l.driver.id)]).size;
-  const totalRecords = HOS_DAILY_LOGS.length + HOS_LOGS.length + HOS_TRIPS.length;
+  const totalDist = HOS_DAILY_LOGS.reduce((a, l) => a + (l.distances?.total || 0), 0);
+  const activeDrivers = new Set(HOS_DAILY_LOGS.map(l => l.driver.id)).size;
+  const totalRecords = HOS_DAILY_LOGS.length;
 
   const thCls = 'px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider';
+
+  const toggleExpand = (id: string) => {
+    setExpandedDaily(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
+  const paged = filteredDaily.slice((dailyPage - 1) * dailyPP, dailyPage * dailyPP);
+  const sortD2 = (f: string) => toggleSort(f, dailySortF, dailySortD, setDailySortF, setDailySortD);
 
   return (
     <div className="flex-1 bg-slate-50 min-h-screen">
@@ -175,7 +316,7 @@ export function HoursOfServicePage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Hours of Service</h1>
-            <p className="text-sm text-gray-500">Track HOS logs, duty status, and fleet compliance data.</p>
+            <p className="text-sm text-gray-500">Track HOS daily logs, duty status, and fleet compliance data.</p>
           </div>
           <div className="flex items-center gap-3">
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
@@ -187,248 +328,130 @@ export function HoursOfServicePage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard icon={Clock} label="Total Driving" value={fmtMs(totalDriving)} sub="Across daily logs" color="bg-emerald-50 text-emerald-600" />
-          <StatCard icon={Route} label="Trip Distance" value={`${d(Math.round(totalDist)).toLocaleString()} ${dUnit}`} sub="Sum of all trips" color="bg-blue-50 text-blue-600" />
-          <StatCard icon={User} label="Active Drivers" value={String(activeDrivers)} sub="Expanded resources" color="bg-violet-50 text-violet-600" />
-          <StatCard icon={Truck} label="Total Records" value={String(totalRecords)} sub="All endpoints" color="bg-amber-50 text-amber-600" />
+          <StatCard icon={Route} label="Total Distance" value={`${d(Math.round(totalDist)).toLocaleString()} ${dUnit}`} sub="Sum of all daily logs" color="bg-blue-50 text-blue-600" />
+          <StatCard icon={User} label="Active Drivers" value={String(activeDrivers)} sub="Unique drivers" color="bg-violet-50 text-violet-600" />
+          <StatCard icon={Truck} label="Total Records" value={String(totalRecords)} sub="Daily log entries" color="bg-amber-50 text-amber-600" />
         </div>
 
-        {/* Tab Bar */}
-        <div className="flex items-center gap-1 border-b border-slate-200 mb-6">
-          {TABS.map(t => {
-            const active = tab === t.id; const Icon = t.icon;
-            return (
-              <button key={t.id} onClick={() => { setTab(t.id); setSelected(null); }}
-                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all relative ${active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                <Icon size={16} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                {t.label}
-                {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t" />}
+        {/* Daily Logs Table */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Row 1: Title + Upload buttons */}
+          <div className="px-5 pt-4 pb-3 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-800">Daily Logs</h2>
+                <span className="text-xs text-slate-400">{filteredDaily.length} records</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">
+                  <Upload size={14} /> Upload Print-Display Logs
+                </button>
+                <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm">
+                  <Upload size={14} /> Upload ELD Data File
+                </button>
+              </div>
+            </div>
+            {/* Row 2: Filters */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <FilterSelect label="Drivers" value={driverFilter} options={['All', ...ALL_DRIVERS]} onChange={v => { setDriverFilter(v); setDailyPage(1); }} />
+              <input
+                type="date"
+                value={dailyFromDate}
+                onChange={e => { setDailyFromDate(e.target.value); setDailyPage(1); }}
+                className="border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700 shadow-sm min-h-[36px]"
+                title="From Date"
+              />
+              <input
+                type="date"
+                value={dailyToDate}
+                onChange={e => { setDailyToDate(e.target.value); setDailyPage(1); }}
+                className="border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700 shadow-sm min-h-[36px]"
+                title="To Date"
+              />
+              <FilterSelect label="Time Sections" value={dailyTimeSection} options={DAILY_TIME_OPTIONS} onChange={v => { setDailyTimeSection(v); setDailyPage(1); }} />
+              <FilterSelect label="HOS Hours" value={dailyHosHours} options={DAILY_HOS_HOURS_OPTIONS} onChange={v => { setDailyHosHours(v); setDailyPage(1); }} />
+              <button
+                onClick={() => { setDriverFilter('All'); setDailyFromDate(''); setDailyToDate(''); setDailyTimeSection('All'); setDailyHosHours('All'); setDailyPage(1); }}
+                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 shadow-sm"
+              >
+                Reset
               </button>
-            );
-          })}
-        </div>
-
-        {/* ═══ DAILY LOGS TAB ═══ */}
-        {tab === 'daily' && (() => {
-          const paged = filteredDaily.slice((dailyPage - 1) * dailyPP, dailyPage * dailyPP);
-          const sortD = (f: string) => toggleSort(f, dailySortF, dailySortD, setDailySortF, setDailySortD);
-          return (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              {/* Row 1: Title + record count */}
-              <div className="px-5 pt-4 pb-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-bold text-slate-800">Daily Logs</h2>
-                    <span className="text-xs text-slate-400">{filteredDaily.length} records</span>
-                  </div>
-                </div>
-                {/* Row 2: Filters */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <FilterSelect label="Drivers" value={driverFilter} options={['All', ...ALL_DRIVERS]} onChange={v => { setDriverFilter(v); setDailyPage(1); }} />
-                  <FilterSelect label="Providers" value={providerFilter} options={PROVIDER_OPTIONS} onChange={v => { setProviderFilter(v); setDailyPage(1); }} />
-                  <div className="ml-auto">
-                    <UnitToggle useKm={useKm} onChange={setUseKm} />
-                  </div>
-                </div>
+              <div className="ml-auto">
+                <UnitToggle useKm={useKm} onChange={setUseKm} />
               </div>
-              {/* Row 3: Search + Showing */}
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between px-5 py-3 bg-slate-50/80 border-y border-slate-200">
-                <div className="relative w-full sm:w-72">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder="Search daily logs…" value={dailySearch} onChange={e => { setDailySearch(e.target.value); setDailyPage(1); }} className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm" />
-                </div>
-                <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Showing <span className="font-bold text-slate-800">{Math.min(filteredDaily.length, dailyPP)}</span> of <span className="font-bold text-slate-800">{filteredDaily.length}</span></span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <SortHeader label="Date / Provider" field="date" sortField={dailySortF} sortDir={dailySortD} onSort={sortD} />
-                      <SortHeader label="Driver" field="driver" sortField={dailySortF} sortDir={dailySortD} onSort={sortD} />
-                      <SortHeader label="Durations" field="driving" sortField={dailySortF} sortDir={dailySortD} onSort={sortD} />
-                      <SortHeader label={`Distance (${dUnit})`} field="distance" sortField={dailySortF} sortDir={dailySortD} onSort={sortD} align="right" />
-                      <th className={`${thCls} text-center`}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {paged.map(log => (
-                      <tr key={log.id} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="px-4 py-3.5"><div className="font-medium text-slate-900 text-sm">{log.date}</div><div className="text-xs text-slate-400 capitalize">{log.provider.replace(/-/g, ' ')}</div></td>
+            </div>
+          </div>
+          {/* Row 3: Search + Showing */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between px-5 py-3 bg-slate-50/80 border-y border-slate-200">
+            <div className="relative w-full sm:w-72">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type="text" placeholder="Search daily logs…" value={dailySearch} onChange={e => { setDailySearch(e.target.value); setDailyPage(1); }} className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm" />
+            </div>
+            <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Showing <span className="font-bold text-slate-800">{Math.min(filteredDaily.length, dailyPP)}</span> of <span className="font-bold text-slate-800">{filteredDaily.length}</span></span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className={`${thCls} text-center`} style={{ width: 36 }}></th>
+                  <SortHeader label="Date" field="date" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} />
+                  <SortHeader label="Driver" field="driver" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} />
+                  <SortHeader label="Driving" field="driving" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label="On Duty" field="onDuty" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label="Off Duty" field="offDuty" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label="Sleeper" field="sleeperBed" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label="Personal" field="personalConveyance" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label="Yard Move" field="yardMove" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label="Waiting" field="waiting" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <SortHeader label={`Distance (${dUnit})`} field="distance" sortField={dailySortF} sortDir={dailySortD} onSort={sortD2} align="right" />
+                  <th className={`${thCls} text-center`}>Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {paged.map(log => {
+                  const isExpanded = expandedDaily.has(log.id);
+                  return (
+                    <React.Fragment key={log.id}>
+                      <tr className={`hover:bg-blue-50/40 transition-colors cursor-pointer select-none ${isExpanded ? 'bg-blue-50/20' : ''}`} onClick={() => toggleExpand(log.id)}>
+                        <td className="px-3 py-3 text-center">
+                          <ChevronRightIcon size={14} className={`text-slate-400 transition-transform duration-200 inline-block ${isExpanded ? 'rotate-90' : ''}`} />
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="font-medium text-slate-900 text-sm">{log.date}</div>
+                          <div className="text-xs text-slate-400 font-mono">{fmtDatetime(log.metadata?.addedAt || `${log.date}T00:00:00.000Z`).substring(11, 16)} UTC</div>
+                        </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
                             <div className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-blue-100 text-blue-700">{log.driver.firstName[0]}</div>
                             <div><div className="font-medium text-slate-900 text-sm">{log.driver.firstName} {log.driver.lastName}</div><div className="text-xs text-slate-400">{log.driver.id}</div></div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5" style={{ minWidth: 180 }}>
-                          <div className="text-sm font-medium text-slate-900 mb-1">Drive: {fmtMs(log.statusDurations.driving)}</div>
-                          <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-100 w-40">
-                            {[{ k: 'driving' as const, c: '#10b981' }, { k: 'onDuty' as const, c: '#f59e0b' }, { k: 'offDuty' as const, c: '#94a3b8' }].map(st => {
-                              const tot = log.statusDurations.driving + log.statusDurations.onDuty + log.statusDurations.offDuty;
-                              const v = log.statusDurations[st.k] || 0; if (!v) return null;
-                              return <div key={st.k} style={{ width: `${(v / tot) * 100}%`, backgroundColor: st.c }} />;
-                            })}
-                          </div>
-                        </td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-emerald-700 font-semibold">{fmtMs(log.statusDurations.driving)}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-amber-700 font-semibold">{fmtMs(log.statusDurations.onDuty)}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-slate-700 font-semibold">{fmtMs(log.statusDurations.offDuty)}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-indigo-700 font-semibold">{fmtMs(log.statusDurations.sleeperBed)}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-violet-700 font-semibold">{fmtMs(log.statusDurations.personalConveyance)}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-pink-700 font-semibold">{fmtMs(log.statusDurations.yardMove)}</td>
+                        <td className="px-4 py-3.5 text-right font-mono text-xs text-slate-600 font-semibold">{fmtMs(log.statusDurations.waiting)}</td>
                         <td className="px-4 py-3.5 text-right"><span className="font-bold text-slate-900">{d(log.distances.total)}</span><span className="text-xs text-slate-400 ml-0.5">{dUnit}</span></td>
                         <td className="px-4 py-3.5 text-center"><ViewBtn onClick={(e) => { e.stopPropagation(); setSelected({ item: log, type: 'daily' }); }} /></td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <Pagination total={filteredDaily.length} page={dailyPage} perPage={dailyPP} onPage={setDailyPage} onPerPage={v => { setDailyPP(v); setDailyPage(1); }} />
-            </div>
-          );
-        })()}
-
-        {/* ═══ HOS LOGS TAB ═══ */}
-        {tab === 'logs' && (() => {
-          const paged = filteredLogs.slice((logPage - 1) * logPP, logPage * logPP);
-          const sortL = (f: string) => toggleSort(f, logSortF, logSortD, setLogSortF, setLogSortD);
-          return (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              {/* Row 1: Title + record count */}
-              <div className="px-5 pt-4 pb-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-bold text-slate-800">HOS Logs</h2>
-                    <span className="text-xs text-slate-400">{filteredLogs.length} records</span>
-                  </div>
-                </div>
-                {/* Row 2: Filters */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <FilterSelect label="Drivers" value={driverFilter} options={['All', ...ALL_DRIVERS]} onChange={v => { setDriverFilter(v); setLogPage(1); }} />
-                  <FilterSelect label="Vehicles" value={vehicleFilter} options={['All', ...ALL_VEHICLES]} onChange={v => { setVehicleFilter(v); setLogPage(1); }} />
-                  <FilterSelect label="Status" value={statusFilter} options={STATUS_OPTIONS} onChange={v => { setStatusFilter(v); setLogPage(1); }} />
-                  <FilterSelect label="Providers" value={providerFilter} options={PROVIDER_OPTIONS} onChange={v => { setProviderFilter(v); setLogPage(1); }} />
-                  <div className="ml-auto">
-                    <UnitToggle useKm={useKm} onChange={setUseKm} />
-                  </div>
-                </div>
-              </div>
-              {/* Row 3: Search + Showing */}
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between px-5 py-3 bg-slate-50/80 border-y border-slate-200">
-                <div className="relative w-full sm:w-72">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder="Search HOS logs…" value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(1); }} className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm" />
-                </div>
-                <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Showing <span className="font-bold text-slate-800">{Math.min(filteredLogs.length, logPP)}</span> of <span className="font-bold text-slate-800">{filteredLogs.length}</span></span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm whitespace-nowrap">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <SortHeader label="Started" field="startedAt" sortField={logSortF} sortDir={logSortD} onSort={sortL} />
-                      <th className={`${thCls} text-left`}>Ended</th>
-                      <SortHeader label="Status" field="status" sortField={logSortF} sortDir={logSortD} onSort={sortL} />
-                      <SortHeader label="Driver" field="driver" sortField={logSortF} sortDir={logSortD} onSort={sortL} />
-                      <th className={`${thCls} text-left`}>Vehicle</th>
-                      <SortHeader label="Location" field="location" sortField={logSortF} sortDir={logSortD} onSort={sortL} />
-                      <th className={`${thCls} text-center`}>Rmks</th>
-                      <th className={`${thCls} text-left`}>Provider</th>
-                      <th className={`${thCls} text-center`}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {paged.map(log => (
-                      <tr key={log.id} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{fmtDatetime(log.startedAt).substring(0, 16)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{fmtDatetime(log.endedAt).substring(0, 16)}</td>
-                        <td className="px-4 py-3"><StatusBadge status={log.status} /></td>
-                        <td className="px-4 py-3"><div className="font-medium text-slate-900 text-sm">{log.driver.firstName} {log.driver.lastName}</div><div className="text-xs text-slate-400">{log.driver.status}</div></td>
-                        <td className="px-4 py-3"><div className="font-medium text-slate-900 text-sm">{log.vehicle.name}</div><div className="text-xs text-slate-400">{log.vehicle.make} {log.vehicle.model}</div></td>
-                        <td className="px-4 py-3"><div className="text-sm text-slate-900">{log.location.name}, {log.location.state}</div><div className="text-xs text-slate-400">{log.location.country}</div></td>
-                        <td className="px-4 py-3 text-center"><span className="inline-flex items-center justify-center bg-slate-100 text-slate-600 rounded-full h-5 w-5 text-xs font-bold">{log.remarks?.length || 0}</span></td>
-                        <td className="px-4 py-3 text-xs font-medium text-slate-600 capitalize">{(log.provider || '').replace(/-/g, ' ')}</td>
-                        <td className="px-4 py-3 text-center"><ViewBtn onClick={(e) => { e.stopPropagation(); setSelected({ item: log, type: 'log' }); }} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <Pagination total={filteredLogs.length} page={logPage} perPage={logPP} onPage={setLogPage} onPerPage={v => { setLogPP(v); setLogPage(1); }} />
-            </div>
-          );
-        })()}
-
-        {/* ═══ TRIPS TAB ═══ */}
-        {tab === 'trips' && (() => {
-          const paged = filteredTrips.slice((tripPage - 1) * tripPP, tripPage * tripPP);
-          const sortT = (f: string) => toggleSort(f, tripSortF, tripSortD, setTripSortF, setTripSortD);
-          return (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              {/* Row 1: Title + record count */}
-              <div className="px-5 pt-4 pb-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-bold text-slate-800">Trips</h2>
-                    <span className="text-xs text-slate-400">{filteredTrips.length} records</span>
-                  </div>
-                </div>
-                {/* Row 2: Filters */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <FilterSelect label="Drivers" value={driverFilter} options={['All', ...ALL_DRIVERS]} onChange={v => { setDriverFilter(v); setTripPage(1); }} />
-                  <FilterSelect label="Vehicles" value={vehicleFilter} options={['All', ...ALL_VEHICLES]} onChange={v => { setVehicleFilter(v); setTripPage(1); }} />
-                  <FilterSelect label="Providers" value={providerFilter} options={PROVIDER_OPTIONS} onChange={v => { setProviderFilter(v); setTripPage(1); }} />
-                  <div className="ml-auto">
-                    <UnitToggle useKm={useKm} onChange={setUseKm} />
-                  </div>
-                </div>
-              </div>
-              {/* Row 3: Search + Showing */}
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between px-5 py-3 bg-slate-50/80 border-y border-slate-200">
-                <div className="relative w-full sm:w-72">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder="Search trips…" value={tripSearch} onChange={e => { setTripSearch(e.target.value); setTripPage(1); }} className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm" />
-                </div>
-                <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Showing <span className="font-bold text-slate-800">{Math.min(filteredTrips.length, tripPP)}</span> of <span className="font-bold text-slate-800">{filteredTrips.length}</span></span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm whitespace-nowrap">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <SortHeader label="Started" field="startedAt" sortField={tripSortF} sortDir={tripSortD} onSort={sortT} />
-                      <th className={`${thCls} text-left`}>Route</th>
-                      <SortHeader label="Driver" field="driver" sortField={tripSortF} sortDir={tripSortD} onSort={sortT} />
-                      <th className={`${thCls} text-left`}>Vehicle</th>
-                      <SortHeader label={`Distance (${dUnit})`} field="distance" sortField={tripSortF} sortDir={tripSortD} onSort={sortT} align="right" />
-                      <SortHeader label="Duration" field="duration" sortField={tripSortF} sortDir={tripSortD} onSort={sortT} />
-                      <th className={`${thCls} text-right`}>Fuel</th>
-                      <SortHeader label={`Avg Speed`} field="avgSpeed" sortField={tripSortF} sortDir={tripSortD} onSort={sortT} align="right" />
-                      <th className={`${thCls} text-left`}>Provider</th>
-                      <th className={`${thCls} text-center`}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {paged.map(trip => (
-                      <tr key={trip.id} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{fmtDatetime(trip.startedAt).substring(0, 16)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                            <span className="text-xs text-slate-700 font-medium truncate max-w-[80px]" title={trip.startLocation?.name}>{trip.startLocation?.name?.split(',')[0] || '—'}</span>
-                            <span className="text-slate-300">→</span>
-                            <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                            <span className="text-xs text-slate-700 font-medium truncate max-w-[80px]" title={trip.endLocation?.name}>{trip.endLocation?.name?.split(',')[0] || '—'}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><div className="font-medium text-slate-900 text-sm">{trip.driver.firstName} {trip.driver.lastName}</div><div className="text-xs text-slate-400">{trip.driver.status}</div></td>
-                        <td className="px-4 py-3"><div className="font-medium text-slate-900 text-sm">{trip.vehicle.name}</div><div className="text-xs text-slate-400">{trip.vehicle.make} {trip.vehicle.model}</div></td>
-                        <td className="px-4 py-3 text-right"><span className="font-bold text-slate-900">{d(trip.distance)}</span><span className="text-xs text-slate-400 ml-0.5">{dUnit}</span></td>
-                        <td className="px-4 py-3 text-sm text-slate-700 font-medium">{fmtDuration(trip.duration)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-slate-700">{trip.fuelConsumed}<span className="text-xs text-slate-400 ml-0.5">gal</span></td>
-                        <td className="px-4 py-3 text-right text-sm text-slate-700">{s(trip.averageSpeed)}<span className="text-xs text-slate-400 ml-0.5">{sUnit}</span></td>
-                        <td className="px-4 py-3 text-xs font-medium text-slate-600 capitalize">{(trip.provider || '').replace(/-/g, ' ')}</td>
-                        <td className="px-4 py-3 text-center"><ViewBtn onClick={(e) => { e.stopPropagation(); setSelected({ item: trip, type: 'trip' }); }} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <Pagination total={filteredTrips.length} page={tripPage} perPage={tripPP} onPage={setTripPage} onPerPage={v => { setTripPP(v); setTripPage(1); }} />
-            </div>
-          );
-        })()}
+                      {/* Expanded ELD Chart */}
+                      {isExpanded && (
+                        <tr className="bg-slate-50/60">
+                          <td colSpan={12} className="px-4 py-3">
+                            <EldChart log={log} useKm={useKm} />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Pagination total={filteredDaily.length} page={dailyPage} perPage={dailyPP} onPage={setDailyPage} onPerPage={v => { setDailyPP(v); setDailyPage(1); }} />
+        </div>
       </div>
 
       {/* Detail Modal */}

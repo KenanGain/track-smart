@@ -90,20 +90,103 @@ const JURISDICTIONS = [
   'Ohio', 'Pennsylvania', 'Illinois', 'Florida', 'Indiana',
 ];
 
-const FUEL_LOCATIONS = [
-  'Pilot Travel Center, Dallas TX',
-  'Love\'s Travel Stop, Houston TX',
-  'Flying J, San Antonio TX',
-  'TA Petro, Columbus OH',
-  'Sheetz, Pittsburgh PA',
-  'Circle K, Orlando FL',
-  'Shell Station, Toronto ON',
-  'Petro-Canada, London ON',
-  'Husky, Hamilton ON',
-  'Esso, Mississauga ON',
-  'Pilot Travel Center, Chicago IL',
-  'Love\'s Travel Stop, Indianapolis IN',
+interface FuelLocation { loc: string; jur: string; }
+
+const US_FUEL_LOCATIONS: FuelLocation[] = [
+  // Texas
+  { loc: 'Pilot Travel Center, Dallas TX',      jur: 'Texas' },
+  { loc: "Love's Travel Stop, Houston TX",       jur: 'Texas' },
+  { loc: 'Flying J, San Antonio TX',             jur: 'Texas' },
+  { loc: 'TA Petro, El Paso TX',                 jur: 'Texas' },
+  { loc: 'Love\'s Travel Stop, Amarillo TX',     jur: 'Texas' },
+  // Ohio
+  { loc: 'TA Petro, Columbus OH',                jur: 'Ohio' },
+  { loc: 'Flying J, Cleveland OH',               jur: 'Ohio' },
+  { loc: 'Pilot Travel Center, Cincinnati OH',   jur: 'Ohio' },
+  // Pennsylvania
+  { loc: 'Sheetz, Pittsburgh PA',                jur: 'Pennsylvania' },
+  { loc: 'TA Petro, Philadelphia PA',            jur: 'Pennsylvania' },
+  { loc: 'Pilot Travel Center, Harrisburg PA',   jur: 'Pennsylvania' },
+  // Florida
+  { loc: 'Circle K, Orlando FL',                 jur: 'Florida' },
+  { loc: 'Pilot Travel Center, Tampa FL',        jur: 'Florida' },
+  { loc: 'Flying J, Miami FL',                   jur: 'Florida' },
+  // Illinois
+  { loc: 'Pilot Travel Center, Chicago IL',      jur: 'Illinois' },
+  { loc: "Love's Travel Stop, Springfield IL",   jur: 'Illinois' },
+  // Indiana
+  { loc: "Love's Travel Stop, Indianapolis IN",  jur: 'Indiana' },
+  { loc: 'Flying J, Fort Wayne IN',              jur: 'Indiana' },
+  // Michigan
+  { loc: 'Pilot Travel Center, Detroit MI',      jur: 'Michigan' },
+  { loc: 'Flying J, Grand Rapids MI',            jur: 'Michigan' },
+  { loc: 'TA Petro, Flint MI',                   jur: 'Michigan' },
+  // California
+  { loc: 'Pilot Travel Center, Los Angeles CA',  jur: 'California' },
+  { loc: 'Flying J, Sacramento CA',              jur: 'California' },
+  { loc: "Love's Travel Stop, Fresno CA",        jur: 'California' },
+  // New York
+  { loc: 'Pilot Travel Center, Buffalo NY',      jur: 'New York' },
+  { loc: 'TA Petro, Albany NY',                  jur: 'New York' },
+  // Nevada
+  { loc: 'Flying J, Las Vegas NV',               jur: 'Nevada' },
+  { loc: 'Pilot Travel Center, Reno NV',         jur: 'Nevada' },
+  // Tennessee
+  { loc: 'Pilot Travel Center, Memphis TN',      jur: 'Tennessee' },
+  { loc: 'Flying J, Nashville TN',               jur: 'Tennessee' },
+  // Georgia
+  { loc: 'Flying J, Atlanta GA',                 jur: 'Georgia' },
+  { loc: "Love's Travel Stop, Savannah GA",      jur: 'Georgia' },
+  // Colorado
+  { loc: "Love's Travel Stop, Denver CO",        jur: 'Colorado' },
+  // Missouri
+  { loc: 'TA Petro, Kansas City MO',             jur: 'Missouri' },
+  { loc: 'Flying J, St. Louis MO',               jur: 'Missouri' },
+  // Maryland
+  { loc: 'Sheetz, Baltimore MD',                 jur: 'Maryland' },
+  // Arizona
+  { loc: 'Pilot Travel Center, Phoenix AZ',      jur: 'Arizona' },
+  { loc: 'Flying J, Tucson AZ',                  jur: 'Arizona' },
+  // Washington
+  { loc: 'Flying J, Seattle WA',                 jur: 'Washington' },
+  // North Carolina
+  { loc: "Love's Travel Stop, Charlotte NC",     jur: 'North Carolina' },
+  { loc: 'Pilot Travel Center, Raleigh NC',      jur: 'North Carolina' },
+  // Virginia
+  { loc: 'Pilot Travel Center, Richmond VA',     jur: 'Virginia' },
+  // Wisconsin
+  { loc: 'Flying J, Milwaukee WI',               jur: 'Wisconsin' },
+  // Minnesota
+  { loc: 'Pilot Travel Center, Minneapolis MN',  jur: 'Minnesota' },
+  // Oklahoma
+  { loc: "Love's Travel Stop, Oklahoma City OK", jur: 'Oklahoma' },
+  // Louisiana
+  { loc: 'Flying J, New Orleans LA',             jur: 'Louisiana' },
+  // Kentucky
+  { loc: 'TA Petro, Louisville KY',              jur: 'Kentucky' },
+  // Alabama
+  { loc: "Love's Travel Stop, Birmingham AL",    jur: 'Alabama' },
 ];
+
+const CA_FUEL_LOCATIONS: FuelLocation[] = [
+  { loc: 'Shell Station, Toronto ON',            jur: 'Ontario' },
+  { loc: 'Petro-Canada, London ON',              jur: 'Ontario' },
+  { loc: 'Husky, Hamilton ON',                   jur: 'Ontario' },
+  { loc: 'Esso, Mississauga ON',                 jur: 'Ontario' },
+  { loc: 'Shell Station, Ottawa ON',             jur: 'Ontario' },
+  { loc: 'Petro-Canada, Calgary AB',             jur: 'Alberta' },
+  { loc: 'Shell Station, Edmonton AB',           jur: 'Alberta' },
+  { loc: 'Esso, Red Deer AB',                    jur: 'Alberta' },
+  { loc: 'Husky, Vancouver BC',                  jur: 'British Columbia' },
+  { loc: 'Petro-Canada, Surrey BC',              jur: 'British Columbia' },
+  { loc: 'Petro-Canada, Winnipeg MB',            jur: 'Manitoba' },
+  { loc: 'Co-op, Saskatoon SK',                  jur: 'Saskatchewan' },
+  { loc: 'Co-op, Regina SK',                     jur: 'Saskatchewan' },
+  { loc: 'Shell Station, Montreal QC',           jur: 'Quebec' },
+  { loc: 'Petro-Canada, Quebec City QC',         jur: 'Quebec' },
+];
+
+const FUEL_LOCATIONS: FuelLocation[] = [...US_FUEL_LOCATIONS, ...CA_FUEL_LOCATIONS];
 
 const IDLING_REASONS = [
   'Loading/Unloading',
@@ -197,9 +280,9 @@ function generateTrips(): TripRecord[] {
   const cmvAssets = INITIAL_ASSETS.filter(a => a.assetCategory === 'CMV' && a.operationalStatus !== 'Drafted');
 
   let id = 1;
-  // Generate trips for last 60 days
-  for (let dayOffset = 0; dayOffset < 60; dayOffset++) {
-    const date = new Date(2025, 1, 21); // Feb 21 2025 as reference
+  const REF_DATE_T = new Date(2026, 2, 1); // Mar 1 2026
+  for (let dayOffset = 0; dayOffset < 425; dayOffset++) {
+    const date = new Date(REF_DATE_T);
     date.setDate(date.getDate() - dayOffset);
     const dateStr = date.toISOString().split('T')[0];
 
@@ -246,8 +329,12 @@ function generatePurchases(): FuelPurchase[] {
   const assignments = DRIVER_VEHICLE_ASSIGNMENTS;
   let id = 1;
 
-  for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
-    const date = new Date(2025, 1, 21);
+  // Cover all of 2025 (Q1–Q4) + Q1 2026: 425 days from 2025-01-01 to 2026-03-01
+  const REF_DATE = new Date(2026, 2, 1); // Mar 1 2026
+  const LOOKBACK_DAYS = 425;
+
+  for (let dayOffset = 0; dayOffset < LOOKBACK_DAYS; dayOffset += 1) {
+    const date = new Date(REF_DATE);
     date.setDate(date.getDate() - dayOffset);
     const dateStr = date.toISOString().split('T')[0];
 
@@ -256,21 +343,26 @@ function generatePurchases(): FuelPurchase[] {
       if (!asset || asset.operationalStatus === 'OutOfService') continue;
 
       const seed = id * 47 + dayOffset * 11;
-      // Drivers fuel roughly every 2-3 days.
-      if (seededRandom(seed) > 0.45) continue;
+      // Drivers fuel roughly every 2-3 days
+      if (seededRandom(seed) > 0.40) continue;
 
+      // US vehicles favour US locations (~80%), CA plate vehicles favour CA (~80%)
+      const isCAVehicle = ['TR-2088', 'TR-7044'].includes(assignment.unitNumber);
+      const locPool = seededRandom(seed + 88) < (isCAVehicle ? 0.75 : 0.20)
+        ? CA_FUEL_LOCATIONS
+        : US_FUEL_LOCATIONS;
+
+      const locObj = pick(locPool, seed + 3);
       const fuelType = getFuelTypeForAssignment(assignment, seed + 4, asset.vehicleType);
       const profile = getFuelPurchaseProfile(fuelType);
       const gallons = +rng(profile.minGallons, profile.maxGallons, seed + 1).toFixed(1);
       const ppg = +rng(profile.minPpg, profile.maxPpg, seed + 2).toFixed(2);
-      const location = pick(FUEL_LOCATIONS, seed + 3);
-      const jur = location.includes('ON') ? 'Ontario' : location.split(', ')[1]?.split(' ')[0] || 'Texas';
 
       purchases.push({
         id: `fp-${String(id).padStart(4, '0')}`,
         date: dateStr,
-        location,
-        jurisdiction: jur,
+        location: locObj.loc,
+        jurisdiction: locObj.jur,
         vehicleId: assignment.vehicleId,
         unitNumber: assignment.unitNumber,
         driverId: assignment.driverId,
@@ -294,9 +386,10 @@ function generateIdlingEvents(): IdlingEvent[] {
   const events: IdlingEvent[] = [];
   const assignments = DRIVER_VEHICLE_ASSIGNMENTS;
   let id = 1;
+  const REF_DATE_I = new Date(2026, 2, 1);
 
-  for (let dayOffset = 0; dayOffset < 60; dayOffset++) {
-    const date = new Date(2025, 1, 21);
+  for (let dayOffset = 0; dayOffset < 425; dayOffset++) {
+    const date = new Date(REF_DATE_I);
     date.setDate(date.getDate() - dayOffset);
     const dateStr = date.toISOString().split('T')[0];
 
@@ -313,7 +406,7 @@ function generateIdlingEvents(): IdlingEvent[] {
         const duration = Math.round(rng(5, 90, eSeed));
         const fuelWasted = +(duration * rng(0.3, 0.8, eSeed + 1) / 60).toFixed(2);
         const reason = pick(IDLING_REASONS, eSeed + 2);
-        const loc = pick(FUEL_LOCATIONS, eSeed + 3).split(',')[0];
+        const loc = pick(FUEL_LOCATIONS, eSeed + 3).loc.split(',')[0];
 
         events.push({
           id: `idle-${String(id).padStart(4, '0')}`,

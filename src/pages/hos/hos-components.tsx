@@ -89,6 +89,77 @@ export function ViewBtn({ onClick }: { onClick: (e: React.MouseEvent) => void })
   );
 }
 
+// ── Mini ELD Chart for Modal ───────────────────────────────────────────────────
+function ModalEldChart({ dailyLog, dist, unit }: { dailyLog: HosDailyLog; dist: (v: number) => number; unit: string }) {
+  const dur = dailyLog.statusDurations;
+  const dayMs = 24 * 3600000;
+  const laneLabels = ['Off Duty', 'Sleeper', 'Driving', 'On Duty'];
+  const laneColors = ['#94a3b8', '#3b82f6', '#f59e0b', '#10b981'];
+  const laneMs = [dur.offDuty, dur.sleeperBed, dur.driving, dur.onDuty];
+
+  const segs: { lane: number; startPct: number; widthPct: number; color: string }[] = [];
+  let cursor = 0;
+  const push = (lane: number, ms: number, color: string) => {
+    if (ms > 0) { segs.push({ lane, startPct: (cursor / dayMs) * 100, widthPct: (ms / dayMs) * 100, color }); cursor += ms; }
+  };
+  push(0, dur.offDuty * 0.3, laneColors[0]);
+  push(1, dur.sleeperBed * 0.6, laneColors[1]);
+  push(2, dur.driving * 0.6, laneColors[2]);
+  push(3, dur.onDuty * 0.5, laneColors[3]);
+  push(2, dur.driving * 0.4, laneColors[2]);
+  push(3, dur.onDuty * 0.5, laneColors[3]);
+  push(1, dur.sleeperBed * 0.4, laneColors[1]);
+  push(0, dur.offDuty * 0.7, laneColors[0]);
+
+  const hours = Array.from({ length: 25 }, (_, i) => i);
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden">
+      <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700">24-Hour Duty Status</div>
+      {/* Hour labels */}
+      <div className="flex border-b border-slate-200" style={{ marginLeft: 80, marginRight: 60 }}>
+        {hours.map(h => (
+          <div key={h} className="text-[8px] text-slate-400 font-mono text-center" style={{ width: `${100 / 24}%`, minWidth: 0 }}>
+            {h === 0 ? 'MID' : h === 12 ? 'NOON' : h}
+          </div>
+        ))}
+      </div>
+      {/* Lanes */}
+      {laneLabels.map((label, idx) => (
+        <div key={label} className="flex items-stretch border-b border-slate-100" style={{ height: 24 }}>
+          <div className="w-[80px] shrink-0 flex items-center px-2 text-[9px] font-bold text-slate-500 bg-slate-50/80 border-r border-slate-200">{label}</div>
+          <div className="flex-1 relative" style={{ background: `repeating-linear-gradient(90deg, transparent, transparent calc(${100/24}% - 1px), #e2e8f0 calc(${100/24}% - 1px), #e2e8f0 calc(${100/24}%))` }}>
+            <div className="absolute inset-0" style={{ backgroundColor: laneColors[idx], opacity: 0.08 }} />
+            {segs.filter(s => s.lane === idx).map((seg, i) => (
+              <div key={i} className="absolute top-0.5 bottom-0.5 rounded-sm" style={{
+                left: `${Math.min(seg.startPct, 100)}%`,
+                width: `${Math.min(seg.widthPct, 100 - seg.startPct)}%`,
+                backgroundColor: seg.color, opacity: 0.85,
+                minWidth: seg.widthPct > 0.2 ? 2 : 0,
+              }} />
+            ))}
+          </div>
+          <div className="w-[60px] shrink-0 flex items-center justify-end px-1.5 text-[10px] font-mono font-bold border-l border-slate-200 bg-slate-50/50" style={{ color: laneColors[idx] }}>
+            {fmtMs(laneMs[idx])}
+          </div>
+        </div>
+      ))}
+      {/* Legend */}
+      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-4 text-[9px] text-slate-400">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-[2px] rounded bg-violet-500 inline-block" /> PC / Yard Moves</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-[2px] rounded bg-red-400 inline-block" /> Exemption Mode</span>
+        </div>
+        <div className="flex items-center gap-3 text-[9px] text-slate-400 font-medium">
+          <span>Distance: <span className="font-bold text-slate-700">{dist(dailyLog.distances.total)} {unit}</span></span>
+          {dur.personalConveyance > 0 && <span>PC: <span className="font-bold text-violet-600">{fmtMs(dur.personalConveyance)}</span></span>}
+          {dur.yardMove > 0 && <span>YM: <span className="font-bold text-pink-600">{fmtMs(dur.yardMove)}</span></span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Detail Modal (popup) ───────────────────────────────────────────────────────
 export function DetailModal({ item, type, onClose, useKm }: {
   item: HosDailyLog | HosLog | HosTrip; type: 'daily' | 'log' | 'trip'; onClose: () => void; useKm?: boolean;
@@ -96,10 +167,12 @@ export function DetailModal({ item, type, onClose, useKm }: {
   const hosLog = item as HosLog;
   const dailyLog = item as HosDailyLog;
   const trip = item as HosTrip;
-  const unit = useKm ? 'km' : 'mi';
-  const speedUnit = useKm ? 'km/h' : 'mph';
-  const dist = (v: number) => useKm ? miToKm(v) : v;
-  const spd = (v: number) => useKm ? mphToKmh(v) : v;
+  const [modalUseKm, setModalUseKm] = React.useState(Boolean(useKm));
+  React.useEffect(() => { setModalUseKm(Boolean(useKm)); }, [useKm]);
+  const unit = modalUseKm ? 'km' : 'mi';
+  const speedUnit = modalUseKm ? 'km/h' : 'mph';
+  const dist = (v: number) => modalUseKm ? miToKm(v) : v;
+  const spd = (v: number) => modalUseKm ? mphToKmh(v) : v;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -111,15 +184,18 @@ export function DetailModal({ item, type, onClose, useKm }: {
             <h2 className="text-base font-bold text-slate-900">{type === 'daily' ? 'Daily Log' : type === 'log' ? 'HOS Log' : 'Trip'} Details</h2>
             <p className="text-xs font-mono text-slate-400 mt-0.5">{item.id}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg"><X size={18} className="text-slate-500" /></button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white">
+              <button onClick={() => setModalUseKm(false)} className={`px-3 py-1.5 text-xs font-semibold transition-colors ${!modalUseKm ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700'}`}>Miles</button>
+              <button onClick={() => setModalUseKm(true)} className={`px-3 py-1.5 text-xs font-semibold transition-colors ${modalUseKm ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700'}`}>Km</button>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg"><X size={18} className="text-slate-500" /></button>
+          </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          <div className="flex items-center gap-2 flex-wrap">
-            {type === 'log' && <StatusBadge status={hosLog.status} />}
-            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-lg capitalize">{(item.provider || '').replace(/-/g, ' ')}</span>
-          </div>
+          {type === 'log' && <div className="flex items-center gap-2 flex-wrap"><StatusBadge status={hosLog.status} /></div>}
 
           {/* Daily Log */}
           {type === 'daily' && (
@@ -128,6 +204,10 @@ export function DetailModal({ item, type, onClose, useKm }: {
                 <div><p className="text-xs text-slate-400 font-semibold uppercase mb-1">Date</p><p className="text-sm font-medium">{dailyLog.date}</p></div>
                 <div><p className="text-xs text-slate-400 font-semibold uppercase mb-1">Total Distance</p><p className="text-sm font-medium">{dist(dailyLog.distances?.total)} {unit}</p></div>
               </div>
+
+              {/* ELD 24h Chart */}
+              <ModalEldChart dailyLog={dailyLog} dist={dist} unit={unit} />
+
               <div><h3 className="text-sm font-bold text-slate-900 mb-3">Status Durations</h3><DurationBar durations={dailyLog.statusDurations} /></div>
               <div className="grid grid-cols-4 gap-3">
                 {Object.entries(dailyLog.distances).map(([k, v]) => (

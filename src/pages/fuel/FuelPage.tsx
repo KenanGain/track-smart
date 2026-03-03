@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Download, MapPin, X, Plus, Calendar, ArrowUp, ArrowDown, Search, SlidersHorizontal, ChevronLeft, ChevronRight, TrendingUp, Globe, BarChart3, Truck, Fuel, Gauge, LayoutGrid, Route, ShoppingCart } from 'lucide-react';
+import { Download, MapPin, X, Plus, Calendar, ArrowUp, ArrowDown, Search, SlidersHorizontal, ChevronLeft, ChevronRight, TrendingUp, Globe, BarChart3, Truck, Fuel, Gauge, LayoutGrid, Route, ShoppingCart, Pencil, Upload } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
 import {
@@ -333,8 +333,8 @@ export function FuelPage() {
   const [tripJurisdiction, setTripJurisdiction] = useState('All');
   const [tripVehicle, setTripVehicle] = useState('All');
   const [purchaseVehicle, setPurchaseVehicle] = useState('All');
-  const [purchaseDriver, setPurchaseDriver] = useState('All');
-  const [purchaseCountry, setPurchaseCountry] = useState<'All' | 'US' | 'Canada'>('All');
+  const [purchaseDriver] = useState('All');
+  const [purchaseCountry, setPurchaseCountry] = useState<'US' | 'Canada'>('US');
   const [purchaseJurisdiction, setPurchaseJurisdiction] = useState('All');
   const [purchaseFuelType, setPurchaseFuelType] = useState('All');
   const [idlingVehicle, setIdlingVehicle] = useState('All');
@@ -369,6 +369,9 @@ export function FuelPage() {
   const [showAddTrip, setShowAddTrip] = useState(false);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showAddIdling, setShowAddIdling] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [editingPurchase, setEditingPurchase] = useState<FuelPurchase | null>(null);
+  const [bulkCountry, setBulkCountry] = useState<'US' | 'Canada'>('US');
 
   // ── Local data (growable) ──
   const [localTrips, setLocalTrips] = useState<TripRecord[]>(TRIP_RECORDS);
@@ -384,12 +387,15 @@ export function FuelPage() {
   const [addTripOdoEnd, setAddTripOdoEnd] = useState('');
 
   // ── Add form state: Purchase ──
+  const [addPurchCountry, setAddPurchCountry] = useState<'US' | 'Canada'>('US');
   const [addPurchDate, setAddPurchDate] = useState('');
   const [addPurchVehicle, setAddPurchVehicle] = useState('');
   const [addPurchLocation, setAddPurchLocation] = useState('');
+  const [addPurchJurisdiction, setAddPurchJurisdiction] = useState('');
   const [addPurchGallons, setAddPurchGallons] = useState('');
   const [addPurchPpg, setAddPurchPpg] = useState('');
   const [addPurchPayment, setAddPurchPayment] = useState('Fuel Card');
+  const [addPurchFuelType, setAddPurchFuelType] = useState('Diesel');
 
   // ── Add form state: Idling ──
   const [addIdleDate, setAddIdleDate] = useState('');
@@ -454,8 +460,8 @@ export function FuelPage() {
     { id: 'fuelCard', label: 'FuelCard #', visible: true },
     { id: 'otherRef', label: 'Other Ref #', visible: false },
   ]);
-  // ── Currency toggle (purchases) ──
-  const [purchCurrency, setPurchCurrency] = useState<'USD' | 'CAD'>('USD');
+  // ── Currency derived from country toggle ──
+  // US → USD/gallons, Canada → CAD/litres (no separate state needed)
 
   // ── Column visibility (idling) ──
   const [idleCols, setIdleCols] = useState<ColDef[]>([
@@ -496,8 +502,9 @@ export function FuelPage() {
     let data = localPurchases;
     if (purchaseVehicle !== 'All') data = data.filter(p => p.unitNumber === purchaseVehicle);
     if (purchaseDriver !== 'All') data = data.filter(p => p.driverName === purchaseDriver);
-    if (purchaseCountry === 'US') data = data.filter(p => US_JURISDICTIONS.has(p.jurisdiction));
-    if (purchaseCountry === 'Canada') data = data.filter(p => CANADA_JURISDICTIONS.has(p.jurisdiction));
+    data = purchaseCountry === 'US'
+      ? data.filter(p => US_JURISDICTIONS.has(p.jurisdiction))
+      : data.filter(p => CANADA_JURISDICTIONS.has(p.jurisdiction));
     if (purchaseJurisdiction !== 'All') data = data.filter(p => p.jurisdiction === purchaseJurisdiction);
     if (purchaseFuelType !== 'All') {
       data = data.filter(p => {
@@ -518,7 +525,7 @@ export function FuelPage() {
       if (typeof av === 'number' && typeof bv === 'number') return purchSortDir === 'desc' ? bv - av : av - bv;
       return purchSortDir === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
     });
-  }, [localPurchases, purchaseVehicle, purchaseDriver, purchaseCountry, purchaseJurisdiction, purchaseFuelType, purchDateFrom, purchDateTo, purchSearch, purchSortField, purchSortDir]);
+  }, [localPurchases, purchaseVehicle, purchaseDriver, purchaseCountry, purchaseJurisdiction, purchaseFuelType, purchDateFrom, purchDateTo, purchSearch, purchSortField, purchSortDir]); // purchaseCountry always 'US'|'Canada'
 
   // ── Idling data ──
   const filteredIdling = useMemo(() => {
@@ -573,25 +580,54 @@ export function FuelPage() {
     const asset = INITIAL_ASSETS.find(a => a.unitNumber === addPurchVehicle);
     const gal = Number(addPurchGallons) || 0;
     const ppg = Number(addPurchPpg) || 0;
+    // If Canada mode, convert litres → gallons and $/L → $/gal for storage
+    const isCA = addPurchCountry === 'Canada';
+    const storedGal = isCA ? gal / 3.78541 : gal;
+    const storedPpg = isCA ? ppg * 3.78541 : ppg;
     const newPurchase: FuelPurchase = {
-      id: `fp-new-${Date.now()}`,
+      id: editingPurchase ? editingPurchase.id : `fp-new-${Date.now()}`,
       date: addPurchDate,
       location: addPurchLocation,
-      jurisdiction: '',
+      jurisdiction: addPurchJurisdiction || '',
       vehicleId: asset?.id || '',
       unitNumber: addPurchVehicle,
       driverId: driver?.driverId || '',
       driverName: driver?.driverName || '—',
-      gallons: gal,
-      pricePerGallon: ppg,
-      totalCost: +(gal * ppg).toFixed(2),
-      fuelType: asset?.vehicleType === 'Reefer' ? 'Diesel/Electric' : 'Diesel',
+      gallons: +storedGal.toFixed(3),
+      pricePerGallon: +storedPpg.toFixed(4),
+      totalCost: +(storedGal * storedPpg).toFixed(2),
+      fuelType: addPurchFuelType || 'Diesel',
       paymentMethod: addPurchPayment,
     };
-    setLocalPurchases(prev => [newPurchase, ...prev]);
+    if (editingPurchase) {
+      setLocalPurchases(prev => prev.map(p => p.id === editingPurchase.id ? newPurchase : p));
+    } else {
+      setLocalPurchases(prev => [newPurchase, ...prev]);
+    }
     setShowAddPurchase(false);
-    setAddPurchDate(''); setAddPurchVehicle(''); setAddPurchLocation('');
-    setAddPurchGallons(''); setAddPurchPpg(''); setAddPurchPayment('Fuel Card');
+    setEditingPurchase(null);
+    resetPurchForm();
+  }
+
+  function resetPurchForm() {
+    setAddPurchCountry('US'); setAddPurchDate(''); setAddPurchVehicle(''); setAddPurchLocation('');
+    setAddPurchJurisdiction(''); setAddPurchGallons(''); setAddPurchPpg(''); setAddPurchPayment('Fuel Card');
+    setAddPurchFuelType('Diesel');
+  }
+
+  function openEditPurchase(p: FuelPurchase) {
+    const isCA = !US_JURISDICTIONS.has(p.jurisdiction);
+    setAddPurchCountry(isCA ? 'Canada' : 'US');
+    setAddPurchDate(p.date);
+    setAddPurchVehicle(p.unitNumber);
+    setAddPurchLocation(p.location);
+    setAddPurchJurisdiction(p.jurisdiction || '');
+    setAddPurchGallons(isCA ? (p.gallons * 3.78541).toFixed(1) : String(p.gallons));
+    setAddPurchPpg(isCA ? (p.pricePerGallon / 3.78541).toFixed(3) : String(p.pricePerGallon));
+    setAddPurchPayment(p.paymentMethod || 'Fuel Card');
+    setAddPurchFuelType(p.fuelType || 'Diesel');
+    setEditingPurchase(p);
+    setShowAddPurchase(true);
   }
 
   function saveIdling() {
@@ -636,28 +672,6 @@ export function FuelPage() {
             <p className="text-sm text-gray-500">Track fuel economy, idling, emissions, and purchases across your fleet.</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-              <button
-                onClick={() => setDistanceUnit('mi')}
-                className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
-                  distanceUnit === 'mi'
-                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                mi
-              </button>
-              <button
-                onClick={() => setDistanceUnit('km')}
-                className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
-                  distanceUnit === 'km'
-                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                km
-              </button>
-            </div>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
               <Download size={16} /> Export
             </button>
@@ -667,9 +681,14 @@ export function FuelPage() {
               </button>
             )}
             {activeTab === 'purchases' && (
-              <button onClick={() => setShowAddPurchase(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm">
-                <Plus size={15} /> Add Purchase
-              </button>
+              <>
+                <button onClick={() => { resetPurchForm(); setShowAddPurchase(true); }} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm">
+                  <Plus size={15} /> Add Purchase
+                </button>
+                <button onClick={() => setShowBulkUpload(true)} className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 shadow-sm">
+                  <Upload size={15} /> Bulk Upload
+                </button>
+              </>
             )}
             {activeTab === 'idling' && (
               <button onClick={() => setShowAddIdling(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm">
@@ -711,6 +730,8 @@ export function FuelPage() {
           const totalIdleMin = localIdling.reduce((s, e) => s + e.durationMinutes, 0);
           const totalIdleFuel = localIdling.reduce((s, e) => s + e.fuelWastedGal, 0);
           const co2Tons = totalGallons * 0.01018; // ~22.44 lbs CO₂ per gal diesel → metric tons
+          const overviewEffLabel = distanceUnit === 'mi' ? 'MPG' : 'km/L';
+          const overviewToEff = (mpg: number) => distanceUnit === 'mi' ? mpg : mpg * 0.425144;
 
           // ── Monthly Fuel Spending (bar chart) ──
           const monthlySpendMap = new Map<string, number>();
@@ -776,7 +797,7 @@ export function FuelPage() {
                   { label: 'Total Distance', value: `${formatDistance(totalDistDisplay)} ${distanceUnitLabel}`, icon: <Route size={18} />, color: 'text-blue-600 bg-blue-50' },
                   { label: 'Fuel Purchased', value: `${formatDistance(totalGallons, 1)} gal`, icon: <Fuel size={18} />, color: 'text-emerald-600 bg-emerald-50' },
                   { label: 'Total Fuel Cost', value: `$${formatDistance(totalCost)}`, icon: <ShoppingCart size={18} />, color: 'text-violet-600 bg-violet-50' },
-                  { label: 'Avg. Fuel Efficiency', value: `${avgMpg.toFixed(1)} MPG`, icon: <Gauge size={18} />, color: 'text-amber-600 bg-amber-50' },
+                  { label: 'Avg. Fuel Efficiency', value: `${overviewToEff(avgMpg).toFixed(1)} ${overviewEffLabel}`, icon: <Gauge size={18} />, color: 'text-amber-600 bg-amber-50' },
                   { label: 'Idling Time', value: fmtDuration(totalIdleMin), icon: <TrendingUp size={18} />, color: 'text-red-600 bg-red-50' },
                   { label: 'Fuel Wasted (Idle)', value: `${totalIdleFuel.toFixed(1)} gal`, icon: <BarChart3 size={18} />, color: 'text-orange-600 bg-orange-50' },
                 ].map(kpi => (
@@ -893,7 +914,7 @@ export function FuelPage() {
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-slate-100">
                     <h3 className="text-[15px] font-bold text-slate-900">Fuel Efficiency by Vehicle</h3>
-                    <p className="text-xs text-slate-400">Miles per gallon (trip distance / fuel purchased)</p>
+                    <p className="text-xs text-slate-400">{distanceUnit === 'mi' ? 'Miles per gallon' : 'Kilometers per litre'} (trip distance / fuel purchased)</p>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200">
@@ -901,7 +922,7 @@ export function FuelPage() {
                         <th className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Vehicle</th>
                         <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance ({distanceUnitLabel})</th>
                         <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fuel (gal)</th>
-                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">MPG</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">{overviewEffLabel}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -911,7 +932,7 @@ export function FuelPage() {
                           <td className="px-5 py-3 text-right text-slate-600">{formatDistance(row.distance)}</td>
                           <td className="px-5 py-3 text-right text-slate-600">{row.gallons}</td>
                           <td className="px-5 py-3 text-right">
-                            <span className={`font-bold ${row.mpg >= 6 ? 'text-emerald-600' : row.mpg >= 4 ? 'text-amber-600' : 'text-red-600'}`}>{row.mpg}</span>
+                            <span className={`font-bold ${row.mpg >= 6 ? 'text-emerald-600' : row.mpg >= 4 ? 'text-amber-600' : 'text-red-600'}`}>{overviewToEff(row.mpg).toFixed(1)}</span>
                           </td>
                         </tr>
                       ))}
@@ -1019,6 +1040,8 @@ export function FuelPage() {
           // KPI stats
           const totalVehKm = vehRows.reduce((s, v) => s + v.totalKm, 0);
           const avgMpg = vehRows.length > 0 ? vehRows.reduce((s, v) => s + (v.fuelEfficiency || 0), 0) / vehRows.filter(v => v.fuelEfficiency).length : 0;
+          const effLabel = distanceUnit === 'mi' ? 'MPG' : 'km/L';
+          const toEff = (mpg: number) => distanceUnit === 'mi' ? mpg : mpg * 0.425144;
           const uniqueJurCount = new Set(vehFiltered.map(r => r.jurisdiction)).size;
           const monthLabelV = vehFilterMonth ? ['','January','February','March','April','May','June','July','August','September','October','November','December'][Number(vehFilterMonth)] : 'All Months';
           const regionLabelV = vehFilterRegion === 'All' ? 'All Regions' : vehFilterRegion;
@@ -1057,7 +1080,7 @@ export function FuelPage() {
                 </div>
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Avg. Fuel Efficiency</div>
                 <div className="text-[11px] text-slate-400 mt-0.5">Fleet average</div>
-                <div className="text-3xl font-bold text-slate-900 mt-2">{avgMpg.toFixed(1)} <span className="text-base font-medium text-slate-400">MPG</span></div>
+                <div className="text-3xl font-bold text-slate-900 mt-2">{toEff(avgMpg).toFixed(1)} <span className="text-base font-medium text-slate-400">{effLabel}</span></div>
                 <div className="text-xs text-slate-400 mt-1">Based on {vehRows.filter(v => v.fuelEfficiency).length} vehicles</div>
               </div>
             </div>
@@ -1093,8 +1116,21 @@ export function FuelPage() {
                   Reset filters
                 </button>
 
-                <div className="ml-auto text-sm text-gray-500">
-                  <span className="font-bold text-gray-900">{vehRows.length}</span> Vehicles Found
+                <div className="ml-auto flex items-center gap-3">
+                  {/* mi / km toggle */}
+                  <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                    <button onClick={() => setDistanceUnit('mi')}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${distanceUnit === 'mi' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                      mi
+                    </button>
+                    <button onClick={() => setDistanceUnit('km')}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${distanceUnit === 'km' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                      km
+                    </button>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    <span className="font-bold text-gray-900">{vehRows.length}</span> Vehicles Found
+                  </div>
                 </div>
               </div>
 
@@ -1120,9 +1156,8 @@ export function FuelPage() {
                       <th className={`${thClass} text-left`} style={{ width: '36px' }}></th>
                       <th className={`${thClass} text-left`}>Vehicle</th>
                       <th className={`${thClass} text-left`}>Fuel Type</th>
-                      <th className={`${thClass} text-right`}>Efficiency</th>
+                      <th className={`${thClass} text-right`}>Efficiency ({effLabel})</th>
                       <th className={`${thClass} text-right`}>Distance ({distanceUnitLabel})</th>
-                      <th className={`${thClass} text-right`}>Distance ({altDistanceUnitLabel})</th>
                       <th className={`${thClass} text-right`}>Months</th>
                     </tr>
                   </thead>
@@ -1152,9 +1187,8 @@ export function FuelPage() {
                                 <Fuel size={10} /> {row.fuelType || '—'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-600">{row.fuelEfficiency ? `${row.fuelEfficiency} MPG` : '—'}</td>
+                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-600">{row.fuelEfficiency ? `${toEff(row.fuelEfficiency).toFixed(1)} ${effLabel}` : '—'}</td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(row.totalKm))}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-500">{formatDistance(altDisplayFromKm(row.totalKm))}</td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono font-semibold text-slate-700">{row.monthBreakdown.length}</td>
                           </tr>
 
@@ -1179,7 +1213,6 @@ export function FuelPage() {
                                     </div>
                                   </td>
                                   <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(m.distKm))}</td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(m.distKm))}</td>
                                   <td className="px-4 py-2.5"></td>
                                 </tr>
 
@@ -1197,7 +1230,6 @@ export function FuelPage() {
                                       </div>
                                     </td>
                                     <td className="px-4 py-2 text-right text-[12px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(j.distKm))}</td>
-                                    <td className="px-4 py-2 text-right text-[12px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(j.distKm))}</td>
                                     <td className="px-4 py-2"></td>
                                   </tr>
                                 ))}
@@ -1213,7 +1245,6 @@ export function FuelPage() {
                       <td className="px-3 py-3"></td>
                       <td className="px-4 py-3 text-[13px] font-bold text-slate-900" colSpan={3}>Total ({vehRows.length} vehicles)</td>
                       <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(totalVehKm))}</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-500">{formatDistance(altDisplayFromKm(totalVehKm))}</td>
                       <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-700">{uniqueJurCount}</td>
                     </tr>
                   </tfoot>
@@ -1493,8 +1524,18 @@ export function FuelPage() {
                   </button>
                 </div>
 
-                {/* Right side: record count */}
+                {/* Right side: mi/km toggle + record count */}
                 <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                    <button onClick={() => setDistanceUnit('mi')}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${distanceUnit === 'mi' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                      mi
+                    </button>
+                    <button onClick={() => setDistanceUnit('km')}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${distanceUnit === 'km' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                      km
+                    </button>
+                  </div>
                   <div className="text-sm text-gray-500">
                     <span className="font-bold text-gray-900">{jurRows.length}</span> Jurisdictions Found
                   </div>
@@ -1524,7 +1565,6 @@ export function FuelPage() {
                       <th className={`${thClass} text-left`}>Jurisdiction</th>
                       <th className={`${thClass} text-left`}>Date</th>
                       <th className={`${thClass} text-right`}>Distance ({distanceUnitLabel})</th>
-                      <th className={`${thClass} text-right`}>Distance ({altDistanceUnitLabel})</th>
                       <th className={`${thClass} text-right`}>Vehicles</th>
                     </tr>
                   </thead>
@@ -1548,7 +1588,6 @@ export function FuelPage() {
                               <span className="text-[12px] font-medium text-slate-500">{row.dateLabel}</span>
                             </td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(row.totalKm))}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-500">{formatDistance(altDisplayFromKm(row.totalKm))}</td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono font-semibold text-slate-700">{row.vehicleCount}</td>
                           </tr>
 
@@ -1579,7 +1618,6 @@ export function FuelPage() {
                                     <span className="text-[12px] text-slate-400">{v.monthRecords.length} month{v.monthRecords.length !== 1 ? 's' : ''}</span>
                                   </td>
                                   <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(v.distKm))}</td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(v.distKm))}</td>
                                   <td className="px-4 py-2.5"></td>
                                 </tr>
 
@@ -1587,7 +1625,7 @@ export function FuelPage() {
                                 {isVExpanded && (
                                   <tr style={{ borderLeft: '4px solid #93c5fd' }} className="bg-white">
                                     <td></td>
-                                    <td colSpan={5} className="px-4 py-0 pb-3">
+                                    <td colSpan={4} className="px-4 py-0 pb-3">
                                       <div className="ml-6 mt-1 space-y-3">
                                         {/* Vehicle Specs */}
                                         <div className="flex gap-4 flex-wrap">
@@ -1602,7 +1640,7 @@ export function FuelPage() {
                                             <Gauge size={13} className="text-emerald-600" />
                                             <div>
                                               <div className="text-[10px] font-bold text-emerald-800/60 uppercase">Efficiency</div>
-                                              <div className="text-[13px] font-semibold text-emerald-900">{v.fuelEfficiency ? `${v.fuelEfficiency} MPG` : 'N/A'}</div>
+                                              <div className="text-[13px] font-semibold text-emerald-900">{v.fuelEfficiency ? `${(distanceUnit === 'mi' ? v.fuelEfficiency : v.fuelEfficiency * 0.425144).toFixed(1)} ${distanceUnit === 'mi' ? 'MPG' : 'km/L'}` : 'N/A'}</div>
                                             </div>
                                           </div>
                                           <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-100">
@@ -1620,7 +1658,6 @@ export function FuelPage() {
                                               <tr className="bg-slate-50/80">
                                                 <th className="px-4 py-2 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Month</th>
                                                 <th className="px-4 py-2 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance ({distanceUnitLabel})</th>
-                                                <th className="px-4 py-2 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance ({altDistanceUnitLabel})</th>
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -1628,7 +1665,6 @@ export function FuelPage() {
                                                 <tr key={mr.month} className="border-t border-slate-100 hover:bg-slate-50/50">
                                                   <td className="px-4 py-2 text-[13px] font-medium text-slate-700">{mr.label}</td>
                                                   <td className="px-4 py-2 text-right text-[13px] font-mono font-semibold text-slate-800">{formatDistance(displayFromKm(mr.distKm))}</td>
-                                                  <td className="px-4 py-2 text-right text-[13px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(mr.distKm))}</td>
                                                 </tr>
                                               ))}
                                             </tbody>
@@ -1651,7 +1687,6 @@ export function FuelPage() {
                       <td className="px-4 py-3 text-[13px] font-bold text-slate-900">Total ({jurRows.length} jurisdictions)</td>
                       <td></td>
                       <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(totalKm))}</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-500">{formatDistance(altDisplayFromKm(totalKm))}</td>
                       <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-700">{totalVehicles}</td>
                     </tr>
                   </tfoot>
@@ -1751,22 +1786,19 @@ export function FuelPage() {
 
           const pagedPurch = filteredPurchases.slice((purchPage - 1) * purchPerPage, purchPage * purchPerPage);
           const sortPur = (f: string) => toggleSort(f, purchSortField, purchSortDir, setPurchSortField, setPurchSortDir);
-          const jurisdictionOptions = purchaseCountry === 'US'
-            ? US_STATES
-            : purchaseCountry === 'Canada'
-              ? CA_PROVINCES
-              : [...US_STATES, ...CA_PROVINCES];
-          const allJurisdictionLabel = purchaseCountry === 'US'
-            ? 'All States'
-            : purchaseCountry === 'Canada'
-              ? 'All Provinces'
-              : 'All States/Provinces';
+          const purchCurrency = purchaseCountry === 'US' ? 'USD' : 'CAD';
+          const jurisdictionOptions = purchaseCountry === 'US' ? US_STATES : CA_PROVINCES;
+          const allJurisdictionLabel = purchaseCountry === 'US' ? 'All States' : 'All Provinces';
 
           // ── KPI computations ──
+          const GAL_TO_L = 3.78541;
           const totalSpendUSD = filteredPurchases.reduce((s, p) => s + p.totalCost, 0);
           const totalSpendCAD = filteredPurchases.reduce((s, p) => s + p.totalCost * getRate(p.date), 0);
-          const totalGallons = filteredPurchases.reduce((s, p) => s + p.gallons, 0);
-          const avgPpg = totalGallons > 0 ? totalSpendUSD / totalGallons : 0;
+          const totalGallons  = filteredPurchases.reduce((s, p) => s + p.gallons, 0);
+          const totalLitres   = totalGallons * GAL_TO_L;
+          // USD: avg $/gal   CAD: avg CAD$/litre
+          const avgPpg  = totalGallons > 0 ? totalSpendUSD / totalGallons : 0;
+          const avgPpl  = totalLitres  > 0 ? totalSpendCAD / totalLitres  : 0;
 
           // US / CA split
           const usCount = filteredPurchases.filter(p => !CANADA_JURISDICTIONS.has(p.jurisdiction)).length;
@@ -1788,14 +1820,20 @@ export function FuelPage() {
           const spendTrend = prevTotal > 0 ? ((lastTotal - prevTotal) / prevTotal) * 100 : 0;
 
           // Top 5 vehicles by avg $/gal for gradient bars
-          const vehAccum = new Map<string, { total: number; gallons: number }>();
+          const vehAccum = new Map<string, { total: number; totalCAD: number; gallons: number }>();
           filteredPurchases.forEach(p => {
-            const cur = vehAccum.get(p.unitNumber) || { total: 0, gallons: 0 };
-            cur.total += p.totalCost; cur.gallons += p.gallons;
+            const cur = vehAccum.get(p.unitNumber) || { total: 0, totalCAD: 0, gallons: 0 };
+            const rate = getRate(p.date);
+            cur.total    += p.totalCost;
+            cur.totalCAD += p.totalCost * rate;
+            cur.gallons  += p.gallons;
             vehAccum.set(p.unitNumber, cur);
           });
           const topVehs = [...vehAccum.entries()]
-            .map(([unit, { total, gallons }]) => ({ unit, avgPpg: gallons > 0 ? total / gallons : 0 }))
+            .map(([unit, { total, totalCAD, gallons }]) => ({
+              unit, gallons, totalCAD,
+              avgPpg: gallons > 0 ? total / gallons : 0,
+            }))
             .sort((a, b) => b.avgPpg - a.avgPpg)
             .slice(0, 5);
           const maxPpg = topVehs.length > 0 ? topVehs[0].avgPpg : 1;
@@ -1876,31 +1914,44 @@ export function FuelPage() {
                   </div>
                   <div className="pt-1 border-t border-slate-100">
                     <div className="text-[11px] text-slate-400 flex justify-between">
-                      <span>Total Gallons</span>
-                      <span className="font-semibold text-slate-600">{totalGallons.toLocaleString(undefined, { maximumFractionDigits: 0 })} gal</span>
+                      {purchCurrency === 'USD' ? (
+                        <><span>Total Gallons</span><span className="font-semibold text-slate-600">{totalGallons.toLocaleString(undefined, { maximumFractionDigits: 0 })} gal</span></>
+                      ) : (
+                        <><span>Total Litres</span><span className="font-semibold text-slate-600">{totalLitres.toLocaleString(undefined, { maximumFractionDigits: 0 })} L</span></>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Card 3: Avg $/Gallon + top-vehicle gradient bars */}
+              {/* Card 3: Avg $/Gal (USD) or Avg $/L (CAD) + top-vehicle gradient bars */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Avg. $/Gallon</span>
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  {purchCurrency === 'USD' ? 'Avg. $/Gallon' : 'Avg. $/Litre'}
+                </span>
                 <div className="flex items-baseline gap-2 mt-1 mb-4">
-                  <span className="text-[26px] font-bold text-slate-900 leading-tight">${avgPpg.toFixed(2)}</span>
+                  <span className="text-[26px] font-bold text-slate-900 leading-tight">
+                    ${purchCurrency === 'USD' ? avgPpg.toFixed(3) : avgPpl.toFixed(3)}
+                  </span>
                   <span className="text-xs text-slate-400 font-medium">fleet average</span>
                 </div>
                 <div className="space-y-2">
-                  {topVehs.map((v, i) => (
-                    <div key={v.unit} className="flex items-center gap-2">
-                      <span className="text-[11px] text-slate-500 w-14 shrink-0 truncate font-medium">{v.unit}</span>
-                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${BAR_COLORS[i]} rounded-full`}
-                          style={{ width: `${(v.avgPpg / maxPpg) * 100}%` }} />
+                  {topVehs.map((v, i) => {
+                    const displayVal = purchCurrency === 'USD'
+                      ? v.avgPpg
+                      : (v.gallons > 0 ? v.totalCAD / (v.gallons * GAL_TO_L) : 0);
+                    const maxVal = purchCurrency === 'USD' ? maxPpg : (topVehs[0]?.totalCAD / (topVehs[0]?.gallons * GAL_TO_L) || 1);
+                    return (
+                      <div key={v.unit} className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 w-14 shrink-0 truncate font-medium">{v.unit}</span>
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full ${BAR_COLORS[i]} rounded-full`}
+                            style={{ width: `${maxVal > 0 ? (displayVal / maxVal) * 100 : 0}%` }} />
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-700 w-12 text-right">${displayVal.toFixed(3)}</span>
                       </div>
-                      <span className="text-[11px] font-bold text-slate-700 w-10 text-right">${v.avgPpg.toFixed(2)}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {topVehs.length === 0 && <p className="text-xs text-slate-400 text-center py-2">No data</p>}
                 </div>
               </div>
@@ -1919,27 +1970,27 @@ export function FuelPage() {
                     <span className="text-xs text-slate-400">{filteredPurchases.length} records</span>
                   </div>
 
-                  {/* USD / CAD toggle */}
+                  {/* US / Canada country toggle */}
                   <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
                     <button
-                      onClick={() => setPurchCurrency('USD')}
+                      onClick={() => { setPurchaseCountry('US'); setPurchaseJurisdiction('All'); setPurchPage(1); }}
                       className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
-                        purchCurrency === 'USD'
+                        purchaseCountry === 'US'
                           ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
                           : 'text-slate-400 hover:text-slate-600'
                       }`}
                     >
-                      us USD
+                      🇺🇸 US
                     </button>
                     <button
-                      onClick={() => setPurchCurrency('CAD')}
+                      onClick={() => { setPurchaseCountry('Canada'); setPurchaseJurisdiction('All'); setPurchPage(1); }}
                       className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
-                        purchCurrency === 'CAD'
+                        purchaseCountry === 'Canada'
                           ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
                           : 'text-slate-400 hover:text-slate-600'
                       }`}
                     >
-                      ca CAD
+                      🇨🇦 Canada
                     </button>
                   </div>
                 </div>
@@ -1950,22 +2001,6 @@ export function FuelPage() {
                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="All">All Vehicles</option>
                     {TRIP_VEHICLES.map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                  <select value={purchaseDriver} onChange={e => { setPurchaseDriver(e.target.value); setPurchPage(1); }}
-                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="All">All Drivers</option>
-                    {TRIP_DRIVERS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <select value={purchaseCountry} onChange={e => {
-                    const country = e.target.value as 'All' | 'US' | 'Canada';
-                    setPurchaseCountry(country);
-                    setPurchaseJurisdiction('All');
-                    setPurchPage(1);
-                  }}
-                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="All">All Countries</option>
-                    <option value="US">US</option>
-                    <option value="Canada">Canada</option>
                   </select>
                   <select value={purchaseJurisdiction} onChange={e => { setPurchaseJurisdiction(e.target.value); setPurchPage(1); }}
                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
@@ -2010,13 +2045,13 @@ export function FuelPage() {
                         <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">State/Prov.</th>
                       )}
                       {isVis(purchCols, 'gallons') && (
-                        <SortHeader label="Qty (Gal)" field="gallons" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
+                        <SortHeader label={purchCurrency === 'USD' ? 'Qty (Gal)' : 'Qty (L)'} field="gallons" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
                       )}
                       {isVis(purchCols, 'fuelType') && (
                         <th className="px-4 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fuel Type</th>
                       )}
                       {isVis(purchCols, 'ppg') && (
-                        <SortHeader label={purchCurrency === 'USD' ? '$/Gal (USD)' : '$/Gal (CAD)'} field="pricePerGallon" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
+                        <SortHeader label={purchCurrency === 'USD' ? '$/Gal (USD)' : '$/L (CAD)'} field="pricePerGallon" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
                       )}
                       {isVis(purchCols, 'totalUSD') && (
                         <SortHeader label={`Total (${purchCurrency})`} field="totalCost" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
@@ -2087,11 +2122,20 @@ export function FuelPage() {
                             </td>
                           )}
 
-                          {/* Qty (Gallons) */}
+                          {/* Qty — gallons in USD mode, litres in CAD mode */}
                           {isVis(purchCols, 'gallons') && (
                             <td className="px-4 py-3 text-right">
-                              <span className="text-[13px] font-bold font-mono text-blue-700">{p.gallons.toFixed(1)}</span>
-                              <span className="text-[10px] text-slate-400 ml-1">gal</span>
+                              {purchCurrency === 'USD' ? (
+                                <>
+                                  <span className="text-[13px] font-bold font-mono text-slate-700">{p.gallons.toFixed(1)}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">gal</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[13px] font-bold font-mono text-slate-700">{(p.gallons * GAL_TO_L).toFixed(1)}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">L</span>
+                                </>
+                              )}
                             </td>
                           )}
 
@@ -2104,12 +2148,12 @@ export function FuelPage() {
                             </td>
                           )}
 
-                          {/* Price per gallon */}
+                          {/* Price per unit — $/gal USD or $/L CAD */}
                           {isVis(purchCols, 'ppg') && (
                             <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-600">
                               {purchCurrency === 'USD'
-                                ? `$${p.pricePerGallon.toFixed(2)}`
-                                : `$${(p.pricePerGallon * rate).toFixed(2)}`}
+                                ? `$${p.pricePerGallon.toFixed(3)}`
+                                : `$${(p.pricePerGallon * rate / GAL_TO_L).toFixed(3)}`}
                             </td>
                           )}
 
@@ -2156,6 +2200,13 @@ export function FuelPage() {
                                 : <span className="text-slate-300 text-sm">—</span>}
                             </td>
                           )}
+
+                          {/* Action: Edit */}
+                          <td className="px-4 py-3 text-center">
+                            <button onClick={() => openEditPurchase(p)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors" title="Edit purchase">
+                              <Pencil size={15} />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -2286,23 +2337,109 @@ export function FuelPage() {
         </ModalOverlay>
       )}
 
-      {/* ── Purchase Detail ── */}
-      {selectedPurchase && (
-        <ModalOverlay title="Fuel Purchase Detail" onClose={() => setSelectedPurchase(null)}
-          footer={<button onClick={() => setSelectedPurchase(null)} className="px-5 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50">Close</button>}>
-          <div className="space-y-0">
-            <DetailRow label="Date" value={fmtDate(selectedPurchase.date)} />
-            <DetailRow label="Location" value={selectedPurchase.location} />
-            <DetailRow label="Vehicle" value={selectedPurchase.unitNumber} />
-            <DetailRow label="Driver" value={selectedPurchase.driverName} />
-            <DetailRow label="Gallons" value={selectedPurchase.gallons.toFixed(1)} accent />
-            <DetailRow label="Price/Gallon" value={`$${selectedPurchase.pricePerGallon.toFixed(2)}`} />
-            <DetailRow label="Total Cost" value={`$${selectedPurchase.totalCost.toFixed(2)}`} accent />
-            <DetailRow label="Fuel Type" value={selectedPurchase.fuelType} />
-            <DetailRow label="Payment Method" value={selectedPurchase.paymentMethod} />
+      {/* ── Purchase Detail (Rich Card) ── */}
+      {selectedPurchase && (() => {
+        const sp = selectedPurchase;
+        const isCA = !US_JURISDICTIONS.has(sp.jurisdiction);
+        const GAL_L = 3.78541;
+        const qtyVal = isCA ? (sp.gallons * GAL_L).toFixed(1) : sp.gallons.toFixed(1);
+        const qtyUnit = isCA ? 'L' : 'gal';
+        const curr = isCA ? 'CAD' : 'USD';
+        const currSym = isCA ? 'C$' : '$';
+        const ppuLabel = isCA ? '$/Litre' : '$/Gallon';
+        const ppuVal = isCA ? (sp.pricePerGallon / GAL_L).toFixed(3) : sp.pricePerGallon.toFixed(3);
+        const totalVal = isCA ? (sp.totalCost * 1.37).toFixed(2) : sp.totalCost.toFixed(2);
+        const country = isCA ? '🇨🇦 Canada' : '🇺🇸 United States';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setSelectedPurchase(null)} />
+            <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">⛽</div>
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">Fuel Purchase Record</h2>
+                    <p className="text-xs text-slate-400 font-mono">{sp.id}</p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedPurchase(null)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors"><X size={18} className="text-slate-500" /></button>
+              </div>
+
+              <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
+                {/* KPI stats row */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                    <p className="text-[10px] text-blue-500 font-bold uppercase">Quantity</p>
+                    <p className="text-lg font-bold text-blue-700">{qtyVal}</p>
+                    <p className="text-[10px] text-blue-400 font-medium">{qtyUnit}</p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+                    <p className="text-[10px] text-emerald-500 font-bold uppercase">{ppuLabel}</p>
+                    <p className="text-lg font-bold text-emerald-700">{currSym}{ppuVal}</p>
+                    <p className="text-[10px] text-emerald-400 font-medium">{curr}</p>
+                  </div>
+                  <div className="bg-violet-50 rounded-xl p-3 text-center border border-violet-100">
+                    <p className="text-[10px] text-violet-500 font-bold uppercase">Total Cost</p>
+                    <p className="text-lg font-bold text-violet-700">{currSym}{totalVal}</p>
+                    <p className="text-[10px] text-violet-400 font-medium">{curr}</p>
+                  </div>
+                </div>
+
+                {/* Detail Info */}
+                <div className="bg-slate-50 rounded-xl border border-slate-200 divide-y divide-slate-100">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Date</span>
+                    <span className="text-sm font-bold text-slate-800">{fmtDate(sp.date)}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Vehicle</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-700 border border-blue-200">{sp.unitNumber}</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Driver</span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-slate-200 text-slate-600">{sp.driverName?.split(' ').map(n => n[0]).join('')}</div>
+                      <span className="text-sm font-medium text-slate-800">{sp.driverName}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Location</span>
+                    <span className="text-sm text-slate-700">{sp.location}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">{isCA ? 'Province' : 'State'}</span>
+                    <span className="inline-flex items-center justify-center w-8 h-6 rounded text-[11px] font-bold bg-slate-200 text-slate-700 border border-slate-300">{sp.jurisdiction}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Country</span>
+                    <span className="text-sm text-slate-700">{country}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Fuel Type</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">{sp.fuelType}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Payment</span>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">{sp.paymentMethod}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+                <button onClick={() => { openEditPurchase(sp); setSelectedPurchase(null); }}
+                  className="px-4 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-sm flex items-center gap-1.5">
+                  <Pencil size={14} /> Edit
+                </button>
+                <button onClick={() => setSelectedPurchase(null)} className="px-5 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50">Close</button>
+              </div>
+            </div>
           </div>
-        </ModalOverlay>
-      )}
+        );
+      })()}
 
       {/* ── Idling Detail ── */}
       {selectedIdling && (
@@ -2385,15 +2522,32 @@ export function FuelPage() {
         </ModalOverlay>
       )}
 
-      {/* ── Add Purchase Form ── */}
+      {/* ── Add / Edit Purchase Form ── */}
       {showAddPurchase && (
-        <ModalOverlay title="Add Fuel Purchase" onClose={() => setShowAddPurchase(false)}
+        <ModalOverlay title={editingPurchase ? 'Edit Fuel Purchase' : 'Add Fuel Purchase'} onClose={() => { setShowAddPurchase(false); setEditingPurchase(null); resetPurchForm(); }}
           footer={<>
-            <button onClick={() => setShowAddPurchase(false)} className="px-5 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button onClick={() => { setShowAddPurchase(false); setEditingPurchase(null); resetPurchForm(); }} className="px-5 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
             <button onClick={savePurchase} disabled={!canSavePurchase}
-              className={`px-5 py-2 rounded-lg text-sm font-bold shadow-sm ${canSavePurchase ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Save</button>
+              className={`px-5 py-2 rounded-lg text-sm font-bold shadow-sm ${canSavePurchase ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>{editingPurchase ? 'Update' : 'Save'}</button>
           </>}>
           <div className="space-y-4">
+            {/* Country Selector */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Select Country</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setAddPurchCountry('US'); setAddPurchJurisdiction(''); }} className={`flex-1 py-3 rounded-lg text-sm font-bold border-2 transition-all ${
+                  addPurchCountry === 'US' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                }`}>
+                  🇺🇸 United States
+                </button>
+                <button onClick={() => { setAddPurchCountry('Canada'); setAddPurchJurisdiction(''); }} className={`flex-1 py-3 rounded-lg text-sm font-bold border-2 transition-all ${
+                  addPurchCountry === 'Canada' ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                }`}>
+                  🇨🇦 Canada
+                </button>
+              </div>
+            </div>
+
             <FormField label="Date">
               <input type="date" value={addPurchDate} onChange={e => setAddPurchDate(e.target.value)} className={inputCls} />
             </FormField>
@@ -2408,20 +2562,34 @@ export function FuelPage() {
                 Driver: <span className="font-bold text-slate-800">{driverForVehicle(addPurchVehicle)?.driverName || '—'}</span>
               </div>
             )}
+            <FormField label={addPurchCountry === 'US' ? 'State' : 'Province'}>
+              <select value={addPurchJurisdiction} onChange={e => setAddPurchJurisdiction(e.target.value)} className={inputCls}>
+                <option value="">Select {addPurchCountry === 'US' ? 'state' : 'province'}...</option>
+                {(addPurchCountry === 'US'
+                  ? ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
+                  : ['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT']
+                ).map(j => <option key={j} value={j}>{j}</option>)}
+              </select>
+            </FormField>
             <FormField label="Location">
               <input type="text" value={addPurchLocation} onChange={e => setAddPurchLocation(e.target.value)} placeholder="e.g. Pilot Travel Center, Dallas TX" className={inputCls} />
             </FormField>
+            <FormField label="Fuel Type">
+              <select value={addPurchFuelType} onChange={e => setAddPurchFuelType(e.target.value)} className={inputCls}>
+                {['Diesel', 'Diesel/Electric', 'Gasoline', 'DEF'].map(ft => <option key={ft} value={ft}>{ft}</option>)}
+              </select>
+            </FormField>
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="Gallons">
+              <FormField label={addPurchCountry === 'US' ? 'Gallons' : 'Litres'}>
                 <input type="number" min={0} step={0.1} value={addPurchGallons} onChange={e => setAddPurchGallons(e.target.value)} placeholder="0" className={inputCls} />
               </FormField>
-              <FormField label="Price per Gallon ($)">
+              <FormField label={addPurchCountry === 'US' ? 'Price per Gallon ($USD)' : 'Price per Litre ($CAD)'}>
                 <input type="number" min={0} step={0.01} value={addPurchPpg} onChange={e => setAddPurchPpg(e.target.value)} placeholder="0.00" className={inputCls} />
               </FormField>
             </div>
             {Number(addPurchGallons) > 0 && Number(addPurchPpg) > 0 && (
               <div className="px-3 py-2 bg-blue-50 rounded-lg text-sm font-bold text-blue-700">
-                Total: ${(Number(addPurchGallons) * Number(addPurchPpg)).toFixed(2)}
+                Total: {addPurchCountry === 'US' ? '$' : 'C$'}{(Number(addPurchGallons) * Number(addPurchPpg)).toFixed(2)} {addPurchCountry === 'US' ? 'USD' : 'CAD'}
               </div>
             )}
             <FormField label="Payment Method">
@@ -2434,6 +2602,82 @@ export function FuelPage() {
           </div>
         </ModalOverlay>
       )}
+
+      {/* ── Bulk Upload Modal ── */}
+      {showBulkUpload && (() => {
+        const isUS = bulkCountry === 'US';
+        const csvHeaders = isUS
+          ? 'Date,Unit#,Driver,Location City,State,Gallons,Price Per Gallon (USD),Fuel Type,Payment Method'
+          : 'Date,Unit#,Driver,Location City,Province,Litres,Price Per Litre (CAD),Fuel Type,Payment Method';
+        const csvSample = isUS
+          ? '2026-02-15,TR-1049,John Smith,Dallas,TX,120.5,4.129,Diesel,Fuel Card'
+          : '2026-02-15,TR-1049,John Smith,Toronto,ON,455.8,1.890,Diesel,Fuel Card';
+        const csvContent = csvHeaders + '\n' + csvSample;
+        const downloadCsv = () => {
+          const blob = new Blob([csvContent], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `fuel_purchase_template_${bulkCountry.toLowerCase()}.csv`;
+          a.click(); URL.revokeObjectURL(url);
+        };
+        return (
+          <ModalOverlay title="Bulk Upload Fuel Purchases" onClose={() => setShowBulkUpload(false)}
+            footer={<>
+              <button onClick={() => setShowBulkUpload(false)} className="px-5 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button className="px-5 py-2 rounded-lg text-sm font-bold shadow-sm bg-blue-600 text-white hover:bg-blue-700">Upload</button>
+            </>}>
+            <div className="space-y-4">
+              {/* Country Selector */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Select Country</p>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setBulkCountry('US')} className={`flex-1 py-3 rounded-lg text-sm font-bold border-2 transition-all ${
+                    isUS ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}>
+                    🇺🇸 United States
+                  </button>
+                  <button onClick={() => setBulkCountry('Canada')} className={`flex-1 py-3 rounded-lg text-sm font-bold border-2 transition-all ${
+                    !isUS ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}>
+                    🇨🇦 Canada
+                  </button>
+                </div>
+              </div>
+
+              {/* Drag & Drop area */}
+              <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer bg-slate-50">
+                <Upload size={32} className="mx-auto text-slate-400 mb-3" />
+                <p className="text-sm font-semibold text-slate-700">Drag & drop your file here</p>
+                <p className="text-xs text-slate-400 mt-1">or click to browse • CSV, XLSX supported</p>
+              </div>
+
+              {/* Required columns */}
+              <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                <p className="text-xs font-bold text-slate-600 mb-2">Required columns for {isUS ? '🇺🇸 US' : '🇨🇦 Canada'}:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(isUS
+                    ? ['Date', 'Unit#', 'Driver', 'Location City', 'State', 'Gallons', 'Price/Gal (USD)', 'Fuel Type', 'Payment']
+                    : ['Date', 'Unit#', 'Driver', 'Location City', 'Province', 'Litres', 'Price/L (CAD)', 'Fuel Type', 'Payment']
+                  ).map(col => (
+                    <span key={col} className="px-2 py-0.5 rounded text-[10px] font-bold bg-white border border-slate-200 text-slate-600">{col}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* CSV Preview */}
+              <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto">
+                <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Template Preview</p>
+                <pre className="text-[11px] text-emerald-400 font-mono whitespace-pre">{csvHeaders}\n{csvSample}</pre>
+              </div>
+
+              {/* Download template */}
+              <button onClick={downloadCsv} className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors border border-blue-200 w-full justify-center">
+                <Download size={14} /> Download {isUS ? 'US' : 'Canada'} CSV Template
+              </button>
+            </div>
+          </ModalOverlay>
+        );
+      })()}
 
       {/* ── Add Idling Event Form ── */}
       {showAddIdling && (
