@@ -14,6 +14,7 @@ import {
     Activity,
     GraduationCap,
     Ticket,
+    Clock3,
     Fuel,
 } from "lucide-react";
 
@@ -50,6 +51,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Paystubs",
         icon: DollarSign,
         path: "/paystubs",
+    },
+    {
+        key: "hours-of-service",
+        label: "Hours of Service",
+        icon: Clock3,
+        path: "/hours-of-service",
     },
     {
         key: "fuel",
@@ -103,6 +110,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },
             { key: "trainings", label: "Trainings", icon: GraduationCap, path: "/settings/trainings" },
             { key: "inspections-settings", label: "Inspections", icon: ClipboardCheck, path: "/settings/inspections" },
+            { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" }
         ],
     },

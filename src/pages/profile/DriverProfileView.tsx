@@ -16,6 +16,7 @@ import { INCIDENTS } from '@/pages/incidents/incidents.data';
 import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
+import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -3209,7 +3210,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               );
             })()}
 
-            {['Training', 'Certificates', 'Trips', 'HoursOfService', 'MileageReport'].includes(activeTab) && (() => {
+            {['Training', 'Certificates', 'Trips', 'MileageReport'].includes(activeTab) && (() => {
                 const tabConfig = tabs.find(t => t.id === activeTab);
                 const TabIcon = tabConfig?.icon || FileText;
                 return (
@@ -3222,6 +3223,90 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                             <p className="text-sm text-slate-400 max-w-md mx-auto">
                                 Driver {tabConfig?.label?.toLowerCase()} records and management will appear here.
                             </p>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {activeTab === 'HoursOfService' && (() => {
+                const driverName = `${driverData.firstName} ${driverData.lastName}`;
+                const driverLogs = HOS_DAILY_LOGS_IMPORT.filter((l: any) => `${l.driver.firstName} ${l.driver.lastName}` === driverName);
+                const driverHosLogs = HOS_LOGS_IMPORT.filter((l: any) => `${l.driver.firstName} ${l.driver.lastName}` === driverName);
+                const driverTrips = HOS_TRIPS_IMPORT.filter((l: any) => `${l.driver.firstName} ${l.driver.lastName}` === driverName);
+
+                const totalDriving = driverLogs.reduce((a: number, l: any) => a + (l.statusDurations?.driving || 0), 0);
+                const totalDist = driverTrips.reduce((a: number, l: any) => a + (l.distance || 0), 0);
+                const latestStatus = driverHosLogs.length > 0 ? driverHosLogs[0].status : 'off_duty';
+
+                const STATUS_COLORS: Record<string, string> = {
+                  off_duty: 'bg-slate-100 text-slate-600 border-slate-200',
+                  driving: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                  on_duty: 'bg-amber-50 text-amber-700 border-amber-200',
+                  sleeper_berth: 'bg-blue-50 text-blue-700 border-blue-200',
+                };
+
+                const fmtMs = (ms: number) => { const h = Math.floor(ms / 3600000); const m = Math.floor((ms % 3600000) / 60000); return `${h}h ${m}m`; };
+
+                return (
+                    <div className="animate-in fade-in space-y-6">
+                        {/* Status & Stats Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Current Status</p>
+                                <span className={`px-3 py-1 text-sm font-semibold rounded-full border ${STATUS_COLORS[latestStatus] || STATUS_COLORS.off_duty}`}>
+                                    {latestStatus.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                                </span>
+                            </div>
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Total Driving</p>
+                                <p className="text-xl font-bold text-slate-900">{fmtMs(totalDriving)}</p>
+                            </div>
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Trip Distance</p>
+                                <p className="text-xl font-bold text-slate-900">{Math.round(totalDist).toLocaleString()} mi</p>
+                            </div>
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Log Entries</p>
+                                <p className="text-xl font-bold text-slate-900">{driverHosLogs.length}</p>
+                            </div>
+                        </div>
+
+                        {/* Recent HOS Logs Table */}
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="px-5 py-4 border-b border-slate-100">
+                                <h3 className="text-sm font-bold text-slate-900">Recent HOS Logs</h3>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase">Date</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase">Status</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase">Vehicle</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase">Location</th>
+                                            <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase">Provider</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {driverHosLogs.slice(0, 10).map((log: any) => (
+                                            <tr key={log.id} className="hover:bg-blue-50/40 transition-colors">
+                                                <td className="px-4 py-3 font-mono text-xs text-slate-600">{new Date(log.startedAt).toISOString().replace('T', ' ').substring(0, 16)}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${STATUS_COLORS[log.status] || STATUS_COLORS.off_duty}`}>
+                                                        {log.status.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-slate-700">{log.vehicle?.name || '—'}</td>
+                                                <td className="px-4 py-3 text-sm text-slate-700">{log.location?.name ? `${log.location.name}, ${log.location.state}` : '—'}</td>
+                                                <td className="px-4 py-3 text-xs text-slate-500 capitalize">{(log.provider || '').replace(/-/g, ' ')}</td>
+                                            </tr>
+                                        ))}
+                                        {driverHosLogs.length === 0 && (
+                                            <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-400 text-sm">No HOS logs found for this driver.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 );

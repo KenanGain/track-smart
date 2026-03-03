@@ -22,6 +22,7 @@ import { ViolationsListPage } from '@/pages/violations/ViolationsListPage'
 import { InspectionsPage } from '@/pages/inspections/InspectionsPage'
 import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
 import { FuelPage } from '@/pages/fuel/FuelPage'
+import { HoursOfServicePage } from '@/pages/hos/HoursOfServicePage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -93,6 +94,9 @@ function App() {
         if (path === "/settings/inspections") {
             return <InspectionsSettingsPage />
         }
+        if (path === "/settings/fuel") {
+            return <FuelPage />
+        }
 
         if (path === "/settings/trainings") {
             return <TrainingsPage />
@@ -111,6 +115,9 @@ function App() {
         }
         if (path === "/safety-events") {
             return <SafetyEventsPage />
+        }
+        if (path === "/hours-of-service") {
+            return <HoursOfServicePage />
         }
         if (path === "/fuel") {
             return <FuelPage />

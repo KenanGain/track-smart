@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Download, MapPin, X, Plus, Calendar, ArrowUp, ArrowDown, Search, SlidersHorizontal, ChevronLeft, ChevronRight, TrendingUp, Globe, BarChart3, Truck, Fuel, Gauge, LayoutGrid, Route, ShoppingCart, Timer } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { Download, MapPin, X, Plus, Calendar, ArrowUp, ArrowDown, Search, SlidersHorizontal, ChevronLeft, ChevronRight, TrendingUp, Globe, BarChart3, Truck, Fuel, Gauge, LayoutGrid, Route, ShoppingCart } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
 import {
   TRIP_RECORDS, FUEL_PURCHASES, IDLING_EVENTS,
@@ -15,6 +15,7 @@ import {
   JURISDICTION_REGION,
   getQuarter,
 } from './ifta-summary.data';
+import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
 
 // ── Overview trend data ────────────────────────────────────────────────────────
 const trendData = [
@@ -24,6 +25,15 @@ const trendData = [
   { date: 'JAN 18', mpg: 5.8 }, { date: 'JAN 25', mpg: 5.4 },
   { date: 'FEB 01', mpg: 3.6 }, { date: 'FEB 22', mpg: 3.4 },
 ];
+
+// ── Monthly USD→CAD exchange rates ─────────────────────────────────────────────
+const MONTHLY_RATES: Record<string, number> = {
+  '2025-01': 1.336, '2025-02': 1.350, '2025-03': 1.343,
+  '2025-04': 1.378, '2025-05': 1.362, '2025-06': 1.370,
+  '2025-07': 1.381, '2025-08': 1.357, '2025-09': 1.345,
+  '2025-10': 1.388, '2025-11': 1.396, '2025-12': 1.401,
+  '2026-01': 1.432, '2026-02': 1.418, '2026-03': 1.440,
+};
 
 
 // ── IFTA filter options (derived from ifta-summary.data.ts) ─────────────────────
@@ -46,8 +56,52 @@ const IFTA_REGIONS = [
   { value: 'Canada', label: 'Canada' },
   { value: 'US', label: 'United States' },
 ];
+const FUEL_TYPE_OPTIONS = [
+  'A55',
+  'Biodiesel',
+  'Compressed natural gas',
+  'Diesel',
+  'E-85',
+  'Electric',
+  'Ethanol',
+  'Gasoline',
+  'Hydrogen',
+  'Hybrid electric',
+  'Liquid natural gas',
+  'M-85',
+  'Methanol',
+  'Plug-in hybrid electric',
+  'Propane',
+  'Other',
+] as const;
+const KNOWN_FUEL_TYPES = new Set<string>(FUEL_TYPE_OPTIONS);
+const CANADA_JURISDICTIONS = new Set<string>(CA_PROVINCES);
+const US_JURISDICTIONS = new Set<string>(US_STATES);
 /** Convert km to miles */
 function kmToMiles(km: number): number { return km * 0.621371; }
+/** Convert miles to km */
+function milesToKm(mi: number): number { return mi * 1.60934; }
+
+function normalizeFuelType(value: string): (typeof FUEL_TYPE_OPTIONS)[number] {
+  const v = value.trim().toLowerCase();
+  if (v === 'a55') return 'A55';
+  if (v === 'biodiesel') return 'Biodiesel';
+  if (v === 'compressed natural gas' || v === 'cng') return 'Compressed natural gas';
+  if (v === 'diesel') return 'Diesel';
+  if (v === 'e-85' || v === 'e85') return 'E-85';
+  if (v === 'electric') return 'Electric';
+  if (v === 'ethanol') return 'Ethanol';
+  if (v === 'gasoline' || v === 'petrol') return 'Gasoline';
+  if (v === 'hydrogen') return 'Hydrogen';
+  if (v === 'hybrid electric' || v === 'hybrid' || v === 'diesel/electric' || v === 'diesel electric') return 'Hybrid electric';
+  if (v === 'liquid natural gas' || v === 'lng') return 'Liquid natural gas';
+  if (v === 'm-85' || v === 'm85') return 'M-85';
+  if (v === 'methanol') return 'Methanol';
+  if (v === 'plug-in hybrid electric' || v === 'plug in hybrid electric' || v === 'phev') return 'Plug-in hybrid electric';
+  if (v === 'propane' || v === 'lpg') return 'Propane';
+  if (v === 'other') return 'Other';
+  return 'Other';
+}
 
 // ── Sort options ───────────────────────────────────────────────────────────────
 
@@ -266,9 +320,7 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutGrid }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutGrid },
   { id: 'vehicles', label: 'Vehicles', icon: Truck },
   { id: 'ifta', label: 'IFTA Summary', icon: Globe },
-  { id: 'trips', label: 'Trip Reports', icon: Route },
   { id: 'purchases', label: 'Fuel Purchases', icon: ShoppingCart },
-  { id: 'idling', label: 'Idling Events', icon: Timer },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -282,14 +334,26 @@ export function FuelPage() {
   const [tripVehicle, setTripVehicle] = useState('All');
   const [purchaseVehicle, setPurchaseVehicle] = useState('All');
   const [purchaseDriver, setPurchaseDriver] = useState('All');
+  const [purchaseCountry, setPurchaseCountry] = useState<'All' | 'US' | 'Canada'>('All');
+  const [purchaseJurisdiction, setPurchaseJurisdiction] = useState('All');
+  const [purchaseFuelType, setPurchaseFuelType] = useState('All');
   const [idlingVehicle, setIdlingVehicle] = useState('All');
   const [idlingDriver, setIdlingDriver] = useState('All');
+  const [distanceUnit, setDistanceUnit] = useState<'mi' | 'km'>('mi');
+  const distanceUnitLabel = distanceUnit;
+  const altDistanceUnitLabel = distanceUnit === 'mi' ? 'km' : 'mi';
+  const displayFromMiles = (mi: number) => distanceUnit === 'mi' ? mi : milesToKm(mi);
+  const displayFromKm = (km: number) => distanceUnit === 'mi' ? kmToMiles(km) : km;
+  const altDisplayFromKm = (km: number) => distanceUnit === 'mi' ? km : kmToMiles(km);
+  const formatDistance = (value: number, decimals = 0) => value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const toStoredMiles = (value: number) => distanceUnit === 'mi' ? value : value / 1.60934;
 
   // ── IFTA State Mileage filters ──
   const [iftaYear, setIftaYear] = useState(2026);
   const [iftaQuarter, setIftaQuarter] = useState('');
   const [iftaMonth, setIftaMonth] = useState('');
   const [iftaRegion, setIftaRegion] = useState('All');
+  const [vehFuelType, setVehFuelType] = useState('All');
   const [expandedJur, setExpandedJur] = useState<Set<string>>(new Set());
   const [expandedVehicle, setExpandedVehicle] = useState<Set<string>>(new Set());
   const [expandedVeh, setExpandedVeh] = useState<Set<string>>(new Set());
@@ -374,14 +438,25 @@ export function FuelPage() {
     { id: 'dist', label: 'Total Dist.', visible: true }, { id: 'odoStart', label: 'Odo. Start', visible: true },
     { id: 'odoEnd', label: 'Odo. End', visible: true },
   ]);
-  // ── Column visibility (purchases) ──
+  // ── Column visibility (purchases — combined USD + CAD) ──
   const [purchCols, setPurchCols] = useState<ColDef[]>([
-    { id: 'date', label: 'Date', visible: true }, { id: 'location', label: 'Location', visible: true },
-    { id: 'vehicle', label: 'Vehicle', visible: true }, { id: 'driver', label: 'Driver', visible: true },
-    { id: 'gallons', label: 'Gallons', visible: true }, { id: 'ppg', label: '$/Gal', visible: true },
-    { id: 'cost', label: 'Total Cost', visible: true }, { id: 'fuelType', label: 'Fuel Type', visible: true },
-    { id: 'payment', label: 'Payment', visible: true },
+    { id: 'unit', label: 'Unit #', visible: true },
+    { id: 'driver', label: 'Driver', visible: true },
+    { id: 'date', label: 'Transaction Date', visible: true },
+    { id: 'city', label: 'Location City', visible: true },
+    { id: 'state', label: 'State/Province', visible: true },
+    { id: 'gallons', label: 'Qty (Gal)', visible: true },
+    { id: 'fuelType', label: 'Fuel Type', visible: true },
+    { id: 'ppg', label: 'Price ($/Gal)', visible: true },
+    { id: 'totalUSD', label: 'Total (USD)', visible: true },
+    { id: 'rate', label: 'Exch. Rate', visible: true },
+    { id: 'totalCAD', label: 'Total (CAD)', visible: true },
+    { id: 'fuelCard', label: 'FuelCard #', visible: true },
+    { id: 'otherRef', label: 'Other Ref #', visible: false },
   ]);
+  // ── Currency toggle (purchases) ──
+  const [purchCurrency, setPurchCurrency] = useState<'USD' | 'CAD'>('USD');
+
   // ── Column visibility (idling) ──
   const [idleCols, setIdleCols] = useState<ColDef[]>([
     { id: 'date', label: 'Date', visible: true }, { id: 'vehicle', label: 'Vehicle', visible: true },
@@ -421,6 +496,16 @@ export function FuelPage() {
     let data = localPurchases;
     if (purchaseVehicle !== 'All') data = data.filter(p => p.unitNumber === purchaseVehicle);
     if (purchaseDriver !== 'All') data = data.filter(p => p.driverName === purchaseDriver);
+    if (purchaseCountry === 'US') data = data.filter(p => US_JURISDICTIONS.has(p.jurisdiction));
+    if (purchaseCountry === 'Canada') data = data.filter(p => CANADA_JURISDICTIONS.has(p.jurisdiction));
+    if (purchaseJurisdiction !== 'All') data = data.filter(p => p.jurisdiction === purchaseJurisdiction);
+    if (purchaseFuelType !== 'All') {
+      data = data.filter(p => {
+        const fuelType = normalizeFuelType(p.fuelType);
+        if (purchaseFuelType === 'Other') return fuelType === 'Other' || !KNOWN_FUEL_TYPES.has(fuelType);
+        return fuelType === purchaseFuelType;
+      });
+    }
     if (purchDateFrom) data = data.filter(p => p.date >= purchDateFrom);
     if (purchDateTo) data = data.filter(p => p.date <= purchDateTo);
     if (purchSearch.trim()) {
@@ -433,7 +518,7 @@ export function FuelPage() {
       if (typeof av === 'number' && typeof bv === 'number') return purchSortDir === 'desc' ? bv - av : av - bv;
       return purchSortDir === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
     });
-  }, [localPurchases, purchaseVehicle, purchaseDriver, purchDateFrom, purchDateTo, purchSearch, purchSortField, purchSortDir]);
+  }, [localPurchases, purchaseVehicle, purchaseDriver, purchaseCountry, purchaseJurisdiction, purchaseFuelType, purchDateFrom, purchDateTo, purchSearch, purchSortField, purchSortDir]);
 
   // ── Idling data ──
   const filteredIdling = useMemo(() => {
@@ -472,9 +557,9 @@ export function FuelPage() {
       unitNumber: addTripVehicle,
       driverId: driver?.driverId || '',
       driverName: driver?.driverName || '—',
-      totalDistance: Number(addTripDist) || 0,
-      odoStart: Number(addTripOdoStart) || 0,
-      odoEnd: Number(addTripOdoEnd) || 0,
+      totalDistance: toStoredMiles(Number(addTripDist) || 0),
+      odoStart: toStoredMiles(Number(addTripOdoStart) || 0),
+      odoEnd: toStoredMiles(Number(addTripOdoEnd) || 0),
       fuelType: asset?.vehicleType === 'Reefer' ? 'Diesel/Electric' : 'Diesel',
     };
     setLocalTrips(prev => [newTrip, ...prev]);
@@ -551,6 +636,28 @@ export function FuelPage() {
             <p className="text-sm text-gray-500">Track fuel economy, idling, emissions, and purchases across your fleet.</p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+              <button
+                onClick={() => setDistanceUnit('mi')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
+                  distanceUnit === 'mi'
+                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                mi
+              </button>
+              <button
+                onClick={() => setDistanceUnit('km')}
+                className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
+                  distanceUnit === 'km'
+                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                km
+              </button>
+            </div>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm">
               <Download size={16} /> Export
             </button>
@@ -594,126 +701,257 @@ export function FuelPage() {
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* TAB: OVERVIEW                                                     */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'overview' && (
-          <div className="space-y-4">
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100">
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-[17px] font-bold text-slate-900">Summary</h2>
-                  <span className="text-[15px] font-medium text-slate-400">/ Feb 15 - Feb 21 vs. Previous Week</span>
+        {activeTab === 'overview' && (() => {
+          // ── Compute KPIs from real data ──
+          const totalTripDist = localTrips.reduce((s, t) => s + t.totalDistance, 0); // miles
+          const totalDistDisplay = displayFromMiles(totalTripDist);
+          const totalGallons = localPurchases.reduce((s, p) => s + p.gallons, 0);
+          const totalCost = localPurchases.reduce((s, p) => s + p.totalCost, 0);
+          const avgMpg = totalGallons > 0 ? totalTripDist / totalGallons : 0;
+          const totalIdleMin = localIdling.reduce((s, e) => s + e.durationMinutes, 0);
+          const totalIdleFuel = localIdling.reduce((s, e) => s + e.fuelWastedGal, 0);
+          const co2Tons = totalGallons * 0.01018; // ~22.44 lbs CO₂ per gal diesel → metric tons
+
+          // ── Monthly Fuel Spending (bar chart) ──
+          const monthlySpendMap = new Map<string, number>();
+          localPurchases.forEach(p => {
+            const m = p.date.slice(0, 7); // YYYY-MM
+            monthlySpendMap.set(m, (monthlySpendMap.get(m) || 0) + p.totalCost);
+          });
+          const monthlySpendData = [...monthlySpendMap.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([month, total]) => ({
+              month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+              total: Math.round(total),
+            }));
+
+          // ── Distance by Jurisdiction (bar chart) ──
+          const jurDistMap = new Map<string, number>();
+          IFTA_SUMMARY_RESULTS.forEach(r => {
+            const label = JURISDICTION_LABELS[r.jurisdiction] || r.jurisdiction;
+            jurDistMap.set(label, (jurDistMap.get(label) || 0) + r.distance);
+          });
+          const jurDistData = [...jurDistMap.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([name, km]) => ({ name, distance: Math.round(displayFromKm(km)) }));
+
+          // ── Fuel Consumption by Vehicle (bar chart) ──
+          const vehGalMap = new Map<string, number>();
+          localPurchases.forEach(p => { vehGalMap.set(p.unitNumber, (vehGalMap.get(p.unitNumber) || 0) + p.gallons); });
+          const vehGalData = [...vehGalMap.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([unit, gal]) => ({ unit, gallons: Math.round(gal * 10) / 10 }));
+
+          // ── Fuel Type Distribution (pie chart) ──
+          const ftMap = new Map<string, number>();
+          localPurchases.forEach(p => { ftMap.set(p.fuelType || 'Diesel', (ftMap.get(p.fuelType || 'Diesel') || 0) + p.gallons); });
+          const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+          const fuelTypeData = [...ftMap.entries()].map(([name, value]) => ({ name, value: Math.round(value) }));
+
+          // ── Top Idling Vehicles ──
+          const idleVehMap = new Map<string, { mins: number; gal: number }>();
+          localIdling.forEach(e => {
+            const cur = idleVehMap.get(e.unitNumber) || { mins: 0, gal: 0 };
+            cur.mins += e.durationMinutes; cur.gal += e.fuelWastedGal;
+            idleVehMap.set(e.unitNumber, cur);
+          });
+          const topIdlers = [...idleVehMap.entries()].sort((a, b) => b[1].gal - a[1].gal).slice(0, 5);
+
+          // ── Fuel Efficiency by Vehicle (MPG) ──
+          const vehDistMap = new Map<string, number>();
+          localTrips.forEach(t => { vehDistMap.set(t.unitNumber, (vehDistMap.get(t.unitNumber) || 0) + t.totalDistance); });
+          const effData = [...vehGalMap.entries()].map(([unit, gal]) => {
+            const dist = vehDistMap.get(unit) || 0;
+            return { unit, mpg: gal > 0 ? Math.round((dist / gal) * 10) / 10 : 0, gallons: Math.round(gal), distance: Math.round(dist) };
+          }).sort((a, b) => b.mpg - a.mpg);
+
+          const ttStyle = { borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' };
+
+          return (
+            <div className="space-y-5">
+              {/* ── KPI Summary Cards ── */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[
+                  { label: 'Total Distance', value: `${formatDistance(totalDistDisplay)} ${distanceUnitLabel}`, icon: <Route size={18} />, color: 'text-blue-600 bg-blue-50' },
+                  { label: 'Fuel Purchased', value: `${formatDistance(totalGallons, 1)} gal`, icon: <Fuel size={18} />, color: 'text-emerald-600 bg-emerald-50' },
+                  { label: 'Total Fuel Cost', value: `$${formatDistance(totalCost)}`, icon: <ShoppingCart size={18} />, color: 'text-violet-600 bg-violet-50' },
+                  { label: 'Avg. Fuel Efficiency', value: `${avgMpg.toFixed(1)} MPG`, icon: <Gauge size={18} />, color: 'text-amber-600 bg-amber-50' },
+                  { label: 'Idling Time', value: fmtDuration(totalIdleMin), icon: <TrendingUp size={18} />, color: 'text-red-600 bg-red-50' },
+                  { label: 'Fuel Wasted (Idle)', value: `${totalIdleFuel.toFixed(1)} gal`, icon: <BarChart3 size={18} />, color: 'text-orange-600 bg-orange-50' },
+                ].map(kpi => (
+                  <div key={kpi.label} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{kpi.label}</span>
+                      <span className={`p-1.5 rounded-lg ${kpi.color}`}>{kpi.icon}</span>
+                    </div>
+                    <div className="text-xl font-bold text-slate-900">{kpi.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Row 2: Monthly Spending + Distance by Jurisdiction ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Monthly Fuel Spending */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <h3 className="text-[15px] font-bold text-slate-900 mb-4">Monthly Fuel Spending</h3>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlySpendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                        <CartesianGrid vertical={false} stroke="#f1f5f9" strokeDasharray="3 3" />
+                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                        <RechartsTooltip contentStyle={ttStyle} formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString()}`, 'Spent']} />
+                        <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                  <button className="px-3 py-1.5 text-[11px] font-bold text-blue-600 bg-white rounded shadow-sm uppercase">Last Week</button>
-                  <button className="px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-700 uppercase">Last 2 Weeks</button>
-                  <button className="px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-700 uppercase">Last 4 Weeks</button>
-                  <button className="px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-700 uppercase">Last 12 Weeks</button>
+
+                {/* Distance by Jurisdiction */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <h3 className="text-[15px] font-bold text-slate-900 mb-4">Distance by Jurisdiction (Top 10)</h3>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={jurDistData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                        <CartesianGrid horizontal={false} stroke="#f1f5f9" strokeDasharray="3 3" />
+                        <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                        <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#475569', fontWeight: 500 }} width={100} />
+                        <RechartsTooltip contentStyle={ttStyle} formatter={(v: number | undefined) => [`${(v ?? 0).toLocaleString()} ${distanceUnitLabel}`, 'Distance']} />
+                        <Bar dataKey="distance" fill="#10b981" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 divide-x divide-slate-100 py-4">
-                <div className="px-5">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Avg. MPG</div>
-                  <div className="flex items-baseline gap-2"><span className="text-xl font-bold text-slate-900">3.7</span><span className="text-sm font-bold text-red-500">↓4%</span></div>
+
+              {/* ── Row 3: Fuel by Vehicle + Fuel Type Pie ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Fuel Consumption by Vehicle */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <h3 className="text-[15px] font-bold text-slate-900 mb-4">Fuel Consumption by Vehicle</h3>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={vehGalData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                        <CartesianGrid vertical={false} stroke="#f1f5f9" strokeDasharray="3 3" />
+                        <XAxis dataKey="unit" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <RechartsTooltip contentStyle={ttStyle} formatter={(v: number | undefined) => [`${v ?? 0} gal`, 'Fuel']} />
+                        <Bar dataKey="gallons" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                <div className="px-5">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Distance (mi)</div>
-                  <div className="flex items-baseline gap-2"><span className="text-xl font-bold text-slate-900">86.4</span><span className="text-sm font-bold text-red-500">↓55%</span></div>
+
+                {/* Fuel Type Distribution */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <h3 className="text-[15px] font-bold text-slate-900 mb-4">Fuel Type Distribution</h3>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={fuelTypeData} cx="50%" cy="50%" innerRadius={60} outerRadius={105} paddingAngle={3} dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}>
+                          {fuelTypeData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                        </Pie>
+                        <RechartsTooltip contentStyle={ttStyle} formatter={(v: number | undefined) => [`${(v ?? 0).toLocaleString()} gal`, 'Volume']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                <div className="px-5">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Fuel Used (gal)</div>
-                  <div className="flex items-baseline gap-2 mb-0.5"><span className="text-xl font-bold text-slate-900">23.3</span><span className="text-sm font-bold text-emerald-600">↓53%</span></div>
-                  <div className="text-xs text-slate-400 italic font-medium">$97.83 spent</div>
+              </div>
+
+              {/* ── Row 4: Top Idling + Fuel Efficiency ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Top Idling Vehicles */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100">
+                    <h3 className="text-[15px] font-bold text-slate-900">Top Idling Vehicles</h3>
+                    <p className="text-xs text-slate-400">By fuel wasted during idling</p>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Vehicle</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Idling Time</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fuel Wasted</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Est. Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {topIdlers.map(([unit, data]) => (
+                        <tr key={unit} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-5 py-3 font-semibold text-slate-800">{unit}</td>
+                          <td className="px-5 py-3 text-right text-slate-600">{fmtDuration(data.mins)}</td>
+                          <td className="px-5 py-3 text-right font-bold text-red-600">{data.gal.toFixed(1)} gal</td>
+                          <td className="px-5 py-3 text-right text-slate-600">${(data.gal * 4.20).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="px-5">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Vehicle Util.</div>
-                  <div className="flex items-baseline gap-2"><span className="text-xl font-bold text-slate-900">27.6%</span><span className="text-sm font-bold text-emerald-600">↑6</span></div>
+
+                {/* Fuel Efficiency by Vehicle */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100">
+                    <h3 className="text-[15px] font-bold text-slate-900">Fuel Efficiency by Vehicle</h3>
+                    <p className="text-xs text-slate-400">Miles per gallon (trip distance / fuel purchased)</p>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Vehicle</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance ({distanceUnitLabel})</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fuel (gal)</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">MPG</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {effData.map(row => (
+                        <tr key={row.unit} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-5 py-3 font-semibold text-slate-800">{row.unit}</td>
+                          <td className="px-5 py-3 text-right text-slate-600">{formatDistance(row.distance)}</td>
+                          <td className="px-5 py-3 text-right text-slate-600">{row.gallons}</td>
+                          <td className="px-5 py-3 text-right">
+                            <span className={`font-bold ${row.mpg >= 6 ? 'text-emerald-600' : row.mpg >= 4 ? 'text-amber-600' : 'text-red-600'}`}>{row.mpg}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="px-5">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Idled Fuel (gal)</div>
-                  <div className="flex items-baseline gap-2 mb-0.5"><span className="text-xl font-bold text-slate-900">10.8</span><span className="text-sm font-bold text-emerald-600">↓60%</span></div>
-                  <div className="text-xs text-slate-400 italic font-medium">$45.44 wasted</div>
+              </div>
+
+              {/* ── Row 5: CO2 + Fuel Trend ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* CO2 card */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col justify-center items-center text-center">
+                  <Globe size={28} className="text-emerald-500 mb-3" />
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Est. CO₂ Emissions</div>
+                  <div className="text-3xl font-bold text-slate-900">{co2Tons.toFixed(1)}</div>
+                  <div className="text-xs text-slate-400 font-medium">metric tons</div>
+                  <div className="text-xs text-slate-400 mt-2">Based on {formatDistance(totalGallons, 0)} gallons diesel</div>
                 </div>
-                <div className="px-5">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">CO2 Emissions</div>
-                  <div className="flex items-baseline gap-2"><span className="text-xl font-bold text-slate-900">0.3</span><span className="text-sm font-bold text-emerald-600">↓53%</span></div>
+                {/* MPG Trend */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 lg:col-span-2">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[15px] font-bold text-slate-900">Avg. MPG Trend</h3>
+                    <div className="flex items-center gap-2"><div className="w-4 h-[3px] bg-blue-500 rounded-full" /><span className="text-xs text-slate-500 font-medium">My Fleet</span></div>
+                  </div>
+                  <div className="h-[200px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={trendData} margin={{ top: 10, right: 30, left: -20, bottom: 10 }}>
+                        <CartesianGrid vertical={false} stroke="#f1f5f9" strokeDasharray="3 3" />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} domain={[0, 10]} />
+                        <RechartsTooltip contentStyle={ttStyle} />
+                        <Line type="monotone" dataKey="mpg" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: 'white', stroke: '#3b82f6', strokeWidth: 1.5 }} activeDot={{ r: 5, fill: '#3b82f6' }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col min-h-[400px]">
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-[17px] font-bold text-slate-900">Fuel Trends</h3>
-                  <div className="flex rounded border border-slate-200 overflow-hidden">
-                    <button className="px-3 py-1.5 text-[11px] font-bold bg-white text-slate-700 border-r border-slate-200">AVG. MPG</button>
-                    <button className="px-3 py-1.5 text-[11px] font-bold bg-slate-50 text-slate-400 hover:text-slate-600">% IDLING</button>
-                  </div>
-                </div>
-                <div className="flex gap-6 mb-6">
-                  <div className="flex items-center gap-2"><div className="w-4 h-[3px] bg-[#0070f3] rounded-full" /><span className="text-[13px] font-medium text-slate-600">My Fleet</span></div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-[3px] bg-[#f5a623] rounded-full" /><span className="text-[13px] font-medium text-slate-600">Motive Average</span></div>
-                </div>
-                <div className="flex-1 w-full relative">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={trendData} margin={{ top: 20, right: 30, left: -20, bottom: 20 }}>
-                      <CartesianGrid vertical={false} stroke="#f1f5f9" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} ticks={['DEC 07', 'FEB 22']} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} label={{ value: '10 MPG', position: 'insideTopLeft', dy: -20, dx: 30, fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} />
-                      <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} itemStyle={{ color: '#0f172a', fontWeight: 'bold' }} />
-                      <ReferenceLine y={8.3} stroke="#f5a623" strokeWidth={2} />
-                      <ReferenceLine x="FEB 22" stroke="none" label={{ position: 'insideTopRight', value: '3.7', fill: 'white', fontSize: 14, fontWeight: 'bold', offset: 0 }} />
-                      <Line type="linear" dataKey="mpg" stroke="#0070f3" strokeWidth={2} dot={{ r: 3, fill: 'white', stroke: '#0070f3', strokeWidth: 1.5 }} activeDot={{ r: 5, fill: '#0070f3', stroke: 'white', strokeWidth: 2 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                  <div className="absolute right-0 top-1/4 -translate-y-[8px] mr-8 bg-[#0070f3] text-white font-bold text-sm px-3 py-1.5 rounded-[3px] pointer-events-none">3.7</div>
-                  <div className="absolute right-0 top-0 bottom-6 w-12 bg-slate-50/50 pointer-events-none border-l border-slate-100/50" />
-                </div>
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 flex flex-col">
-                <div className="flex items-baseline gap-2 mb-6 border-b border-slate-100 pb-4">
-                  <h3 className="text-[17px] font-bold text-slate-900">Fuel Efficiency Factors</h3>
-                  <span className="text-[15px] text-slate-400 font-medium">/ Feb 15 - Feb 21</span>
-                </div>
-                <div className="space-y-6 flex-1 text-sm">
-                  {[['Cruise Distance', '0%'], ['Cruise Time', '0%']].map(([lbl, val]) => (
-                    <div key={lbl} className="flex justify-between items-center py-2.5 border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                      <span className="text-slate-600 font-medium border-b border-dashed border-slate-300">{lbl}</span>
-                      <span className="font-bold text-slate-700">{val}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center py-2.5 border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                    <span className="text-slate-600 font-medium border-b border-dashed border-slate-300">Idling Time</span>
-                    <div className="ml-auto flex items-center gap-6"><span className="font-bold text-slate-700">72%</span><span className="font-bold text-emerald-600 text-xs w-6 text-right">↓6</span></div>
-                  </div>
-                  <div className="flex justify-between items-center py-2.5 hover:bg-slate-50/50 transition-colors">
-                    <span className="text-slate-600 font-medium border-b border-dashed border-slate-300">Over RPM</span>
-                    <span className="font-bold text-slate-700">0%</span>
-                  </div>
-                  <div className="mt-8">
-                    <div className="flex justify-between items-end mb-3 border-b border-slate-100 pb-2">
-                      <h4 className="font-bold text-[15px] text-slate-800">Safety Events</h4>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">EVENTS/1K MI</span>
-                    </div>
-                    {[['Hard Braking', '11.57'], ['Hard Acceleration', '0'], ['Hard Cornering', '0']].map(([lbl, val]) => (
-                      <div key={lbl} className="flex justify-between items-center py-2.5 border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                        <span className="text-slate-600 font-medium">{lbl}</span>
-                        <span className="font-bold text-slate-700 mr-12 text-right">{val}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-8">
-                    <div className="flex justify-between items-end mb-3 border-b border-slate-100 pb-2">
-                      <h4 className="font-bold text-[15px] text-slate-800">Speed</h4>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-11">MPH</span>
-                    </div>
-                    <div className="flex items-center py-2.5 hover:bg-slate-50/50 transition-colors">
-                      <span className="text-slate-600 font-medium">Average Driving Speed</span>
-                      <div className="ml-auto flex items-center gap-6"><span className="font-bold text-slate-700 w-12 text-right">17</span><span className="font-bold text-emerald-600 text-xs w-6 text-right">↓34%</span></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* TAB: VEHICLES  (IFTA-style expandable rows)                       */}
@@ -724,6 +962,8 @@ export function FuelPage() {
           const vehFilterQuarter = iftaQuarter;
           const vehFilterMonth = iftaMonth;
           const vehFilterRegion = iftaRegion;
+          const vehFilterFuelType = vehFuelType;
+          const vehicleFuelTypeOptions = FUEL_TYPE_OPTIONS;
 
           const vehFiltered = IFTA_SUMMARY_RESULTS.filter(r => {
             const [y, m] = r.month.split('-').map(Number);
@@ -732,6 +972,7 @@ export function FuelPage() {
             if (vehFilterMonth && m !== Number(vehFilterMonth)) return false;
             const region = JURISDICTION_REGION[r.jurisdiction];
             if (vehFilterRegion !== 'All' && region !== vehFilterRegion) return false;
+            if (vehFilterFuelType !== 'All' && normalizeFuelType(r.vehicle.fuelType) !== vehFilterFuelType) return false;
             return true;
           });
 
@@ -742,7 +983,7 @@ export function FuelPage() {
           const vehMap = new Map<string, VAgg>();
           for (const r of vehFiltered) {
             const key = r.vehicle.name;
-            const cur = vehMap.get(key) || { name: r.vehicle.name, make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, fuelType: r.vehicle.fuelType, fuelEfficiency: r.vehicle.fuelEfficiency, fuelTankCapacity: r.vehicle.fuelTankCapacity, totalKm: 0, months: new Map<string, VMth>() };
+            const cur = vehMap.get(key) || { name: r.vehicle.name, make: r.vehicle.make, model: r.vehicle.model, year: r.vehicle.year, fuelType: normalizeFuelType(r.vehicle.fuelType), fuelEfficiency: r.vehicle.fuelEfficiency, fuelTankCapacity: r.vehicle.fuelTankCapacity, totalKm: 0, months: new Map<string, VMth>() };
             cur.totalKm += r.distance;
             const mKey = r.month;
             const mCur = cur.months.get(mKey) || { month: mKey, distKm: 0, jurisdictions: new Map<string, VMthJur>() };
@@ -776,12 +1017,12 @@ export function FuelPage() {
           const toggleVehExpand = (key: string) => setExpandedVeh(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
           // KPI stats
-          const totalVehMi = vehRows.reduce((s, v) => s + v.totalMi, 0);
           const totalVehKm = vehRows.reduce((s, v) => s + v.totalKm, 0);
           const avgMpg = vehRows.length > 0 ? vehRows.reduce((s, v) => s + (v.fuelEfficiency || 0), 0) / vehRows.filter(v => v.fuelEfficiency).length : 0;
           const uniqueJurCount = new Set(vehFiltered.map(r => r.jurisdiction)).size;
           const monthLabelV = vehFilterMonth ? ['','January','February','March','April','May','June','July','August','September','October','November','December'][Number(vehFilterMonth)] : 'All Months';
           const regionLabelV = vehFilterRegion === 'All' ? 'All Regions' : vehFilterRegion;
+          const fuelTypeLabelV = vehFilterFuelType === 'All' ? 'All Fuel Types' : vehFilterFuelType;
 
           return (
           <div className="space-y-4">
@@ -805,8 +1046,8 @@ export function FuelPage() {
                 </div>
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Distance</div>
                 <div className="text-[11px] text-slate-400 mt-0.5">All vehicles combined</div>
-                <div className="text-3xl font-bold text-slate-900 mt-2">{totalVehMi.toLocaleString()} <span className="text-base font-medium text-slate-400">mi</span></div>
-                <div className="text-xs text-slate-400 mt-1">{Math.round(totalVehKm).toLocaleString()} km</div>
+                <div className="text-3xl font-bold text-slate-900 mt-2">{formatDistance(displayFromKm(totalVehKm))} <span className="text-base font-medium text-slate-400">{distanceUnitLabel}</span></div>
+                <div className="text-xs text-slate-400 mt-1">{formatDistance(altDisplayFromKm(totalVehKm))} {altDistanceUnitLabel}</div>
               </div>
 
               {/* Average MPG */}
@@ -843,7 +1084,11 @@ export function FuelPage() {
                   <option value="US">United States</option>
                   <option value="Canada">Canada</option>
                 </select>
-                <button onClick={() => { setIftaYear(2026); setIftaQuarter(''); setIftaMonth(''); setIftaRegion('All'); }}
+                <select value={vehFilterFuelType} onChange={e => setVehFuelType(e.target.value)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="All">All Fuel Types</option>
+                  {vehicleFuelTypeOptions.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                </select>
+                <button onClick={() => { setIftaYear(2026); setIftaQuarter(''); setIftaMonth(''); setIftaRegion('All'); setVehFuelType('All'); }}
                   className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
                   Reset filters
                 </button>
@@ -857,7 +1102,7 @@ export function FuelPage() {
               <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <h3 className="text-sm font-bold text-slate-900">Vehicle Mileage Breakdown</h3>
                 <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                  {vehFilterYear} {vehFilterQuarter ? `Q${vehFilterQuarter}` : ''} {monthLabelV !== 'All Months' ? monthLabelV : ''} · {regionLabelV}
+                  {vehFilterYear} {vehFilterQuarter ? `Q${vehFilterQuarter}` : ''} {monthLabelV !== 'All Months' ? monthLabelV : ''} · {regionLabelV} · {fuelTypeLabelV}
                 </span>
               </div>
 
@@ -865,7 +1110,7 @@ export function FuelPage() {
               {vehRows.length === 0 ? (
                 <div className="px-5 py-12 text-center text-slate-400">
                   <p className="text-sm font-medium">No vehicle records found for the selected filters.</p>
-                  <p className="text-xs mt-1">Try adjusting the year, quarter, month, or region.</p>
+                  <p className="text-xs mt-1">Try adjusting the year, quarter, month, region, or fuel type.</p>
                 </div>
               ) : (
               <div className="overflow-x-auto">
@@ -876,8 +1121,8 @@ export function FuelPage() {
                       <th className={`${thClass} text-left`}>Vehicle</th>
                       <th className={`${thClass} text-left`}>Fuel Type</th>
                       <th className={`${thClass} text-right`}>Efficiency</th>
-                      <th className={`${thClass} text-right`}>Distance (mi)</th>
-                      <th className={`${thClass} text-right`}>Distance (km)</th>
+                      <th className={`${thClass} text-right`}>Distance ({distanceUnitLabel})</th>
+                      <th className={`${thClass} text-right`}>Distance ({altDistanceUnitLabel})</th>
                       <th className={`${thClass} text-right`}>Months</th>
                     </tr>
                   </thead>
@@ -908,8 +1153,8 @@ export function FuelPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-600">{row.fuelEfficiency ? `${row.fuelEfficiency} MPG` : '—'}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{row.totalMi.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-500">{Math.round(row.totalKm).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(row.totalKm))}</td>
+                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-500">{formatDistance(altDisplayFromKm(row.totalKm))}</td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono font-semibold text-slate-700">{row.monthBreakdown.length}</td>
                           </tr>
 
@@ -933,8 +1178,8 @@ export function FuelPage() {
                                       <span className="text-[11px] text-slate-400">· {m.jurBreakdown.length} jurisdiction{m.jurBreakdown.length !== 1 ? 's' : ''}</span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{m.distMi.toLocaleString()}</td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono text-slate-400">{Math.round(m.distKm).toLocaleString()}</td>
+                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(m.distKm))}</td>
+                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(m.distKm))}</td>
                                   <td className="px-4 py-2.5"></td>
                                 </tr>
 
@@ -951,8 +1196,8 @@ export function FuelPage() {
                                         <span className="text-[11px] text-slate-400">{j.region === 'Canada' ? '· Canada' : '· United States'}</span>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-2 text-right text-[12px] font-mono font-semibold text-slate-700">{j.distMi.toLocaleString()}</td>
-                                    <td className="px-4 py-2 text-right text-[12px] font-mono text-slate-400">{Math.round(j.distKm).toLocaleString()}</td>
+                                    <td className="px-4 py-2 text-right text-[12px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(j.distKm))}</td>
+                                    <td className="px-4 py-2 text-right text-[12px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(j.distKm))}</td>
                                     <td className="px-4 py-2"></td>
                                   </tr>
                                 ))}
@@ -967,8 +1212,8 @@ export function FuelPage() {
                     <tr>
                       <td className="px-3 py-3"></td>
                       <td className="px-4 py-3 text-[13px] font-bold text-slate-900" colSpan={3}>Total ({vehRows.length} vehicles)</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{totalVehMi.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-500">{Math.round(totalVehKm).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(totalVehKm))}</td>
+                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-500">{formatDistance(altDisplayFromKm(totalVehKm))}</td>
                       <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-700">{uniqueJurCount}</td>
                     </tr>
                   </tfoot>
@@ -1077,12 +1322,12 @@ export function FuelPage() {
                   </div>
                   <div className="mb-2">
                     <div className="flex items-baseline space-x-2">
-                      <span className="text-3xl font-bold text-gray-900 tracking-tight">{totalMi.toLocaleString()}</span>
-                      <span className="text-base font-semibold text-gray-400">mi</span>
+                      <span className="text-3xl font-bold text-gray-900 tracking-tight">{formatDistance(displayFromKm(totalKm))}</span>
+                      <span className="text-base font-semibold text-gray-400">{distanceUnitLabel}</span>
                     </div>
                     <div className="flex items-center mt-1 space-x-2">
-                      <span className="text-sm font-medium text-gray-500">{Math.round(totalKm).toLocaleString()}</span>
-                      <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase">km</span>
+                      <span className="text-sm font-medium text-gray-500">{formatDistance(altDisplayFromKm(totalKm))}</span>
+                      <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase">{altDistanceUnitLabel}</span>
                     </div>
                   </div>
                 </div>
@@ -1186,12 +1431,12 @@ export function FuelPage() {
                   </div>
                   <div className="mb-2">
                     <div className="flex items-baseline space-x-2">
-                      <span className="text-3xl font-bold text-gray-900 tracking-tight">{jurRows.length > 0 ? Math.round(totalMi / jurRows.length).toLocaleString() : '0'}</span>
-                      <span className="text-base font-semibold text-gray-400">mi</span>
+                      <span className="text-3xl font-bold text-gray-900 tracking-tight">{jurRows.length > 0 ? formatDistance(displayFromKm(totalKm) / jurRows.length) : '0'}</span>
+                      <span className="text-base font-semibold text-gray-400">{distanceUnitLabel}</span>
                     </div>
                     <div className="flex items-center mt-1 space-x-2">
-                      <span className="text-sm font-medium text-gray-500">{jurRows.length > 0 ? Math.round(totalKm / jurRows.length).toLocaleString() : '0'}</span>
-                      <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase">km</span>
+                      <span className="text-sm font-medium text-gray-500">{jurRows.length > 0 ? formatDistance(altDisplayFromKm(totalKm) / jurRows.length) : '0'}</span>
+                      <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase">{altDistanceUnitLabel}</span>
                     </div>
                   </div>
                 </div>
@@ -1208,7 +1453,7 @@ export function FuelPage() {
                     {jurRows.slice(0, 5).map((r, i) => {
                       const maxMi = jurRows[0]?.totalMi || 1;
                       const pct = Math.max((r.totalMi / maxMi) * 100, 10);
-                      return <div key={r.code} className={`w-full rounded-md transition-all duration-200 ${i === 0 ? 'bg-emerald-500 hover:bg-emerald-600' : i < 3 ? 'bg-emerald-300 hover:bg-emerald-400' : 'bg-emerald-200 hover:bg-emerald-300'}`} style={{ height: `${pct}%` }} title={`${r.name}: ${r.totalMi.toLocaleString()} mi`} />;
+                      return <div key={r.code} className={`w-full rounded-md transition-all duration-200 ${i === 0 ? 'bg-emerald-500 hover:bg-emerald-600' : i < 3 ? 'bg-emerald-300 hover:bg-emerald-400' : 'bg-emerald-200 hover:bg-emerald-300'}`} style={{ height: `${pct}%` }} title={`${r.name}: ${formatDistance(displayFromKm(r.totalKm))} ${distanceUnitLabel}`} />;
                     })}
                   </div>
                 </div>
@@ -1278,8 +1523,8 @@ export function FuelPage() {
                       <th className={`${thClass} text-left`} style={{ width: '36px' }}></th>
                       <th className={`${thClass} text-left`}>Jurisdiction</th>
                       <th className={`${thClass} text-left`}>Date</th>
-                      <th className={`${thClass} text-right`}>Distance (mi)</th>
-                      <th className={`${thClass} text-right`}>Distance (km)</th>
+                      <th className={`${thClass} text-right`}>Distance ({distanceUnitLabel})</th>
+                      <th className={`${thClass} text-right`}>Distance ({altDistanceUnitLabel})</th>
                       <th className={`${thClass} text-right`}>Vehicles</th>
                     </tr>
                   </thead>
@@ -1302,8 +1547,8 @@ export function FuelPage() {
                             <td className="px-4 py-3">
                               <span className="text-[12px] font-medium text-slate-500">{row.dateLabel}</span>
                             </td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{row.totalMi.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-500">{Math.round(row.totalKm).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(row.totalKm))}</td>
+                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-500">{formatDistance(altDisplayFromKm(row.totalKm))}</td>
                             <td className="px-4 py-3 text-right text-[13px] font-mono font-semibold text-slate-700">{row.vehicleCount}</td>
                           </tr>
 
@@ -1333,8 +1578,8 @@ export function FuelPage() {
                                   <td className="px-4 py-2.5">
                                     <span className="text-[12px] text-slate-400">{v.monthRecords.length} month{v.monthRecords.length !== 1 ? 's' : ''}</span>
                                   </td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{v.distMi.toLocaleString()}</td>
-                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono text-slate-400">{Math.round(v.distKm).toLocaleString()}</td>
+                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono font-semibold text-slate-700">{formatDistance(displayFromKm(v.distKm))}</td>
+                                  <td className="px-4 py-2.5 text-right text-[13px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(v.distKm))}</td>
                                   <td className="px-4 py-2.5"></td>
                                 </tr>
 
@@ -1374,16 +1619,16 @@ export function FuelPage() {
                                             <thead>
                                               <tr className="bg-slate-50/80">
                                                 <th className="px-4 py-2 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Month</th>
-                                                <th className="px-4 py-2 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance (mi)</th>
-                                                <th className="px-4 py-2 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance (km)</th>
+                                                <th className="px-4 py-2 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance ({distanceUnitLabel})</th>
+                                                <th className="px-4 py-2 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Distance ({altDistanceUnitLabel})</th>
                                               </tr>
                                             </thead>
                                             <tbody>
                                               {v.monthRecords.map(mr => (
                                                 <tr key={mr.month} className="border-t border-slate-100 hover:bg-slate-50/50">
                                                   <td className="px-4 py-2 text-[13px] font-medium text-slate-700">{mr.label}</td>
-                                                  <td className="px-4 py-2 text-right text-[13px] font-mono font-semibold text-slate-800">{mr.distMi.toLocaleString()}</td>
-                                                  <td className="px-4 py-2 text-right text-[13px] font-mono text-slate-400">{Math.round(mr.distKm).toLocaleString()}</td>
+                                                  <td className="px-4 py-2 text-right text-[13px] font-mono font-semibold text-slate-800">{formatDistance(displayFromKm(mr.distKm))}</td>
+                                                  <td className="px-4 py-2 text-right text-[13px] font-mono text-slate-400">{formatDistance(altDisplayFromKm(mr.distKm))}</td>
                                                 </tr>
                                               ))}
                                             </tbody>
@@ -1405,8 +1650,8 @@ export function FuelPage() {
                       <td className="px-3 py-3"></td>
                       <td className="px-4 py-3 text-[13px] font-bold text-slate-900">Total ({jurRows.length} jurisdictions)</td>
                       <td></td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{totalMi.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-500">{Math.round(totalKm).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-900">{formatDistance(displayFromKm(totalKm))}</td>
+                      <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-500">{formatDistance(altDisplayFromKm(totalKm))}</td>
                       <td className="px-4 py-3 text-right text-[13px] font-mono font-bold text-slate-700">{totalVehicles}</td>
                     </tr>
                   </tfoot>
@@ -1438,7 +1683,7 @@ export function FuelPage() {
               <DateRangeFilter from={tripDateFrom} to={tripDateTo} onFrom={v => { setTripDateFrom(v); setTripPage(1); }} onTo={v => { setTripDateTo(v); setTripPage(1); }} />
               <div className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-auto">
                 <MapPin size={14} className="text-blue-500" />
-                {tripTotalDist.toLocaleString()} mi <span className="font-normal text-slate-400">Total distance</span>
+                {formatDistance(displayFromMiles(tripTotalDist))} {distanceUnitLabel} <span className="font-normal text-slate-400">Total distance</span>
               </div>
             </div>
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -1452,9 +1697,9 @@ export function FuelPage() {
                       {isVis(tripCols, 'jurisdiction') && <SortHeader label="Jurisdiction" field="jurisdiction" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} />}
                       {isVis(tripCols, 'vehicle') && <SortHeader label="Vehicle" field="unitNumber" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} />}
                       {isVis(tripCols, 'driver') && <SortHeader label="Driver" field="driverName" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} />}
-                      {isVis(tripCols, 'dist') && <SortHeader label="Total Dist. (mi)" field="totalDistance" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} align="right" />}
-                      {isVis(tripCols, 'odoStart') && <SortHeader label="Odo. Start" field="odoStart" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} align="right" />}
-                      {isVis(tripCols, 'odoEnd') && <SortHeader label="Odo. End" field="odoEnd" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} align="right" />}
+                      {isVis(tripCols, 'dist') && <SortHeader label={`Total Dist. (${distanceUnitLabel})`} field="totalDistance" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} align="right" />}
+                      {isVis(tripCols, 'odoStart') && <SortHeader label={`Odo. Start (${distanceUnitLabel})`} field="odoStart" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} align="right" />}
+                      {isVis(tripCols, 'odoEnd') && <SortHeader label={`Odo. End (${distanceUnitLabel})`} field="odoEnd" sortField={tripSortField} sortDir={tripSortDir} onSort={sortTrp} align="right" />}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1464,9 +1709,9 @@ export function FuelPage() {
                         {isVis(tripCols, 'jurisdiction') && <td className={`${tdClass} text-slate-700`}>{t.jurisdiction}</td>}
                         {isVis(tripCols, 'vehicle') && <td className={tdClass}><span className="font-bold text-slate-900">{t.unitNumber}</span></td>}
                         {isVis(tripCols, 'driver') && <td className={tdClass}><div className="flex items-center gap-2"><DriverAvatar name={t.driverName} /><span className="text-slate-600">{t.driverName}</span></div></td>}
-                        {isVis(tripCols, 'dist') && <td className={`${tdClass} text-right font-mono font-bold text-slate-900`}>{t.totalDistance.toLocaleString()}</td>}
-                        {isVis(tripCols, 'odoStart') && <td className={`${tdClass} text-right font-mono text-slate-600`}>{t.odoStart.toLocaleString()}</td>}
-                        {isVis(tripCols, 'odoEnd') && <td className={`${tdClass} text-right font-mono text-slate-600`}>{t.odoEnd.toLocaleString()}</td>}
+                        {isVis(tripCols, 'dist') && <td className={`${tdClass} text-right font-mono font-bold text-slate-900`}>{formatDistance(displayFromMiles(t.totalDistance))}</td>}
+                        {isVis(tripCols, 'odoStart') && <td className={`${tdClass} text-right font-mono text-slate-600`}>{formatDistance(displayFromMiles(t.odoStart))}</td>}
+                        {isVis(tripCols, 'odoEnd') && <td className={`${tdClass} text-right font-mono text-slate-600`}>{formatDistance(displayFromMiles(t.odoEnd))}</td>}
                       </tr>
                     ))}
                     {filteredTrips.length === 0 && (
@@ -1485,79 +1730,456 @@ export function FuelPage() {
         {/* TAB: FUEL PURCHASES                                               */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'purchases' && (() => {
+          function parseLoc(loc: string): { city: string; state: string } {
+            const parts = loc.split(', ');
+            const last = parts[parts.length - 1] || '';
+            const words = last.trim().split(' ');
+            const state = words[words.length - 1] || '';
+            const city = words.slice(0, -1).join(' ') || last;
+            return { city, state };
+          }
+          function fuelCardNo(id: string): string {
+            return `FC-${id.replace(/\D/g, '').slice(-4).padStart(4, '0')}`;
+          }
+          function otherRefNo(id: string): string | null {
+            const n = parseInt(id.replace(/\D/g, '') || '0');
+            return n % 4 === 0 ? `PO-${String(n * 13 + 200).padStart(5, '0')}` : null;
+          }
+          function getRate(dateStr: string): number {
+            return MONTHLY_RATES[dateStr.slice(0, 7)] || 1.35;
+          }
+
           const pagedPurch = filteredPurchases.slice((purchPage - 1) * purchPerPage, purchPage * purchPerPage);
           const sortPur = (f: string) => toggleSort(f, purchSortField, purchSortDir, setPurchSortField, setPurchSortDir);
+          const jurisdictionOptions = purchaseCountry === 'US'
+            ? US_STATES
+            : purchaseCountry === 'Canada'
+              ? CA_PROVINCES
+              : [...US_STATES, ...CA_PROVINCES];
+          const allJurisdictionLabel = purchaseCountry === 'US'
+            ? 'All States'
+            : purchaseCountry === 'Canada'
+              ? 'All Provinces'
+              : 'All States/Provinces';
+
+          // ── KPI computations ──
+          const totalSpendUSD = filteredPurchases.reduce((s, p) => s + p.totalCost, 0);
+          const totalSpendCAD = filteredPurchases.reduce((s, p) => s + p.totalCost * getRate(p.date), 0);
+          const totalGallons = filteredPurchases.reduce((s, p) => s + p.gallons, 0);
+          const avgPpg = totalGallons > 0 ? totalSpendUSD / totalGallons : 0;
+
+          // US / CA split
+          const usCount = filteredPurchases.filter(p => !CANADA_JURISDICTIONS.has(p.jurisdiction)).length;
+          const caCount = filteredPurchases.length - usCount;
+          const totalRecs = filteredPurchases.length;
+
+          // Monthly spend sparkline
+          const monthlyMap = new Map<string, number>();
+          filteredPurchases.forEach(p => {
+            const ym = p.date.slice(0, 7);
+            monthlyMap.set(ym, (monthlyMap.get(ym) || 0) + p.totalCost);
+          });
+          const sparkData = [...monthlyMap.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([month, spend]) => ({ month: month.slice(5), spend: Math.round(spend) }));
+          const half = Math.floor(sparkData.length / 2);
+          const prevTotal = sparkData.slice(0, half).reduce((s, d) => s + d.spend, 0);
+          const lastTotal = sparkData.slice(half).reduce((s, d) => s + d.spend, 0);
+          const spendTrend = prevTotal > 0 ? ((lastTotal - prevTotal) / prevTotal) * 100 : 0;
+
+          // Top 5 vehicles by avg $/gal for gradient bars
+          const vehAccum = new Map<string, { total: number; gallons: number }>();
+          filteredPurchases.forEach(p => {
+            const cur = vehAccum.get(p.unitNumber) || { total: 0, gallons: 0 };
+            cur.total += p.totalCost; cur.gallons += p.gallons;
+            vehAccum.set(p.unitNumber, cur);
+          });
+          const topVehs = [...vehAccum.entries()]
+            .map(([unit, { total, gallons }]) => ({ unit, avgPpg: gallons > 0 ? total / gallons : 0 }))
+            .sort((a, b) => b.avgPpg - a.avgPpg)
+            .slice(0, 5);
+          const maxPpg = topVehs.length > 0 ? topVehs[0].avgPpg : 1;
+          const BAR_COLORS = ['bg-blue-500', 'bg-violet-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500'];
+
           return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {(() => {
-                const totalGal = filteredPurchases.reduce((s, p) => s + p.gallons, 0);
-                const totalCost = filteredPurchases.reduce((s, p) => s + p.totalCost, 0);
-                const avgPpg = filteredPurchases.length > 0 ? totalCost / totalGal : 0;
-                return [
-                  { label: 'Total Purchases', value: filteredPurchases.length, sub: 'Transactions' },
-                  { label: 'Total Gallons', value: totalGal.toLocaleString(undefined, { maximumFractionDigits: 0 }), sub: 'Fuel purchased' },
-                  { label: 'Total Spent', value: `$${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, sub: 'All purchases' },
-                  { label: 'Avg. Price/Gal', value: `$${avgPpg.toFixed(2)}`, sub: 'Across all locations' },
-                ];
-              })().map(kpi => (
-                <div key={kpi.label} className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{kpi.label}</div>
-                  <div className="text-xl font-bold text-slate-900">{kpi.value}</div>
-                  <div className="text-xs text-slate-400 mt-0.5">{kpi.sub}</div>
+          <div className="space-y-5">
+
+            {/* ── KPI Cards (3 styled cards) ── */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+              {/* Card 1: Total Spend + sparkline */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Spend</span>
+                  <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">
+                    {purchCurrency}
+                  </span>
                 </div>
-              ))}
+                <div className="text-[26px] font-bold text-slate-900 leading-tight">
+                  ${purchCurrency === 'USD'
+                    ? totalSpendUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : totalSpendCAD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 mb-3">
+                  <span className={`text-xs font-bold ${spendTrend >= 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {spendTrend >= 0 ? '↑' : '↓'}{Math.abs(spendTrend).toFixed(1)}%
+                  </span>
+                  <span className="text-xs text-slate-400">vs prior period</span>
+                  <span className="text-xs text-slate-400 ml-auto font-medium">
+                    {purchCurrency === 'USD'
+                      ? <>≈ ${totalSpendCAD.toLocaleString(undefined, { maximumFractionDigits: 0 })} CAD</>
+                      : <>≈ ${totalSpendUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD</>}
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={56}>
+                  <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+                    <Line type="monotone" dataKey="spend" stroke="#3b82f6" strokeWidth={2.5} dot={false} />
+                    <RechartsTooltip
+                      formatter={(v: number | undefined) => [`$${(v ?? 0).toLocaleString()}`, purchCurrency]}
+                      contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0', padding: '4px 10px' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Card 2: Transactions + US/CA coverage bars */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Transactions</span>
+                <div className="flex items-baseline gap-2 mt-1 mb-4">
+                  <span className="text-[26px] font-bold text-slate-900 leading-tight">{totalRecs}</span>
+                  <span className="text-xs text-slate-400 font-medium">purchase records</span>
+                </div>
+                <div className="space-y-2.5">
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-slate-600">🇺🇸 USA</span>
+                      <span className="font-bold text-slate-700">
+                        {usCount} <span className="text-slate-400 font-normal">({totalRecs > 0 ? Math.round(usCount / totalRecs * 100) : 0}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        style={{ width: `${totalRecs > 0 ? (usCount / totalRecs) * 100 : 0}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-slate-600">🇨🇦 Canada</span>
+                      <span className="font-bold text-slate-700">
+                        {caCount} <span className="text-slate-400 font-normal">({totalRecs > 0 ? Math.round(caCount / totalRecs * 100) : 0}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-400 rounded-full transition-all duration-500"
+                        style={{ width: `${totalRecs > 0 ? (caCount / totalRecs) * 100 : 0}%` }} />
+                    </div>
+                  </div>
+                  <div className="pt-1 border-t border-slate-100">
+                    <div className="text-[11px] text-slate-400 flex justify-between">
+                      <span>Total Gallons</span>
+                      <span className="font-semibold text-slate-600">{totalGallons.toLocaleString(undefined, { maximumFractionDigits: 0 })} gal</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Avg $/Gallon + top-vehicle gradient bars */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Avg. $/Gallon</span>
+                <div className="flex items-baseline gap-2 mt-1 mb-4">
+                  <span className="text-[26px] font-bold text-slate-900 leading-tight">${avgPpg.toFixed(2)}</span>
+                  <span className="text-xs text-slate-400 font-medium">fleet average</span>
+                </div>
+                <div className="space-y-2">
+                  {topVehs.map((v, i) => (
+                    <div key={v.unit} className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-500 w-14 shrink-0 truncate font-medium">{v.unit}</span>
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full ${BAR_COLORS[i]} rounded-full`}
+                          style={{ width: `${(v.avgPpg / maxPpg) * 100}%` }} />
+                      </div>
+                      <span className="text-[11px] font-bold text-slate-700 w-10 text-right">${v.avgPpg.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {topVehs.length === 0 && <p className="text-xs text-slate-400 text-center py-2">No data</p>}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <select value={purchaseVehicle} onChange={e => { setPurchaseVehicle(e.target.value); setPurchPage(1); }} className={inputCls + ' w-auto'}>
-                <option value="All">All Vehicles</option>
-                {TRIP_VEHICLES.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-              <select value={purchaseDriver} onChange={e => { setPurchaseDriver(e.target.value); setPurchPage(1); }} className={inputCls + ' w-auto'}>
-                <option value="All">All Drivers</option>
-                {TRIP_DRIVERS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <DateRangeFilter from={purchDateFrom} to={purchDateTo} onFrom={v => { setPurchDateFrom(v); setPurchPage(1); }} onTo={v => { setPurchDateTo(v); setPurchPage(1); }} />
-            </div>
+
+            {/* ── Main Table Card ── */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <InlineToolbar search={purchSearch} onSearch={v => { setPurchSearch(v); setPurchPage(1); }} placeholder="Search purchases..."
-                columns={purchCols} onToggle={id => toggleCol(purchCols, setPurchCols, id)} total={filteredPurchases.length} perPage={purchPerPage} />
+
+              {/* Card header */}
+              <div className="px-5 pt-4 pb-3 border-b border-slate-200 bg-white space-y-3">
+
+                {/* Row 1: title left · toggle right */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-800">Fuel Purchase Records</h3>
+                    <span className="text-xs text-slate-400">{filteredPurchases.length} records</span>
+                  </div>
+
+                  {/* USD / CAD toggle */}
+                  <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                    <button
+                      onClick={() => setPurchCurrency('USD')}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
+                        purchCurrency === 'USD'
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      us USD
+                    </button>
+                    <button
+                      onClick={() => setPurchCurrency('CAD')}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-all duration-150 ${
+                        purchCurrency === 'CAD'
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      ca CAD
+                    </button>
+                  </div>
+                </div>
+
+                {/* Row 2: all filters */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select value={purchaseVehicle} onChange={e => { setPurchaseVehicle(e.target.value); setPurchPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="All">All Vehicles</option>
+                    {TRIP_VEHICLES.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                  <select value={purchaseDriver} onChange={e => { setPurchaseDriver(e.target.value); setPurchPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="All">All Drivers</option>
+                    {TRIP_DRIVERS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  <select value={purchaseCountry} onChange={e => {
+                    const country = e.target.value as 'All' | 'US' | 'Canada';
+                    setPurchaseCountry(country);
+                    setPurchaseJurisdiction('All');
+                    setPurchPage(1);
+                  }}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="All">All Countries</option>
+                    <option value="US">US</option>
+                    <option value="Canada">Canada</option>
+                  </select>
+                  <select value={purchaseJurisdiction} onChange={e => { setPurchaseJurisdiction(e.target.value); setPurchPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="All">{allJurisdictionLabel}</option>
+                    {jurisdictionOptions.map(j => <option key={j} value={j}>{j}</option>)}
+                  </select>
+                  <select value={purchaseFuelType} onChange={e => { setPurchaseFuelType(e.target.value); setPurchPage(1); }}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="All">All Fuel Types</option>
+                    {FUEL_TYPE_OPTIONS.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                  </select>
+                  <DateRangeFilter from={purchDateFrom} to={purchDateTo} onFrom={v => { setPurchDateFrom(v); setPurchPage(1); }} onTo={v => { setPurchDateTo(v); setPurchPage(1); }} />
+                </div>
+
+              </div>
+
+              {/* Search + Column toggle toolbar */}
+              <InlineToolbar
+                search={purchSearch}
+                onSearch={v => { setPurchSearch(v); setPurchPage(1); }}
+                placeholder="Search purchases…"
+                columns={purchCols}
+                onToggle={id => toggleCol(purchCols, setPurchCols, id)}
+                total={filteredPurchases.length}
+                perPage={purchPerPage}
+              />
+
+              {/* Table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      {isVis(purchCols, 'date') && <SortHeader label="Date" field="date" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} />}
-                      {isVis(purchCols, 'location') && <SortHeader label="Location" field="location" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} />}
-                      {isVis(purchCols, 'vehicle') && <SortHeader label="Vehicle" field="unitNumber" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} />}
-                      {isVis(purchCols, 'driver') && <SortHeader label="Driver" field="driverName" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} />}
-                      {isVis(purchCols, 'gallons') && <SortHeader label="Gallons" field="gallons" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />}
-                      {isVis(purchCols, 'ppg') && <SortHeader label="$/Gal" field="pricePerGallon" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />}
-                      {isVis(purchCols, 'cost') && <SortHeader label="Total Cost" field="totalCost" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />}
-                      {isVis(purchCols, 'fuelType') && <th className={`${thClass} text-center`}>Fuel Type</th>}
-                      {isVis(purchCols, 'payment') && <th className={`${thClass} text-center`}>Payment</th>}
+                <table className="w-full text-sm min-w-[1200px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      {isVis(purchCols, 'unit') && (
+                        <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Unit #</th>
+                      )}
+                      {isVis(purchCols, 'driver') && (
+                        <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">Driver</th>
+                      )}
+                      {isVis(purchCols, 'date') && <SortHeader label="Txn Date" field="date" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} />}
+                      {isVis(purchCols, 'city') && <SortHeader label="Location City" field="location" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} />}
+                      {isVis(purchCols, 'state') && (
+                        <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">State/Prov.</th>
+                      )}
+                      {isVis(purchCols, 'gallons') && (
+                        <SortHeader label="Qty (Gal)" field="gallons" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
+                      )}
+                      {isVis(purchCols, 'fuelType') && (
+                        <th className="px-4 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider">Fuel Type</th>
+                      )}
+                      {isVis(purchCols, 'ppg') && (
+                        <SortHeader label={purchCurrency === 'USD' ? '$/Gal (USD)' : '$/Gal (CAD)'} field="pricePerGallon" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
+                      )}
+                      {isVis(purchCols, 'totalUSD') && (
+                        <SortHeader label={`Total (${purchCurrency})`} field="totalCost" sortField={purchSortField} sortDir={purchSortDir} onSort={sortPur} align="right" />
+                      )}
+                      {purchCurrency === 'CAD' && isVis(purchCols, 'rate') && (
+                        <th className="px-4 py-3 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Exch. Rate</th>
+                      )}
+                      {isVis(purchCols, 'totalCAD') && null /* merged into totalUSD column */}
+                      {isVis(purchCols, 'fuelCard') && (
+                        <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">FuelCard #</th>
+                      )}
+                      {isVis(purchCols, 'otherRef') && (
+                        <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Other Ref #</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {pagedPurch.map(p => (
-                      <tr key={p.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => setSelectedPurchase(p)}>
-                        {isVis(purchCols, 'date') && <td className={`${tdClass} font-medium text-slate-700`}>{fmtDate(p.date)}</td>}
-                        {isVis(purchCols, 'location') && <td className={tdClass}><div className="text-slate-700 max-w-[200px] truncate">{p.location}</div></td>}
-                        {isVis(purchCols, 'vehicle') && <td className={`${tdClass} font-bold text-slate-900`}>{p.unitNumber}</td>}
-                        {isVis(purchCols, 'driver') && <td className={tdClass}><div className="flex items-center gap-2"><DriverAvatar name={p.driverName} /><span className="text-slate-600">{p.driverName}</span></div></td>}
-                        {isVis(purchCols, 'gallons') && <td className={`${tdClass} text-right font-mono font-bold text-blue-600`}>{p.gallons.toFixed(1)}</td>}
-                        {isVis(purchCols, 'ppg') && <td className={`${tdClass} text-right font-mono text-slate-600`}>${p.pricePerGallon.toFixed(2)}</td>}
-                        {isVis(purchCols, 'cost') && <td className={`${tdClass} text-right font-mono font-bold text-slate-900`}>${p.totalCost.toFixed(2)}</td>}
-                        {isVis(purchCols, 'fuelType') && <td className={`${tdClass} text-center text-slate-600`}>{p.fuelType}</td>}
-                        {isVis(purchCols, 'payment') && <td className={`${tdClass} text-center`}><span className={`px-2 py-0.5 rounded text-[11px] font-bold ${p.paymentMethod === 'Fuel Card' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>{p.paymentMethod}</span></td>}
-                      </tr>
-                    ))}
+                    {pagedPurch.map(p => {
+                      const loc = parseLoc(p.location);
+                      const rate = getRate(p.date);
+                      const totalUSD = p.totalCost;
+                      const totalCAD = +(p.totalCost * rate).toFixed(2);
+                      const fc = fuelCardNo(p.id);
+                      const ref = otherRefNo(p.id);
+                      const isCA = CANADA_JURISDICTIONS.has(p.jurisdiction);
+                      return (
+                        <tr key={p.id}
+                          className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                          onClick={() => setSelectedPurchase(p)}>
+
+                          {/* Unit # */}
+                          {isVis(purchCols, 'unit') && (
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${isCA ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                {p.unitNumber}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* Driver */}
+                          {isVis(purchCols, 'driver') && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <DriverAvatar name={p.driverName} />
+                                <span className="text-[13px] font-medium text-slate-700 whitespace-nowrap">{p.driverName}</span>
+                              </div>
+                            </td>
+                          )}
+
+                          {/* Date */}
+                          {isVis(purchCols, 'date') && (
+                            <td className="px-4 py-3 text-[13px] font-medium text-slate-700 whitespace-nowrap">
+                              {fmtDate(p.date)}
+                            </td>
+                          )}
+
+                          {/* City */}
+                          {isVis(purchCols, 'city') && (
+                            <td className="px-4 py-3 text-[13px] text-slate-700">{loc.city || p.location}</td>
+                          )}
+
+                          {/* State / Province */}
+                          {isVis(purchCols, 'state') && (
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center justify-center w-8 h-6 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                {loc.state}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* Qty (Gallons) */}
+                          {isVis(purchCols, 'gallons') && (
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-[13px] font-bold font-mono text-blue-700">{p.gallons.toFixed(1)}</span>
+                              <span className="text-[10px] text-slate-400 ml-1">gal</span>
+                            </td>
+                          )}
+
+                          {/* Fuel Type */}
+                          {isVis(purchCols, 'fuelType') && (
+                            <td className="px-4 py-3 text-center">
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
+                                {p.fuelType}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* Price per gallon */}
+                          {isVis(purchCols, 'ppg') && (
+                            <td className="px-4 py-3 text-right text-[13px] font-mono text-slate-600">
+                              {purchCurrency === 'USD'
+                                ? `$${p.pricePerGallon.toFixed(2)}`
+                                : `$${(p.pricePerGallon * rate).toFixed(2)}`}
+                            </td>
+                          )}
+
+                          {/* Total — switches between USD and CAD */}
+                          {isVis(purchCols, 'totalUSD') && (
+                            <td className="px-4 py-3 text-right">
+                              {purchCurrency === 'USD' ? (
+                                <>
+                                  <span className="text-[13px] font-bold font-mono text-blue-700">${totalUSD.toFixed(2)}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">USD</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[13px] font-bold font-mono text-red-700">${totalCAD.toFixed(2)}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">CAD</span>
+                                </>
+                              )}
+                            </td>
+                          )}
+
+                          {/* Exchange Rate — visible only in CAD mode */}
+                          {purchCurrency === 'CAD' && isVis(purchCols, 'rate') && (
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-[12px] font-mono text-slate-500 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+                                {rate.toFixed(3)}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* FuelCard # */}
+                          {isVis(purchCols, 'fuelCard') && (
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-[12px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
+                                {fc}
+                              </span>
+                            </td>
+                          )}
+
+                          {/* Other Ref # */}
+                          {isVis(purchCols, 'otherRef') && (
+                            <td className="px-4 py-3">
+                              {ref
+                                ? <span className="font-mono text-[12px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">{ref}</span>
+                                : <span className="text-slate-300 text-sm">—</span>}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                     {filteredPurchases.length === 0 && (
-                      <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400 text-sm">No purchase records match your filters.</td></tr>
+                      <tr>
+                        <td colSpan={13} className="px-4 py-14 text-center">
+                          <div className="text-slate-300 text-4xl mb-3">⛽</div>
+                          <p className="text-sm font-semibold text-slate-400">No purchase records found</p>
+                          <p className="text-xs text-slate-300 mt-1">Try clearing your filters</p>
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-              <InlinePagination total={filteredPurchases.length} page={purchPage} perPage={purchPerPage} onPage={setPurchPage} onPerPage={v => { setPurchPerPage(v); setPurchPage(1); }} />
+
+              {/* Pagination */}
+              <InlinePagination
+                total={filteredPurchases.length}
+                page={purchPage}
+                perPage={purchPerPage}
+                onPage={setPurchPage}
+                onPerPage={v => { setPurchPerPage(v); setPurchPage(1); }}
+              />
             </div>
           </div>
           );
@@ -1656,9 +2278,9 @@ export function FuelPage() {
             <DetailRow label="Jurisdiction" value={selectedTrip.jurisdiction} />
             <DetailRow label="Vehicle ID" value={selectedTrip.unitNumber} />
             <DetailRow label="Driver" value={selectedTrip.driverName} />
-            <DetailRow label="Total Distance" value={`${selectedTrip.totalDistance.toLocaleString()} mi`} accent />
-            <DetailRow label="Odometer Start" value={`${selectedTrip.odoStart.toLocaleString()} mi`} />
-            <DetailRow label="Odometer End" value={`${selectedTrip.odoEnd.toLocaleString()} mi`} />
+            <DetailRow label="Total Distance" value={`${formatDistance(displayFromMiles(selectedTrip.totalDistance))} ${distanceUnitLabel}`} accent />
+            <DetailRow label="Odometer Start" value={`${formatDistance(displayFromMiles(selectedTrip.odoStart))} ${distanceUnitLabel}`} />
+            <DetailRow label="Odometer End" value={`${formatDistance(displayFromMiles(selectedTrip.odoEnd))} ${distanceUnitLabel}`} />
             <DetailRow label="Fuel Type" value={selectedTrip.fuelType} />
           </div>
         </ModalOverlay>
@@ -1708,7 +2330,7 @@ export function FuelPage() {
             <DetailRow label="Status" value={selectedDriver.status} />
             <DetailRow label="Assigned Vehicle" value={`${selectedDriver.assignedUnit} — ${selectedDriver.assignedVehicle}`} />
             <DetailRow label="Total Trips" value={selectedDriver.totalTrips} accent />
-            <DetailRow label="Total Distance" value={`${selectedDriver.totalDistance.toLocaleString()} mi`} accent />
+            <DetailRow label="Total Distance" value={`${formatDistance(displayFromMiles(selectedDriver.totalDistance))} ${distanceUnitLabel}`} accent />
             <DetailRow label="Avg. MPG" value={selectedDriver.avgMpg.toFixed(2)} />
             <DetailRow label="Fuel Used" value={`${selectedDriver.totalFuelGal.toLocaleString()} gal`} />
             <DetailRow label="Total Cost" value={`$${selectedDriver.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} accent />
@@ -1748,14 +2370,14 @@ export function FuelPage() {
                 Driver: <span className="font-bold text-slate-800">{driverForVehicle(addTripVehicle)?.driverName || '—'}</span>
               </div>
             )}
-            <FormField label="Total Distance (mi)">
+            <FormField label={`Total Distance (${distanceUnitLabel})`}>
               <input type="number" min={0} value={addTripDist} onChange={e => setAddTripDist(e.target.value)} placeholder="0" className={inputCls} />
             </FormField>
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="Odo. Start (mi)">
+              <FormField label={`Odo. Start (${distanceUnitLabel})`}>
                 <input type="number" min={0} value={addTripOdoStart} onChange={e => setAddTripOdoStart(e.target.value)} placeholder="0" className={inputCls} />
               </FormField>
-              <FormField label="Odo. End (mi)">
+              <FormField label={`Odo. End (${distanceUnitLabel})`}>
                 <input type="number" min={0} value={addTripOdoEnd} onChange={e => setAddTripOdoEnd(e.target.value)} placeholder="0" className={inputCls} />
               </FormField>
             </div>

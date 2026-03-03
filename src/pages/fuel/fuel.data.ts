@@ -78,6 +78,7 @@ export const DRIVER_VEHICLE_ASSIGNMENTS: DriverVehicleAssignment[] = [
   { driverId: 'DRV-2002', driverName: 'Sarah Miller',     vehicleId: 'a2', unitNumber: 'TR-2088', primary: true },
   { driverId: 'DRV-1001', driverName: 'James Sullivan',   vehicleId: 'a3', unitNumber: 'TR-3055', primary: true },
   { driverId: 'DRV-2004', driverName: 'Elena Rodriguez',  vehicleId: 'a5', unitNumber: 'TR-5200', primary: true },
+  { driverId: 'DRV-2010', driverName: 'David Thompson',   vehicleId: 'a7', unitNumber: 'TR-7044', primary: true },
   { driverId: 'DRV-1002', driverName: 'Maria Rodriguez',  vehicleId: 'a1', unitNumber: 'TR-1049', primary: false },
   { driverId: 'DRV-1004', driverName: 'Sarah Johnson',    vehicleId: 'a6', unitNumber: 'TR-6001', primary: true },
 ];
@@ -115,6 +116,52 @@ const IDLING_REASONS = [
   'Weather Delay',
 ];
 
+type FuelPurchaseProfile = {
+  minGallons: number;
+  maxGallons: number;
+  minPpg: number;
+  maxPpg: number;
+};
+
+// Base fuel type per assigned unit, then expanded to related variants for richer demo data.
+const BASE_FUEL_TYPE_BY_ASSET_ID: Record<string, string> = {
+  a1: 'Diesel',
+  a2: 'Biodiesel',
+  a3: 'Propane',
+  a5: 'Hybrid electric',
+  a6: 'Compressed natural gas',
+  a7: 'Gasoline',
+};
+
+const FUEL_TYPE_VARIANTS_BY_BASE: Record<string, string[]> = {
+  Diesel: ['Diesel', 'Biodiesel', 'A55'],
+  Biodiesel: ['Biodiesel', 'Diesel', 'A55'],
+  Gasoline: ['Gasoline', 'E-85', 'Ethanol', 'M-85', 'Methanol'],
+  Propane: ['Propane', 'Compressed natural gas', 'Liquid natural gas'],
+  'Compressed natural gas': ['Compressed natural gas', 'Liquid natural gas', 'Propane'],
+  'Hybrid electric': ['Hybrid electric', 'Plug-in hybrid electric', 'Electric', 'Hydrogen'],
+  Other: ['Other'],
+};
+
+const FUEL_PURCHASE_PROFILES: Record<string, FuelPurchaseProfile> = {
+  'A55': { minGallons: 35, maxGallons: 145, minPpg: 3.35, maxPpg: 5.2 },
+  'Biodiesel': { minGallons: 32, maxGallons: 140, minPpg: 3.3, maxPpg: 5.1 },
+  'Compressed natural gas': { minGallons: 18, maxGallons: 85, minPpg: 2.4, maxPpg: 3.9 },
+  'Diesel': { minGallons: 35, maxGallons: 150, minPpg: 3.25, maxPpg: 4.95 },
+  'E-85': { minGallons: 22, maxGallons: 95, minPpg: 2.2, maxPpg: 3.8 },
+  'Electric': { minGallons: 10, maxGallons: 50, minPpg: 1.1, maxPpg: 2.6 },
+  'Ethanol': { minGallons: 20, maxGallons: 90, minPpg: 2.1, maxPpg: 3.7 },
+  'Gasoline': { minGallons: 24, maxGallons: 110, minPpg: 2.6, maxPpg: 4.35 },
+  'Hydrogen': { minGallons: 8, maxGallons: 32, minPpg: 4.8, maxPpg: 8.6 },
+  'Hybrid electric': { minGallons: 14, maxGallons: 68, minPpg: 2.0, maxPpg: 3.9 },
+  'Liquid natural gas': { minGallons: 24, maxGallons: 96, minPpg: 2.7, maxPpg: 4.45 },
+  'M-85': { minGallons: 20, maxGallons: 86, minPpg: 2.0, maxPpg: 3.8 },
+  'Methanol': { minGallons: 18, maxGallons: 82, minPpg: 1.9, maxPpg: 3.6 },
+  'Plug-in hybrid electric': { minGallons: 10, maxGallons: 55, minPpg: 1.8, maxPpg: 3.4 },
+  'Propane': { minGallons: 18, maxGallons: 88, minPpg: 2.2, maxPpg: 3.6 },
+  'Other': { minGallons: 15, maxGallons: 80, minPpg: 2.4, maxPpg: 6.4 },
+};
+
 // ── Helper: Deterministic Pseudo-Random ────────────────────────────────────────
 
 function seededRandom(seed: number): number {
@@ -128,6 +175,18 @@ function rng(min: number, max: number, seed: number): number {
 
 function pick<T>(arr: T[], seed: number): T {
   return arr[Math.floor(seededRandom(seed) * arr.length)];
+}
+
+function getFuelTypeForAssignment(assignment: DriverVehicleAssignment, seed: number, vehicleType?: string): string {
+  const defaultBase = vehicleType === 'Reefer' ? 'Hybrid electric' : 'Diesel';
+  const baseType = BASE_FUEL_TYPE_BY_ASSET_ID[assignment.vehicleId] || defaultBase;
+  const typePool = FUEL_TYPE_VARIANTS_BY_BASE[baseType] || [baseType];
+  if (seededRandom(seed + 97) > 0.965) return 'Other';
+  return pick(typePool, seed + assignment.driverId.length + assignment.unitNumber.length);
+}
+
+function getFuelPurchaseProfile(fuelType: string): FuelPurchaseProfile {
+  return FUEL_PURCHASE_PROFILES[fuelType] || { minGallons: 24, maxGallons: 110, minPpg: 2.8, maxPpg: 4.9 };
 }
 
 // ── Generate Trip Records ──────────────────────────────────────────────────────
@@ -170,7 +229,7 @@ function generateTrips(): TripRecord[] {
           totalDistance: dist,
           odoStart: baseOdo,
           odoEnd: baseOdo + dist,
-          fuelType: asset.vehicleType === 'Reefer' ? 'Diesel/Electric' : 'Diesel',
+          fuelType: getFuelTypeForAssignment(assignment, tripSeed + 9, asset.vehicleType),
         });
         id++;
       }
@@ -197,11 +256,13 @@ function generatePurchases(): FuelPurchase[] {
       if (!asset || asset.operationalStatus === 'OutOfService') continue;
 
       const seed = id * 47 + dayOffset * 11;
-      // Drivers fuel every 2-4 days
-      if (seededRandom(seed) > 0.35) continue;
+      // Drivers fuel roughly every 2-3 days.
+      if (seededRandom(seed) > 0.45) continue;
 
-      const gallons = +rng(30, 150, seed + 1).toFixed(1);
-      const ppg = +rng(3.29, 4.89, seed + 2).toFixed(2);
+      const fuelType = getFuelTypeForAssignment(assignment, seed + 4, asset.vehicleType);
+      const profile = getFuelPurchaseProfile(fuelType);
+      const gallons = +rng(profile.minGallons, profile.maxGallons, seed + 1).toFixed(1);
+      const ppg = +rng(profile.minPpg, profile.maxPpg, seed + 2).toFixed(2);
       const location = pick(FUEL_LOCATIONS, seed + 3);
       const jur = location.includes('ON') ? 'Ontario' : location.split(', ')[1]?.split(' ')[0] || 'Texas';
 
@@ -217,7 +278,7 @@ function generatePurchases(): FuelPurchase[] {
         gallons,
         pricePerGallon: ppg,
         totalCost: +(gallons * ppg).toFixed(2),
-        fuelType: asset?.vehicleType === 'Reefer' ? 'Diesel/Electric' : 'Diesel',
+        fuelType,
         paymentMethod: seededRandom(seed + 5) > 0.3 ? 'Fuel Card' : 'Company Card',
       });
       id++;
