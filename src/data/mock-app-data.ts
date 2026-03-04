@@ -57,6 +57,7 @@ export interface DocumentType {
     };
     isSystem?: boolean; // If true, cannot be deleted
     isAccidentDoc?: boolean; // If true, this doc type is linked to accidents
+    linkedModule?: string; // If set, this doc type is auto-linked by a module (e.g. 'fuel_purchases') and cannot be deleted
 }
 
 export type FolderCounts = { subfolders?: number; files?: number };
@@ -947,7 +948,7 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
     { id: '39', name: 'Transponder Doc', relatedTo: 'asset', expiryRequired: true, issueDateRequired: false, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
     
     // Expense Related Documents
-    { id: 'fuel_receipt', name: 'Fuel Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
+    { id: 'fuel_receipt', name: 'Fuel Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, linkedModule: 'fuel_purchases', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
     { id: 'repair_invoice', name: 'Repair Invoice', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
     { id: 'toll_receipt', name: 'Toll Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },
     { id: 'parking_receipt', name: 'Parking Receipt', relatedTo: 'asset', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'required', destination: { root: 'Asset' } },

@@ -41,6 +41,8 @@ export interface FuelPurchase {
   totalCost: number;
   fuelType: string;
   paymentMethod: string;
+  fuelCard?: string;
+  otherRef?: string;
 }
 
 export interface IdlingEvent {

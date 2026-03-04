@@ -396,6 +396,10 @@ export function FuelPage() {
   const [addPurchPpg, setAddPurchPpg] = useState('');
   const [addPurchPayment, setAddPurchPayment] = useState('Fuel Card');
   const [addPurchFuelType, setAddPurchFuelType] = useState('Diesel');
+  const [addPurchFuelCard, setAddPurchFuelCard] = useState('');
+  const [addPurchOtherRef, setAddPurchOtherRef] = useState('');
+  const [addPurchReceipt, setAddPurchReceipt] = useState<string>(''); // attached receipt file name
+  const receiptInputRef = useRef<HTMLInputElement>(null);
 
   // ── Add form state: Idling ──
   const [addIdleDate, setAddIdleDate] = useState('');
@@ -598,6 +602,8 @@ export function FuelPage() {
       totalCost: +(storedGal * storedPpg).toFixed(2),
       fuelType: addPurchFuelType || 'Diesel',
       paymentMethod: addPurchPayment,
+      fuelCard: addPurchFuelCard || undefined,
+      otherRef: addPurchOtherRef || undefined,
     };
     if (editingPurchase) {
       setLocalPurchases(prev => prev.map(p => p.id === editingPurchase.id ? newPurchase : p));
@@ -612,7 +618,7 @@ export function FuelPage() {
   function resetPurchForm() {
     setAddPurchCountry('US'); setAddPurchDate(''); setAddPurchVehicle(''); setAddPurchLocation('');
     setAddPurchJurisdiction(''); setAddPurchGallons(''); setAddPurchPpg(''); setAddPurchPayment('Fuel Card');
-    setAddPurchFuelType('Diesel');
+    setAddPurchFuelType('Diesel'); setAddPurchFuelCard(''); setAddPurchOtherRef(''); setAddPurchReceipt('');
   }
 
   function openEditPurchase(p: FuelPurchase) {
@@ -625,7 +631,11 @@ export function FuelPage() {
     setAddPurchGallons(isCA ? (p.gallons * 3.78541).toFixed(1) : String(p.gallons));
     setAddPurchPpg(isCA ? (p.pricePerGallon / 3.78541).toFixed(3) : String(p.pricePerGallon));
     setAddPurchPayment(p.paymentMethod || 'Fuel Card');
+    const parsedId = parseInt(p.id.replace(/\D/g, '') || '0');
     setAddPurchFuelType(p.fuelType || 'Diesel');
+    setAddPurchFuelCard(p.fuelCard || `FC-${p.id.replace(/\D/g, '').slice(-4).padStart(4, '0')}`);
+    setAddPurchOtherRef(p.otherRef || (parsedId % 4 === 0 ? `PO-${String(parsedId * 13 + 200).padStart(5, '0')}` : ''));
+    setAddPurchReceipt(parsedId % 2 === 0 ? `Receipt_${p.id}.pdf` : '');
     setEditingPurchase(p);
     setShowAddPurchase(true);
   }
@@ -2074,8 +2084,8 @@ export function FuelPage() {
                       const rate = getRate(p.date);
                       const totalUSD = p.totalCost;
                       const totalCAD = +(p.totalCost * rate).toFixed(2);
-                      const fc = fuelCardNo(p.id);
-                      const ref = otherRefNo(p.id);
+                      const fc = p.fuelCard || fuelCardNo(p.id);
+                      const ref = p.otherRef || otherRefNo(p.id);
                       const isCA = CANADA_JURISDICTIONS.has(p.jurisdiction);
                       return (
                         <tr key={p.id}
@@ -2411,7 +2421,7 @@ export function FuelPage() {
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-xs font-semibold text-slate-500 uppercase">{isCA ? 'Province' : 'State'}</span>
-                    <span className="inline-flex items-center justify-center w-8 h-6 rounded text-[11px] font-bold bg-slate-200 text-slate-700 border border-slate-300">{sp.jurisdiction}</span>
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">{sp.jurisdiction}</span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-xs font-semibold text-slate-500 uppercase">Country</span>
@@ -2425,7 +2435,68 @@ export function FuelPage() {
                     <span className="text-xs font-semibold text-slate-500 uppercase">Payment</span>
                     <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">{sp.paymentMethod}</span>
                   </div>
+                  {(() => {
+                    const fc = sp.fuelCard || `FC-${sp.id.replace(/\D/g, '').slice(-4).padStart(4, '0')}`;
+                    const parsedId = parseInt(sp.id.replace(/\D/g, '') || '0');
+                    const ref = sp.otherRef || (parsedId % 4 === 0 ? `PO-${String(parsedId * 13 + 200).padStart(5, '0')}` : null);
+                    return (
+                      <>
+                        <div className="flex items-center justify-between px-4 py-3">
+                          <span className="text-xs font-semibold text-slate-500 uppercase">Fuel Card #</span>
+                          <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-blue-50 text-blue-700 border border-blue-200">{fc}</span>
+                        </div>
+                        {ref && (
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <span className="text-xs font-semibold text-slate-500 uppercase">Other Ref #</span>
+                            <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-slate-50 text-slate-700 border border-slate-200">{ref}</span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
+
+                {/* Fuel Receipt Document */}
+                {(() => {
+                  const parsedId = parseInt(sp.id.replace(/\D/g, '') || '0');
+                  const hasReceipt = parsedId % 2 === 0;
+                  return (
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Attached Document</p>
+                      {hasReceipt ? (
+                        <div className="flex items-center justify-between bg-emerald-50 rounded-xl px-4 py-3 border border-emerald-200">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-emerald-100 flex items-center justify-center">
+                              <Fuel size={16} className="text-emerald-600" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-slate-800">Receipt_{sp.id}.pdf</div>
+                              <div className="text-[10px] text-emerald-600 font-medium">Document Type: Fuel Receipt • Uploaded {fmtDate(sp.date)}</div>
+                            </div>
+                          </div>
+                          <button className="flex items-center gap-1 px-3 py-1.5 rounded-md text-[11px] font-bold text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 transition-colors shadow-sm">
+                            <Download size={12} /> View PDF
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-dashed border-slate-300">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center">
+                              <Upload size={16} className="text-slate-400" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-slate-500">No fuel receipt uploaded</div>
+                              <div className="text-[10px] text-slate-400">Document Type: Fuel Receipt</div>
+                            </div>
+                          </div>
+                          <button className="flex items-center gap-1 px-3 py-1.5 rounded-md text-[11px] font-bold text-blue-600 bg-white border border-blue-200 hover:bg-blue-50 transition-colors shadow-sm">
+                            <Upload size={12} /> Upload
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Footer */}
@@ -2562,18 +2633,20 @@ export function FuelPage() {
                 Driver: <span className="font-bold text-slate-800">{driverForVehicle(addPurchVehicle)?.driverName || '—'}</span>
               </div>
             )}
-            <FormField label={addPurchCountry === 'US' ? 'State' : 'Province'}>
-              <select value={addPurchJurisdiction} onChange={e => setAddPurchJurisdiction(e.target.value)} className={inputCls}>
-                <option value="">Select {addPurchCountry === 'US' ? 'state' : 'province'}...</option>
-                {(addPurchCountry === 'US'
-                  ? ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
-                  : ['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT']
-                ).map(j => <option key={j} value={j}>{j}</option>)}
-              </select>
-            </FormField>
-            <FormField label="Location">
-              <input type="text" value={addPurchLocation} onChange={e => setAddPurchLocation(e.target.value)} placeholder="e.g. Pilot Travel Center, Dallas TX" className={inputCls} />
-            </FormField>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="City">
+                <input type="text" value={addPurchLocation} onChange={e => setAddPurchLocation(e.target.value)} placeholder="e.g. Dallas" className={inputCls} />
+              </FormField>
+              <FormField label={addPurchCountry === 'US' ? 'State' : 'Province'}>
+                <select value={addPurchJurisdiction} onChange={e => setAddPurchJurisdiction(e.target.value)} className={inputCls}>
+                  <option value="">Select {addPurchCountry === 'US' ? 'state' : 'province'}...</option>
+                  {(addPurchCountry === 'US'
+                    ? ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY']
+                    : ['AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT']
+                  ).map(j => <option key={j} value={j}>{j}</option>)}
+                </select>
+              </FormField>
+            </div>
             <FormField label="Fuel Type">
               <select value={addPurchFuelType} onChange={e => setAddPurchFuelType(e.target.value)} className={inputCls}>
                 {['Diesel', 'Diesel/Electric', 'Gasoline', 'DEF'].map(ft => <option key={ft} value={ft}>{ft}</option>)}
@@ -2599,6 +2672,58 @@ export function FuelPage() {
                 <option value="Cash">Cash</option>
               </select>
             </FormField>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Fuel Card #">
+                <input type="text" value={addPurchFuelCard} onChange={e => setAddPurchFuelCard(e.target.value)} placeholder="e.g. FC-1234" className={inputCls} />
+              </FormField>
+              <FormField label="Other Ref #">
+                <input type="text" value={addPurchOtherRef} onChange={e => setAddPurchOtherRef(e.target.value)} placeholder="e.g. PO-00200" className={inputCls} />
+              </FormField>
+            </div>
+
+            {/* ── Fuel Receipt Upload (linked to fuel_receipt document type) ── */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Fuel Receipt <span className="text-[10px] font-normal normal-case text-slate-400">(Document Type: Fuel Receipt)</span></p>
+              <input
+                ref={receiptInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) setAddPurchReceipt(file.name);
+                }}
+              />
+              {addPurchReceipt ? (
+                <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2.5 border border-emerald-200">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                      <Upload size={14} className="text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{addPurchReceipt}</div>
+                      <div className="text-[10px] text-emerald-600 font-medium">Linked to Document Type: Fuel Receipt</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => receiptInputRef.current?.click()} className="px-2 py-1 rounded text-[11px] font-bold text-blue-600 bg-white border border-blue-200 hover:bg-blue-50 transition-colors">Change</button>
+                    <button type="button" onClick={() => setAddPurchReceipt('')} className="p-1 rounded hover:bg-red-100 transition-colors" title="Remove receipt">
+                      <X size={14} className="text-red-400 hover:text-red-600" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => receiptInputRef.current?.click()}
+                  className="w-full border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer group"
+                >
+                  <Upload size={20} className="mx-auto text-slate-400 group-hover:text-blue-500 mb-1 transition-colors" />
+                  <p className="text-sm font-semibold text-slate-600 group-hover:text-blue-600">Upload Fuel Receipt</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">PDF, JPG, PNG • Max 10 MB</p>
+                </button>
+              )}
+            </div>
           </div>
         </ModalOverlay>
       )}

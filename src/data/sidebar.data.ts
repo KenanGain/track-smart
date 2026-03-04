@@ -16,6 +16,7 @@ import {
     Ticket,
     Clock3,
     Fuel,
+    TrendingUp,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -88,6 +89,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Safety Events",
         icon: Activity,
         path: "/safety-events",
+    },
+    {
+        key: "safety-analysis",
+        label: "Safety Analysis",
+        icon: TrendingUp,
+        path: "/safety-analysis",
     },
     {
         key: "tickets",

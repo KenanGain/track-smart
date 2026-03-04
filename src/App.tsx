@@ -23,6 +23,7 @@ import { InspectionsPage } from '@/pages/inspections/InspectionsPage'
 import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
 import { FuelPage } from '@/pages/fuel/FuelPage'
 import { HoursOfServicePage } from '@/pages/hos/HoursOfServicePage'
+import { SafetyAnalysisPage } from '@/pages/safety-analysis/SafetyAnalysisPage'
 
 function App() {
     // Simple state for navigation simulation since we might not have a full router set up
@@ -115,6 +116,9 @@ function App() {
         }
         if (path === "/safety-events") {
             return <SafetyEventsPage />
+        }
+        if (path === "/safety-analysis") {
+            return <SafetyAnalysisPage />
         }
         if (path === "/hours-of-service") {
             return <HoursOfServicePage />
