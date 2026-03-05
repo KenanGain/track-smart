@@ -236,6 +236,66 @@ export const ELD_VEDR_EVENTS: EldVedrEvent[] = [
   },
 ];
 
+// ─── HOS Violation Events (actual ELD-detected HOS violations) ───────────
+
+export interface HosViolationEvent {
+  id: string;
+  driverId: string;
+  driverName: string;
+  vehicleId: string;
+  date: string;
+  violationCode: string;
+  violationDescription: string;
+  violationGroup: string;
+  driverSeverity: number;
+  isOos: boolean;
+  status: 'Open' | 'Resolved' | 'Reviewed' | 'Under Review';
+}
+
+export const HOS_VIOLATION_EVENTS: HosViolationEvent[] = [
+  { id: 'HOS-001', driverId: 'DRV-2001', driverName: 'John Smith',      vehicleId: 'TR-1049', date: '2025-11-15', violationCode: '395.8',       violationDescription: 'No current record of duty status',             violationGroup: 'Logbook',          driverSeverity: 5, isOos: false, status: 'Resolved'     },
+  { id: 'HOS-002', driverId: 'DRV-1003', driverName: 'Robert Chen',     vehicleId: 'TR-2188', date: '2025-10-28', violationCode: '395.3',       violationDescription: 'Failing to retain records of duty status',     violationGroup: 'Logbook',          driverSeverity: 5, isOos: false, status: 'Resolved'     },
+  { id: 'HOS-003', driverId: 'DRV-1001', driverName: 'James Sullivan',  vehicleId: 'TR-4456', date: '2025-10-15', violationCode: '395.1(a)(1)', violationDescription: '11-hour driving limit exceeded',               violationGroup: 'Hours of Service', driverSeverity: 7, isOos: true,  status: 'Under Review' },
+  { id: 'HOS-004', driverId: 'DRV-2003', driverName: 'Mike Johnson',    vehicleId: 'TR-3321', date: '2025-09-22', violationCode: '395.1(a)(2)', violationDescription: '14-hour on-duty driving window exceeded',      violationGroup: 'Hours of Service', driverSeverity: 7, isOos: true,  status: 'Resolved'     },
+  { id: 'HOS-005', driverId: 'DRV-1004', driverName: 'Sarah Johnson',   vehicleId: 'TR-5590', date: '2025-09-05', violationCode: '395.8(e)(1)', violationDescription: 'ELD malfunctioned — no paper logs provided',   violationGroup: 'ELD Compliance',  driverSeverity: 5, isOos: false, status: 'Resolved'     },
+  { id: 'HOS-006', driverId: 'DRV-2004', driverName: 'Elena Rodriguez', vehicleId: 'TR-6623', date: '2025-08-18', violationCode: '395.1(d)',    violationDescription: '10-hour consecutive rest requirement not met', violationGroup: 'Rest Requirements',driverSeverity: 7, isOos: true,  status: 'Resolved'     },
+  { id: 'HOS-007', driverId: 'DRV-1002', driverName: 'Maria Rodriguez', vehicleId: 'TR-2088', date: '2025-07-30', violationCode: '395.8(f)(1)', violationDescription: 'ELD data transfer failure — non-compliant',    violationGroup: 'ELD Compliance',  driverSeverity: 5, isOos: false, status: 'Resolved'     },
+  { id: 'HOS-008', driverId: 'DRV-1005', driverName: 'Michael Brown',   vehicleId: 'TR-7044', date: '2025-07-10', violationCode: '395.1(f)(1)', violationDescription: '70-hour/8-day driving limit exceeded',         violationGroup: 'Hours of Service', driverSeverity: 7, isOos: true,  status: 'Open'         },
+  { id: 'HOS-009', driverId: 'DRV-2002', driverName: 'Sarah Miller',    vehicleId: 'TR-3055', date: '2025-06-25', violationCode: '395.8(a)(1)', violationDescription: 'Required ELD information missing from record',  violationGroup: 'ELD Compliance',  driverSeverity: 5, isOos: false, status: 'Resolved'     },
+  { id: 'HOS-010', driverId: 'DRV-2001', driverName: 'John Smith',      vehicleId: 'TR-1049', date: '2025-05-14', violationCode: '395.1(b)',    violationDescription: '34-hour restart provisions violated',          violationGroup: 'Hours of Service', driverSeverity: 5, isOos: false, status: 'Resolved'     },
+];
+
+// ─── VEDR Violation Events (actual VEDR-detected violations) ─────────────
+
+export interface VedrViolationEvent {
+  id: string;
+  driverId: string;
+  driverName: string;
+  vehicleId: string;
+  date: string;
+  violationCode: string;
+  violationDescription: string;
+  violationGroup: string;
+  category: 'Driver Fitness' | 'Unsafe Driving';
+  driverSeverity: number;
+  isOos: boolean;
+  telematicsTags: string[];
+  status: 'Open' | 'Resolved' | 'Reviewed' | 'Under Review';
+}
+
+export const VEDR_VIOLATION_EVENTS: VedrViolationEvent[] = [
+  { id: 'VEDR-001', driverId: 'DRV-2001', driverName: 'John Smith',      vehicleId: 'TR-1049', date: '2025-12-01', violationCode: '392.2S',      violationDescription: 'Speeding',                               violationGroup: 'Speed Related',             category: 'Unsafe Driving',  driverSeverity: 6,  isOos: false, telematicsTags: ['speeding'],                   status: 'Resolved'     },
+  { id: 'VEDR-002', driverId: 'DRV-1003', driverName: 'Robert Chen',     vehicleId: 'TR-2188', date: '2025-11-20', violationCode: '392.16',      violationDescription: 'Failing to use seat belt',              violationGroup: 'Seat Belt',                 category: 'Unsafe Driving',  driverSeverity: 6,  isOos: false, telematicsTags: ['seat_belt_violation'],        status: 'Reviewed'     },
+  { id: 'VEDR-003', driverId: 'DRV-1001', driverName: 'James Sullivan',  vehicleId: 'TR-4456', date: '2025-11-10', violationCode: '392.80',      violationDescription: 'Using hand-held mobile telephone',      violationGroup: 'Cell Phone Use',            category: 'Unsafe Driving',  driverSeverity: 10, isOos: true,  telematicsTags: ['cell_phone', 'distracted'],   status: 'Under Review' },
+  { id: 'VEDR-004', driverId: 'DRV-2003', driverName: 'Mike Johnson',    vehicleId: 'TR-3321', date: '2025-10-28', violationCode: '391.11(b)(1)','violationDescription': 'Driver not qualified — failed physical',violationGroup: 'Driver Qualification',      category: 'Driver Fitness',  driverSeverity: 10, isOos: true,  telematicsTags: [],                             status: 'Open'         },
+  { id: 'VEDR-005', driverId: 'DRV-1004', driverName: 'Sarah Johnson',   vehicleId: 'TR-5590', date: '2025-10-05', violationCode: '392.3',       violationDescription: 'Ill or fatigued operator',              violationGroup: 'Ill/Fatigued Driver',       category: 'Unsafe Driving',  driverSeverity: 7,  isOos: true,  telematicsTags: ['drowsiness'],                 status: 'Resolved'     },
+  { id: 'VEDR-006', driverId: 'DRV-2004', driverName: 'Elena Rodriguez', vehicleId: 'TR-6623', date: '2025-09-18', violationCode: '392.2FC',     violationDescription: 'Following too closely',                 violationGroup: 'Following Distance',        category: 'Unsafe Driving',  driverSeverity: 5,  isOos: false, telematicsTags: ['tailgating', 'near_crash'],   status: 'Resolved'     },
+  { id: 'VEDR-007', driverId: 'DRV-1002', driverName: 'Maria Rodriguez', vehicleId: 'TR-2088', date: '2025-08-25', violationCode: '391.41(b)(1)','violationDescription': 'Driver not medically certified',       violationGroup: 'Physical Qualifications',   category: 'Driver Fitness',  driverSeverity: 10, isOos: true,  telematicsTags: [],                             status: 'Resolved'     },
+  { id: 'VEDR-008', driverId: 'DRV-1005', driverName: 'Michael Brown',   vehicleId: 'TR-7044', date: '2025-08-10', violationCode: '392.82',      violationDescription: 'Texting while driving',                 violationGroup: 'Cell Phone Use',            category: 'Unsafe Driving',  driverSeverity: 10, isOos: true,  telematicsTags: ['cell_phone'],                 status: 'Resolved'     },
+  { id: 'VEDR-009', driverId: 'DRV-2002', driverName: 'Sarah Miller',    vehicleId: 'TR-3055', date: '2025-07-22', violationCode: '392.2R',      violationDescription: 'Reckless driving — improper lane change',violationGroup: 'Reckless/Erratic Driving',  category: 'Unsafe Driving',  driverSeverity: 7,  isOos: false, telematicsTags: ['harsh_turn', 'unsafe_lane_change'], status: 'Resolved' },
+  { id: 'VEDR-010', driverId: 'DRV-1003', driverName: 'Robert Chen',     vehicleId: 'TR-2188', date: '2025-06-30', violationCode: '391.21',      violationDescription: 'Failing to file annual review of driving record', violationGroup: 'Licensing', category: 'Driver Fitness',  driverSeverity: 5,  isOos: false, telematicsTags: [],                             status: 'Resolved'     },
+];
+
 // ─── Computed Fleet-Wide Aggregates ──────────────────────────────────────
 
 export const FLEET_AVERAGE =

@@ -28,65 +28,6 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 // ─── Telematics Tags → CFR mapping ───────────────────────────────────────────
 // Each CFR code (exact, after stripping "49 CFR " and parenthetical sub-sections)
 // maps to the telematics tags that violation triggers.
-const TELEMATICS_BY_CFR: Record<string, string[]> = {
-  // Generic unsafe driving — covers all remaining 392.2 sub-codes not listed below
-  '392.2':         ['harsh_brake', 'harsh_acceleration', 'harsh_turn', 'speeding',
-                    'tailgating', 'distracted', 'stop_sign_violation', 'red_light_violation',
-                    'unsafe_lane_change', 'eating_and_drinking', 'rolling_stop', 'unsafe_parking'],
-  // Speeding
-  '392.2S':        ['speeding'],
-  '392.2-SLLS1':   ['speeding'],
-  '392.2-SLLS2':   ['speeding'],
-  '392.2-SLLS3':   ['speeding'],
-  '392.2-SLLS4':   ['speeding'],
-  '392.2-SLLSWZ':  ['speeding'],
-  // Following too close → tailgating
-  '392.2FC':       ['tailgating'],
-  // Lane change / lane restriction / passing → unsafe_lane_change
-  '392.2LC':       ['unsafe_lane_change'],
-  '392.2LV':       ['unsafe_lane_change'],
-  '392.2P':        ['unsafe_lane_change'],
-  '392.2-SLML':    ['unsafe_lane_change'],
-  // Reckless / harsh events
-  '392.2R':        ['harsh_brake', 'harsh_acceleration', 'harsh_turn'],
-  // Turns
-  '392.2T':        ['harsh_turn'],
-  // Traffic control (stop signs, signals)
-  '392.2C':        ['stop_sign_violation', 'red_light_violation', 'rolling_stop'],
-  '392.2RR':       ['stop_sign_violation'],
-  '392.2Y':        ['stop_sign_violation', 'red_light_violation'],
-  // Parking
-  '392.2PK':       ['unsafe_parking'],
-  // Texting (state/local law)
-  '392.2-SLLT':    ['cell_phone', 'distracted'],
-  // Seat belt
-  '392.16':        ['seat_belt_violation'],
-  // Emergency warning devices / roadway parking
-  '392.22':        ['unsafe_parking'],
-  // Distracted driving / phone (FMCSA direct rules)
-  '392.80':        ['cell_phone', 'distracted'],
-  '392.82':        ['cell_phone'],
-  // Ill / fatigued operator
-  '392.3':         ['drowsiness'],
-  // Crash / accident records
-  '390.5':         ['crash'],
-  '390.15':        ['crash'],
-  // Smoking (hazmat)
-  '397.13':        ['smoking'],
-  // Camera / windshield obstruction
-  '393.60':        ['camera_obstruction'],
-  '393.60-393.68': ['camera_obstruction'],
-};
-
-// Strip "49 CFR " prefix + parenthetical sub-sections, then exact-lookup in map
-const getTelematics = (cfrs: string[]): string[] => {
-  const tags = new Set<string>();
-  cfrs.forEach(raw => {
-    const code = raw.replace(/^49\s+CFR\s+/i, '').replace(/\(.*/, '').trim();
-    (TELEMATICS_BY_CFR[code] || []).forEach(t => tags.add(t));
-  });
-  return Array.from(tags);
-};
 
 // Tab Configuration
 const TABS_CONFIG = [
@@ -705,23 +646,19 @@ export function ViolationsPage() {
                           </td>}
 
                           {/* Telematics Tags */}
-                          {visibleColumns.has('telematicsTag') && (() => {
-                            const allCfrs = item.regulatoryCodes?.usa?.flatMap(r => r.cfr || []) || [];
-                            const tags = getTelematics(allCfrs);
-                            return (
-                              <td className="px-4 py-3">
-                                {tags.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {tags.map(tag => (
-                                      <span key={tag} className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 whitespace-nowrap">
-                                        {tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : <span className="text-slate-300 text-xs">—</span>}
-                              </td>
-                            );
-                          })()}
+                          {visibleColumns.has('telematicsTag') && (
+                            <td className="px-4 py-3">
+                              {(item.telematicsTags?.length ?? 0) > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {item.telematicsTags!.map(tag => (
+                                    <span key={tag} className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 whitespace-nowrap">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : <span className="text-slate-300 text-xs">—</span>}
+                            </td>
+                          )}
 
                           {/* NSC Points */}
                           {visibleColumns.has('nscPoints') && <td className="px-4 py-3 whitespace-nowrap text-center">

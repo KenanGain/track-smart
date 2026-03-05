@@ -21,107 +21,152 @@ import {
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 
 // ===== RAW DATA =====
-const RAW_DATA = {
-  "results": [
-    {
-      "id": "sft_evt_01D8ZQFGHVJ858NBF2Q7DV9MNC",
-      "sourceId": "123456789",
-      "provider": "geotab",
-      "type": "harsh_brake",
-      "vehicle": "vcl_01D8ZQFGHVJ858NBF2Q7DV9MNC",
-      "vehiclePlate": "P-7762",
-      "startedAt": "2025-01-06T03:24:53.000Z",
-      "metadata": { "addedAt": "2025-01-07T05:31:56Z", "modifiedAt": "2025-01-07T05:31:56Z" },
-      "sourceType": "HARD_CORE_BRAKING_MESSAGE",
-      "driver": "drv_01D8ZQFGHVJ858NBF2Q7DV9MNC",
-      "driverName": "John Smith",
-      "startLocation": { "longitude": -122.4194155, "latitude": 37.7749295 },
-      "endedAt": "2025-01-06T03:24:53.000Z",
-      "endLocation": { "longitude": -122.4194155, "latitude": 37.7749295 },
-      "stats": { "maximumSpeed": 95.33, "averageSpeed": 95.33, "roadSpeedLimit": 95.33, "gForceForwardBackward": 1, "gForceSideToSide": 1, "heading": 25 },
-      "cameraMedia": { "frontFacing": { "available": true, "sourceId": "12345" }, "rearFacing": { "available": true, "sourceId": "12345" } },
-      "extensions": { "here": { "speedLimit": 95.33, "speedLimitSource": "posted", "truckSpeedLimit": 95.33, "roadName": "John St", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isPaved": "true" }, "weather": { "temperature": 68, "humidity": 45, "visibility": 1000 } } },
-      "severity": "high",
-      "raw": []
-    },
-    {
-      "id": "sft_evt_99X1ZQFGHVJ858NBF2Q7DV9ABC",
-      "sourceId": "987654321",
-      "provider": "samsara",
-      "type": "over_speed",
-      "vehicle": "vcl_99X1ZQFGHVJ858NBF2Q7DV9ABC",
-      "vehiclePlate": "BIG-RIG7",
-      "startedAt": "2025-05-14T14:12:10.000Z",
-      "metadata": { "addedAt": "2025-05-15T05:35:00Z", "modifiedAt": "2025-05-15T05:35:00Z" },
-      "sourceType": "SPEEDING_ALERT",
-      "driver": "drv_44B2ZQFGHVJ858NBF2Q7DV9XYZ",
-      "driverName": "Robert Chen",
-      "startLocation": { "longitude": -74.0060, "latitude": 40.7128 },
-      "endedAt": "2025-05-14T14:15:30.000Z",
-      "endLocation": { "longitude": -74.0150, "latitude": 40.7200 },
-      "stats": { "maximumSpeed": 112.5, "averageSpeed": 105.0, "roadSpeedLimit": 80.0, "gForceForwardBackward": 0.2, "gForceSideToSide": 0.1, "heading": 180 },
-      "cameraMedia": { "frontFacing": { "available": true, "sourceId": "cam_888" }, "rearFacing": { "available": false, "sourceId": null } },
-      "extensions": { "here": { "speedLimit": 80.0, "speedLimitSource": "posted", "truckSpeedLimit": 80.0, "roadName": "I-95 North", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 75, "precipitationType": "rain", "visibility": 500 } } },
-      "severity": "critical",
-      "raw": []
-    },
-    {
-      "id": "sft_evt_33P8ZQFGHVJ858NBF2Q7DV9QWE",
-      "sourceId": "555666777",
-      "provider": "motive",
-      "type": "harsh_cornering",
-      "vehicle": "vcl_11A2ZQFGHVJ858NBF2Q7DV9123",
-      "vehiclePlate": "TANK-01",
-      "startedAt": "2025-08-21T09:45:00.000Z",
-      "metadata": { "addedAt": "2025-08-22T06:00:00Z", "modifiedAt": "2025-08-22T06:00:00Z" },
-      "sourceType": "LATERAL_G_FORCE",
-      "driver": "drv_77D4ZQFGHVJ858NBF2Q7DV9789",
-      "driverName": "James Sullivan",
-      "startLocation": { "longitude": -118.2437, "latitude": 34.0522 },
-      "endedAt": "2025-08-21T09:45:05.000Z",
-      "endLocation": { "longitude": -118.2440, "latitude": 34.0530 },
-      "stats": { "maximumSpeed": 65.0, "averageSpeed": 60.0, "roadSpeedLimit": 50.0, "gForceForwardBackward": 0.1, "gForceSideToSide": 1.4, "heading": 90 },
-      "cameraMedia": { "frontFacing": { "available": false, "sourceId": null }, "rearFacing": { "available": false, "sourceId": null } },
-      "extensions": { "here": { "speedLimit": 50.0, "speedLimitSource": "inferred", "truckSpeedLimit": 50.0, "roadName": "Sunset Blvd", "linkAttributes": { "countryCode": "US", "isUrban": "true", "intersectionCategory": "roundabout" }, "weather": { "temperature": 85, "humidity": 20, "visibility": 2000 } } },
-      "severity": "medium",
-      "raw": []
-    },
-    {
-      "id": "sft_evt_55L9ZQFGHVJ858NBF2Q7DV9LKJ",
-      "sourceId": "111222333",
-      "provider": "lytx",
-      "type": "collision_warning",
-      "vehicle": "vcl_88K2ZQFGHVJ858NBF2Q7DV9POU",
-      "vehiclePlate": "FLT-209",
-      "startedAt": "2025-11-01T18:30:15.000Z",
-      "metadata": { "addedAt": "2025-11-02T08:15:22Z", "modifiedAt": "2025-11-02T08:15:22Z" },
-      "sourceType": "ADAS_FCW",
-      "driver": "drv_22M1ZQFGHVJ858NBF2Q7DV9BNM",
-      "driverName": "Mike Pearson",
-      "startLocation": { "longitude": -87.6298, "latitude": 41.8781 },
-      "endedAt": "2025-11-01T18:30:17.000Z",
-      "endLocation": { "longitude": -87.6290, "latitude": 41.8785 },
-      "stats": { "maximumSpeed": 88.2, "averageSpeed": 85.0, "roadSpeedLimit": 90.0, "gForceForwardBackward": 0.8, "gForceSideToSide": 0.0, "heading": 45 },
-      "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_cam_01" }, "rearFacing": { "available": true, "sourceId": "lytx_cam_02" } },
-      "extensions": { "here": { "speedLimit": 90.0, "speedLimitSource": "posted", "truckSpeedLimit": 85.0, "roadName": "Lake Shore Dr", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isDivided": "true" }, "weather": { "temperature": 40, "windSpeed": 25, "precipitationType": "snow" } } },
-      "severity": "critical",
-      "raw": []
-    }
-  ]
-};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const SAFETY_EVENTS_RESULTS: any[] = [
+  {
+    "id": "sft_evt_01D8ZQFGHVJ858NBF2Q7DV9MNC",
+    "sourceId": "123456789",
+    "provider": "geotab",
+    "type": "harsh_brake",
+    "vehicle": "vcl_01D8ZQFGHVJ858NBF2Q7DV9MNC",
+    "vehiclePlate": "P-7762",
+    "startedAt": "2025-01-06T03:24:53.000Z",
+    "metadata": { "addedAt": "2025-01-07T05:31:56Z", "modifiedAt": "2025-01-07T05:31:56Z" },
+    "sourceType": "HARD_CORE_BRAKING_MESSAGE",
+    "driver": "drv_01D8ZQFGHVJ858NBF2Q7DV9MNC",
+    "driverName": "John Smith",
+    "startLocation": { "longitude": -122.4194155, "latitude": 37.7749295 },
+    "endedAt": "2025-01-06T03:24:53.000Z",
+    "endLocation": { "longitude": -122.4194155, "latitude": 37.7749295 },
+    "stats": { "maximumSpeed": 95.33, "averageSpeed": 95.33, "roadSpeedLimit": 95.33, "gForceForwardBackward": 1, "gForceSideToSide": 1, "heading": 25 },
+    "cameraMedia": { "frontFacing": { "available": true, "sourceId": "12345" }, "rearFacing": { "available": true, "sourceId": "12345" } },
+    "extensions": { "here": { "speedLimit": 95.33, "speedLimitSource": "posted", "truckSpeedLimit": 95.33, "roadName": "John St", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isPaved": "true" }, "weather": { "temperature": 68, "humidity": 45, "visibility": 1000 } } },
+    "severity": "high",
+    "raw": []
+  },
+  {
+    "id": "sft_evt_99X1ZQFGHVJ858NBF2Q7DV9ABC",
+    "sourceId": "987654321",
+    "provider": "samsara",
+    "type": "over_speed",
+    "vehicle": "vcl_99X1ZQFGHVJ858NBF2Q7DV9ABC",
+    "vehiclePlate": "BIG-RIG7",
+    "startedAt": "2025-05-14T14:12:10.000Z",
+    "metadata": { "addedAt": "2025-05-15T05:35:00Z", "modifiedAt": "2025-05-15T05:35:00Z" },
+    "sourceType": "SPEEDING_ALERT",
+    "driver": "drv_44B2ZQFGHVJ858NBF2Q7DV9XYZ",
+    "driverName": "Robert Chen",
+    "startLocation": { "longitude": -74.0060, "latitude": 40.7128 },
+    "endedAt": "2025-05-14T14:15:30.000Z",
+    "endLocation": { "longitude": -74.0150, "latitude": 40.7200 },
+    "stats": { "maximumSpeed": 112.5, "averageSpeed": 105.0, "roadSpeedLimit": 80.0, "gForceForwardBackward": 0.2, "gForceSideToSide": 0.1, "heading": 180 },
+    "cameraMedia": { "frontFacing": { "available": true, "sourceId": "cam_888" }, "rearFacing": { "available": false, "sourceId": null } },
+    "extensions": { "here": { "speedLimit": 80.0, "speedLimitSource": "posted", "truckSpeedLimit": 80.0, "roadName": "I-95 North", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 75, "precipitationType": "rain", "visibility": 500 } } },
+    "severity": "critical",
+    "raw": []
+  },
+  {
+    "id": "sft_evt_33P8ZQFGHVJ858NBF2Q7DV9QWE",
+    "sourceId": "555666777",
+    "provider": "motive",
+    "type": "harsh_cornering",
+    "vehicle": "vcl_11A2ZQFGHVJ858NBF2Q7DV9123",
+    "vehiclePlate": "TANK-01",
+    "startedAt": "2025-08-21T09:45:00.000Z",
+    "metadata": { "addedAt": "2025-08-22T06:00:00Z", "modifiedAt": "2025-08-22T06:00:00Z" },
+    "sourceType": "LATERAL_G_FORCE",
+    "driver": "drv_77D4ZQFGHVJ858NBF2Q7DV9789",
+    "driverName": "James Sullivan",
+    "startLocation": { "longitude": -118.2437, "latitude": 34.0522 },
+    "endedAt": "2025-08-21T09:45:05.000Z",
+    "endLocation": { "longitude": -118.2440, "latitude": 34.0530 },
+    "stats": { "maximumSpeed": 65.0, "averageSpeed": 60.0, "roadSpeedLimit": 50.0, "gForceForwardBackward": 0.1, "gForceSideToSide": 1.4, "heading": 90 },
+    "cameraMedia": { "frontFacing": { "available": false, "sourceId": null }, "rearFacing": { "available": false, "sourceId": null } },
+    "extensions": { "here": { "speedLimit": 50.0, "speedLimitSource": "inferred", "truckSpeedLimit": 50.0, "roadName": "Sunset Blvd", "linkAttributes": { "countryCode": "US", "isUrban": "true", "intersectionCategory": "roundabout" }, "weather": { "temperature": 85, "humidity": 20, "visibility": 2000 } } },
+    "severity": "medium",
+    "raw": []
+  },
+  {
+    "id": "sft_evt_55L9ZQFGHVJ858NBF2Q7DV9LKJ",
+    "sourceId": "111222333",
+    "provider": "lytx",
+    "type": "collision_warning",
+    "vehicle": "vcl_88K2ZQFGHVJ858NBF2Q7DV9POU",
+    "vehiclePlate": "FLT-209",
+    "startedAt": "2025-11-01T18:30:15.000Z",
+    "metadata": { "addedAt": "2025-11-02T08:15:22Z", "modifiedAt": "2025-11-02T08:15:22Z" },
+    "sourceType": "ADAS_FCW",
+    "driver": "drv_22M1ZQFGHVJ858NBF2Q7DV9BNM",
+    "driverName": "Mike Pearson",
+    "startLocation": { "longitude": -87.6298, "latitude": 41.8781 },
+    "endedAt": "2025-11-01T18:30:17.000Z",
+    "endLocation": { "longitude": -87.6290, "latitude": 41.8785 },
+    "stats": { "maximumSpeed": 88.2, "averageSpeed": 85.0, "roadSpeedLimit": 90.0, "gForceForwardBackward": 0.8, "gForceSideToSide": 0.0, "heading": 45 },
+    "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_cam_01" }, "rearFacing": { "available": true, "sourceId": "lytx_cam_02" } },
+    "extensions": { "here": { "speedLimit": 90.0, "speedLimitSource": "posted", "truckSpeedLimit": 85.0, "roadName": "Lake Shore Dr", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isDivided": "true" }, "weather": { "temperature": 40, "windSpeed": 25, "precipitationType": "snow" } } },
+    "severity": "critical",
+    "raw": []
+  },
+  // ── Additional events covering all telematics tag types ──
+  { "id": "sft_evt_HARSH_ACCEL_01", "sourceId": "111000001", "provider": "geotab", "type": "harsh_acceleration", "vehicle": "vcl_TR1049", "vehiclePlate": "TX-1049", "startedAt": "2025-02-12T08:30:00.000Z", "metadata": { "addedAt": "2025-02-13T06:00:00Z", "modifiedAt": "2025-02-13T06:00:00Z" }, "sourceType": "ACCELERATION_EVENT", "driver": "drv_DRV2001", "driverName": "John Smith", "startLocation": { "longitude": -97.7431, "latitude": 30.2672 }, "endedAt": "2025-02-12T08:30:03.000Z", "endLocation": { "longitude": -97.7435, "latitude": 30.2680 }, "stats": { "maximumSpeed": 90.0, "averageSpeed": 80.0, "roadSpeedLimit": 120.0, "gForceForwardBackward": 0.9, "gForceSideToSide": 0.1, "heading": 90 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "geo_accel_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 120.0, "speedLimitSource": "posted", "truckSpeedLimit": 110.0, "roadName": "I-35 North", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 72, "humidity": 35, "visibility": 2000 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_HARSH_TURN_01", "sourceId": "111000002", "provider": "motive", "type": "harsh_turn", "vehicle": "vcl_TR2088", "vehiclePlate": "ON-2088", "startedAt": "2025-03-05T14:20:00.000Z", "metadata": { "addedAt": "2025-03-06T07:00:00Z", "modifiedAt": "2025-03-06T07:00:00Z" }, "sourceType": "LATERAL_G_FORCE", "driver": "drv_DRV1002", "driverName": "Maria Rodriguez", "startLocation": { "longitude": -79.3832, "latitude": 43.6532 }, "endedAt": "2025-03-05T14:20:04.000Z", "endLocation": { "longitude": -79.3840, "latitude": 43.6538 }, "stats": { "maximumSpeed": 55.0, "averageSpeed": 50.0, "roadSpeedLimit": 60.0, "gForceForwardBackward": 0.2, "gForceSideToSide": 1.2, "heading": 45 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "mot_turn_01" }, "rearFacing": { "available": true, "sourceId": "mot_turn_02" } }, "extensions": { "here": { "speedLimit": 60.0, "speedLimitSource": "posted", "truckSpeedLimit": 55.0, "roadName": "King St W", "linkAttributes": { "countryCode": "CA", "isUrban": "true", "isPaved": "true" }, "weather": { "temperature": 5, "humidity": 80, "visibility": 800 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_NEAR_CRASH_01", "sourceId": "111000003", "provider": "lytx", "type": "near_crash", "vehicle": "vcl_TR3321", "vehiclePlate": "NV-3321", "startedAt": "2025-04-18T17:45:00.000Z", "metadata": { "addedAt": "2025-04-19T08:00:00Z", "modifiedAt": "2025-04-19T08:00:00Z" }, "sourceType": "FORWARD_COLLISION_WARNING", "driver": "drv_DRV2003", "driverName": "Mike Johnson", "startLocation": { "longitude": -115.1728, "latitude": 36.1147 }, "endedAt": "2025-04-18T17:45:02.000Z", "endLocation": { "longitude": -115.1732, "latitude": 36.1150 }, "stats": { "maximumSpeed": 100.0, "averageSpeed": 95.0, "roadSpeedLimit": 105.0, "gForceForwardBackward": 1.1, "gForceSideToSide": 0.2, "heading": 180 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_ncr_01" }, "rearFacing": { "available": true, "sourceId": "lytx_ncr_02" } }, "extensions": { "here": { "speedLimit": 105.0, "speedLimitSource": "posted", "truckSpeedLimit": 100.0, "roadName": "US-95 South", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 95, "humidity": 10, "visibility": 2000 } } }, "severity": "critical", "raw": [] },
+  { "id": "sft_evt_TAILGATE_01", "sourceId": "111000004", "provider": "samsara", "type": "tailgating", "vehicle": "vcl_TR4456", "vehiclePlate": "OH-4456", "startedAt": "2025-05-22T09:10:00.000Z", "metadata": { "addedAt": "2025-05-23T06:30:00Z", "modifiedAt": "2025-05-23T06:30:00Z" }, "sourceType": "FOLLOWING_DISTANCE_ALERT", "driver": "drv_DRV1001", "driverName": "James Sullivan", "startLocation": { "longitude": -83.0458, "latitude": 42.3314 }, "endedAt": "2025-05-22T09:10:08.000Z", "endLocation": { "longitude": -83.0465, "latitude": 42.3320 }, "stats": { "maximumSpeed": 110.0, "averageSpeed": 105.0, "roadSpeedLimit": 120.0, "gForceForwardBackward": 0.3, "gForceSideToSide": 0.1, "heading": 270 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "sam_tail_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 120.0, "speedLimitSource": "posted", "truckSpeedLimit": 110.0, "roadName": "I-75 North", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 68, "humidity": 55, "visibility": 1500 } } }, "severity": "high", "raw": [] },
+  { "id": "sft_evt_CELLPHONE_01", "sourceId": "111000005", "provider": "lytx", "type": "cell_phone", "vehicle": "vcl_TR5590", "vehiclePlate": "FL-5590", "startedAt": "2025-06-10T13:35:00.000Z", "metadata": { "addedAt": "2025-06-11T07:00:00Z", "modifiedAt": "2025-06-11T07:00:00Z" }, "sourceType": "CELL_PHONE_USE_DETECTED", "driver": "drv_DRV1004", "driverName": "Sarah Johnson", "startLocation": { "longitude": -80.1918, "latitude": 25.7617 }, "endedAt": "2025-06-10T13:35:12.000Z", "endLocation": { "longitude": -80.1925, "latitude": 25.7625 }, "stats": { "maximumSpeed": 75.0, "averageSpeed": 70.0, "roadSpeedLimit": 90.0, "gForceForwardBackward": 0.1, "gForceSideToSide": 0.0, "heading": 0 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_cp_01" }, "rearFacing": { "available": true, "sourceId": "lytx_cp_02" } }, "extensions": { "here": { "speedLimit": 90.0, "speedLimitSource": "posted", "truckSpeedLimit": 90.0, "roadName": "Florida Tpke", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isPaved": "true" }, "weather": { "temperature": 85, "humidity": 75, "visibility": 1800 } } }, "severity": "critical", "raw": [] },
+  { "id": "sft_evt_DISTRACT_01", "sourceId": "111000006", "provider": "geotab", "type": "distracted", "vehicle": "vcl_TR6623", "vehiclePlate": "TX-6623", "startedAt": "2025-06-25T10:50:00.000Z", "metadata": { "addedAt": "2025-06-26T08:00:00Z", "modifiedAt": "2025-06-26T08:00:00Z" }, "sourceType": "DISTRACTED_DRIVING_ALERT", "driver": "drv_DRV2004", "driverName": "Elena Rodriguez", "startLocation": { "longitude": -96.7970, "latitude": 32.7767 }, "endedAt": "2025-06-25T10:50:07.000Z", "endLocation": { "longitude": -96.7978, "latitude": 32.7775 }, "stats": { "maximumSpeed": 88.0, "averageSpeed": 82.0, "roadSpeedLimit": 105.0, "gForceForwardBackward": 0.0, "gForceSideToSide": 0.1, "heading": 135 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "geo_dis_01" }, "rearFacing": { "available": true, "sourceId": "geo_dis_02" } }, "extensions": { "here": { "speedLimit": 105.0, "speedLimitSource": "posted", "truckSpeedLimit": 100.0, "roadName": "I-20 East", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 92, "humidity": 40, "visibility": 2000 } } }, "severity": "high", "raw": [] },
+  { "id": "sft_evt_DROWSY_01", "sourceId": "111000007", "provider": "motive", "type": "drowsiness", "vehicle": "vcl_TR7044", "vehiclePlate": "ON-7044", "startedAt": "2025-07-08T03:20:00.000Z", "metadata": { "addedAt": "2025-07-09T06:00:00Z", "modifiedAt": "2025-07-09T06:00:00Z" }, "sourceType": "DRIVER_FATIGUE_DETECTION", "driver": "drv_DRV1005", "driverName": "Michael Brown", "startLocation": { "longitude": -79.5000, "latitude": 43.7000 }, "endedAt": "2025-07-08T03:20:05.000Z", "endLocation": { "longitude": -79.5010, "latitude": 43.7008 }, "stats": { "maximumSpeed": 95.0, "averageSpeed": 90.0, "roadSpeedLimit": 100.0, "gForceForwardBackward": 0.1, "gForceSideToSide": 0.1, "heading": 0 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "mot_drw_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 100.0, "speedLimitSource": "posted", "truckSpeedLimit": 100.0, "roadName": "Hwy 400 North", "linkAttributes": { "countryCode": "CA", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 15, "humidity": 60, "visibility": 1200 } } }, "severity": "critical", "raw": [] },
+  { "id": "sft_evt_SMOKING_01", "sourceId": "111000008", "provider": "lytx", "type": "smoking", "vehicle": "vcl_TR1049B", "vehiclePlate": "TX-2200", "startedAt": "2025-07-22T15:40:00.000Z", "metadata": { "addedAt": "2025-07-23T07:30:00Z", "modifiedAt": "2025-07-23T07:30:00Z" }, "sourceType": "SMOKING_DETECTED", "driver": "drv_DRV2002", "driverName": "Sarah Miller", "startLocation": { "longitude": -95.3698, "latitude": 29.7604 }, "endedAt": "2025-07-22T15:40:15.000Z", "endLocation": { "longitude": -95.3710, "latitude": 29.7615 }, "stats": { "maximumSpeed": 70.0, "averageSpeed": 65.0, "roadSpeedLimit": 90.0, "gForceForwardBackward": 0.0, "gForceSideToSide": 0.0, "heading": 315 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_smk_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 90.0, "speedLimitSource": "posted", "truckSpeedLimit": 90.0, "roadName": "I-610 West Loop", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isDivided": "true" }, "weather": { "temperature": 88, "humidity": 65, "visibility": 1600 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_SEATBELT_01", "sourceId": "111000009", "provider": "samsara", "type": "seat_belt_violation", "vehicle": "vcl_TR3055", "vehiclePlate": "NV-3055", "startedAt": "2025-08-05T07:15:00.000Z", "metadata": { "addedAt": "2025-08-06T06:00:00Z", "modifiedAt": "2025-08-06T06:00:00Z" }, "sourceType": "SEAT_BELT_UNLATCHED", "driver": "drv_DRV2003B", "driverName": "Mike Johnson", "startLocation": { "longitude": -119.8138, "latitude": 39.5296 }, "endedAt": "2025-08-05T07:15:00.000Z", "endLocation": { "longitude": -119.8138, "latitude": 39.5296 }, "stats": { "maximumSpeed": 105.0, "averageSpeed": 100.0, "roadSpeedLimit": 120.0, "gForceForwardBackward": 0.0, "gForceSideToSide": 0.0, "heading": 90 }, "cameraMedia": { "frontFacing": { "available": false, "sourceId": null }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 120.0, "speedLimitSource": "posted", "truckSpeedLimit": 110.0, "roadName": "I-80 East", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 80, "humidity": 20, "visibility": 2000 } } }, "severity": "high", "raw": [] },
+  { "id": "sft_evt_STOPSIGN_01", "sourceId": "111000010", "provider": "geotab", "type": "stop_sign_violation", "vehicle": "vcl_TR5200", "vehiclePlate": "CA-5200", "startedAt": "2025-08-19T11:05:00.000Z", "metadata": { "addedAt": "2025-08-20T07:00:00Z", "modifiedAt": "2025-08-20T07:00:00Z" }, "sourceType": "STOP_SIGN_RUN_DETECTED", "driver": "drv_DRV1003", "driverName": "Robert Chen", "startLocation": { "longitude": -118.2437, "latitude": 34.0522 }, "endedAt": "2025-08-19T11:05:01.000Z", "endLocation": { "longitude": -118.2440, "latitude": 34.0525 }, "stats": { "maximumSpeed": 25.0, "averageSpeed": 20.0, "roadSpeedLimit": 50.0, "gForceForwardBackward": 0.2, "gForceSideToSide": 0.1, "heading": 0 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "geo_ss_01" }, "rearFacing": { "available": true, "sourceId": "geo_ss_02" } }, "extensions": { "here": { "speedLimit": 50.0, "speedLimitSource": "posted", "truckSpeedLimit": 50.0, "roadName": "Central Ave", "linkAttributes": { "countryCode": "US", "isUrban": "true", "intersectionCategory": "stop_controlled" }, "weather": { "temperature": 78, "humidity": 30, "visibility": 2000 } } }, "severity": "high", "raw": [] },
+  { "id": "sft_evt_REDLIGHT_01", "sourceId": "111000011", "provider": "lytx", "type": "red_light_violation", "vehicle": "vcl_TR6001", "vehiclePlate": "FL-6001", "startedAt": "2025-09-03T16:25:00.000Z", "metadata": { "addedAt": "2025-09-04T08:00:00Z", "modifiedAt": "2025-09-04T08:00:00Z" }, "sourceType": "RED_LIGHT_RUN_DETECTED", "driver": "drv_DRV1004B", "driverName": "Sarah Johnson", "startLocation": { "longitude": -81.3792, "latitude": 28.5383 }, "endedAt": "2025-09-03T16:25:02.000Z", "endLocation": { "longitude": -81.3798, "latitude": 28.5390 }, "stats": { "maximumSpeed": 60.0, "averageSpeed": 55.0, "roadSpeedLimit": 65.0, "gForceForwardBackward": 0.1, "gForceSideToSide": 0.0, "heading": 315 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_rl_01" }, "rearFacing": { "available": true, "sourceId": "lytx_rl_02" } }, "extensions": { "here": { "speedLimit": 65.0, "speedLimitSource": "posted", "truckSpeedLimit": 65.0, "roadName": "Orange Blossom Trl", "linkAttributes": { "countryCode": "US", "isUrban": "true", "intersectionCategory": "signalized" }, "weather": { "temperature": 90, "humidity": 70, "visibility": 1500 } } }, "severity": "critical", "raw": [] },
+  { "id": "sft_evt_LANECHANGE_01", "sourceId": "111000012", "provider": "samsara", "type": "unsafe_lane_change", "vehicle": "vcl_TR2088B", "vehiclePlate": "ON-2088", "startedAt": "2025-09-15T12:10:00.000Z", "metadata": { "addedAt": "2025-09-16T07:30:00Z", "modifiedAt": "2025-09-16T07:30:00Z" }, "sourceType": "LANE_CHANGE_ALERT", "driver": "drv_DRV1002B", "driverName": "Maria Rodriguez", "startLocation": { "longitude": -79.3832, "latitude": 43.6532 }, "endedAt": "2025-09-15T12:10:04.000Z", "endLocation": { "longitude": -79.3840, "latitude": 43.6540 }, "stats": { "maximumSpeed": 110.0, "averageSpeed": 105.0, "roadSpeedLimit": 100.0, "gForceForwardBackward": 0.3, "gForceSideToSide": 0.9, "heading": 90 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "sam_lc_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 100.0, "speedLimitSource": "posted", "truckSpeedLimit": 100.0, "roadName": "Hwy 401 East", "linkAttributes": { "countryCode": "CA", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 12, "humidity": 75, "visibility": 900 } } }, "severity": "high", "raw": [] },
+  { "id": "sft_evt_CAMBLOCK_01", "sourceId": "111000013", "provider": "geotab", "type": "camera_obstruction", "vehicle": "vcl_TR1049C", "vehiclePlate": "TX-1049", "startedAt": "2025-09-28T06:50:00.000Z", "metadata": { "addedAt": "2025-09-29T07:00:00Z", "modifiedAt": "2025-09-29T07:00:00Z" }, "sourceType": "CAMERA_BLOCKED_ALERT", "driver": "drv_DRV2001B", "driverName": "John Smith", "startLocation": { "longitude": -97.7431, "latitude": 30.2672 }, "endedAt": "2025-09-28T06:50:30.000Z", "endLocation": { "longitude": -97.7431, "latitude": 30.2672 }, "stats": { "maximumSpeed": 0.0, "averageSpeed": 0.0, "roadSpeedLimit": 0.0, "gForceForwardBackward": 0.0, "gForceSideToSide": 0.0, "heading": 0 }, "cameraMedia": { "frontFacing": { "available": false, "sourceId": null }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 0.0, "speedLimitSource": "posted", "truckSpeedLimit": 0.0, "roadName": "Truck Yard - Austin", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isPaved": "true" }, "weather": { "temperature": 75, "humidity": 50, "visibility": 2000 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_EATING_01", "sourceId": "111000014", "provider": "lytx", "type": "eating_and_drinking", "vehicle": "vcl_TR4456B", "vehiclePlate": "OH-4456", "startedAt": "2025-10-10T12:30:00.000Z", "metadata": { "addedAt": "2025-10-11T08:00:00Z", "modifiedAt": "2025-10-11T08:00:00Z" }, "sourceType": "EATING_WHILE_DRIVING", "driver": "drv_DRV1001B", "driverName": "James Sullivan", "startLocation": { "longitude": -82.9988, "latitude": 39.9612 }, "endedAt": "2025-10-10T12:30:20.000Z", "endLocation": { "longitude": -82.9995, "latitude": 39.9620 }, "stats": { "maximumSpeed": 105.0, "averageSpeed": 100.0, "roadSpeedLimit": 120.0, "gForceForwardBackward": 0.0, "gForceSideToSide": 0.0, "heading": 180 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "lytx_eat_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 120.0, "speedLimitSource": "posted", "truckSpeedLimit": 110.0, "roadName": "I-71 South", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 65, "humidity": 60, "visibility": 1800 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_ROLLSTOP_01", "sourceId": "111000015", "provider": "motive", "type": "rolling_stop", "vehicle": "vcl_TR3321B", "vehiclePlate": "NV-3321", "startedAt": "2025-10-22T08:45:00.000Z", "metadata": { "addedAt": "2025-10-23T07:00:00Z", "modifiedAt": "2025-10-23T07:00:00Z" }, "sourceType": "ROLLING_STOP_DETECTED", "driver": "drv_DRV2003C", "driverName": "Mike Johnson", "startLocation": { "longitude": -115.1728, "latitude": 36.1147 }, "endedAt": "2025-10-22T08:45:02.000Z", "endLocation": { "longitude": -115.1732, "latitude": 36.1150 }, "stats": { "maximumSpeed": 12.0, "averageSpeed": 8.0, "roadSpeedLimit": 50.0, "gForceForwardBackward": 0.1, "gForceSideToSide": 0.0, "heading": 270 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "mot_rs_01" }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 50.0, "speedLimitSource": "posted", "truckSpeedLimit": 50.0, "roadName": "Boulder Hwy", "linkAttributes": { "countryCode": "US", "isUrban": "true", "intersectionCategory": "stop_controlled" }, "weather": { "temperature": 100, "humidity": 5, "visibility": 2000 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_UNSAFEPK_01", "sourceId": "111000016", "provider": "samsara", "type": "unsafe_parking", "vehicle": "vcl_TR6623B", "vehiclePlate": "TX-6623", "startedAt": "2025-11-08T20:15:00.000Z", "metadata": { "addedAt": "2025-11-09T07:00:00Z", "modifiedAt": "2025-11-09T07:00:00Z" }, "sourceType": "UNSAFE_PARKING_DETECTED", "driver": "drv_DRV2004B", "driverName": "Elena Rodriguez", "startLocation": { "longitude": -96.7970, "latitude": 32.7767 }, "endedAt": "2025-11-08T20:15:00.000Z", "endLocation": { "longitude": -96.7970, "latitude": 32.7767 }, "stats": { "maximumSpeed": 0.0, "averageSpeed": 0.0, "roadSpeedLimit": 80.0, "gForceForwardBackward": 0.0, "gForceSideToSide": 0.0, "heading": 0 }, "cameraMedia": { "frontFacing": { "available": false, "sourceId": null }, "rearFacing": { "available": false, "sourceId": null } }, "extensions": { "here": { "speedLimit": 80.0, "speedLimitSource": "posted", "truckSpeedLimit": 80.0, "roadName": "I-30 Frontage Rd", "linkAttributes": { "countryCode": "US", "isUrban": "true", "isPaved": "true" }, "weather": { "temperature": 70, "humidity": 55, "visibility": 1500 } } }, "severity": "medium", "raw": [] },
+  { "id": "sft_evt_CRASH_01", "sourceId": "111000017", "provider": "geotab", "type": "crash", "vehicle": "vcl_TR5590B", "vehiclePlate": "FL-5590", "startedAt": "2025-12-02T08:00:00.000Z", "metadata": { "addedAt": "2025-12-03T09:00:00Z", "modifiedAt": "2025-12-03T09:00:00Z" }, "sourceType": "CRASH_DETECTED", "driver": "drv_DRV1004C", "driverName": "Sarah Johnson", "startLocation": { "longitude": -80.1918, "latitude": 25.7617 }, "endedAt": "2025-12-02T08:00:05.000Z", "endLocation": { "longitude": -80.1920, "latitude": 25.7620 }, "stats": { "maximumSpeed": 80.0, "averageSpeed": 75.0, "roadSpeedLimit": 90.0, "gForceForwardBackward": 3.5, "gForceSideToSide": 1.8, "heading": 0 }, "cameraMedia": { "frontFacing": { "available": true, "sourceId": "geo_crsh_01" }, "rearFacing": { "available": true, "sourceId": "geo_crsh_02" } }, "extensions": { "here": { "speedLimit": 90.0, "speedLimitSource": "posted", "truckSpeedLimit": 90.0, "roadName": "I-95 South", "linkAttributes": { "countryCode": "US", "isUrban": "false", "isDivided": "true" }, "weather": { "temperature": 82, "humidity": 80, "visibility": 600 } } }, "severity": "critical", "raw": [] }
+];
+
+const RAW_DATA = { "results": SAFETY_EVENTS_RESULTS };
 
 // ===== Helper functions =====
 const getEventTypeLabel = (type: string) => {
-  const map: Record<string, string> = { 'harsh_brake': 'Harsh Brake', 'over_speed': 'Over Speed', 'harsh_cornering': 'Harsh Cornering', 'collision_warning': 'Collision Warning' };
-  return map[type] || type.replace(/_/g, ' ');
+  const map: Record<string, string> = {
+    'harsh_brake': 'Harsh Brake', 'harsh_acceleration': 'Harsh Accel.', 'harsh_cornering': 'Harsh Turn',
+    'harsh_turn': 'Harsh Turn', 'over_speed': 'Over Speed', 'crash': 'Crash', 'near_crash': 'Near Crash',
+    'tailgating': 'Tailgating', 'cell_phone': 'Cell Phone', 'distracted': 'Distracted',
+    'drowsiness': 'Drowsiness', 'smoking': 'Smoking', 'seat_belt_violation': 'Seat Belt',
+    'stop_sign_violation': 'Stop Sign', 'red_light_violation': 'Red Light', 'unsafe_lane_change': 'Lane Change',
+    'camera_obstruction': 'Cam. Block', 'eating_and_drinking': 'Eating/Drink', 'rolling_stop': 'Rolling Stop',
+    'unsafe_parking': 'Unsafe Park', 'collision_warning': 'Collision Warn',
+  };
+  return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 };
 
 const getEventTypeStyle = (type: string) => {
   switch (type) {
-    case 'harsh_brake': return { bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' };
-    case 'over_speed': return { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' };
-    case 'harsh_cornering': return { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' };
-    case 'collision_warning': return { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200' };
+    case 'harsh_brake':
+    case 'harsh_acceleration': return { bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' };
+    case 'over_speed':
+    case 'speeding': return { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' };
+    case 'harsh_cornering':
+    case 'harsh_turn':
+    case 'unsafe_lane_change': return { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' };
+    case 'collision_warning':
+    case 'near_crash':
+    case 'crash': return { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200' };
+    case 'cell_phone':
+    case 'distracted':
+    case 'eating_and_drinking': return { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200' };
+    case 'drowsiness': return { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200' };
+    case 'tailgating': return { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300' };
+    case 'smoking': return { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200' };
+    case 'seat_belt_violation':
+    case 'stop_sign_violation':
+    case 'red_light_violation':
+    case 'rolling_stop': return { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' };
+    case 'camera_obstruction':
+    case 'unsafe_parking': return { bg: 'bg-teal-50', text: 'text-teal-600', border: 'border-teal-200' };
     default: return { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' };
   }
 };

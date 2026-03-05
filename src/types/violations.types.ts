@@ -45,6 +45,13 @@ export interface CanadaEnforcement {
   };
 }
 
+export type TelematicsTag =
+  | 'harsh_brake' | 'harsh_acceleration' | 'harsh_turn' | 'speeding'
+  | 'crash' | 'near_crash' | 'tailgating' | 'cell_phone' | 'distracted'
+  | 'drowsiness' | 'smoking' | 'seat_belt_violation' | 'stop_sign_violation'
+  | 'red_light_violation' | 'unsafe_lane_change' | 'camera_obstruction'
+  | 'eating_and_drinking' | 'rolling_stop' | 'unsafe_parking';
+
 export interface ViolationItem {
   id: string;
   violationCode: string;
@@ -61,6 +68,8 @@ export interface ViolationItem {
   };
   canadaEnforcement?: CanadaEnforcement;
   _source?: string;
+  telematicsTags?: TelematicsTag[];
+  deviceSource?: 'ELD' | 'VEDR';
 }
 
 export interface ViolationCategoryStats {
