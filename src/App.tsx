@@ -13,6 +13,7 @@ import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
+import { SafetySettingsPage } from '@/pages/settings/SafetySettingsPage'
 
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
@@ -101,6 +102,9 @@ function App() {
 
         if (path === "/settings/trainings") {
             return <TrainingsPage />
+        }
+        if (path === "/settings/safety") {
+            return <SafetySettingsPage />
         }
         if (path === "/assets/directory") {
             return <AssetDirectoryPage />

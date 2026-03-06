@@ -35,10 +35,6 @@ import {
   Mail,
   FileDown,
   CheckCheck,
-  ChevronLeft,
-  LayoutGrid,
-  List,
-  Calendar,
 } from 'lucide-react';
 
 
@@ -141,107 +137,6 @@ const getAssetSubScores = (asset: Asset) => {
 
   const overall = getAssetRiskScore(asset, today);
   return { overall, statusScore, ageScore, mileageScore, regScore };
-};
-
-// ===== DISTANCE-ADJUSTED SCORING HELPERS =====
-const hashStr01 = (a: string, b: string): number => {
-  let h = 0;
-  for (const c of (a + '|' + b)) h = (Math.imul(31, h) + c.charCodeAt(0)) >>> 0;
-  return (h >>> 0) / 0xffffffff;
-};
-
-const WINDOW_DAYS: Record<string, number> = {
-  '1w': 7, '2w': 14, '1mo': 30, '6mo': 182, '12mo': 365, '20mo': 608, '24mo': 730,
-};
-
-const getDriverWindowScore = (
-  drv: { driverId: string; overall: number },
-  window: string
-): number => {
-  if (window === '12mo') return drv.overall;
-  const days = WINDOW_DAYS[window] ?? 365;
-  const windowFactor = days / 365;
-  const seed = hashStr01(drv.driverId, window);
-  // Shorter windows = more volatile scores (regression toward extremes)
-  const volatility = Math.max(0, 1 - windowFactor);
-  const adjustment = (seed - 0.5) * 28 * volatility;
-  return Math.max(0, Math.min(100, drv.overall + adjustment));
-};
-
-const getAssetIntervalProgress = (asset: Asset, intervalMi: number): number => {
-  const odo = asset.odometer ?? 0;
-  const odoInMi = asset.odometerUnit === 'km' ? odo / 1.60934 : odo;
-  return Math.min(1, (odoInMi % intervalMi) / intervalMi);
-};
-
-// Per-sub-score adjustment (applies the same time/distance logic to each category)
-const getAdjustedSubScore = (
-  driverId: string,
-  baseScore: number,
-  subKey: string,
-  mode: 'time' | 'distance',
-  timeWindow: string,
-  distanceMi: number
-): number => {
-  if (mode === 'time') {
-    if (timeWindow === '12mo') return baseScore;
-    const days = WINDOW_DAYS[timeWindow] ?? 365;
-    const windowFactor = days / 365;
-    const seed = hashStr01(`${driverId}_${subKey}`, timeWindow);
-    const volatility = Math.max(0, 1 - windowFactor);
-    const adjustment = (seed - 0.5) * 24 * volatility;
-    return Math.max(0, Math.min(100, baseScore + adjustment));
-  } else {
-    const violSeed = hashStr01(`${driverId}_${subKey}`, 'viol_rate');
-    const baseViolRate = ((100 - baseScore) / 100) * 0.0025 + violSeed * 0.0008;
-    const penalty = Math.min(35, baseViolRate * distanceMi * 9);
-    const noise = (hashStr01(`${driverId}_${subKey}`, `d${Math.round(distanceMi)}`) - 0.5) * 8;
-    return Math.max(0, Math.min(100, baseScore - penalty + noise));
-  }
-};
-
-// Distance-based driver scoring: violations-per-threshold-distance
-const getDriverDistanceScore = (
-  drv: { driverId: string; overall: number },
-  thresholdMi: number
-): number => {
-  // Simulate a deterministic violation-per-mile rate for each driver
-  // Drivers with lower base scores have higher violation rates
-  const violSeed = hashStr01(drv.driverId, 'viol_rate');
-  const baseViolRate = ((100 - drv.overall) / 100) * 0.0025 + violSeed * 0.0008;
-  const violsInWindow = baseViolRate * thresholdMi;
-  const penalty = Math.min(35, violsInWindow * 9);
-  const noiseSeed = hashStr01(drv.driverId, `d${thresholdMi}`);
-  const noise = (noiseSeed - 0.5) * 8;
-  return Math.max(0, Math.min(100, drv.overall - penalty + noise));
-};
-
-const getDriverDateRangeScore = (
-  drv: { driverId: string; overall: number },
-  startDate: string,
-  endDate: string
-): number => {
-  const days = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000));
-  const windowFactor = Math.min(1, days / 365);
-  const seed = hashStr01(drv.driverId, `range_${startDate}_${endDate}`);
-  const volatility = Math.max(0, 1 - windowFactor);
-  const adjustment = (seed - 0.5) * 28 * volatility;
-  return Math.max(0, Math.min(100, drv.overall + adjustment));
-};
-
-const getSubScoreByDateRange = (
-  driverId: string,
-  baseScore: number,
-  subKey: string,
-  startDate: string,
-  endDate: string
-): number => {
-  const days = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000));
-  const windowFactor = Math.min(1, days / 365);
-  const seed = hashStr01(`${driverId}_${subKey}`, `range_${startDate}_${endDate}`);
-  const volatility = Math.max(0, 1 - windowFactor);
-  const adjustment = (seed - 0.5) * 24 * volatility;
-  return Math.max(0, Math.min(100, baseScore + adjustment));
 };
 
 const SafetyRingChart = ({
@@ -477,445 +372,9 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'inspections', label: 'Inspections' },
 ];
 
-
-// ── Deterministic pseudo-random 0-1 from two seeds ──
-const hash01 = (a: number, b: number) =>
-  Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1;
-
-const DriverBehaviorChart = ({
-  drv,
-}: {
-  drv: { driverId: string; name: string; overall: number; accidents: number; eld: number; vedr: number; violations: number; trainings: number };
-}) => {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-
-  const weeks = Array.from({ length: 8 }, (_, i) => {
-    const r = hash01(drv.overall, i);
-    const score = Math.max(62, Math.min(100, drv.overall + (r - 0.5) * 12));
-    const behaviors = [
-      (drv.accidents  - FLEET_AVERAGE) / 20 + (hash01(drv.overall + 1, i) - 0.5) * 2.2,
-      (drv.eld        - FLEET_AVERAGE) / 22 + (hash01(drv.overall + 2, i) - 0.5) * 1.8,
-      (drv.vedr       - FLEET_AVERAGE) / 22 + (hash01(drv.overall + 3, i) - 0.5) * 1.5,
-      (drv.violations - FLEET_AVERAGE) / 25 + (hash01(drv.overall + 4, i) - 0.5) * 1.2,
-      (drv.trainings  - FLEET_AVERAGE) / 30 + (hash01(drv.overall + 5, i) - 0.5) * 1.0,
-    ];
-    const base = new Date(2025, 9, 27);
-    base.setDate(base.getDate() + i * 7);
-    const label = `${base.getMonth() + 1}/${String(base.getDate()).padStart(2, '0')}`;
-    return { label, score, behaviors };
-  });
-
-  const displayIdx = hoveredIdx ?? 7;
-  const displayWeek = weeks[displayIdx];
-  const lastTwoNetChange = weeks[7].score - weeks[6].score;
-  const B_LABELS = ['Accidents', 'ELD / HOS', 'Camera', 'Violations', 'Training'];
-  const B_COLORS = ['#f87171', '#fbbf24', '#a78bfa', '#60a5fa', '#9ca3af'];
-
-  const W = 520, H = 180, PL = 28, PR = 8, PT = 10, PB = 26;
-  const plotW = W - PL - PR;
-  const plotH = H - PT - PB;
-  const SMIN = Math.max(50, Math.floor((drv.overall - 22) / 5) * 5);
-  const SMAX = 100;
-  const sy = (s: number) => PT + plotH * (1 - (s - SMIN) / (SMAX - SMIN));
-  const avgY = sy(FLEET_AVERAGE);
-  const xStep = plotW / 7;
-  const BAR_W = 6;
-  const impactScale = plotH / 12;
-  const colW = plotW / 8;
-
-  const linePts = weeks.map((w, i) => `${i === 0 ? 'M' : 'L'}${(PL + i * xStep).toFixed(1)},${sy(w.score).toFixed(1)}`).join(' ');
-
-  return (
-    <div className="mt-5 pt-5 border-t border-slate-100">
-      {/* Legend */}
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <span className="text-xs font-bold text-slate-700">Driver Behaviors</span>
-        <div className="flex items-center gap-1">
-          <div className="w-6 h-0.5 bg-blue-600 rounded" />
-          <span className="text-[10px] text-slate-400">Score</span>
-        </div>
-        {B_LABELS.map((lbl, j) => (
-          <div key={lbl} className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: B_COLORS[j] }} />
-            <span className="text-[10px] text-slate-400">{lbl}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-4">
-        {/* Chart — takes all available width */}
-        <div className="flex-1 min-w-0 relative">
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            className="w-full"
-            style={{ height: 'auto', maxHeight: 200 }}
-            onMouseLeave={() => setHoveredIdx(null)}
-          >
-            {/* Grid lines */}
-            {[SMIN, SMIN + Math.round((SMAX - SMIN) * 0.33), SMIN + Math.round((SMAX - SMIN) * 0.66), SMAX].map(t => (
-              <g key={t}>
-                <line x1={PL} y1={sy(t)} x2={W - PR} y2={sy(t)} stroke="#e2e8f0" strokeWidth="0.5" />
-                <text x={PL - 3} y={sy(t) + 3} textAnchor="end" fontSize="7" fill="#94a3b8">{t}</text>
-              </g>
-            ))}
-            {/* Fleet avg dashed */}
-            <line x1={PL} y1={avgY} x2={W - PR} y2={avgY} stroke="#94a3b8" strokeWidth="0.8" strokeDasharray="3,2" />
-            <text x={W - PR + 1} y={avgY + 3} fontSize="6.5" fill="#94a3b8">avg</text>
-
-            {/* Hover column highlight */}
-            {hoveredIdx !== null && (
-              <rect
-                x={PL + hoveredIdx * xStep - colW / 2}
-                y={PT}
-                width={colW}
-                height={plotH}
-                fill="#2563eb"
-                opacity="0.07"
-                rx="3"
-              />
-            )}
-
-            {/* Behavior bars */}
-            {weeks.map((w, i) => {
-              const cx = PL + i * xStep;
-              return w.behaviors.map((val, j) => {
-                const bh = Math.abs(val) * impactScale;
-                const by = val >= 0 ? avgY - bh : avgY;
-                return <rect key={j} x={cx - (BAR_W * 2.5) + j * (BAR_W + 0.5)} y={by} width={BAR_W} height={Math.max(bh, 0.5)} fill={B_COLORS[j]} opacity={hoveredIdx === i ? 1 : 0.65} rx="0.5" />;
-              });
-            })}
-
-            {/* Score line */}
-            <path d={linePts} fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            {weeks.map((w, i) => (
-              <circle key={i} cx={PL + i * xStep} cy={sy(w.score)} r={hoveredIdx === i ? 3.5 : 2} fill={hoveredIdx === i ? '#1d4ed8' : '#2563eb'} strokeWidth={hoveredIdx === i ? 1 : 0} stroke="white" />
-            ))}
-
-            {/* X labels */}
-            {weeks.map((w, i) => (
-              <text key={i} x={PL + i * xStep} y={H - PB + 13} textAnchor="middle" fontSize="7" fill={hoveredIdx === i ? '#334155' : '#94a3b8'} fontWeight={hoveredIdx === i ? 'bold' : 'normal'}>{w.label}</text>
-            ))}
-
-            {/* Invisible hover zones */}
-            {weeks.map((_, i) => (
-              <rect
-                key={i}
-                x={PL + i * xStep - colW / 2}
-                y={PT}
-                width={colW}
-                height={plotH + PB}
-                fill="transparent"
-                style={{ cursor: 'crosshair' }}
-                onMouseEnter={() => setHoveredIdx(i)}
-              />
-            ))}
-          </svg>
-        </div>
-
-        {/* Right panel — shows hovered week or latest */}
-        <div className="lg:w-44 shrink-0 flex flex-row lg:flex-col gap-3 lg:gap-2.5 items-start lg:items-stretch">
-          <div className="flex-1 lg:flex-none">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-              {hoveredIdx !== null ? weeks[hoveredIdx].label : 'This Week'}
-            </div>
-            <div className={`rounded-xl p-3 text-center ${displayWeek.score >= 90 ? 'bg-emerald-500' : displayWeek.score >= 80 ? 'bg-blue-500' : displayWeek.score >= 70 ? 'bg-sky-400' : 'bg-orange-500'}`}>
-              <div className="text-3xl font-black text-white leading-none">{displayWeek.score.toFixed(0)}</div>
-              <div className="text-[10px] font-bold text-white/80 uppercase mt-0.5">Safety Score</div>
-            </div>
-            <div className={`text-sm font-bold text-center mt-1.5 ${lastTwoNetChange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {lastTwoNetChange >= 0 ? '+' : ''}{lastTwoNetChange.toFixed(2)} Net Change
-            </div>
-          </div>
-          <div className="flex-1 lg:flex-none">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Driver Behaviors</div>
-            <div className="space-y-1.5">
-              {B_LABELS.map((lbl, j) => {
-                const delta = j === 0 ? drv.accidents - FLEET_AVERAGE
-                  : j === 1 ? drv.eld - FLEET_AVERAGE
-                  : j === 2 ? drv.vedr - FLEET_AVERAGE
-                  : j === 3 ? drv.violations - FLEET_AVERAGE
-                  : drv.trainings - FLEET_AVERAGE;
-                const weekImpact = displayWeek.behaviors[j];
-                return (
-                  <div key={lbl} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: B_COLORS[j] }} />
-                    <span className="text-[11px] text-slate-600 flex-1 leading-none">{lbl}</span>
-                    <span className={`text-[11px] font-bold tabular-nums ${hoveredIdx !== null ? (weekImpact >= 0 ? 'text-emerald-600' : 'text-red-500') : (delta >= 0 ? 'text-emerald-600' : 'text-red-500')}`}>
-                      {hoveredIdx !== null
-                        ? `${weekImpact >= 0 ? '+' : ''}${weekImpact.toFixed(2)}`
-                        : `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-const AssetRadarChart = ({
-  scores,
-}: {
-  scores: { overall: number; statusScore: number; ageScore: number; mileageScore: number; regScore: number };
-}) => {
-  const LABELS = ['Overall', 'Status', 'Age', 'Mileage', 'Reg.'];
-  const VALS = [scores.overall, scores.statusScore, scores.ageScore, scores.mileageScore, scores.regScore];
-  const N = LABELS.length;
-  const CX = 140, CY = 115, R = 72;
-  const LABEL_R = R + 26;
-  const ang = (i: number) => (i / N) * 2 * Math.PI - Math.PI / 2;
-  const pt = (r: number, i: number) => ({ x: CX + r * Math.cos(ang(i)), y: CY + r * Math.sin(ang(i)) });
-  const makePoly = (vals: number[]) =>
-    vals.map((v, i) => { const p = pt((v / 100) * R, i); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(' ');
-  const anchor = (i: number) => { const c = Math.cos(ang(i)); return c > 0.2 ? 'start' : c < -0.2 ? 'end' : 'middle'; };
-  const baseline = (i: number) => { const s = Math.sin(ang(i)); return s < -0.3 ? 'auto' : s > 0.3 ? 'hanging' : 'middle'; };
-  return (
-    <div className="flex flex-col items-center">
-      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 text-center">Risk Radar</div>
-      <svg viewBox="0 0 280 240" style={{ width: '100%', maxWidth: 240, height: 'auto' }}>
-        {[25, 50, 75, 100].map(lvl => (
-          <polygon key={lvl} points={makePoly(LABELS.map(() => lvl))} fill="none" stroke="#e2e8f0" strokeWidth="0.8" />
-        ))}
-        {LABELS.map((_, i) => { const o = pt(R, i); return <line key={i} x1={CX} y1={CY} x2={o.x.toFixed(1)} y2={o.y.toFixed(1)} stroke="#e2e8f0" strokeWidth="0.8" />; })}
-        <polygon points={makePoly(LABELS.map(() => FLEET_AVERAGE))} fill="#94a3b815" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3,2" />
-        <polygon points={makePoly(VALS)} fill="#059669" fillOpacity="0.15" stroke="#059669" strokeWidth="2" />
-        {VALS.map((v, i) => { const p = pt((v / 100) * R, i); return <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#059669" stroke="#fff" strokeWidth="1.5" />; })}
-        {LABELS.map((lbl, i) => {
-          const p = pt(LABEL_R, i);
-          return (
-            <text key={i} x={p.x.toFixed(1)} y={p.y.toFixed(1)} textAnchor={anchor(i)} dominantBaseline={baseline(i)} fontSize="9.5" fill="#475569" fontWeight="600">{lbl}</text>
-          );
-        })}
-        {VALS.map((v, i) => {
-          const p = pt((v / 100) * R, i);
-          return <text key={i} x={p.x.toFixed(1)} y={p.y.toFixed(1)} textAnchor="middle" dominantBaseline="middle" fontSize="7" fill="#fff" fontWeight="800">{v.toFixed(0)}</text>;
-        })}
-      </svg>
-      <div className="flex items-center gap-3 mt-0.5">
-        <div className="flex items-center gap-1"><div className="w-4 h-0.5 bg-emerald-600 rounded" /><span className="text-[9px] text-slate-400">Asset</span></div>
-        <div className="flex items-center gap-1"><div className="w-4 h-px bg-slate-400 rounded border-t border-dashed border-slate-400" /><span className="text-[9px] text-slate-400">Fleet Avg</span></div>
-      </div>
-      <div className="grid grid-cols-5 gap-1 mt-2 w-full">
-        {LABELS.map((lbl, i) => (
-          <div key={i} className="flex flex-col items-center">
-            <span className="text-[9px] font-bold text-emerald-600">{VALS[i].toFixed(0)}</span>
-            <span className="text-[8px] text-slate-400">{lbl}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const AssetBehaviorChart = ({
-  odoSeed,
-  scores,
-}: {
-  odoSeed: number;
-  scores: { overall: number; statusScore: number; ageScore: number; mileageScore: number; regScore: number };
-}) => {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const seed = (odoSeed % 9999) + 1;
-  const weeks = Array.from({ length: 8 }, (_, i) => {
-    const r = hash01(seed, i);
-    const score = Math.max(30, Math.min(100, scores.overall + (r - 0.5) * 14));
-    const behaviors = [
-      (scores.statusScore - FLEET_AVERAGE) / 20 + (hash01(seed + 1, i) - 0.5) * 1.8,
-      (scores.ageScore - FLEET_AVERAGE) / 22 + (hash01(seed + 2, i) - 0.5) * 1.5,
-      (scores.mileageScore - FLEET_AVERAGE) / 22 + (hash01(seed + 3, i) - 0.5) * 1.5,
-      (scores.regScore - FLEET_AVERAGE) / 25 + (hash01(seed + 4, i) - 0.5) * 1.2,
-    ];
-    const base = new Date(2025, 9, 27);
-    base.setDate(base.getDate() + i * 7);
-    const label = `${base.getMonth() + 1}/${String(base.getDate()).padStart(2, '0')}`;
-    return { label, score, behaviors };
-  });
-  const displayIdx = hoveredIdx ?? 7;
-  const displayWeek = weeks[displayIdx];
-  const netChange = weeks[7].score - weeks[6].score;
-  const B_LABELS = ['Status', 'Age', 'Mileage', 'Reg.'];
-  const B_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'];
-  const W = 520, H = 180, PL = 28, PR = 8, PT = 10, PB = 26;
-  const plotW = W - PL - PR;
-  const plotH = H - PT - PB;
-  const SMIN = Math.max(20, Math.floor((scores.overall - 25) / 5) * 5);
-  const SMAX = 100;
-  const sy = (s: number) => PT + plotH * (1 - (s - SMIN) / (SMAX - SMIN));
-  const xStep = plotW / 7;
-  const BAR_W = 5;
-  const impactScale = plotH / 12;
-  const colW = plotW / 8;
-  const linePts = weeks.map((w, i) => `${i === 0 ? 'M' : 'L'}${(PL + i * xStep).toFixed(1)},${sy(w.score).toFixed(1)}`).join(' ');
-  return (
-    <div className="mt-4 pt-4 border-t border-slate-100">
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <span className="text-xs font-bold text-slate-700">Asset Risk Trend</span>
-        <div className="flex items-center gap-1"><div className="w-6 h-0.5 bg-emerald-600 rounded" /><span className="text-[10px] text-slate-400">Score</span></div>
-        {B_LABELS.map((lbl, j) => (
-          <div key={lbl} className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: B_COLORS[j] }} />
-            <span className="text-[10px] text-slate-400">{lbl}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="flex-1 min-w-0 relative">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 'auto', maxHeight: 200 }} onMouseLeave={() => setHoveredIdx(null)}>
-            {[SMIN, SMIN + Math.round((SMAX - SMIN) * 0.33), SMIN + Math.round((SMAX - SMIN) * 0.66), SMAX].map(t => (
-              <g key={t}>
-                <line x1={PL} y1={sy(t)} x2={W - PR} y2={sy(t)} stroke="#e2e8f0" strokeWidth="0.5" />
-                <text x={PL - 3} y={sy(t) + 3} textAnchor="end" fontSize="7" fill="#94a3b8">{t}</text>
-              </g>
-            ))}
-            <line x1={PL} y1={sy(FLEET_AVERAGE)} x2={W - PR} y2={sy(FLEET_AVERAGE)} stroke="#94a3b8" strokeWidth="0.8" strokeDasharray="3,2" />
-            <text x={W - PR + 1} y={sy(FLEET_AVERAGE) + 3} fontSize="6.5" fill="#94a3b8">avg</text>
-            {weeks.map((w, i) => {
-              const cx = PL + i * xStep;
-              const isHovered = hoveredIdx === i;
-              return (
-                <g key={i}>
-                  {isHovered && <rect x={cx - colW / 2} y={PT} width={colW} height={plotH} fill="#f1f5f9" rx="2" />}
-                  {w.behaviors.map((beh, j) => {
-                    const bh = Math.abs(beh) * impactScale;
-                    const by = beh >= 0 ? sy(w.score) - bh : sy(w.score);
-                    return <rect key={j} x={cx - (1.5 - j) * (BAR_W + 1.5)} y={by} width={BAR_W} height={Math.max(1, bh)} fill={B_COLORS[j]} opacity={0.7} rx="1" />;
-                  })}
-                  <rect x={cx - colW / 2} y={PT} width={colW} height={plotH} fill="transparent" onMouseEnter={() => setHoveredIdx(i)} />
-                  <text x={cx} y={H - 8} textAnchor="middle" fontSize="7.5" fill={isHovered ? '#334155' : '#94a3b8'}>{w.label}</text>
-                </g>
-              );
-            })}
-            <path d={linePts} fill="none" stroke="#059669" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            {weeks.map((w, i) => {
-              const cx = PL + i * xStep;
-              const isHov = hoveredIdx === i;
-              return <circle key={i} cx={cx} cy={sy(w.score)} r={isHov ? 4 : 2.5} fill={isHov ? '#059669' : '#fff'} stroke="#059669" strokeWidth="1.5" />;
-            })}
-          </svg>
-        </div>
-        <div className="lg:w-28 shrink-0 flex flex-col items-center justify-center gap-2">
-          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider text-center">{hoveredIdx !== null ? weeks[hoveredIdx].label : 'This Week'}</div>
-          <div className={`rounded-xl p-3 text-center w-full ${displayWeek.score >= 90 ? 'bg-emerald-500' : displayWeek.score >= 80 ? 'bg-blue-500' : displayWeek.score >= 70 ? 'bg-sky-400' : 'bg-orange-500'}`}>
-            <div className="text-3xl font-black text-white leading-none">{displayWeek.score.toFixed(0)}</div>
-            <div className="text-[10px] font-bold text-white/80 uppercase mt-0.5">Risk Score</div>
-          </div>
-          <div className={`text-sm font-bold text-center ${netChange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-            {netChange >= 0 ? '+' : ''}{netChange.toFixed(2)} Net Change
-          </div>
-        </div>
-        <div className="flex-1 lg:flex-none">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Risk Factors</div>
-          <div className="space-y-1.5">
-            {B_LABELS.map((lbl, j) => {
-              const base = j === 0 ? scores.statusScore : j === 1 ? scores.ageScore : j === 2 ? scores.mileageScore : scores.regScore;
-              const delta = base - FLEET_AVERAGE;
-              const weekImpact = displayWeek.behaviors[j];
-              return (
-                <div key={lbl} className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: B_COLORS[j] }} />
-                  <span className="text-[11px] text-slate-600 flex-1 leading-none">{lbl}</span>
-                  <span className={`text-[11px] font-bold tabular-nums ${hoveredIdx !== null ? (weekImpact >= 0 ? 'text-emerald-600' : 'text-red-500') : (delta >= 0 ? 'text-emerald-600' : 'text-red-500')}`}>
-                    {hoveredIdx !== null ? `${weekImpact >= 0 ? '+' : ''}${weekImpact.toFixed(2)}` : `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const DriverRadarChart = ({
-  scores,
-}: {
-  scores: { overall: number; accidents: number; eld: number; vedr: number; inspections: number; violations: number; trainings: number };
-}) => {
-  const LABELS = ['Safety', 'Accident', 'ELD', 'Camera', 'Inspect', 'Violation', 'Training'];
-  const VALS = [scores.overall, scores.accidents, scores.eld, scores.vedr, scores.inspections, scores.violations, scores.trainings];
-  const N = LABELS.length;
-  const CX = 115, CY = 105, R = 68;
-  const LABEL_R = R + 20;
-
-  const ang = (i: number) => (i / N) * 2 * Math.PI - Math.PI / 2;
-  const pt = (pct: number, i: number) => {
-    const r = (pct / 100) * R;
-    return { x: CX + r * Math.cos(ang(i)), y: CY + r * Math.sin(ang(i)) };
-  };
-  const anchor = (i: number) => {
-    const c = Math.cos(ang(i));
-    return c > 0.2 ? 'start' : c < -0.2 ? 'end' : 'middle';
-  };
-  const baseline = (i: number) => {
-    const s = Math.sin(ang(i));
-    return s < -0.5 ? 'auto' : s > 0.5 ? 'hanging' : 'middle';
-  };
-  const makePoly = (vals: number[]) =>
-    vals.map((v, i) => { const p = pt(v, i); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(' ');
-
-  return (
-    <div className="flex flex-col items-center w-full">
-      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 text-center">Performance Radar</div>
-      <svg viewBox="0 0 230 210" style={{ width: '100%', maxWidth: 220, height: 'auto' }}>
-        {/* Grid rings */}
-        {[25, 50, 75, 100].map(lvl => (
-          <polygon key={lvl} points={makePoly(LABELS.map(() => lvl))} fill="none" stroke="#e2e8f0" strokeWidth="0.7" />
-        ))}
-        {/* Axes */}
-        {LABELS.map((_, i) => {
-          const o = pt(100, i);
-          return <line key={i} x1={CX} y1={CY} x2={o.x.toFixed(1)} y2={o.y.toFixed(1)} stroke="#e2e8f0" strokeWidth="0.7" />;
-        })}
-        {/* Fleet avg */}
-        <polygon points={makePoly(LABELS.map(() => FLEET_AVERAGE))} fill="#94a3b810" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3,2" />
-        {/* Driver polygon */}
-        <polygon points={makePoly(VALS)} fill="#3b82f6" fillOpacity="0.15" stroke="#3b82f6" strokeWidth="1.5" />
-        {/* Dots */}
-        {VALS.map((v, i) => {
-          const p = pt(v, i);
-          return <circle key={i} cx={p.x} cy={p.y} r="2.8" fill="#3b82f6" stroke="#fff" strokeWidth="1.2" />;
-        })}
-        {/* Axis labels */}
-        {LABELS.map((lbl, i) => {
-          const x = CX + LABEL_R * Math.cos(ang(i));
-          const y = CY + LABEL_R * Math.sin(ang(i));
-          return (
-            <text key={i} x={x.toFixed(1)} y={y.toFixed(1)}
-              textAnchor={anchor(i)} dominantBaseline={baseline(i)}
-              fontSize="8" fill="#475569" fontWeight="600">{lbl}</text>
-          );
-        })}
-      </svg>
-      {/* Score legend row */}
-      <div className="w-full grid grid-cols-4 gap-x-2 gap-y-0.5 mt-1 px-1">
-        {LABELS.map((lbl, i) => (
-          <div key={lbl} className="flex items-center gap-1 min-w-0">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-            <span className="text-[8px] text-slate-500 truncate">{lbl}</span>
-            <span className="text-[8px] font-bold text-blue-600 ml-auto shrink-0">{VALS[i].toFixed(0)}</span>
-          </div>
-        ))}
-      </div>
-      {/* Legend */}
-      <div className="flex items-center gap-3 mt-1.5">
-        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-blue-500 rounded" /><span className="text-[8px] text-slate-400">Driver</span></div>
-        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-slate-400 rounded" /><span className="text-[8px] text-slate-400">Fleet Avg</span></div>
-      </div>
-    </div>
-  );
-};
-
 // ===== MAIN PAGE =====
 export function SafetyAnalysisPage() {
-  const [pageTab, setPageTab] = useState<'dashboard' | 'overview'>('dashboard');
-  const [impactView] = useState<'negative' | 'positive'>('negative');
-  const [driverView, setDriverView] = useState<'grid' | 'list'>('grid');
-  const [assetView, setAssetView] = useState<'grid' | 'list'>('grid');
+  const [pageTab, setPageTab] = useState<'dashboard' | 'overview'>('overview');
   const [activeTab, setActiveTab] = useState<TabId>('scoring');
   const [incidentSearch, setIncidentSearch] = useState('');
   const [incidentTypeFilter, setIncidentTypeFilter] = useState('All Accidents');
@@ -949,23 +408,10 @@ export function SafetyAnalysisPage() {
   const [selectedDashboardDriverId, setSelectedDashboardDriverId] = useState<string | null>(null);
   const [selectedDashboardAssetId, setSelectedDashboardAssetId] = useState<string | null>(null);
 
-  // ── Distance-adjusted metrics config ──
-  const [distanceUnit, setDistanceUnit] = useState<'mi' | 'km'>('mi');
-  const [assetIntervalMi, setAssetIntervalMi] = useState<number>(10000);
-
-  // ── Driver metric mode: distance or time period ──
-  const [driverMetricMode, setDriverMetricMode] = useState<'time' | 'distance'>('time');
-  const [driverWindow, setDriverWindow] = useState<string>('12mo');
-  const [driverDistanceMi, setDriverDistanceMi] = useState<number>(10000);
-  const [driverDistanceUnit, setDriverDistanceUnit] = useState<'mi' | 'km'>('mi');
-
-  // ── Date range filter (overrides time window when set) ──
-  const [filterStartDate, setFilterStartDate] = useState<string>('');
-  const [filterEndDate, setFilterEndDate] = useState<string>('');
-
   const selectedDriver = selectedDriverId ? MOCK_DRIVERS.find(d => d.id === selectedDriverId) ?? null : null;
   const selectedInspection = selectedInspectionId ? inspectionsData.find(i => i.id === selectedInspectionId) ?? null : null;
   const selectedIncident = selectedIncidentId ? INCIDENTS.find(i => i.incidentId === selectedIncidentId) ?? null : null;
+  const selectedDashboardDriver = selectedDashboardDriverId ? MOCK_DRIVERS.find(d => d.id === selectedDashboardDriverId) ?? null : null;
   const selectedDashboardAsset = selectedDashboardAssetId ? INITIAL_ASSETS.find(a => a.id === selectedDashboardAssetId) ?? null : null;
 
   // Pre-compute driver popup scores for selected driver
@@ -978,6 +424,17 @@ export function SafetyAnalysisPage() {
   const drvPopupTrainingScore = _drvScores?.trainings ?? 0;
   const drvPopupVedrScore = _drvScores?.vedr ?? 100;
   const drvPopupSafetyLevel = drvPopupSafetyScore >= 90 ? 'Satisfactory' : drvPopupSafetyScore >= 80 ? 'Acceptable' : drvPopupSafetyScore >= 70 ? 'Conditional' : 'Unsatisfactory';
+
+  // Pre-compute dashboard driver popup scores
+  const _dashDrvScores = selectedDashboardDriverId ? DRIVER_SAFETY_SCORES.find(d => d.driverId === selectedDashboardDriverId) : undefined;
+  const dashDrvSafetyScore = _dashDrvScores?.overall ?? 83.33;
+  const dashDrvAccidentScore = _dashDrvScores?.accidents ?? 100;
+  const dashDrvEldScore = _dashDrvScores?.eld ?? 100;
+  const dashDrvVedrScore = _dashDrvScores?.vedr ?? 100;
+  const dashDrvInspectionScore = _dashDrvScores?.inspections ?? 100;
+  const dashDrvViolationScore = _dashDrvScores?.violations ?? 100;
+  const dashDrvTrainingScore = _dashDrvScores?.trainings ?? 0;
+  const dashDrvSafetyLevel = dashDrvSafetyScore >= 90 ? 'Satisfactory' : dashDrvSafetyScore >= 80 ? 'Acceptable' : dashDrvSafetyScore >= 70 ? 'Conditional' : 'Unsatisfactory';
 
   // Pre-compute dashboard asset sub-scores
   const dashboardAssetScores = selectedDashboardAsset ? getAssetSubScores(selectedDashboardAsset) : null;
@@ -1041,25 +498,6 @@ export function SafetyAnalysisPage() {
     return matchSearch && matchType;
   });
 
-  // ── Adjusted fleet score (responds to driver metric filters + date range) ──
-  const isDateRangeSet = filterStartDate !== '' && filterEndDate !== '' && filterEndDate >= filterStartDate;
-  const isDriverAdjusted = isDateRangeSet || driverMetricMode === 'distance' || driverWindow !== '12mo';
-  const adjustedFleetScore = isDriverAdjusted
-    ? (() => {
-        const effMi = driverDistanceUnit === 'km' ? driverDistanceMi / 1.60934 : driverDistanceMi;
-        const total = DRIVER_SAFETY_SCORES.reduce((sum, drv) => {
-          const s = isDateRangeSet
-            ? getDriverDateRangeScore(drv, filterStartDate, filterEndDate)
-            : driverMetricMode === 'distance'
-              ? getDriverDistanceScore(drv, effMi)
-              : getDriverWindowScore(drv, driverWindow);
-          return sum + s;
-        }, 0);
-        return total / DRIVER_SAFETY_SCORES.length;
-      })()
-    : FLEET_SAFETY_SCORES.fleetSafetyScore;
-  const adjustedFleetRating = adjustedFleetScore >= 90 ? 'Satisfactory' : adjustedFleetScore >= 80 ? 'Acceptable' : adjustedFleetScore >= 70 ? 'Conditional' : 'Unsatisfactory';
-
   // ── Dashboard computed stats ──
   const hosOosCount = HOS_VIOLATION_EVENTS.filter(e => e.isOos).length;
   const vedrOosCount = VEDR_VIOLATION_EVENTS.filter(e => e.isOos).length;
@@ -1089,43 +527,6 @@ export function SafetyAnalysisPage() {
     ...HOS_VIOLATION_EVENTS.map(e => ({ id: e.id, date: e.date, driverName: e.driverName, vehicleId: e.vehicleId, category: 'ELD/HOS', description: e.violationDescription, severity: e.driverSeverity, isOos: e.isOos, status: e.status })),
     ...VEDR_VIOLATION_EVENTS.map(e => ({ id: e.id, date: e.date, driverName: e.driverName, vehicleId: e.vehicleId, category: 'VEDR', description: e.violationDescription, severity: e.driverSeverity, isOos: e.isOos, status: e.status })),
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
-
-
-  // ── Fleet donut segments (5-tier: Very Poor / Poor / Fair / Good / Excellent) ──
-  const excellentCount  = DRIVER_SAFETY_SCORES.filter(d => d.overall >= 70).length;
-  const goodCount       = DRIVER_SAFETY_SCORES.filter(d => d.overall >= 55 && d.overall < 70).length;
-  const fairCount       = DRIVER_SAFETY_SCORES.filter(d => d.overall >= 50 && d.overall < 55).length;
-  const poorCount       = DRIVER_SAFETY_SCORES.filter(d => d.overall >= 40 && d.overall < 50).length;
-  const veryPoorCount   = DRIVER_SAFETY_SCORES.filter(d => d.overall < 40).length;
-  const fleetSegments = [
-    { label: 'Excellent (70–100)', count: excellentCount,  pct: Math.round((excellentCount  / DRIVER_SAFETY_SCORES.length) * 100), strokeClass: 'text-blue-600',   dotClass: 'bg-blue-600'   },
-    { label: 'Good (55–69)',       count: goodCount,       pct: Math.round((goodCount       / DRIVER_SAFETY_SCORES.length) * 100), strokeClass: 'text-sky-400',    dotClass: 'bg-sky-400'    },
-    { label: 'Fair (50–54)',       count: fairCount,       pct: Math.round((fairCount       / DRIVER_SAFETY_SCORES.length) * 100), strokeClass: 'text-slate-300',  dotClass: 'bg-slate-300'  },
-    { label: 'Poor (40–49)',       count: poorCount,       pct: Math.round((poorCount       / DRIVER_SAFETY_SCORES.length) * 100), strokeClass: 'text-orange-300', dotClass: 'bg-orange-300' },
-    { label: 'Very Poor (0–39)',   count: veryPoorCount,   pct: Math.round((veryPoorCount   / DRIVER_SAFETY_SCORES.length) * 100), strokeClass: 'text-orange-600', dotClass: 'bg-orange-600' },
-  ];
-
-  // ── Driver impact table ──
-  const impactDrivers = [...DRIVER_SAFETY_SCORES]
-    .map(d => ({ ...d, impact: d.overall - FLEET_AVERAGE }))
-    .sort((a, b) => impactView === 'negative' ? a.impact - b.impact : b.impact - a.impact);
-
-  const impactByDriverId = Object.fromEntries(impactDrivers.map(d => [d.driverId, d.impact]));
-
-  const assetListItems = [...INITIAL_ASSETS].map(asset => {
-    const progress = getAssetIntervalProgress(asset, assetIntervalMi);
-    const maintenancePenalty = progress > 0.9 ? 18 : progress > 0.75 ? 10 : progress > 0.5 ? 4 : 0;
-    const score = Math.max(30, getAssetRiskScore(asset) - maintenancePenalty);
-    return {
-      id: asset.id,
-      unitNumber: asset.unitNumber,
-      makeModel: `${asset.make} ${asset.model}`,
-      year: asset.year,
-      status: asset.operationalStatus,
-      score,
-      intervalProgress: progress,
-    };
-  }).sort((a, b) => b.score - a.score);
 
   // ── Tab labels for export ──
   const TAB_LABELS: Record<TabId, string> = {
@@ -1228,44 +629,6 @@ export function SafetyAnalysisPage() {
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
-  // ── Individual section print (visibility isolation trick) ──
-  const printSectionById = (elementId: string) => {
-    const style = document.createElement('style');
-    style.id = '__print_individual__';
-    style.innerHTML = `@media print { body > * { visibility: hidden !important; } #${elementId}, #${elementId} * { visibility: visible !important; } #${elementId} { position: fixed !important; top: 0; left: 0; width: 100% !important; padding: 24px !important; } }`;
-    document.head.appendChild(style);
-    window.print();
-    document.head.removeChild(style);
-  };
-
-  // ── Individual driver CSV ──
-  const exportDriverIndividualCSV = (drv: typeof DRIVER_SAFETY_SCORES[0], adjScores: Record<string, number>) => {
-    const headers = ['Driver', 'License', 'Metric', 'Overall', 'Accidents', 'ELD', 'Camera/VEDR', 'Inspections', 'Violations', 'Training'];
-    const metricLabel = driverMetricMode === 'distance'
-      ? `Distance ${driverDistanceUnit === 'km' ? Math.round(driverDistanceMi * 1.60934) : driverDistanceMi} ${driverDistanceUnit}`
-      : `Time ${driverWindow}`;
-    const row = [drv.name, drv.licenseNumber, metricLabel,
-      adjScores.overall.toFixed(2), adjScores.accidents.toFixed(2), adjScores.eld.toFixed(2),
-      adjScores.vedr.toFixed(2), adjScores.inspections.toFixed(2), adjScores.violations.toFixed(2), adjScores.trainings.toFixed(2)];
-    const csv = [headers, row].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a'); a.href = url; a.download = `driver-${drv.name.replace(/\s+/g, '-').toLowerCase()}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  };
-
-  // ── Individual asset CSV ──
-  const exportAssetIndividualCSV = (asset: typeof INITIAL_ASSETS[0], adjOverall: number, progress: number) => {
-    const headers = ['Unit', 'Make', 'Model', 'Year', 'Status', 'Odometer', 'Adj.Score', 'Interval Progress', 'Interval'];
-    const odoDisplay = distanceUnit === 'km' ? (asset.odometerUnit === 'km' ? asset.odometer : Math.round((asset.odometer ?? 0) * 1.60934)) : (asset.odometerUnit === 'km' ? Math.round((asset.odometer ?? 0) / 1.60934) : asset.odometer);
-    const row = [asset.unitNumber, asset.make, asset.model, asset.year, asset.operationalStatus,
-      `${odoDisplay} ${distanceUnit}`, adjOverall.toFixed(0), `${Math.round(progress * 100)}%`,
-      `${distanceUnit === 'km' ? Math.round(assetIntervalMi * 1.60934) : assetIntervalMi} ${distanceUnit}`];
-    const csv = [headers, row].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a'); a.href = url; a.download = `asset-${asset.unitNumber}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  };
-
   const carrierRiskInfo = {
     purpose: 'Overall fleet safety health based on accidents, drivers, inspections, ELD and VEDR performance.',
     focus: 'Use this score as your top KPI. Any decline should trigger immediate review of the lower cards.',
@@ -1321,22 +684,14 @@ export function SafetyAnalysisPage() {
   const RISK_GRID_SIZE = RISK_GRID_COLUMNS * RISK_GRID_ROWS;
 
   const driverRiskItemsRaw = DRIVER_SAFETY_SCORES
-    .map(drv => {
-      const adjScore = isDateRangeSet
-        ? getDriverDateRangeScore(drv, filterStartDate, filterEndDate)
-        : driverMetricMode === 'distance'
-          ? getDriverDistanceScore(drv, driverDistanceUnit === 'km' ? driverDistanceMi / 1.60934 : driverDistanceMi)
-          : getDriverWindowScore(drv, driverWindow);
-      return {
-        id: drv.driverId,
-        title: drv.name,
-        subtitle: drv.licenseNumber || drv.driverId,
-        score: adjScore,
-        baseScore: drv.overall,
-        riskLabel: getRiskMeta(adjScore).shortLabel,
-        placeholder: false,
-      };
-    })
+    .map(drv => ({
+      id: drv.driverId,
+      title: drv.name,
+      subtitle: drv.licenseNumber || drv.driverId,
+      score: drv.overall,
+      riskLabel: getRiskMeta(drv.overall).shortLabel,
+      placeholder: false,
+    }))
     .sort((a, b) => b.score - a.score);
 
   const driverRiskItems = Array.from({ length: RISK_GRID_SIZE }, (_, idx) => {
@@ -1354,24 +709,13 @@ export function SafetyAnalysisPage() {
 
   const assetRiskItemsRaw = INITIAL_ASSETS
     .map(asset => {
-      const progress = getAssetIntervalProgress(asset, assetIntervalMi);
-      const maintenancePenalty = progress > 0.9 ? 18 : progress > 0.75 ? 10 : progress > 0.5 ? 4 : 0;
-      const score = Math.max(30, getAssetRiskScore(asset) - maintenancePenalty);
-      const odo = asset.odometer ?? 0;
-      const odoDisplay = distanceUnit === 'km'
-        ? (asset.odometerUnit === 'km' ? odo : Math.round(odo * 1.60934))
-        : (asset.odometerUnit === 'km' ? Math.round(odo / 1.60934) : odo);
-      const intervalDisplay = distanceUnit === 'km' ? Math.round(assetIntervalMi * 1.60934) : assetIntervalMi;
+      const score = getAssetRiskScore(asset);
       return {
         id: asset.id,
         title: asset.unitNumber,
         subtitle: `${asset.make} ${asset.model}`,
         score,
         riskLabel: getRiskMeta(score).shortLabel,
-        status: asset.operationalStatus,
-        intervalProgress: progress,
-        odoDisplay,
-        intervalDisplay,
         placeholder: false,
       };
     })
@@ -1480,1048 +824,533 @@ export function SafetyAnalysisPage() {
           </div>
         </div>
 
+        {/* ===== SAFETY DASHBOARD TAB ===== */}
         {pageTab === 'dashboard' && (
-          <>
-        {/* ===== KPI BANNER ===== */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
-          {([
-            { label: 'Active Drivers',     value: NUM_ACTIVE_DRIVERS,                              accent: 'bg-blue-600',    bg: 'bg-white', border: 'border-slate-200' },
-            { label: 'Fleet Safety Score', value: `${FLEET_SAFETY_SCORES.fleetSafetyScore.toFixed(1)}%`, accent: 'bg-emerald-500', bg: 'bg-white', border: 'border-slate-200' },
-            { label: 'OOS Violations',     value: totalOosCount,                                   accent: 'bg-red-500',     bg: 'bg-white', border: 'border-slate-200' },
-            { label: 'Open Cases',         value: totalOpenCount,                                  accent: 'bg-amber-500',   bg: 'bg-white', border: 'border-slate-200' },
-            { label: 'Clean Inspections',  value: `${cleanInspectionsRate}%`,                      accent: 'bg-teal-500',    bg: 'bg-white', border: 'border-slate-200' },
-          ] as { label: string; value: string | number; accent: string; bg: string; border: string }[]).map(kpi => (
-            <div key={kpi.label} className={`${kpi.bg} ${kpi.border} border rounded-xl overflow-hidden shadow-sm`}>
-              <div className={`h-1 w-full ${kpi.accent}`} />
-              <div className="px-4 py-3">
-                <div className="text-2xl font-black text-slate-800 leading-none">{kpi.value}</div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">{kpi.label}</div>
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 sm:p-6 lg:p-8">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Safety Dashboard</h2>
+                <p className="text-sm text-slate-500">Carrier Risk is blue. All supporting charts are green and include quick hover insights.</p>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ===== METRICS CONFIGURATION PANEL ===== */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3 mb-5">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-
-            {/* Unit toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Unit</span>
-              <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                {(['mi', 'km'] as const).map(u => (
-                  <button key={u} onClick={() => setDistanceUnit(u)}
-                    className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all ${distanceUnit === u ? 'bg-white shadow text-slate-800 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}>
-                    {u}
-                  </button>
-                ))}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fleet Safety Rating</span>
+                <span className={getRatingStyle(FLEET_SAFETY_SCORES.fleetSafetyRating)}>{FLEET_SAFETY_SCORES.fleetSafetyRating}</span>
               </div>
             </div>
 
-            <div className="w-px h-6 bg-slate-200 hidden sm:block" />
+            <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4 lg:gap-6 items-stretch">
+              <div className="relative group h-full bg-gradient-to-b from-blue-50 to-slate-50 border border-blue-100 rounded-2xl p-4 sm:p-6 flex flex-col justify-between">
+                <SafetyRingChart
+                  size="large"
+                  label="Carrier Risk Score"
+                  score={FLEET_SAFETY_SCORES.fleetSafetyScore}
+                  palette="blue"
+                  subtitle={`${FLEET_SAFETY_SCORES.fleetSafetyScore.toFixed(2)}% Fleet Safety Score`}
+                />
+                <div className="mt-3 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Hover for more details</div>
 
-            {/* Driver metric mode + options */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Driver Score By</span>
-              {/* Mode toggle */}
-              <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                <button onClick={() => setDriverMetricMode('time')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${driverMetricMode === 'time' ? 'bg-white shadow text-blue-700 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}>
-                  Time Period
-                </button>
-                <button onClick={() => setDriverMetricMode('distance')}
-                  className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${driverMetricMode === 'distance' ? 'bg-white shadow text-blue-700 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}>
-                  Distance
-                </button>
-              </div>
-              {driverMetricMode === 'time' ? (
-                <div className="flex flex-wrap gap-1">
-                  {(['1w', '2w', '1mo', '6mo', '12mo', '20mo', '24mo'] as const).map(w => (
-                    <button key={w} onClick={() => setDriverWindow(w)}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${driverWindow === w ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                      {w}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <>
-                  <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                    {(['mi', 'km'] as const).map(u => (
-                      <button key={u} onClick={() => setDriverDistanceUnit(u)}
-                        className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${driverDistanceUnit === u ? 'bg-white shadow text-slate-800 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}>
-                        {u}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {[1000, 2000, 5000, 10000, 12000, 15000, 200000].map(mi => {
-                      const val = driverDistanceUnit === 'km' ? Math.round(mi * 1.60934) : mi;
-                      const label = val >= 1000 ? `${Math.round(val / 1000)}k` : val.toString();
-                      return (
-                        <button key={mi} onClick={() => setDriverDistanceMi(mi)}
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${driverDistanceMi === mi ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-              {(driverMetricMode === 'time' && driverWindow !== '12mo') || driverMetricMode === 'distance' ? (
-                <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded whitespace-nowrap">Adjusted</span>
-              ) : null}
-            </div>
-
-            <div className="w-px h-6 bg-slate-200 hidden sm:block" />
-
-            {/* Asset maintenance interval */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Asset Interval ({distanceUnit})</span>
-              <div className="flex flex-wrap gap-1">
-                {[1000, 2000, 5000, 10000, 12000, 15000, 200000].map(mi => {
-                  const label = distanceUnit === 'km'
-                    ? (Math.round(mi * 1.60934) >= 1000 ? `${Math.round(mi * 1.60934 / 1000)}k` : Math.round(mi * 1.60934).toString())
-                    : (mi >= 1000 ? `${mi / 1000}k` : mi.toString());
-                  return (
-                    <button key={mi} onClick={() => setAssetIntervalMi(mi)}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all ${assetIntervalMi === mi ? 'bg-emerald-600 text-white shadow' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="w-px h-6 bg-slate-200 hidden sm:block" />
-
-            {/* Date range filter */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date Range</span>
-              <div className="flex items-center gap-1.5">
-                <div className="relative flex items-center">
-                  <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input
-                    type="date"
-                    value={filterStartDate}
-                    onChange={e => setFilterStartDate(e.target.value)}
-                    className="pl-7 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 shadow-sm"
-                  />
-                </div>
-                <span className="text-gray-400">-</span>
-                <div className="relative flex items-center">
-                  <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input
-                    type="date"
-                    value={filterEndDate}
-                    min={filterStartDate}
-                    onChange={e => setFilterEndDate(e.target.value)}
-                    className="pl-7 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 shadow-sm"
-                  />
-                </div>
-                {isDateRangeSet && (
-                  <>
-                    <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                      {Math.max(1, Math.round((new Date(filterEndDate).getTime() - new Date(filterStartDate).getTime()) / 86400000))}d
-                    </span>
-                    <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }} className="text-[10px] font-bold text-red-500 hover:text-red-700 px-1 py-0.5 rounded hover:bg-red-50 transition-colors">✕</button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Default reset button */}
-            {(isDriverAdjusted || assetIntervalMi !== 10000 || distanceUnit !== 'mi') && (
-              <>
-                <div className="w-px h-6 bg-slate-200 hidden sm:block" />
-                <button
-                  onClick={() => {
-                    setDriverMetricMode('time');
-                    setDriverWindow('12mo');
-                    setDriverDistanceMi(10000);
-                    setDriverDistanceUnit('mi');
-                    setDistanceUnit('mi');
-                    setAssetIntervalMi(10000);
-                    setFilterStartDate('');
-                    setFilterEndDate('');
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-all whitespace-nowrap">
-                  ↺ Reset Default
-                </button>
-              </>
-            )}
-
-          </div>
-        </div>
-
-        {/* ===== SAFETY DASHBOARD RINGS (with score scale embedded) ===== */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 lg:p-7 mb-5">
-          {/* Header row */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Safety Dashboard</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Carrier Risk is blue. All supporting charts are green with hover insights.</p>
-            </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-slate-50 self-start sm:self-auto">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fleet Safety Rating</span>
-              <span className={getRatingStyle(adjustedFleetRating)}>{adjustedFleetRating}</span>
-              {isDriverAdjusted && <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Adjusted</span>}
-            </div>
-          </div>
-          {/* Score scale bar */}
-          <div className="mb-6 px-1">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Safety Score Scale</span>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-slate-500">Fleet Score:</span>
-                <span className={`text-sm font-black ${getScoreColor(adjustedFleetScore)}`}>{adjustedFleetScore.toFixed(1)}%</span>
-                {isDriverAdjusted && <span className="text-[9px] text-slate-400 line-through">{FLEET_SAFETY_SCORES.fleetSafetyScore.toFixed(1)}%</span>}
-              </div>
-            </div>
-            <div className="flex gap-0.5 mb-1.5">
-              {([
-                { label: 'Very Poor', range: '0–39',   flex: 40, color: 'bg-red-500' },
-                { label: 'Poor',      range: '40–49',  flex: 10, color: 'bg-orange-400' },
-                { label: 'Fair',      range: '50–54',  flex: 5,  color: 'bg-slate-300' },
-                { label: 'Good',      range: '55–69',  flex: 15, color: 'bg-sky-400' },
-                { label: 'Excellent', range: '70–100', flex: 30, color: 'bg-blue-600' },
-              ] as { label: string; range: string; flex: number; color: string }[]).map(seg => (
-                <div key={seg.label} className="flex flex-col items-center gap-1" style={{ flex: seg.flex }}>
-                  <div className="text-[9px] font-semibold text-slate-600 whitespace-nowrap">{seg.label}</div>
-                  <div className="text-[8px] text-slate-400 whitespace-nowrap">{seg.range}</div>
-                  <div className={`h-4 w-full rounded-sm ${seg.color}`} />
-                </div>
-              ))}
-            </div>
-            <div className="relative h-4">
-              <div className="absolute flex flex-col items-center transition-all duration-300" style={{ left: `${adjustedFleetScore}%`, transform: 'translateX(-50%)' }}>
-                <div className="w-0.5 h-2.5 bg-slate-700" />
-                <span className="text-[9px] font-black text-slate-700 bg-white border border-slate-200 px-1 rounded leading-none py-0.5">{adjustedFleetScore.toFixed(0)}</span>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4 items-stretch">
-            <div className="relative group bg-gradient-to-b from-blue-50 to-slate-50 border border-blue-100 rounded-2xl p-5 flex flex-col items-center justify-center">
-              <SafetyRingChart size="large" label="Carrier Risk Score" score={adjustedFleetScore} palette="blue" subtitle={`${adjustedFleetScore.toFixed(2)}% Fleet Safety Score`} />
-              <div className="mt-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Hover for more details</div>
-              <div className="hidden md:block pointer-events-none absolute left-4 right-4 bottom-4 z-10 rounded-xl border border-blue-200 bg-white/95 backdrop-blur-sm p-3 shadow-sm opacity-0 translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wider mb-1">Carrier Risk Insight</div>
-                <p className="text-xs text-slate-600 leading-relaxed mb-1">{carrierRiskInfo.purpose}</p>
-                <p className="text-xs text-slate-500 leading-relaxed">{carrierRiskInfo.focus}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 auto-rows-fr">
-              {dashboardScores.map(metric => (
-                <div key={metric.id} className="relative group bg-gradient-to-b from-emerald-50/60 to-slate-50 border border-emerald-100 rounded-2xl p-4 min-h-[190px] flex flex-col justify-start">
-                  <SafetyRingChart label={metric.label} score={metric.value} palette="green" />
-                  <div className={`mt-2 text-center text-sm font-bold ${getScoreColor(metric.value)}`}>{metric.value.toFixed(2)}%</div>
-                  <div className="mt-1 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Hover for more details</div>
-                  <div className="hidden md:block pointer-events-none absolute left-3 right-3 top-3 z-10 rounded-xl border border-emerald-200 bg-white/95 backdrop-blur-sm p-3 shadow-sm opacity-0 translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                    <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">{metric.label}</div>
-                    <p className="text-xs text-slate-600 leading-relaxed mb-1">{metric.purpose}</p>
-                    <p className="text-xs text-slate-500 leading-relaxed">{metric.focus}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ===== DRIVERS SECTION: GRID / LIST TOGGLE ===== */}
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden mb-4">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="text-sm font-bold text-slate-800">Drivers</div>
-                {driverWindow !== '12mo' && (
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 uppercase tracking-wide">{driverWindow} window</span>
-                )}
-              </div>
-              <div className="text-xs text-slate-500">{DRIVER_SAFETY_SCORES.length} drivers · ranked by {driverWindow === '12mo' ? '12-month score' : `${driverWindow}-adjusted score`} — click to expand</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                <button onClick={() => setDriverView('grid')} className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${driverView === 'grid' ? 'bg-white shadow text-slate-800 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}><LayoutGrid size={12} /> Grid</button>
-                <button onClick={() => setDriverView('list')} className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${driverView === 'list' ? 'bg-white shadow text-slate-800 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}><List size={12} /> List</button>
-              </div>
-            </div>
-          </div>
-          {driverView === 'grid' ? (
-            <div className="overflow-x-auto p-4">
-              <div className="min-w-[1120px] grid grid-cols-8 gap-3">
-                {driverRiskItems.map(item => (
-                  <div key={item.id}
-                    className={`rounded-xl border p-3 flex flex-col items-center gap-1 transition-all ${item.placeholder ? 'opacity-20 border-dashed border-slate-200 bg-slate-50' : selectedDashboardDriverId === item.id ? 'border-blue-400 bg-blue-50 shadow-md ring-1 ring-blue-300/30' : 'cursor-pointer hover:border-blue-300 hover:shadow-md border-slate-200 bg-white'}`}
-                    onClick={() => !item.placeholder && setSelectedDashboardDriverId(selectedDashboardDriverId === item.id ? null : item.id)}
-                  >
-                    <MiniRiskRing score={item.score} palette="auto" />
-                    <div className="text-[11px] font-bold text-slate-700 text-center leading-tight truncate w-full mt-1">{item.title}</div>
-                    <div className="text-[10px] text-slate-400 text-center truncate w-full">{item.subtitle}</div>
-                    <span className={`mt-1 text-[9px] font-bold uppercase px-2 py-0.5 rounded w-full text-center ${item.score >= 90 ? 'bg-emerald-100 text-emerald-700' : item.score >= 80 ? 'bg-blue-100 text-blue-700' : item.score >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{item.placeholder ? 'N/A' : getRiskMeta(item.score).label}</span>
-                    {!item.placeholder && (
-                      <div className={`text-[10px] font-bold tabular-nums ${(impactByDriverId[item.id] ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {(impactByDriverId[item.id] ?? 0) >= 0 ? '+' : ''}{(impactByDriverId[item.id] ?? 0).toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5 w-8">#</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Driver</th>
-                    <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Score</th>
-                    <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Impact</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Rating</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {impactDrivers.map((drv, idx) => (
-                    <tr key={drv.driverId} className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedDashboardDriverId === drv.driverId ? 'bg-blue-50' : ''}`} onClick={() => setSelectedDashboardDriverId(selectedDashboardDriverId === drv.driverId ? null : drv.driverId)}>
-                      <td className="px-4 py-3 text-xs font-bold text-slate-300">{idx + 1}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <DriverAvatar name={drv.name} />
-                          <div><div className="text-xs font-semibold text-slate-800">{drv.name}</div><div className="text-[10px] text-slate-400">{drv.licenseNumber}</div></div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`inline-flex items-center justify-center w-10 h-7 rounded text-xs font-black text-white ${drv.overall >= 70 ? 'bg-blue-500' : drv.overall >= 55 ? 'bg-sky-400' : drv.overall >= 50 ? 'bg-slate-400' : 'bg-orange-500'}`}>{drv.overall.toFixed(0)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`text-xs font-bold tabular-nums ${drv.impact >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{drv.impact >= 0 ? '+' : ''}{drv.impact.toFixed(2)}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${drv.overall >= 90 ? 'bg-emerald-100 text-emerald-700' : drv.overall >= 80 ? 'bg-blue-100 text-blue-700' : drv.overall >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{getRiskMeta(drv.overall).label}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {/* ===== EXPANDED DRIVER DETAIL ===== */}
-          {selectedDashboardDriverId && (
-            (() => {
-            const drv = DRIVER_SAFETY_SCORES.find(d => d.driverId === selectedDashboardDriverId)!;
-            const ki = DRIVER_KEY_INDICATORS.find(k => k.driverId === selectedDashboardDriverId);
-
-            // ── Compute adjusted scores based on active metric filter (date range takes priority) ──
-            const effDistMi = driverDistanceUnit === 'km' ? driverDistanceMi / 1.60934 : driverDistanceMi;
-            const adj = (base: number, key: string) =>
-              isDateRangeSet
-                ? getSubScoreByDateRange(drv.driverId, base, key, filterStartDate, filterEndDate)
-                : getAdjustedSubScore(drv.driverId, base, key, driverMetricMode, driverWindow, effDistMi);
-
-            const adjOverall     = adj(drv.overall,    'overall');
-            const adjAccidents   = adj(drv.accidents,   'accidents');
-            const adjEld         = adj(drv.eld,         'eld');
-            const adjVedr        = adj(drv.vedr,        'vedr');
-            const adjInspections = adj(drv.inspections, 'inspections');
-            const adjViolations  = adj(drv.violations,  'violations');
-            const adjTrainings   = adj(drv.trainings,   'trainings');
-
-            const subScores = [
-              { label: 'Overall Safety', score: adjOverall },
-              { label: 'Accidents',      score: adjAccidents },
-              { label: 'ELD / HOS',      score: adjEld },
-              { label: 'Camera / VEDR',  score: adjVedr },
-              { label: 'Inspections',    score: adjInspections },
-              { label: 'Violations',     score: adjViolations },
-              { label: 'Training',       score: adjTrainings },
-            ];
-            return (
-              <div id="driver-detail-panel" className="border-t border-slate-100 mt-1 pt-4 px-4 pb-4">
-                {/* Header */}
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <button onClick={() => setSelectedDashboardDriverId(null)} className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors">
-                    <ChevronLeft size={13} /> Back to Fleet
-                  </button>
-                  <div className="w-px h-4 bg-slate-200" />
-                  <DriverAvatar name={drv.name} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-slate-800 truncate">{drv.name}</div>
-                    <div className="text-[10px] text-slate-400">{drv.licenseNumber}</div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${adjOverall >= 90 ? 'bg-emerald-100 text-emerald-700' : adjOverall >= 80 ? 'bg-blue-100 text-blue-700' : adjOverall >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{getRiskMeta(adjOverall).label}</span>
-                  <span className={`text-xl font-black ${getScoreColor(adjOverall)}`}>{adjOverall.toFixed(1)}%</span>
+                <div className="hidden md:block pointer-events-none absolute left-4 right-4 bottom-4 z-10 rounded-xl border border-blue-200 bg-white/95 backdrop-blur-sm p-3 shadow-sm opacity-0 translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                  <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wider mb-1">Carrier Risk Insight</div>
+                  <p className="text-xs text-slate-600 leading-relaxed mb-2">{carrierRiskInfo.purpose}</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">{carrierRiskInfo.focus}</p>
                 </div>
 
-                {/* Driver metric selector strip */}
-                {(() => {
-                  const adjScore = adjOverall;
-                  const isAdjusted = isDateRangeSet || driverMetricMode === 'distance' || driverWindow !== '12mo';
-                  const activeLabel = isDateRangeSet
-                    ? `${Math.max(1, Math.round((new Date(filterEndDate).getTime() - new Date(filterStartDate).getTime()) / 86400000))}d range`
-                    : driverMetricMode === 'distance'
-                      ? `${driverDistanceUnit === 'km' ? Math.round(driverDistanceMi * 1.60934).toLocaleString() : driverDistanceMi.toLocaleString()} ${driverDistanceUnit}`
-                      : driverWindow;
-                  return (
-                    <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      {/* Mode toggle */}
-                      <div className="flex bg-white border border-slate-200 rounded-lg overflow-hidden">
-                        <button onClick={() => setDriverMetricMode('time')}
-                          className={`px-3 py-1 text-[10px] font-bold transition-all ${driverMetricMode === 'time' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-                          Time
-                        </button>
-                        <button onClick={() => setDriverMetricMode('distance')}
-                          className={`px-3 py-1 text-[10px] font-bold transition-all ${driverMetricMode === 'distance' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-                          Distance
-                        </button>
-                      </div>
+                <div className="md:hidden mt-4 rounded-xl border border-blue-200 bg-white p-3">
+                  <div className="text-[11px] font-bold text-blue-600 uppercase tracking-wider mb-1">Carrier Risk Insight</div>
+                  <p className="text-xs text-slate-600 leading-relaxed mb-2">{carrierRiskInfo.purpose}</p>
+                  <p className="text-xs text-slate-500 leading-relaxed">{carrierRiskInfo.focus}</p>
+                </div>
+              </div>
 
-                      {driverMetricMode === 'time' ? (
-                        <div className="flex flex-wrap gap-1">
-                          {(['1w', '2w', '1mo', '6mo', '12mo', '20mo', '24mo'] as const).map(w => (
-                            <button key={w} onClick={() => setDriverWindow(w)}
-                              className={`px-2.5 py-0.5 text-[10px] font-bold rounded-md transition-all ${driverWindow === w ? 'bg-blue-600 text-white shadow' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'}`}>
-                              {w}
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex bg-white border border-slate-200 rounded-lg overflow-hidden">
-                            {(['mi', 'km'] as const).map(u => (
-                              <button key={u} onClick={() => setDriverDistanceUnit(u)}
-                                className={`px-2.5 py-0.5 text-[10px] font-bold transition-all ${driverDistanceUnit === u ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-                                {u}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {[1000, 2000, 5000, 10000, 12000, 15000, 200000].map(mi => {
-                              const val = driverDistanceUnit === 'km' ? Math.round(mi * 1.60934) : mi;
-                              const label = val >= 1000 ? `${Math.round(val / 1000)}k` : val.toString();
-                              return (
-                                <button key={mi} onClick={() => setDriverDistanceMi(mi)}
-                                  className={`px-2.5 py-0.5 text-[10px] font-bold rounded-md transition-all ${driverDistanceMi === mi ? 'bg-blue-600 text-white shadow' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'}`}>
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-
-                      <div className="w-full flex flex-wrap items-center gap-2 pt-2 mt-1 border-t border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date Range</span>
-                        <div className="flex items-center gap-1.5">
-                          <div className="relative flex items-center">
-                            <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            <input
-                              type="date"
-                              value={filterStartDate}
-                              onChange={e => setFilterStartDate(e.target.value)}
-                              className="pl-7 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 shadow-sm"
-                            />
-                          </div>
-                          <span className="text-gray-400">-</span>
-                          <div className="relative flex items-center">
-                            <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            <input
-                              type="date"
-                              value={filterEndDate}
-                              min={filterStartDate}
-                              onChange={e => setFilterEndDate(e.target.value)}
-                              className="pl-7 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 shadow-sm"
-                            />
-                          </div>
-                          {isDateRangeSet && (
-                            <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }} className="text-[10px] font-bold text-red-500 hover:text-red-700 px-1 py-0.5 rounded hover:bg-red-50 transition-colors">✕ Clear</button>
-                          )}
-                        </div>
-                      </div>
-
-                      {isAdjusted && (
-                        <>
-                          <div className="w-px h-4 bg-slate-200" />
-                          <span className="text-[10px] text-slate-500">Base: <span className="font-bold text-slate-700">{drv.overall.toFixed(1)}%</span></span>
-                          <span className={`text-[10px] font-bold ${adjScore >= drv.overall ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {adjScore >= drv.overall ? '▲' : '▼'} {activeLabel}: {adjScore.toFixed(1)}%
-                          </span>
-                        </>
-                      )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
+                {dashboardScores.map(metric => (
+                  <div key={metric.id} className="relative group h-full bg-gradient-to-b from-emerald-50/70 to-slate-50 border border-emerald-100 rounded-2xl p-4 min-h-[250px] flex flex-col justify-start">
+                    <SafetyRingChart label={metric.label} score={metric.value} palette="green" />
+                    <div className={`mt-2 text-center text-sm font-bold ${getScoreColor(metric.value)}`}>
+                      {metric.value.toFixed(2)}%
                     </div>
-                  );
-                })()}
+                    <div className="mt-1 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Hover for more details</div>
 
-                {/* Action buttons */}
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden h-8">
-                    <button onClick={() => printSectionById('driver-detail-panel')} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><Printer size={12} /> Print</button>
-                    <div className="w-px h-4 bg-slate-200" />
-                    <button onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.href}?driver=${drv.driverId}`); } catch { /**/ } }} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><Share2 size={12} /> Share</button>
-                    <div className="w-px h-4 bg-slate-200" />
-                    <button onClick={() => { const s = `Driver Safety Report — ${drv.name}\n\nOverall: ${adjOverall.toFixed(1)}%\nAccidents: ${adjAccidents.toFixed(1)}%\nELD: ${adjEld.toFixed(1)}%\nCamera: ${adjVedr.toFixed(1)}%\nInspections: ${adjInspections.toFixed(1)}%\nViolations: ${adjViolations.toFixed(1)}%\nTraining: ${adjTrainings.toFixed(1)}%`; window.location.href = `mailto:?subject=${encodeURIComponent(`Driver Report – ${drv.name}`)}&body=${encodeURIComponent(s)}`; }} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><Mail size={12} /> Mail To</button>
-                  </div>
-                  <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden h-8">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2.5">Export</span>
-                    <div className="w-px h-4 bg-slate-200" />
-                    <button onClick={() => exportDriverIndividualCSV(drv, { overall: adjOverall, accidents: adjAccidents, eld: adjEld, vedr: adjVedr, inspections: adjInspections, violations: adjViolations, trainings: adjTrainings })} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors"><FileDown size={12} /> CSV</button>
-                    <div className="w-px h-4 bg-slate-200" />
-                    <button onClick={() => printSectionById('driver-detail-panel')} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"><FileText size={12} /> PDF</button>
-                  </div>
-                </div>
+                    <div className="hidden md:block pointer-events-none absolute left-3 right-3 top-3 z-10 rounded-xl border border-emerald-200 bg-white/95 backdrop-blur-sm p-3 shadow-sm opacity-0 translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
+                      <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">{metric.label}</div>
+                      <p className="text-xs text-slate-600 leading-relaxed mb-2">{metric.purpose}</p>
+                      <p className="text-xs text-slate-500 leading-relaxed">{metric.focus}</p>
+                    </div>
 
-                {/* 8 mini ring charts — scrollable on small screens */}
-                <div className="overflow-x-auto mb-4">
-                  <div className="flex gap-2 min-w-max sm:min-w-0 sm:grid sm:grid-cols-8">
-                    {([
-                      { label: 'Safety',     score: adjOverall,     base: drv.overall     },
-                      { label: 'Accident',   score: adjAccidents,   base: drv.accidents   },
-                      { label: 'ELD',        score: adjEld,         base: drv.eld         },
-                      { label: 'Camera',     score: adjVedr,        base: drv.vedr        },
-                      { label: 'Inspection', score: adjInspections, base: drv.inspections },
-                      { label: 'Violation',  score: adjViolations,  base: drv.violations  },
-                      { label: 'Training',   score: adjTrainings,   base: drv.trainings   },
-                    ] as { label: string; score: number; base: number }[]).map(s => {
-                      const isAdj = Math.abs(s.score - s.base) > 0.05;
-                      return (
-                        <div key={s.label} className="flex flex-col items-center bg-slate-50 rounded-xl p-2 border border-slate-100 w-[80px] sm:w-auto shrink-0">
-                          <MiniRiskRing score={s.score} palette="auto" />
-                          <div className="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-wide text-center leading-tight">{s.label}</div>
-                          <div className={`text-[10px] font-bold ${getScoreColor(s.score)}`}>{s.score.toFixed(0)}%</div>
-                          {isAdj && (
-                            <div className={`text-[8px] font-bold ${s.score >= s.base ? 'text-emerald-500' : 'text-red-400'}`}>
-                              {s.score >= s.base ? '▲' : '▼'}{Math.abs(s.score - s.base).toFixed(0)}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {ki ? (
-                      <div className={`flex flex-col items-center justify-center rounded-xl p-2 border w-[80px] sm:w-auto shrink-0 ${ki.status === 'PASS' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                        <Shield size={18} className={ki.status === 'PASS' ? 'text-emerald-500' : 'text-red-500'} />
-                        <div className="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-wide text-center">Key Ind.</div>
-                        <div className={`text-[10px] font-bold ${ki.status === 'PASS' ? 'text-emerald-600' : 'text-red-600'}`}>{ki.status}</div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center rounded-xl p-2 border border-dashed border-slate-200 opacity-40 w-[80px] sm:w-auto shrink-0">
-                        <Shield size={18} className="text-slate-400" />
-                        <div className="mt-1 text-[9px] font-bold text-slate-400 uppercase">Key Ind.</div>
-                      </div>
-                    )}
+                    <div className="md:hidden mt-3 rounded-xl border border-emerald-200 bg-white p-3">
+                      <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">{metric.label}</div>
+                      <p className="text-xs text-slate-600 leading-relaxed mb-2">{metric.purpose}</p>
+                      <p className="text-xs text-slate-500 leading-relaxed">{metric.focus}</p>
+                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
+            </div>
 
-                {/* Contributing Factors + KI side by side on large screens */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-4">
+            <div className="mt-6 space-y-4">
+
+              {/* ── Driver Risk Grid ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                   <div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">Contributing Factors vs Fleet Average ({FLEET_AVERAGE.toFixed(1)}%)</div>
-                    <div className="space-y-2">
-                      {subScores.map(s => {
-                        const delta = s.score - FLEET_AVERAGE;
-                        return (
-                          <div key={s.label} className="flex items-center gap-2">
-                            <div className="w-20 text-[11px] font-semibold text-slate-500 text-right shrink-0">{s.label}</div>
-                            <div className="flex-1 bg-slate-100 rounded-full h-4 relative overflow-hidden">
-                              <div className={`h-full rounded-full ${s.score >= 90 ? 'bg-emerald-500' : s.score >= 80 ? 'bg-blue-500' : s.score >= 70 ? 'bg-amber-500' : 'bg-red-400'}`} style={{ width: `${s.score}%` }} />
-                              <div className="absolute inset-0 flex items-center px-2">
-                                <span className="text-[9px] font-bold text-white">{s.score.toFixed(0)}%</span>
-                              </div>
-                            </div>
-                            <div className={`w-10 text-[11px] font-bold text-right shrink-0 ${delta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{delta >= 0 ? '+' : ''}{delta.toFixed(1)}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <div className="text-sm font-bold text-slate-800">Individual Driver Risk Grid</div>
+                    <div className="text-xs text-slate-500">{driverRiskItemsRaw.length} drivers — click any card to view risk profile</div>
                   </div>
-
-                  {ki && (
-                    <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">Key Indicator Events</div>
-                      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-3 xl:grid-cols-5 gap-2 mb-3">
-                        {([
-                          { label: 'Cell Phone', count: ki.cellPhoneEvents },
-                          { label: 'Speeding', count: ki.speedingEvents },
-                          { label: 'Following', count: ki.followingDistanceEvents },
-                          { label: 'Seat Belt', count: ki.seatBeltEvents },
-                          { label: 'Cam. Block', count: ki.obstructedCameraEvents },
-                        ] as { label: string; count: number }[]).map(item => (
-                          <div key={item.label} className={`border rounded-lg p-2 text-center ${item.count > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                            <div className={`text-lg font-black ${item.count > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{item.count}</div>
-                            <div className="text-[9px] font-semibold text-slate-500 uppercase tracking-wide leading-tight">{item.label}</div>
-                            <div className={`text-[9px] font-bold uppercase mt-0.5 ${item.count > 0 ? 'text-red-500' : 'text-emerald-500'}`}>{item.count > 0 ? 'FAIL' : 'PASS'}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${ki.status === 'PASS' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                        <Shield size={11} /> Key Indicator Status: {ki.status}
-                      </div>
-                    </div>
-                  )}
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-2 py-1 rounded">8 × 2</span>
                 </div>
-
-                {/* Driver Behavior Chart */}
-                <DriverBehaviorChart drv={drv} />
-
-                {/* Driver Radar + Fleet Ranking */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-100">
-                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
-                    <DriverRadarChart scores={{ overall: adjOverall, accidents: adjAccidents, eld: adjEld, vedr: adjVedr, inspections: adjInspections, violations: adjViolations, trainings: adjTrainings }} />
-                  </div>
-                  <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Driver Fleet Ranking</div>
-                    <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
-                      {[...driverRiskItemsRaw].sort((a, b) => b.score - a.score).map((d, idx) => {
-                        const isActive = d.id === drv.driverId;
-                        const barColor = isActive
-                          ? 'bg-blue-500'
-                          : d.score >= 90 ? 'bg-emerald-400' : d.score >= 80 ? 'bg-blue-400' : d.score >= 70 ? 'bg-amber-400' : 'bg-red-400';
-                        return (
-                          <div key={d.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${isActive ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
-                            <span className="text-[10px] text-slate-400 w-5 text-right shrink-0 font-bold">{idx + 1}</span>
-                            <span className={`text-xs w-24 truncate shrink-0 ${isActive ? 'text-blue-700 font-bold' : 'text-slate-600 font-medium'}`}>{d.title}</span>
-                            <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                              <div className={`h-full rounded-full transition-all duration-300 ${barColor}`} style={{ width: `${d.score}%` }} />
-                            </div>
-                            <span className={`text-xs font-bold tabular-nums w-8 text-right shrink-0 ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>{d.score.toFixed(0)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Driver Info Grid */}
-                {(() => {
-                  const fullDrv = MOCK_DRIVERS.find(d => d.id === drv.driverId);
-                  if (!fullDrv) return null;
-                  const primaryLic = fullDrv.licenses?.[0];
-                  return (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-100 pt-3 mt-4">
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Driver ID</div>
-                        <div className="text-sm font-semibold text-slate-800">{fullDrv.id}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</div>
-                        <div className={`text-sm font-semibold ${fullDrv.status === 'Active' ? 'text-emerald-600' : fullDrv.status === 'Inactive' ? 'text-slate-500' : 'text-amber-600'}`}>{fullDrv.status}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Phone</div>
-                        <div className="text-sm text-slate-700">{fullDrv.phone || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Email</div>
-                        <div className="text-sm text-slate-700 truncate">{fullDrv.email || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">License #</div>
-                        <div className="text-sm text-slate-700">{fullDrv.licenseNumber || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">License Expiry</div>
-                        <div className="text-sm text-slate-700">{primaryLic?.expiryDate || fullDrv.licenseExpiry || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Terminal</div>
-                        <div className="text-sm text-slate-700">{fullDrv.terminal || 'N/A'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Hired Date</div>
-                        <div className="text-sm text-slate-700">{fullDrv.hiredDate || 'N/A'}</div>
-                      </div>
-                      {(fullDrv.city || fullDrv.state) && (
-                        <div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Location</div>
-                          <div className="text-sm text-slate-700">{[fullDrv.city, fullDrv.state].filter(Boolean).join(', ')}</div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            );
-            })()
-          )}
-        </div>
-
-        {/* ===== ASSETS SECTION: GRID / LIST TOGGLE ===== */}
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden mb-4">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="text-sm font-bold text-slate-800">Assets</div>
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wide">
-                  {distanceUnit === 'km' ? Math.round(assetIntervalMi * 1.60934).toLocaleString() : assetIntervalMi.toLocaleString()} {distanceUnit} interval
-                </span>
-              </div>
-              <div className="text-xs text-slate-500">{assetRiskItemsRaw.length} assets · maintenance-adjusted score — click to view profile</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                <button onClick={() => setAssetView('grid')} className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${assetView === 'grid' ? 'bg-white shadow text-slate-800 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}><LayoutGrid size={12} /> Grid</button>
-                <button onClick={() => setAssetView('list')} className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${assetView === 'list' ? 'bg-white shadow text-slate-800 ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}><List size={12} /> List</button>
-              </div>
-            </div>
-          </div>
-          {assetView === 'grid' ? (
-            <div className="overflow-x-auto p-4">
-              <div className="min-w-[1120px] grid grid-cols-8 gap-3">
-                {assetRiskItems.map(item => (
-                  <div key={item.id}
-                    className={`rounded-xl border p-3 flex flex-col items-center gap-1 transition-all ${item.placeholder ? 'opacity-20 border-dashed border-slate-200 bg-slate-50' : 'cursor-pointer hover:border-blue-300 hover:shadow-md border-slate-200 bg-white'}`}
-                    onClick={() => !item.placeholder && setSelectedDashboardAssetId(selectedDashboardAssetId === item.id ? null : item.id)}
-                  >
-                    <MiniRiskRing score={item.score} palette="auto" />
-                    <div className="text-[11px] font-bold text-slate-700 text-center leading-tight truncate w-full mt-1">{item.title}</div>
-                    <div className="text-[10px] text-slate-400 text-center truncate w-full">{item.subtitle}</div>
-                    <span className={`mt-1 text-[9px] font-bold uppercase px-2 py-0.5 rounded w-full text-center ${item.score >= 90 ? 'bg-emerald-100 text-emerald-700' : item.score >= 80 ? 'bg-blue-100 text-blue-700' : item.score >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{item.placeholder ? 'N/A' : getRiskMeta(item.score).label}</span>
-                    {!item.placeholder && 'status' in item && (
-                      <div className={`text-[9px] font-semibold uppercase tabular-nums ${(item as {status: string}).status === 'Active' ? 'text-emerald-600' : (item as {status: string}).status === 'Maintenance' ? 'text-amber-600' : (item as {status: string}).status === 'OutOfService' ? 'text-red-600' : 'text-slate-500'}`}>{(item as {status: string}).status}</div>
-                    )}
-                    {!item.placeholder && 'intervalProgress' in item && (
-                      <div className="w-full mt-1">
-                        <div className="flex justify-between items-center mb-0.5">
-                          <span className="text-[8px] text-slate-400 font-medium">Maint.</span>
-                          <span className={`text-[8px] font-bold ${(item as {intervalProgress: number}).intervalProgress > 0.9 ? 'text-red-500' : (item as {intervalProgress: number}).intervalProgress > 0.75 ? 'text-orange-500' : (item as {intervalProgress: number}).intervalProgress > 0.5 ? 'text-amber-500' : 'text-emerald-600'}`}>{Math.round((item as {intervalProgress: number}).intervalProgress * 100)}%</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${(item as {intervalProgress: number}).intervalProgress > 0.9 ? 'bg-red-500' : (item as {intervalProgress: number}).intervalProgress > 0.75 ? 'bg-orange-400' : (item as {intervalProgress: number}).intervalProgress > 0.5 ? 'bg-amber-400' : 'bg-emerald-500'}`}
-                            style={{ width: `${Math.round((item as {intervalProgress: number}).intervalProgress * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5 w-8">#</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Asset</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Year</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Status</th>
-                    <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Score</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider px-4 py-2.5">Risk Level</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {assetListItems.map((asset, idx) => (
-                    <tr key={asset.id} className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedDashboardAssetId === asset.id ? 'bg-emerald-50' : ''}`} onClick={() => setSelectedDashboardAssetId(selectedDashboardAssetId === asset.id ? null : asset.id)}>
-                      <td className="px-4 py-3 text-xs font-bold text-slate-300">{idx + 1}</td>
-                      <td className="px-4 py-3">
-                        <div className="text-xs font-bold text-slate-800">{asset.unitNumber}</div>
-                        <div className="text-[10px] text-slate-400">{asset.makeModel}</div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">{asset.year}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${asset.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : asset.status === 'Maintenance' ? 'bg-amber-100 text-amber-700' : asset.status === 'OutOfService' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{asset.status}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`inline-flex items-center justify-center w-10 h-7 rounded text-xs font-black text-white ${asset.score >= 70 ? 'bg-blue-500' : asset.score >= 55 ? 'bg-sky-400' : asset.score >= 50 ? 'bg-slate-400' : 'bg-orange-500'}`}>{asset.score.toFixed(0)}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${asset.score >= 90 ? 'bg-emerald-100 text-emerald-700' : asset.score >= 80 ? 'bg-blue-100 text-blue-700' : asset.score >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{getRiskMeta(asset.score).label}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* ===== INLINE ASSET DETAIL PANEL ===== */}
-          {selectedDashboardAssetId && selectedDashboardAsset && dashboardAssetScores && (
-            (() => {
-              const asset = selectedDashboardAsset;
-              const scores = dashboardAssetScores;
-              const progress = getAssetIntervalProgress(asset, assetIntervalMi);
-              const maintenancePenalty = progress > 0.9 ? 18 : progress > 0.75 ? 10 : progress > 0.5 ? 4 : 0;
-              const adjOverall = Math.max(30, scores.overall - maintenancePenalty);
-              const adjRating = getRiskMeta(adjOverall);
-              const odo = asset.odometer ?? 0;
-              const odoInMi = asset.odometerUnit === 'km' ? odo / 1.60934 : odo;
-              const sinceLastMi = odoInMi % assetIntervalMi;
-              const untilNextMi = assetIntervalMi - sinceLastMi;
-              const sinceDisplay = distanceUnit === 'km' ? Math.round(sinceLastMi * 1.60934).toLocaleString() : Math.round(sinceLastMi).toLocaleString();
-              const untilDisplay = distanceUnit === 'km' ? Math.round(untilNextMi * 1.60934).toLocaleString() : Math.round(untilNextMi).toLocaleString();
-              const intervalDisplay = distanceUnit === 'km' ? Math.round(assetIntervalMi * 1.60934).toLocaleString() : assetIntervalMi.toLocaleString();
-              const barColor = progress > 0.9 ? 'bg-red-500' : progress > 0.75 ? 'bg-orange-400' : progress > 0.5 ? 'bg-amber-400' : 'bg-emerald-500';
-              const textColor = progress > 0.9 ? 'text-red-600' : progress > 0.75 ? 'text-orange-600' : progress > 0.5 ? 'text-amber-600' : 'text-emerald-600';
-
-              return (
-                <div id="asset-detail-panel" className="border-t border-slate-100 mt-1 pt-4 px-4 pb-4">
-
-                  {/* Header */}
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <button onClick={() => setSelectedDashboardAssetId(null)} className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors">
-                      <ChevronLeft size={13} /> Back to Fleet
-                    </button>
-                    <div className="w-px h-4 bg-slate-200" />
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                      <Shield size={14} className="text-emerald-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-slate-800">{asset.unitNumber}</div>
-                      <div className="text-[10px] text-slate-400">{asset.year} {asset.make} {asset.model} · {asset.operationalStatus}</div>
-                    </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${adjOverall >= 90 ? 'bg-emerald-100 text-emerald-700' : adjOverall >= 80 ? 'bg-blue-100 text-blue-700' : adjOverall >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{adjRating.label}</span>
-                    <span className={`text-xl font-black ${getScoreColor(adjOverall)}`}>{adjOverall.toFixed(0)}%</span>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden h-8">
-                      <button onClick={() => printSectionById('asset-detail-panel')} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><Printer size={12} /> Print</button>
-                      <div className="w-px h-4 bg-slate-200" />
-                      <button onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.href}?asset=${asset.id}`); } catch { /**/ }}} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><Share2 size={12} /> Share</button>
-                      <div className="w-px h-4 bg-slate-200" />
-                      <button onClick={() => { const s = `Asset Risk Report — ${asset.unitNumber}\n\nOverall Score: ${adjOverall.toFixed(0)}%\nRating: ${adjRating.label}\nStatus: ${asset.operationalStatus}\nOdometer: ${odo.toLocaleString()} ${asset.odometerUnit}\nMaintenance: ${Math.round(progress * 100)}% of ${intervalDisplay} ${distanceUnit} interval used`; window.location.href = `mailto:?subject=${encodeURIComponent(`Asset Report – ${asset.unitNumber}`)}&body=${encodeURIComponent(s)}`; }} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><Mail size={12} /> Mail To</button>
-                    </div>
-                    <div className="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden h-8">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2.5">Export</span>
-                      <div className="w-px h-4 bg-slate-200" />
-                      <button onClick={() => exportAssetIndividualCSV(asset, adjOverall, progress)} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors"><FileDown size={12} /> CSV</button>
-                      <div className="w-px h-4 bg-slate-200" />
-                      <button onClick={() => printSectionById('asset-detail-panel')} className="flex items-center gap-1.5 px-3 h-full text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"><FileText size={12} /> PDF</button>
-                    </div>
-                  </div>
-
-                  {/* Maintenance interval */}
-                  <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 mb-4">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Maintenance Interval</span>
-                      <div className="flex flex-wrap gap-1">
-                        {[1000, 2000, 5000, 10000, 12000, 15000, 200000].map(mi => {
-                          const val = distanceUnit === 'km' ? Math.round(mi * 1.60934) : mi;
-                          const lbl = val >= 1000 ? `${Math.round(val / 1000)}k` : val.toString();
-                          return (
-                            <button key={mi} onClick={() => setAssetIntervalMi(mi)}
-                              className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${assetIntervalMi === mi ? 'bg-emerald-600 text-white shadow' : 'bg-white text-slate-500 hover:bg-slate-200 border border-slate-200'}`}>
-                              {lbl} {distanceUnit}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Date range filter for asset */}
-                    <div className="flex flex-wrap items-center gap-2 mb-2 pt-2 border-t border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date Range</span>
-                      <div className="flex items-center gap-1.5">
-                        <div className="relative flex items-center">
-                          <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          <input
-                            type="date"
-                            value={filterStartDate}
-                            onChange={e => setFilterStartDate(e.target.value)}
-                            className="pl-7 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 shadow-sm"
-                          />
-                        </div>
-                        <span className="text-gray-400">-</span>
-                        <div className="relative flex items-center">
-                          <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          <input
-                            type="date"
-                            value={filterEndDate}
-                            min={filterStartDate}
-                            onChange={e => setFilterEndDate(e.target.value)}
-                            className="pl-7 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 shadow-sm"
-                          />
-                        </div>
-                        {isDateRangeSet && (
-                          <>
-                            <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                              {Math.max(1, Math.round((new Date(filterEndDate).getTime() - new Date(filterStartDate).getTime()) / 86400000))}d
-                            </span>
-                            <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }} className="text-[10px] font-bold text-red-500 hover:text-red-700 px-1 py-0.5 rounded hover:bg-red-50 transition-colors">✕ Clear</button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between text-[10px] mb-1.5 text-slate-500">
-                      <span>Since last: <span className="font-bold text-slate-700">{sinceDisplay} {distanceUnit}</span></span>
-                      <span>Until next: <span className="font-bold text-slate-700">{untilDisplay} {distanceUnit}</span></span>
-                    </div>
-                    <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.round(progress * 100)}%` }} />
-                    </div>
-                    <div className="flex justify-between text-[9px] mt-1 text-slate-400">
-                      <span>0</span>
-                      <span className={`font-bold ${textColor}`}>{Math.round(progress * 100)}% of interval used</span>
-                      <span>{intervalDisplay} {distanceUnit}</span>
-                    </div>
-                  </div>
-
-                  {/* 5 mini risk rings */}
-                  <div className="overflow-x-auto mb-4">
-                    <div className="flex gap-2 min-w-max sm:min-w-0 sm:grid sm:grid-cols-5">
-                      {([
-                        { label: 'Overall',      score: adjOverall },
-                        { label: 'Status',       score: scores.statusScore },
-                        { label: 'Age',          score: scores.ageScore },
-                        { label: 'Mileage',      score: scores.mileageScore },
-                        { label: 'Registration', score: scores.regScore },
-                      ] as { label: string; score: number }[]).map(s => (
-                        <div key={s.label} className="flex flex-col items-center bg-slate-50 rounded-xl p-2 border border-slate-100 w-[90px] sm:w-auto shrink-0">
-                          <MiniRiskRing score={s.score} palette="auto" />
-                          <div className="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-wide text-center leading-tight">{s.label}</div>
-                          <div className={`text-[10px] font-bold ${getScoreColor(s.score)}`}>{s.score.toFixed(0)}%</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Score bars */}
-                  <div className="space-y-2 mb-4">
-                    {([
-                      { label: 'Status',       score: scores.statusScore },
-                      { label: 'Age',          score: scores.ageScore },
-                      { label: 'Mileage',      score: scores.mileageScore },
-                      { label: 'Registration', score: scores.regScore },
-                    ] as { label: string; score: number }[]).map(s => (
-                      <div key={s.label} className="flex items-center gap-2">
-                        <div className="w-24 text-[11px] font-semibold text-slate-500 text-right shrink-0">{s.label}</div>
-                        <div className="flex-1 bg-slate-100 rounded-full h-4 relative overflow-hidden">
-                          <div className={`h-full rounded-full ${s.score >= 90 ? 'bg-emerald-500' : s.score >= 80 ? 'bg-blue-500' : s.score >= 70 ? 'bg-amber-500' : 'bg-red-400'}`} style={{ width: `${s.score}%` }} />
-                          <div className="absolute inset-0 flex items-center px-2"><span className="text-[9px] font-bold text-white">{s.score.toFixed(0)}%</span></div>
-                        </div>
+                <div className="overflow-x-auto p-4">
+                  <div className="min-w-[1120px] grid grid-cols-8 gap-3">
+                    {driverRiskItems.map(item => (
+                      <div
+                        key={item.id}
+                        className={`rounded-xl border p-3 flex flex-col items-center transition-all ${item.placeholder ? 'border-slate-100 bg-slate-50/50 opacity-30' : 'border-slate-200 bg-slate-50 cursor-pointer hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md'}`}
+                        onClick={() => !item.placeholder && setSelectedDashboardDriverId(item.id)}
+                      >
+                        <MiniRiskRing score={item.score} palette="auto" />
+                        <div className="mt-2 text-[11px] font-semibold text-slate-700 text-center leading-tight line-clamp-2">{item.title}</div>
+                        <div className="text-[10px] text-slate-400 text-center line-clamp-1 mt-0.5">{item.subtitle}</div>
+                        <div className={`mt-1 text-[10px] font-bold uppercase ${
+                          item.score >= 90 ? 'text-emerald-600' : item.score >= 80 ? 'text-blue-600' : item.score >= 70 ? 'text-amber-600' : 'text-red-500'
+                        }`}>{item.riskLabel}</div>
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
 
-                  {/* Radar + Fleet Ranking */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    {/* Radar chart */}
-                    <div className="bg-slate-50 rounded-xl border border-slate-100 p-3">
-                      <AssetRadarChart scores={scores} />
-                    </div>
-
-                    {/* Fleet score ranking */}
-                    <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Fleet Score Ranking</div>
-                      <div className="space-y-1 max-h-52 overflow-y-auto pr-0.5">
-                        {[...assetRiskItemsRaw].sort((a, b) => b.score - a.score).map((a, idx) => {
-                          const isActive = a.id === asset.id;
-                          const barColor = isActive
-                            ? 'bg-emerald-500'
-                            : a.score >= 90 ? 'bg-emerald-400' : a.score >= 80 ? 'bg-blue-400' : a.score >= 70 ? 'bg-amber-400' : 'bg-red-400';
-                          return (
-                            <div key={a.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${isActive ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
-                              <span className="text-[10px] text-slate-400 w-5 text-right shrink-0 font-bold">{idx + 1}</span>
-                              <span className={`text-xs w-24 truncate shrink-0 ${isActive ? 'text-emerald-700 font-bold' : 'text-slate-600 font-medium'}`}>{a.title}</span>
-                              <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                                <div className={`h-full rounded-full transition-all duration-300 ${barColor}`} style={{ width: `${a.score}%` }} />
-                              </div>
-                              <span className={`text-xs font-bold tabular-nums w-8 text-right shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-600'}`}>{a.score.toFixed(0)}</span>
-                            </div>
-                          );
-                        })}
+              {/* ── Asset Risk Grid ── */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-slate-800">Individual Asset Risk Grid</div>
+                    <div className="text-xs text-slate-500">{assetRiskItemsRaw.length} assets — click any card to view risk profile</div>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-2 py-1 rounded">8 × 2</span>
+                </div>
+                <div className="overflow-x-auto p-4">
+                  <div className="min-w-[1120px] grid grid-cols-8 gap-3">
+                    {assetRiskItems.map(item => (
+                      <div
+                        key={item.id}
+                        className={`rounded-xl border p-3 flex flex-col items-center transition-all ${item.placeholder ? 'border-slate-100 bg-slate-50/50 opacity-30' : 'border-slate-200 bg-slate-50 cursor-pointer hover:border-blue-300 hover:bg-blue-50 hover:shadow-md'}`}
+                        onClick={() => !item.placeholder && setSelectedDashboardAssetId(item.id)}
+                      >
+                        <MiniRiskRing score={item.score} palette="auto" />
+                        <div className="mt-2 text-[11px] font-semibold text-slate-700 text-center leading-tight line-clamp-2">{item.title}</div>
+                        <div className="text-[10px] text-slate-400 text-center line-clamp-1 mt-0.5">{item.subtitle}</div>
+                        <div className={`mt-1 text-[10px] font-bold uppercase ${
+                          item.score >= 90 ? 'text-emerald-600' : item.score >= 80 ? 'text-blue-600' : item.score >= 70 ? 'text-amber-600' : 'text-red-500'
+                        }`}>{item.riskLabel}</div>
                       </div>
-                    </div>
+                    ))}
                   </div>
-
-                  {/* Info grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-100 pt-3">
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Unit #</div><div className="text-sm font-semibold text-slate-800">{asset.unitNumber}</div></div>
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Make / Model</div><div className="text-sm text-slate-700">{asset.make} {asset.model}</div></div>
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Year</div><div className="text-sm text-slate-700">{asset.year}</div></div>
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</div><div className="text-sm text-slate-700">{asset.operationalStatus}</div></div>
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Odometer</div><div className="text-sm text-slate-700">{odo.toLocaleString()} {asset.odometerUnit}</div></div>
-                    <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Reg. Expiry</div><div className="text-sm text-slate-700">{asset.registrationExpiryDate || 'N/A'}</div></div>
-                    {asset.vin && <div className="col-span-2 sm:col-span-3"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">VIN</div><div className="text-sm font-mono text-slate-700">{asset.vin}</div></div>}
-                  </div>
-
-                  {/* Asset risk trend chart */}
-                  <AssetBehaviorChart odoSeed={asset.odometer ?? 50000} scores={scores} />
-
                 </div>
-              );
-            })()
-          )}
-        </div>
+              </div>
 
-        {/* ===== ELD/HOS + VEDR VIOLATION ANALYSIS ===== */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <div className="text-sm font-bold text-slate-800 mb-4">ELD / HOS Violations by Group</div>
-            <div className="space-y-3">
-              {Object.entries(hosGroupStats).map(([group, stats]) => (
-                <div key={group}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-slate-600">{group}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800">{stats.count}</span>
-                      {stats.oos > 0 && <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">{stats.oos} OOS</span>}
-                    </div>
-                  </div>
-                  <div className="bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-blue-500" style={{ width: `${(stats.count / HOS_VIOLATION_EVENTS.length) * 100}%` }} />
-                  </div>
+            </div>
+
+            {/* ══════════════════════════════════════════════════════════
+                SECTION 1 — FLEET KPI BANNER
+            ══════════════════════════════════════════════════════════ */}
+            <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+              {[
+                { label: 'Fleet Safety Score', value: `${FLEET_SAFETY_SCORES.fleetSafetyScore.toFixed(1)}%`, sub: FLEET_SAFETY_SCORES.fleetSafetyRating, color: 'blue', icon: '🛡️' },
+                { label: 'Total Accidents', value: String(COMPUTED_INCIDENT_STATS.totalAccidents), sub: `${COMPUTED_INCIDENT_STATS.preventableCount} preventable`, color: 'red', icon: '⚠️' },
+                { label: 'OOS Violations', value: String(totalOosCount), sub: `${hosOosCount} HOS · ${vedrOosCount} VEDR`, color: 'amber', icon: '🚫' },
+                { label: 'Open Cases', value: String(totalOpenCount), sub: `${hosOpenCount} HOS · ${vedrOpenCount} VEDR`, color: totalOpenCount > 0 ? 'orange' : 'green', icon: '📋' },
+                { label: 'Clean Inspections', value: `${cleanInspectionsRate}%`, sub: `${cleanInspectionsCount} of ${inspectionsData.length}`, color: 'emerald', icon: '✅' },
+              ].map(kpi => (
+                <div key={kpi.label} className={`bg-white border rounded-2xl p-4 flex flex-col gap-1 ${
+                  kpi.color === 'blue' ? 'border-blue-200 bg-gradient-to-br from-blue-50 to-white' :
+                  kpi.color === 'red' ? 'border-red-200 bg-gradient-to-br from-red-50 to-white' :
+                  kpi.color === 'amber' ? 'border-amber-200 bg-gradient-to-br from-amber-50 to-white' :
+                  kpi.color === 'orange' ? 'border-orange-200 bg-gradient-to-br from-orange-50 to-white' :
+                  kpi.color === 'green' ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white' :
+                  'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white'
+                }`}>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{kpi.label}</div>
+                  <div className={`text-2xl font-black leading-tight ${
+                    kpi.color === 'blue' ? 'text-blue-700' : kpi.color === 'red' ? 'text-red-600' :
+                    kpi.color === 'amber' ? 'text-amber-600' : kpi.color === 'orange' ? 'text-orange-600' : 'text-emerald-700'
+                  }`}>{kpi.value}</div>
+                  <div className="text-[11px] text-slate-500 font-medium">{kpi.sub}</div>
                 </div>
               ))}
             </div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-5">
-            <div className="text-sm font-bold text-slate-800 mb-4">VEDR Violations by Group</div>
-            <div className="space-y-3">
-              {Object.entries(vedrGroupStats).map(([group, stats]) => (
-                <div key={group}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-slate-600">{group}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-800">{stats.count}</span>
-                      {stats.oos > 0 && <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">{stats.oos} OOS</span>}
-                    </div>
-                  </div>
-                  <div className="bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-purple-500" style={{ width: `${(stats.count / VEDR_VIOLATION_EVENTS.length) * 100}%` }} />
+
+            {/* ══════════════════════════════════════════════════════════
+                SECTION 2 — INCIDENT BREAKDOWN + DRIVER COMPLIANCE
+            ══════════════════════════════════════════════════════════ */}
+            <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+              {/* Incident Breakdown */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100">
+                  <div className="text-sm font-bold text-slate-800">Incident Breakdown</div>
+                  <div className="text-xs text-slate-500">Last 12 months · {COMPUTED_INCIDENT_STATS.totalAccidents} total accidents · ${COMPUTED_INCIDENT_STATS.totalCost.toLocaleString()} total cost</div>
+                </div>
+                <div className="p-5 space-y-3">
+                  {[
+                    { label: 'Preventable', count: COMPUTED_INCIDENT_STATS.preventableCount, total: COMPUTED_INCIDENT_STATS.totalAccidents, color: 'bg-red-500', textColor: 'text-red-700', bgColor: 'bg-red-50' },
+                    { label: 'Non-Preventable', count: COMPUTED_INCIDENT_STATS.totalAccidents - COMPUTED_INCIDENT_STATS.preventableCount, total: COMPUTED_INCIDENT_STATS.totalAccidents, color: 'bg-slate-400', textColor: 'text-slate-600', bgColor: 'bg-slate-50' },
+                    { label: 'Injuries', count: COMPUTED_INCIDENT_STATS.injuries, total: COMPUTED_INCIDENT_STATS.totalAccidents, color: 'bg-amber-500', textColor: 'text-amber-700', bgColor: 'bg-amber-50' },
+                    { label: 'Tow-Away', count: incidentTowAway, total: COMPUTED_INCIDENT_STATS.totalAccidents, color: 'bg-orange-500', textColor: 'text-orange-700', bgColor: 'bg-orange-50' },
+                    { label: 'Fatalities', count: COMPUTED_INCIDENT_STATS.fatalities, total: COMPUTED_INCIDENT_STATS.totalAccidents, color: 'bg-red-800', textColor: 'text-red-900', bgColor: 'bg-red-50' },
+                    { label: 'Hazmat Released', count: incidentHazmat, total: COMPUTED_INCIDENT_STATS.totalAccidents, color: 'bg-purple-500', textColor: 'text-purple-700', bgColor: 'bg-purple-50' },
+                  ].map(row => {
+                    const pct = row.total > 0 ? (row.count / row.total) * 100 : 0;
+                    return (
+                      <div key={row.label} className="flex items-center gap-3">
+                        <div className="w-28 text-xs font-semibold text-slate-600 flex-shrink-0">{row.label}</div>
+                        <div className="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${row.color} transition-all`} style={{ width: `${Math.max(pct, row.count > 0 ? 5 : 0)}%` }} />
+                        </div>
+                        <div className={`w-16 text-right text-xs font-bold ${row.textColor}`}>{row.count} <span className="font-normal text-slate-400">({pct.toFixed(0)}%)</span></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Driver Compliance Summary */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100">
+                  <div className="text-sm font-bold text-slate-800">Driver Compliance Summary</div>
+                  <div className="text-xs text-slate-500">{DRIVER_SAFETY_SCORES.length} drivers · Fleet avg {FLEET_AVERAGE.toFixed(1)}%</div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Driver</th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Score</th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Key Ind.</th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">HOS</th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">VEDR</th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">vs Avg</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {DRIVER_SAFETY_SCORES.sort((a, b) => a.overall - b.overall).map(drv => {
+                        const ki = DRIVER_KEY_INDICATORS.find(k => k.driverId === drv.driverId);
+                        const hosCount = driverHosCounts[drv.driverId] || 0;
+                        const vedrCount = driverVedrCounts[drv.driverId] || 0;
+                        const diff = drv.overall - FLEET_AVERAGE;
+                        return (
+                          <tr key={drv.driverId} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-4 py-2">
+                              <div className="text-xs font-semibold text-slate-800 leading-tight">{drv.name}</div>
+                              <div className="text-[10px] text-slate-400">{drv.status}</div>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs font-bold ${getScoreColor(drv.overall)}`}>{drv.overall.toFixed(1)}%</span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ki?.status === 'PASS' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                {ki?.status ?? 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs font-bold ${hosCount > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{hosCount}</span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-xs font-bold ${vedrCount > 0 ? 'text-purple-600' : 'text-slate-400'}`}>{vedrCount}</span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`text-[10px] font-bold ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{diff >= 0 ? '+' : ''}{diff.toFixed(1)}%</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* ══════════════════════════════════════════════════════════
+                SECTION 3 — ELD/HOS + VEDR VIOLATION ANALYSIS
+            ══════════════════════════════════════════════════════════ */}
+            <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+              {/* ELD / HOS Violations by Group */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100">
+                  <div className="text-sm font-bold text-slate-800">ELD / HOS Violations by Group</div>
+                  <div className="text-xs text-slate-500">{HOS_VIOLATION_EVENTS.length} total violations · {hosOosCount} OOS · {hosOpenCount} open</div>
+                </div>
+                <div className="p-5 space-y-3">
+                  {Object.entries(hosGroupStats).sort((a, b) => b[1].count - a[1].count).map(([group, stats]) => {
+                    const pct = (stats.count / HOS_VIOLATION_EVENTS.length) * 100;
+                    return (
+                      <div key={group}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-slate-700">{group}</span>
+                          <div className="flex items-center gap-2">
+                            {stats.oos > 0 && <span className="text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded">{stats.oos} OOS</span>}
+                            <span className="text-xs font-bold text-slate-700">{stats.count}</span>
+                          </div>
+                        </div>
+                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="mt-4 grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+                    {[
+                      { label: 'Resolved', count: HOS_VIOLATION_EVENTS.filter(e => e.status === 'Resolved').length, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+                      { label: 'Open', count: HOS_VIOLATION_EVENTS.filter(e => e.status === 'Open').length, color: 'text-red-700 bg-red-50 border-red-200' },
+                      { label: 'Under Review', count: HOS_VIOLATION_EVENTS.filter(e => e.status === 'Under Review').length, color: 'text-amber-700 bg-amber-50 border-amber-200' },
+                    ].map(s => (
+                      <div key={s.label} className={`text-center rounded-lg p-2 border ${s.color}`}>
+                        <div className="text-lg font-black">{s.count}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide">{s.label}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* VEDR Violations by Group */}
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100">
+                  <div className="text-sm font-bold text-slate-800">VEDR Violations by Group</div>
+                  <div className="text-xs text-slate-500">{VEDR_VIOLATION_EVENTS.length} total violations · {vedrOosCount} OOS · {vedrOpenCount} open</div>
+                </div>
+                <div className="p-5 space-y-3">
+                  {Object.entries(vedrGroupStats).sort((a, b) => b[1].count - a[1].count).map(([group, stats]) => {
+                    const pct = (stats.count / VEDR_VIOLATION_EVENTS.length) * 100;
+                    return (
+                      <div key={group}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-slate-700">{group}</span>
+                          <div className="flex items-center gap-2">
+                            {stats.oos > 0 && <span className="text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded">{stats.oos} OOS</span>}
+                            <span className="text-xs font-bold text-slate-700">{stats.count}</span>
+                          </div>
+                        </div>
+                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-violet-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="mt-4 grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+                    {[
+                      { label: 'Resolved', count: VEDR_VIOLATION_EVENTS.filter(e => e.status === 'Resolved').length, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+                      { label: 'Open', count: VEDR_VIOLATION_EVENTS.filter(e => e.status === 'Open').length, color: 'text-red-700 bg-red-50 border-red-200' },
+                      { label: 'Under Review', count: VEDR_VIOLATION_EVENTS.filter(e => e.status === 'Under Review').length, color: 'text-amber-700 bg-amber-50 border-amber-200' },
+                    ].map(s => (
+                      <div key={s.label} className={`text-center rounded-lg p-2 border ${s.color}`}>
+                        <div className="text-lg font-black">{s.count}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* ══════════════════════════════════════════════════════════
+                SECTION 4 — RECENT VIOLATION EVENTS
+            ══════════════════════════════════════════════════════════ */}
+            <div className="mt-4 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-bold text-slate-800">Recent Violation Events</div>
+                  <div className="text-xs text-slate-500">Latest 10 across ELD/HOS and VEDR — most recent first</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded">ELD/HOS</span>
+                  <span className="text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded">VEDR</span>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Driver</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vehicle</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Type</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider w-64">Violation</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Severity</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">OOS</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {recentCombinedEvents.map(evt => (
+                      <tr key={evt.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-2.5 text-xs font-mono text-slate-500">{evt.id}</td>
+                        <td className="px-3 py-2.5 text-xs text-slate-600">{evt.date}</td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <DriverAvatar name={evt.driverName} />
+                            <span className="text-xs font-medium text-slate-800">{evt.driverName}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs font-mono text-slate-600">{evt.vehicleId}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${evt.category === 'ELD/HOS' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-violet-50 text-violet-700 border-violet-200'}`}>
+                            {evt.category}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-slate-700 max-w-[240px] truncate">{evt.description}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`text-xs font-bold ${evt.severity >= 8 ? 'text-red-600' : evt.severity >= 6 ? 'text-amber-600' : 'text-slate-500'}`}>{evt.severity}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {evt.isOos ? <span className="text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded">OOS</span> : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">{getStatusBadge(evt.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
-        </div>
-
-        {/* ===== RECENT EVENTS TABLE ===== */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 mb-4">
-          <div className="text-sm font-bold text-slate-800 mb-4">Recent Violation Events</div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5 pr-3">Date</th>
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5 pr-3">Driver</th>
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5 pr-3">Vehicle</th>
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5 pr-3">Type</th>
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5 pr-3">Description</th>
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5 pr-3">OOS</th>
-                  <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-2.5">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {recentCombinedEvents.map(evt => (
-                  <tr key={evt.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-2.5 pr-3 text-xs text-slate-600 whitespace-nowrap">{evt.date}</td>
-                    <td className="py-2.5 pr-3 text-xs font-semibold text-slate-800 whitespace-nowrap">{evt.driverName}</td>
-                    <td className="py-2.5 pr-3 text-xs text-slate-500">{evt.vehicleId}</td>
-                    <td className="py-2.5 pr-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${evt.category === 'ELD/HOS' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>{evt.category}</span></td>
-                    <td className="py-2.5 pr-3 text-xs text-slate-600 max-w-[220px] truncate">{evt.description}</td>
-                    <td className="py-2.5 pr-3">{evt.isOos ? <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">OOS</span> : <span className="text-[10px] text-slate-400">\u2014</span>}</td>
-                    <td className="py-2.5">{getStatusBadge(evt.status)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-
-          </>
         )}
 
+        {/* ===== DASHBOARD DRIVER DETAIL POPUP ===== */}
+        {selectedDashboardDriver && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedDashboardDriverId(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-[780px] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white rounded-t-xl z-10">
+                <div>
+                  <h3 className="text-lg font-bold text-blue-700">{selectedDashboardDriver.name} &ndash; Driver Risk Profile</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Status: {selectedDashboardDriver.status} &bull; ID: {selectedDashboardDriver.id}</p>
+                </div>
+                <button onClick={() => setSelectedDashboardDriverId(null)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                  <X size={18} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="px-6 py-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-base font-bold text-blue-600">Driver Scores</h4>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                    dashDrvSafetyLevel === 'Satisfactory' ? 'bg-emerald-100 text-emerald-700' :
+                    dashDrvSafetyLevel === 'Acceptable' ? 'bg-blue-100 text-blue-700' :
+                    dashDrvSafetyLevel === 'Conditional' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    Safety Level: {dashDrvSafetyLevel}
+                  </span>
+                </div>
+                {/* Row 1: 7 score rings + Key Indicator */}
+                <div className="grid grid-cols-8 gap-2 mb-3">
+                  {[
+                    { label: 'Safety', score: dashDrvSafetyScore },
+                    { label: 'Accident', score: dashDrvAccidentScore },
+                    { label: 'ELD', score: dashDrvEldScore },
+                    { label: 'Camera', score: dashDrvVedrScore },
+                    { label: 'Inspection', score: dashDrvInspectionScore },
+                    { label: 'Violation', score: dashDrvViolationScore },
+                    { label: 'Training', score: dashDrvTrainingScore },
+                  ].map(item => (
+                    <div key={item.label} className="flex flex-col items-center bg-slate-50 rounded-lg p-1.5 border border-slate-100">
+                      <MiniRiskRing score={item.score} palette="auto" />
+                      <div className="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-wide text-center leading-tight">{item.label}</div>
+                      <div className={`text-[10px] font-bold ${getScoreColor(item.score)}`}>{item.score.toFixed(0)}%</div>
+                    </div>
+                  ))}
+                  <div className="flex flex-col items-center justify-center bg-emerald-50 rounded-lg p-1.5 border border-emerald-200">
+                    <Shield size={26} className="text-emerald-500 mb-1" />
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide text-center leading-tight">Key Ind.</div>
+                    <div className="text-[10px] font-bold text-emerald-600">PASS</div>
+                  </div>
+                </div>
+                {/* Row 2: Key Indicator Events */}
+                <div className="border-t border-slate-100 pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Key Indicator Events — This Month</span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Status: PASS</span>
+                  </div>
+                  <div className="grid grid-cols-8 gap-2">
+                    {[
+                      { label: 'Cell Phone', count: 0 },
+                      { label: 'Speeding', count: 0 },
+                      { label: 'Following Dist.', count: 0 },
+                      { label: 'Seat Belt', count: 0 },
+                      { label: 'Camera Block', count: 0 },
+                    ].map(item => (
+                      <div key={item.label} className="flex flex-col items-center bg-emerald-50 rounded-lg p-1.5 border border-emerald-100">
+                        <div className="text-lg font-black text-emerald-700 leading-tight">{item.count}</div>
+                        <div className="text-[9px] font-semibold text-slate-500 text-center leading-tight mt-0.5">{item.label}</div>
+                        <div className="text-[9px] font-bold text-emerald-600 uppercase">PASS</div>
+                      </div>
+                    ))}
+                    {[0, 1, 2].map(i => (
+                      <div key={`dashev-empty-${i}`} className="rounded-lg border border-dashed border-slate-200 bg-slate-50/40 opacity-40" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== DASHBOARD ASSET DETAIL POPUP ===== */}
+        {selectedDashboardAsset && dashboardAssetScores && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedDashboardAssetId(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-[700px] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white rounded-t-xl z-10">
+                <div>
+                  <h3 className="text-lg font-bold text-blue-700">{selectedDashboardAsset.unitNumber} &ndash; Asset Risk Profile</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{selectedDashboardAsset.year} {selectedDashboardAsset.make} {selectedDashboardAsset.model} &bull; Status: {selectedDashboardAsset.operationalStatus}</p>
+                </div>
+                <button onClick={() => setSelectedDashboardAssetId(null)} className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                  <X size={18} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-base font-bold text-blue-600">Asset Risk Scores</h4>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      dashboardAssetScores.overall >= 90 ? 'bg-emerald-100 text-emerald-700' :
+                      dashboardAssetScores.overall >= 80 ? 'bg-blue-100 text-blue-700' :
+                      dashboardAssetScores.overall >= 70 ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {getRiskMeta(dashboardAssetScores.overall).label}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-3">
+                    {[
+                      { label: 'Overall', score: dashboardAssetScores.overall },
+                      { label: 'Status', score: dashboardAssetScores.statusScore },
+                      { label: 'Age', score: dashboardAssetScores.ageScore },
+                      { label: 'Mileage', score: dashboardAssetScores.mileageScore },
+                      { label: 'Registration', score: dashboardAssetScores.regScore },
+                    ].map(item => (
+                      <div key={item.label} className="flex flex-col items-center bg-slate-50 rounded-lg p-2 border border-slate-100">
+                        <MiniRiskRing score={item.score} palette="auto" />
+                        <div className="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-wide text-center leading-tight">{item.label}</div>
+                        <div className={`text-[10px] font-bold ${getScoreColor(item.score)}`}>{item.score.toFixed(0)}%</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t border-slate-100 pt-4 grid grid-cols-3 gap-x-5 gap-y-3">
+                  <div><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Unit Number</div><div className="text-sm font-semibold text-slate-800">{selectedDashboardAsset.unitNumber}</div></div>
+                  <div><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Make / Model</div><div className="text-sm text-slate-700">{selectedDashboardAsset.make} {selectedDashboardAsset.model}</div></div>
+                  <div><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Year</div><div className="text-sm text-slate-700">{selectedDashboardAsset.year}</div></div>
+                  <div><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</div><div className="text-sm text-slate-700">{selectedDashboardAsset.operationalStatus}</div></div>
+                  <div><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Odometer</div><div className="text-sm text-slate-700">{(selectedDashboardAsset.odometer ?? 0).toLocaleString()} {selectedDashboardAsset.odometerUnit}</div></div>
+                  <div><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reg. Expiry</div><div className="text-sm text-slate-700">{selectedDashboardAsset.registrationExpiryDate || 'N/A'}</div></div>
+                  {selectedDashboardAsset.vin && <div className="col-span-3"><div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">VIN</div><div className="text-sm font-mono text-slate-700">{selectedDashboardAsset.vin}</div></div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== OVERVIEW TAB ===== */}
         {pageTab === 'overview' && <>
 
         {/* ===== SAFETY OVERVIEW CARD ===== */}

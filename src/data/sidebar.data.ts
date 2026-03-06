@@ -17,6 +17,7 @@ import {
     Clock3,
     Fuel,
     TrendingUp,
+    ShieldCheck,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -118,7 +119,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "trainings", label: "Trainings", icon: GraduationCap, path: "/settings/trainings" },
             { key: "inspections-settings", label: "Inspections", icon: ClipboardCheck, path: "/settings/inspections" },
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
-            { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" }
+            { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
+            { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" }
         ],
     },
 ];
