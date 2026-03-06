@@ -1069,8 +1069,6 @@ export function SafetyAnalysisPage() {
   const totalOpenCount = hosOpenCount + vedrOpenCount;
   const cleanInspectionsCount = inspectionsData.filter(i => i.isClean).length;
   const cleanInspectionsRate = inspectionsData.length > 0 ? Math.round((cleanInspectionsCount / inspectionsData.length) * 100) : 0;
-  const incidentTowAway = INCIDENTS.filter(i => i.severity.towAway).length;
-  const incidentHazmat = INCIDENTS.filter(i => i.severity.hazmatReleased).length;
   const hosGroupStats = HOS_VIOLATION_EVENTS.reduce<Record<string, { count: number; oos: number }>>((acc, e) => {
     if (!acc[e.violationGroup]) acc[e.violationGroup] = { count: 0, oos: 0 };
     acc[e.violationGroup].count++;
@@ -1083,8 +1081,6 @@ export function SafetyAnalysisPage() {
     if (e.isOos) acc[e.violationGroup].oos++;
     return acc;
   }, {});
-  const driverHosCounts = HOS_VIOLATION_EVENTS.reduce<Record<string, number>>((acc, e) => { acc[e.driverId] = (acc[e.driverId] || 0) + 1; return acc; }, {});
-  const driverVedrCounts = VEDR_VIOLATION_EVENTS.reduce<Record<string, number>>((acc, e) => { acc[e.driverId] = (acc[e.driverId] || 0) + 1; return acc; }, {});
   const recentCombinedEvents = [
     ...HOS_VIOLATION_EVENTS.map(e => ({ id: e.id, date: e.date, driverName: e.driverName, vehicleId: e.vehicleId, category: 'ELD/HOS', description: e.violationDescription, severity: e.driverSeverity, isOos: e.isOos, status: e.status })),
     ...VEDR_VIOLATION_EVENTS.map(e => ({ id: e.id, date: e.date, driverName: e.driverName, vehicleId: e.vehicleId, category: 'VEDR', description: e.violationDescription, severity: e.driverSeverity, isOos: e.isOos, status: e.status })),
@@ -1106,6 +1102,7 @@ export function SafetyAnalysisPage() {
   ];
 
   // ── Driver impact table ──
+  void fleetSegments;
   const impactDrivers = [...DRIVER_SAFETY_SCORES]
     .map(d => ({ ...d, impact: d.overall - FLEET_AVERAGE }))
     .sort((a, b) => impactView === 'negative' ? a.impact - b.impact : b.impact - a.impact);
