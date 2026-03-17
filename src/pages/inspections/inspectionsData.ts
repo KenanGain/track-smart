@@ -252,7 +252,7 @@ export const carrierProfile = {
 export const inspectionsData = [
   {
     id: "MIGRAHA00829",
-    date: "2025-02-06",
+    date: "2026-02-06",
     state: "MI",
     driverId: "DRV-2001",
     driver: "John Smith",
@@ -303,7 +303,7 @@ export const inspectionsData = [
   },
   {
     id: "MIHOULD04386",
-    date: "2025-01-07",
+    date: "2026-01-07",
     state: "MI",
     driverId: "DRV-2002",
     driver: "Sarah Miller",
@@ -337,7 +337,7 @@ export const inspectionsData = [
   },
   {
     id: "MIGRAHA00796",
-    date: "2024-12-26",
+    date: "2025-12-26",
     state: "MI",
     driverId: "DRV-1001",
     driver: "James Sullivan",
@@ -376,7 +376,7 @@ export const inspectionsData = [
   },
   {
     id: "MICOPEK02915",
-    date: "2024-10-28",
+    date: "2025-10-28",
     state: "MI",
     driverId: "DRV-1002",
     driver: "Maria Rodriguez",
@@ -405,7 +405,7 @@ export const inspectionsData = [
   },
   {
     id: "MICOPEK02873",
-    date: "2024-10-08",
+    date: "2025-10-08",
     state: "MI",
     driverId: "DRV-2003",
     driver: "Mike Johnson",
@@ -437,8 +437,108 @@ export const inspectionsData = [
     ]
   },
   {
+    id: "ILCHICG10001",
+    date: "2025-10-12",
+    state: "IL",
+    driverId: "DRV-1001",
+    driver: "James Sullivan",
+    driverLicense: "S853-7721-5566",
+    vehiclePlate: "TRK-8812",
+    vehicleType: "Truck Tractor",
+    assetId: "a1",
+    level: "Level 1",
+    startTime: "08:15",
+    endTime: "10:30",
+    location: { city: "CHICAGO", province: "IL", raw: "CHICAGO, IL" },
+    smsPoints: { vehicle: 96, driver: 54, carrier: 150 },
+    isClean: false,
+    hasOOS: true,
+    powerUnitDefects: "BRAKES OOS, AIR BRAKE DEFECTS, LIGHTING",
+    trailerDefects: null,
+    severityRate: 6.25,
+    hasVehicleViolations: true,
+    hasDriverViolations: true,
+    units: [{ type: "Truck Tractor", make: "Freightliner", license: "TRK-8812", vin: "1FUJGEDV5CLBP8411" }],
+    violationSummary: { "Vehicle Maintenance": 5, "Hours-of-service Compliance": 2 },
+    oosSummary: { driver: "PASSED", vehicle: "FAILED", total: 2 },
+    violations: [
+      { code: "393.48(a)", category: "Vehicle Maintenance", description: "Brake system defective or not maintained", subDescription: "Brakes", severity: 8, weight: 3, points: 24, oos: true, driverRiskCategory: 1 },
+      { code: "396.3A1-BALR", category: "Vehicle Maintenance", description: "Air Brake - Fails air loss rate test", subDescription: "Air Brakes", severity: 4, weight: 3, points: 12, oos: true, driverRiskCategory: 1 },
+      { code: "393.47(e)", category: "Vehicle Maintenance", description: "Brake Out of Adjustment", subDescription: "Brakes", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 },
+      { code: "393.75C", category: "Vehicle Maintenance", description: "Tires - Less than 2/32 inch tread depth", subDescription: "Tires", severity: 8, weight: 3, points: 24, oos: false, driverRiskCategory: 1 },
+      { code: "393.9A-LSLI", category: "Vehicle Maintenance", description: "Lighting - Stop lamps inoperative", subDescription: "Lighting", severity: 6, weight: 3, points: 18, oos: false, driverRiskCategory: 1 },
+      { code: "395.3(a)(1)", category: "Hours-of-service Compliance", description: "HOS - Driving beyond daily driving limit", subDescription: "Driving Time", severity: 7, weight: 3, points: 21, oos: false, driverRiskCategory: 1 },
+      { code: "395.8(a)", category: "Hours-of-service Compliance", description: "HOS - Failure to keep required ELD/log records", subDescription: "Records", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+  {
+    id: "PAHARRS10002",
+    date: "2025-10-22",
+    state: "PA",
+    driverId: "DRV-1002",
+    driver: "Maria Rodriguez",
+    driverLicense: "R300-4421-9988",
+    vehiclePlate: "FLEET-22",
+    vehicleType: "Truck Tractor",
+    assetId: "a2",
+    level: "Level 2",
+    startTime: "13:00",
+    endTime: "14:15",
+    location: { city: "HARRISBURG", province: "PA", raw: "HARRISBURG, PA" },
+    smsPoints: { vehicle: 87, driver: 0, carrier: 87 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: "STEERING, BRAKES, OIL LEAK, LIGHTING",
+    trailerDefects: "LIGHTING",
+    severityRate: 5.50,
+    hasVehicleViolations: true,
+    hasDriverViolations: false,
+    units: [{ type: "Truck Tractor", make: "Kenworth", license: "FLEET-22", vin: "2NP2HM7X9KM600123" }],
+    violationSummary: { "Vehicle Maintenance": 5 },
+    oosSummary: { driver: "PASSED", vehicle: "PASSED", total: 0 },
+    violations: [
+      { code: "393.209(d)", category: "Vehicle Maintenance", description: "Steering system components worn/missing", subDescription: "Steering", severity: 6, weight: 3, points: 18, oos: false, driverRiskCategory: 1 },
+      { code: "393.45D-BAAL", category: "Vehicle Maintenance", description: "Air Brake - Audible air leak", subDescription: "Air Brakes", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 },
+      { code: "396.5B-L", category: "Vehicle Maintenance", description: "Lubrication - Oil or grease leak", subDescription: "Fluid Leaks", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 },
+      { code: "393.9A-LCL", category: "Vehicle Maintenance", description: "Lighting - Clearance lamp(s) inoperative", subDescription: "Lighting", severity: 2, weight: 3, points: 6, oos: false, driverRiskCategory: 3 },
+      { code: "393.9A-LTIL", category: "Vehicle Maintenance", description: "Lighting - Turn signal lamp inoperative", subDescription: "Lighting", severity: 2, weight: 3, points: 6, oos: false, driverRiskCategory: 3 }
+    ]
+  },
+  {
+    id: "TXDALLA10003",
+    date: "2025-11-03",
+    state: "TX",
+    driverId: "DRV-2001",
+    driver: "John Smith",
+    driverLicense: "S625-3392-4477",
+    vehiclePlate: "DAL-9901",
+    vehicleType: "Truck Tractor",
+    assetId: "a5",
+    level: "Level 1",
+    startTime: "07:30",
+    endTime: "09:45",
+    location: { city: "DALLAS", province: "TX", raw: "DALLAS, TX" },
+    smsPoints: { vehicle: 66, driver: 30, carrier: 96 },
+    isClean: false,
+    hasOOS: false,
+    powerUnitDefects: "BRAKES, CARGO SECUREMENT",
+    trailerDefects: "CARGO SECUREMENT",
+    severityRate: 5.33,
+    hasVehicleViolations: true,
+    hasDriverViolations: true,
+    units: [{ type: "Truck Tractor", make: "Peterbilt", license: "DAL-9901", vin: "1XPBD49X1ND780214" }],
+    violationSummary: { "Vehicle Maintenance": 3, "Unsafe Driving": 1 },
+    oosSummary: { driver: "PASSED", vehicle: "PASSED", total: 0 },
+    violations: [
+      { code: "393.48(a)", category: "Vehicle Maintenance", description: "Brake system defective or not maintained", subDescription: "Brakes", severity: 8, weight: 3, points: 24, oos: false, driverRiskCategory: 1 },
+      { code: "393.45B2-B", category: "Vehicle Maintenance", description: "Air Brake - Hose/tubing damaged or not secured", subDescription: "Air Brakes", severity: 4, weight: 3, points: 12, oos: false, driverRiskCategory: 2 },
+      { code: "393.11A1-CSLRR", category: "Vehicle Maintenance", description: "Lower rear retro-reflective sheeting missing", subDescription: "Conspicuity", severity: 3, weight: 3, points: 9, oos: false, driverRiskCategory: 2 },
+      { code: "392.2", category: "Unsafe Driving", description: "Failure to obey traffic control device", subDescription: "Traffic Laws", severity: 5, weight: 3, points: 15, oos: false, driverRiskCategory: 2 }
+    ]
+  },
+  {
     id: "MIGRAHA00524",
-    date: "2024-04-10",
+    date: "2025-04-10",
     state: "MI",
     driverId: "DRV-2004",
     driver: "Elena Rodriguez",
@@ -477,7 +577,7 @@ export const inspectionsData = [
   },
   {
     id: "TXDALLA01247",
-    date: "2025-01-22",
+    date: "2026-01-22",
     state: "TX",
     driverId: "DRV-1003",
     driver: "Robert Chen",
@@ -516,7 +616,7 @@ export const inspectionsData = [
   },
   {
     id: "OHCOLMB03891",
-    date: "2025-02-01",
+    date: "2026-02-01",
     state: "OH",
     driverId: "DRV-1004",
     driver: "Sarah Johnson",
@@ -549,7 +649,7 @@ export const inspectionsData = [
   },
   {
     id: "NYBROOK05612",
-    date: "2024-11-15",
+    date: "2025-11-15",
     state: "NY",
     driverId: "DRV-1005",
     driver: "Michael Brown",
@@ -589,7 +689,7 @@ export const inspectionsData = [
   },
   {
     id: "ILCHICG07234",
-    date: "2024-09-05",
+    date: "2025-09-05",
     state: "IL",
     driverId: "DRV-2001",
     driver: "John Smith",
@@ -622,7 +722,7 @@ export const inspectionsData = [
   },
   {
     id: "ININDPLS08891",
-    date: "2024-08-18",
+    date: "2025-08-18",
     state: "IN",
     driverId: "DRV-2002",
     driver: "Sarah Miller",
@@ -651,7 +751,7 @@ export const inspectionsData = [
   },
   {
     id: "PAHARRS09102",
-    date: "2024-07-30",
+    date: "2025-07-30",
     state: "PA",
     driverId: "DRV-1002",
     driver: "Maria Rodriguez",
@@ -688,7 +788,7 @@ export const inspectionsData = [
   },
   {
     id: "FLJACKV10445",
-    date: "2024-06-12",
+    date: "2025-06-12",
     state: "FL",
     driverId: "DRV-2003",
     driver: "Mike Johnson",
@@ -720,7 +820,7 @@ export const inspectionsData = [
   },
   {
     id: "ONCALGR11738",
-    date: "2025-01-30",
+    date: "2026-01-30",
     state: "ON",
     driverId: "DRV-1001",
     driver: "James Sullivan",
@@ -757,7 +857,7 @@ export const inspectionsData = [
   },
   {
     id: "CALOSAG12984",
-    date: "2024-05-20",
+    date: "2025-05-20",
     state: "CA",
     driverId: "DRV-1003",
     driver: "Robert Chen",
@@ -786,7 +886,7 @@ export const inspectionsData = [
   },
   {
     id: "MIDETRT13556",
-    date: "2024-03-14",
+    date: "2026-03-14",
     state: "MI",
     driverId: "DRV-1005",
     driver: "Michael Brown",
@@ -822,7 +922,7 @@ export const inspectionsData = [
   },
   {
     id: "TXHOUST14201",
-    date: "2024-02-28",
+    date: "2026-02-28",
     state: "TX",
     driverId: "DRV-2004",
     driver: "Elena Rodriguez",
@@ -856,7 +956,7 @@ export const inspectionsData = [
   },
   {
     id: "ONTORON15003",
-    date: "2025-02-10",
+    date: "2026-02-10",
     state: "ON",
     driverId: "DRV-1004",
     driver: "Sarah Johnson",
@@ -898,7 +998,7 @@ export const inspectionsData = [
   // --- NEW CVOR INSPECTIONS (from CVOR Event Report) ---
   {
     id: "ONWINDS16001",
-    date: "2024-03-19",
+    date: "2026-03-19",
     state: "ON",
     driverId: "DRV-3001",
     driver: "Gurwinder Singh",
@@ -927,7 +1027,7 @@ export const inspectionsData = [
   },
   {
     id: "ONBOWMN16002",
-    date: "2024-03-18",
+    date: "2026-03-18",
     state: "ON",
     driverId: "DRV-3002",
     driver: "Jashandeep Singh",
@@ -956,7 +1056,7 @@ export const inspectionsData = [
   },
   {
     id: "ONWININ16003",
-    date: "2024-03-10",
+    date: "2026-03-10",
     state: "ON",
     driverId: "DRV-3003",
     driver: "Davinder Singh",
@@ -985,7 +1085,7 @@ export const inspectionsData = [
   },
   {
     id: "ONBOWMN16004",
-    date: "2024-03-01",
+    date: "2026-03-01",
     state: "ON",
     driverId: "DRV-3004",
     driver: "Anterpreet Singh",
@@ -1017,7 +1117,7 @@ export const inspectionsData = [
   },
   {
     id: "ONPUTNM16005",
-    date: "2024-02-27",
+    date: "2026-02-27",
     state: "ON",
     driverId: "DRV-3005",
     driver: "Bhupinder Singh",
@@ -1050,7 +1150,7 @@ export const inspectionsData = [
   // ===== SMS Level 4 – Special Inspection =====
   {
     id: "GAATLAN17001",
-    date: "2024-11-05",
+    date: "2025-11-05",
     state: "GA",
     driverId: "DRV-2001",
     driver: "John Smith",
@@ -1084,7 +1184,7 @@ export const inspectionsData = [
   // ===== SMS Level 5 – Vehicle Only =====
   {
     id: "TNMEMPH17002",
-    date: "2024-09-18",
+    date: "2025-09-18",
     state: "TN",
     driverId: "DRV-2004",
     driver: "Mike Johnson",
@@ -1119,7 +1219,7 @@ export const inspectionsData = [
   // ===== SMS Level 6 – Enhanced NAS Radioactive =====
   {
     id: "SCCHARL17003",
-    date: "2024-07-12",
+    date: "2025-07-12",
     state: "SC",
     driverId: "DRV-2006",
     driver: "Robert Chen",
@@ -1156,7 +1256,7 @@ export const inspectionsData = [
   // ===== CVOR Level 3 – Driver Only =====
   {
     id: "ONLONDN17004",
-    date: "2025-01-15",
+    date: "2026-01-15",
     state: "ON",
     driverId: "DRV-3001",
     driver: "Gurwinder Singh",
@@ -1189,7 +1289,7 @@ export const inspectionsData = [
   // ===== CVOR Level 4 – Special Inspection =====
   {
     id: "ONBRANT17005",
-    date: "2024-12-03",
+    date: "2025-12-03",
     state: "ON",
     driverId: "DRV-3003",
     driver: "Davinder Singh",
@@ -1224,7 +1324,7 @@ export const inspectionsData = [
   // ===== CVOR Level 5 – Vehicle Only =====
   {
     id: "ONKITCH17006",
-    date: "2024-10-20",
+    date: "2025-10-20",
     state: "ON",
     driverId: "DRV-3004",
     driver: "Anterpreet Singh",
@@ -1260,7 +1360,7 @@ export const inspectionsData = [
   // ===== Additional SMS – Level 1 with full address =====
   {
     id: "NCRALGH17007",
-    date: "2025-02-18",
+    date: "2026-02-18",
     state: "NC",
     driverId: "DRV-2003",
     driver: "James Sullivan",
@@ -1298,7 +1398,7 @@ export const inspectionsData = [
   // ===== Additional CVOR – Level 1 with full address =====
   {
     id: "ONOTTAW17008",
-    date: "2025-02-05",
+    date: "2026-02-05",
     state: "ON",
     driverId: "DRV-3002",
     driver: "Jashandeep Singh",
@@ -1337,7 +1437,7 @@ export const inspectionsData = [
   // ===== Additional CVOR – Level 2 clean =====
   {
     id: "ONTHUNB17009",
-    date: "2024-08-14",
+    date: "2025-08-14",
     state: "ON",
     driverId: "DRV-3005",
     driver: "Bhupinder Singh",
@@ -1368,7 +1468,7 @@ export const inspectionsData = [
   // ===== Additional SMS – Level 3 clean =====
   {
     id: "AZPHOEN17010",
-    date: "2024-12-10",
+    date: "2025-12-10",
     state: "AZ",
     driverId: "DRV-2005",
     driver: "Elena Rodriguez",
@@ -1399,7 +1499,7 @@ export const inspectionsData = [
   // ===== Additional CVOR – Level 3 with violations =====
   {
     id: "ONBARRI17011",
-    date: "2024-06-22",
+    date: "2025-06-22",
     state: "ON",
     driverId: "DRV-3004",
     driver: "Anterpreet Singh",
@@ -1432,7 +1532,7 @@ export const inspectionsData = [
   // ===== Additional SMS – Level 4 =====
   {
     id: "WASEATT17012",
-    date: "2024-04-25",
+    date: "2025-04-25",
     state: "WA",
     driverId: "DRV-2008",
     driver: "Michael Brown",
@@ -1465,7 +1565,7 @@ export const inspectionsData = [
   // ===== Additional SMS – Level 5 =====
   {
     id: "CODENVE17013",
-    date: "2024-08-01",
+    date: "2025-08-01",
     state: "CO",
     driverId: "DRV-2002",
     driver: "Sarah Miller",
@@ -1499,7 +1599,7 @@ export const inspectionsData = [
   // ===== SMS Level 7 – Jurisdictional Mandated =====
   {
     id: "MNMINNE18001",
-    date: "2025-01-08",
+    date: "2026-01-08",
     state: "MN",
     driverId: "DRV-2003",
     driver: "James Sullivan",
@@ -1535,7 +1635,7 @@ export const inspectionsData = [
   // ===== SMS Level 7 – Jurisdictional Mandated (clean) =====
   {
     id: "OKCITYO18002",
-    date: "2024-06-30",
+    date: "2025-06-30",
     state: "OK",
     driverId: "DRV-2005",
     driver: "Elena Rodriguez",
@@ -1566,7 +1666,7 @@ export const inspectionsData = [
   // ===== SMS Level 8 – Electronic Inspection =====
   {
     id: "VARICHN18003",
-    date: "2025-02-12",
+    date: "2026-02-12",
     state: "VA",
     driverId: "DRV-2004",
     driver: "Mike Johnson",
@@ -1599,7 +1699,7 @@ export const inspectionsData = [
   // ===== SMS Level 8 – Electronic Inspection (with violations) =====
   {
     id: "MOKASNC18004",
-    date: "2024-10-15",
+    date: "2025-10-15",
     state: "MO",
     driverId: "DRV-2008",
     driver: "Michael Brown",
@@ -1630,3 +1730,21 @@ export const inspectionsData = [
     ]
   }
 ];
+
+export const cvorOosThresholds = {
+  overall: 20,
+  vehicle: 20,
+  driver: 5
+};
+
+export const nscAnalytics = {
+  periodMiles: 17054528, 
+  pointsPerMillionMiles: 0.35
+};
+
+export const nscRiskBand = {
+  label: 'Conditional',
+  badge: 'bg-amber-100 text-amber-800 border-amber-200',
+  detail: 'Carrier has exceeded warning thresholds and may require an intervention.'
+};
+

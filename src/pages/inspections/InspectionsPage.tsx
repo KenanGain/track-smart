@@ -18,9 +18,19 @@ import {
   Pencil,
   Gauge,
   Info,
-  X
+  X,
+  Target,
+  Building
 } from 'lucide-react';
-import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode } from './inspectionsData';
+import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode, nscRiskBand, nscAnalytics } from './inspectionsData';
+import { SafetyRatingOosCard } from './SafetyRatingOosCard';
+import { NscAnalysis } from './NscAnalysis';
+import { NscCvsaOverview } from './NscCvsaOverview';
+import { NscCvsaInspections } from './NscCvsaInspections';
+import { InspectionReportPanel } from './InspectionReportPanel';
+import { NSC_INSPECTIONS, DEFECT_TO_NSC, NSC_CODE_TO_SYSTEM } from './nscInspectionsData';
+import type { NscInspectionRecord } from './nscInspectionsData';
+import { NSC_VIOLATION_CATALOG, violationDetailsData, parseCcmtaCode } from './NscAnalysis';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { useAppData } from '@/context/AppDataContext';
 import { VIOLATION_DATA } from '@/data/violations.data';
@@ -180,7 +190,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
       {/* ===== DESKTOP MAIN ROW - CVOR LAYOUT ===== */}
       {isCvor ? (
       <div
-        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-transparent hover:bg-slate-50/50 transition-colors"
+        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-l-rose-400 hover:bg-rose-50/20 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Date / Time */}
@@ -286,7 +296,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
       ) : (
       /* ===== DESKTOP MAIN ROW - CSA/SMS LAYOUT ===== */
       <div
-        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-transparent hover:bg-slate-50/50 transition-colors"
+        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-l-indigo-400 hover:bg-indigo-50/20 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Date / Time */}
@@ -804,9 +814,712 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
   );
 };
 
+const formatMetricValue = (value: number | string | null | undefined, decimals = 0) => {
+  if (value === null || value === undefined) return '-';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return String(value);
+  return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+};
+
+// ── NSC Overview Row ──────────────────────────────────────────────────────────
+// Renders a single NSC/CVSA inspection record in the unified overview list.
+const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedViolation, setSelectedViolation] = useState<{
+    code: string; description: string; severity: 'Minor' | 'Major' | 'OOS'; isOOS: boolean;
+  } | null>(null);
+
+  const oosRows = row.details?.oosRows ?? (row.details?.oos ?? []).map(cat => ({ category: cat, vehicleCounts: [1, null, null, null, null, null, null] }));
+  const reqRows = row.details?.reqRows ?? (row.details?.req ?? []).map(cat => ({ category: cat, vehicleCounts: [1, null, null, null, null, null, null] }));
+  const oosCount = row.details?.oos?.length ?? 0;
+  const reqCount = row.details?.req?.length ?? 0;
+  const totalDefects = oosCount + reqCount;
+
+  const isOos = row.result === 'Out Of Service';
+  const isReq = row.result === 'Requires Attention';
+  const isPassed = row.result === 'Passed';
+
+  const levelColors: Record<number, string> = {
+    1: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    2: 'bg-blue-100 text-blue-800 border-blue-200',
+    3: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+    4: 'bg-sky-100 text-sky-800 border-sky-200',
+    5: 'bg-violet-100 text-violet-800 border-violet-200',
+  };
+  const levelCls = levelColors[row.level] ?? 'bg-slate-100 text-slate-700 border-slate-200';
+
+  // Derive violations from defect → NSC catalog mapping
+  const violations: Array<{ code: string; description: string; severity: 'Minor' | 'Major' | 'OOS'; tier: 'OOS' | 'REQ' }> = [];
+  const seen = new Set<string>();
+  for (const defect of oosRows) {
+    const prefix = defect.category.split(' - ')[0].trim();
+    const code = prefix === '13' ? '702' : (DEFECT_TO_NSC[prefix] ?? null);
+    if (code && !seen.has(code)) {
+      const entry = NSC_VIOLATION_CATALOG[code];
+      if (entry) { seen.add(code); violations.push({ code, ...entry, tier: 'OOS' }); }
+    }
+  }
+  for (const defect of reqRows) {
+    const prefix = defect.category.split(' - ')[0].trim();
+    const code = DEFECT_TO_NSC[prefix] ?? null;
+    if (code && !seen.has(code)) {
+      const entry = NSC_VIOLATION_CATALOG[code];
+      if (entry) { seen.add(code); violations.push({ code, ...entry, tier: 'REQ' }); }
+    }
+  }
+  // NSC risk-level derived points (High=3, Medium=2, Low=1)
+  const nscPoints = violations.reduce((sum, v) => {
+    const sys = NSC_CODE_TO_SYSTEM[v.code];
+    return sum + (sys?.riskLevel === 'High' ? 3 : sys?.riskLevel === 'Medium' ? 2 : sys ? 1 : 0);
+  }, 0);
+
+  return (
+    <div className="group bg-white hover:bg-blue-50/20 transition-colors border-b border-slate-100 last:border-0">
+      {/* Desktop row — unified 12-col layout matching SMS/CVOR InspectionRow */}
+      <div
+        className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-l-emerald-400 hover:bg-emerald-50/20 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        {/* Date / Time */}
+        <div className="col-span-1 pl-2 flex flex-col justify-center">
+          <span className="text-sm font-bold text-slate-800">{row.date}</span>
+          <span className="text-[10px] text-slate-400 font-mono mt-0.5">{row.details?.time ?? '—'}</span>
+        </div>
+
+        {/* Source + Doc — emerald NSC badge */}
+        <div className="col-span-1 min-w-0 flex flex-col justify-center">
+          <span className="text-xs font-bold text-emerald-700 block truncate leading-tight" title={row.doc}>{row.doc}</span>
+          <span className="mt-0.5 inline-flex w-fit items-center gap-1 px-1.5 py-px rounded text-[10px] font-bold tracking-wider border bg-emerald-100 text-emerald-700 border-emerald-200">
+            NSC L{row.level}
+          </span>
+        </div>
+
+        {/* Location */}
+        <div className="col-span-1 flex flex-col justify-center">
+          <span className="text-sm font-medium text-slate-700 truncate">{row.details?.location ?? `${row.jur} station`}</span>
+          <span className="text-[10px] text-slate-400">{row.jur}, CAN</span>
+        </div>
+
+        {/* Driver / Licence */}
+        <div className="col-span-2 flex items-center gap-2 min-w-0">
+          <div className="h-6 w-6 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-500 flex-shrink-0">
+            <User size={12} fill="currentColor" />
+          </div>
+          <div className="min-w-0 flex flex-col justify-center">
+            <span className="text-sm font-bold text-slate-800 truncate block leading-tight">{row.driverLink.driverName}</span>
+            <span className="text-[10px] text-emerald-600 font-mono truncate block">{row.driverLink.driverId}</span>
+          </div>
+        </div>
+
+        {/* Unit / Vehicle */}
+        <div className="col-span-2 flex flex-col justify-center min-w-0">
+          <span className="text-sm font-bold text-slate-800 truncate block leading-tight">{row.primaryVehicle.unitNumber}</span>
+          <span className="text-[10px] text-slate-400 font-mono truncate block">{row.primaryVehicle.plate}</span>
+          {row.trailerLink ? (
+            <span className="text-[10px] text-slate-400 truncate block mt-0.5">+ {row.trailerLink.unitNumber}</span>
+          ) : isPassed ? (
+            <span className="text-[10px] text-emerald-500 font-medium block mt-0.5">No defects</span>
+          ) : (
+            <span className="text-[10px] text-amber-600 font-medium truncate block mt-0.5">{oosCount + reqCount} defect{oosCount + reqCount !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+
+        {/* Violations count */}
+        <div className="col-span-1 flex justify-center items-center">
+          {isPassed ? (
+            <span className="text-[13px] font-bold text-emerald-600">Clean</span>
+          ) : (
+            <span className="text-[13px] font-bold text-orange-600">{violations.length || totalDefects}</span>
+          )}
+        </div>
+
+        {/* NSC Risk Points (Veh Pts column) */}
+        <div className="col-span-1 flex justify-center items-center">
+          {nscPoints > 0 ? (
+            <span className={`text-[13px] font-bold ${nscPoints >= 5 ? 'text-red-600' : nscPoints >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>{nscPoints}</span>
+          ) : (
+            <span className="text-[13px] text-slate-300">—</span>
+          )}
+        </div>
+
+        {/* OOS count (Drv Pts / OOS column) */}
+        <div className="col-span-1 flex justify-center items-center">
+          <span className={`text-[13px] font-bold ${oosCount > 0 ? 'text-red-600' : 'text-slate-300'}`}>
+            {oosCount > 0 ? oosCount : '—'}
+          </span>
+        </div>
+
+        {/* Status + expand */}
+        <div className="col-span-1 flex items-center justify-between pr-1">
+          <div>
+            {isOos ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50/80 rounded text-xs font-bold text-red-600 tracking-wide uppercase whitespace-nowrap">
+                <ShieldAlert size={10} className="text-red-500" /> OOS
+              </span>
+            ) : isReq ? (
+              <span className="inline-flex items-center px-2 py-0.5 bg-amber-50 rounded text-xs font-bold text-amber-600 tracking-wide uppercase whitespace-nowrap">DEFECT</span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 bg-emerald-50 rounded text-xs font-bold text-emerald-600 tracking-wide uppercase whitespace-nowrap">OK</span>
+            )}
+          </div>
+          <div className="ml-auto w-5 h-5 flex items-center justify-center text-slate-400">
+            {row.details ? (isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile card */}
+      <div
+        className="md:hidden flex flex-col gap-3 p-4 cursor-pointer border-l-2 border-l-emerald-300"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex justify-between items-start">
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm font-bold text-emerald-700 font-mono">{row.doc}</span>
+              <span className={`px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${levelCls}`}>NSC L{row.level}</span>
+            </div>
+            <span className="text-sm text-slate-900 font-medium block mt-0.5">{row.date}</span>
+            <span className="text-xs text-slate-400">{row.jur} · {row.driverLink.driverName}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {isOos ? (
+              <span className="px-2 py-0.5 bg-red-50 rounded text-xs font-bold text-red-600">OOS</span>
+            ) : isReq ? (
+              <span className="px-2 py-0.5 bg-amber-50 rounded text-xs font-bold text-amber-600">DEFECT</span>
+            ) : (
+              <span className="px-2 py-0.5 bg-emerald-50 rounded text-xs font-bold text-emerald-600">OK</span>
+            )}
+            {row.details ? (isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />) : null}
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-center pt-2 border-t border-slate-100">
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Defects</div>
+            <div className="mt-0.5 text-sm font-black text-slate-900">{totalDefects}</div>
+          </div>
+          <div className="rounded-lg border border-red-100 bg-red-50/60 px-2 py-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-red-400">OOS</div>
+            <div className="mt-0.5 text-sm font-black text-red-600">{oosCount}</div>
+          </div>
+          <div className="rounded-lg border border-amber-100 bg-amber-50/60 px-2 py-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-500">REQ</div>
+            <div className="mt-0.5 text-sm font-black text-amber-700">{reqCount}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded panel */}
+      {isExpanded && row.details && (
+        <div className="bg-slate-50/60 border-t border-slate-100 px-6 py-5 space-y-4">
+
+          {/* ── NSC Level banner + stat cards ── */}
+          {(() => {
+            const NSC_LEVEL_MAP: Record<number, string> = {
+              1: 'North American Standard Inspection',
+              2: 'Walk-Around Driver/Vehicle Inspection',
+              3: 'Driver/Credential Inspection',
+              4: 'Special Inspection',
+              5: 'Vehicle-Only Inspection',
+              6: 'Enhanced NAS Inspection',
+              7: 'Jurisdictional Mandated Inspection',
+              8: 'Electronic Inspection',
+            };
+            const NSC_LEVEL_DETAIL_MAP: Record<number, string> = {
+              1: 'Full inspection — driver, vehicle, HOS, permits, insurance, cargo, TDG, and authorities.',
+              2: 'Walk-around inspection — driver and vehicle review including licence, HOS, seat belt, trip inspection and visible mechanical condition.',
+              3: 'Driver/Credentials inspection — driver licence, hours of service, seat belt use, credentials and administrative compliance.',
+              4: 'Special inspection — focused on a specific item such as cargo securement, placards, brakes, or another identified issue.',
+              5: 'Vehicle-only inspection — no driver present, focused on mechanical condition and safety systems.',
+              6: 'Enhanced NAS inspection — comprehensive inspection with additional focus on high-risk categories.',
+              7: 'Jurisdictional mandated inspection — required by provincial/state authority for specific vehicle or carrier types.',
+              8: 'Electronic inspection — roadside review of ELD, credentials, and electronic records without physical vehicle check.',
+            };
+            const levelDesc = NSC_LEVEL_MAP[row.level] ?? `Level ${row.level} Inspection`;
+            const levelDetail = NSC_LEVEL_DETAIL_MAP[row.level];
+            const jur = row.jur?.toUpperCase() ?? '';
+            const regulation =
+              jur === 'AB' ? 'Commercial Vehicle Inspection Regulation — AR 211/06, NSC Standard 11' :
+              jur === 'ON' ? 'Highway Traffic Act — O.Reg.199/07, O.Reg.555/06, NSC Standard 13' :
+              jur === 'BC' ? 'Motor Vehicle Act — Commercial Transport Regulation, NSC Standard 11' :
+              jur === 'SK' ? 'Traffic Safety Act — VSR 116/2014, NSC Standard 11' :
+              jur === 'MB' ? 'Highway Traffic Act — MR 189/2010, NSC Standard 11' :
+              jur === 'QC' ? 'Highway Safety Code — O.C. 1395-96, NSC Standard 11' :
+              'CTACMV Regulations — NSC Standard 11';
+            const oosCount = row.details!.oos.length;
+            const reqCount = row.details!.req.length;
+            const totalDefects = oosCount + reqCount;
+            const resultColor =
+              row.result === 'Passed'           ? 'text-emerald-700' :
+              row.result === 'Out Of Service'   ? 'text-red-700'     :
+              'text-amber-700';
+            return (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3 space-y-1.5">
+                  <div className="flex items-center gap-3">
+                    <span className="shrink-0 rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      NSC LEVEL {row.level}
+                    </span>
+                    <span className="text-xs text-slate-700">
+                      <span className="font-semibold">{levelDesc}</span>
+                      {' — '}
+                      <span className="text-slate-500">{regulation}</span>
+                    </span>
+                  </div>
+                  {levelDetail && (
+                    <p className="text-[11px] text-slate-500 leading-relaxed pl-1">{levelDetail}</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Time</div>
+                    <div className="text-sm font-bold text-slate-900">{row.details!.time || '—'}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Issuing Agency</div>
+                    <div className="text-sm font-bold text-slate-900 leading-snug">{row.details!.agency || '—'}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Date Entered</div>
+                    <div className="text-sm font-bold text-slate-900">{row.details!.dateEntered || '—'}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Result</div>
+                    <div className={`text-sm font-bold ${resultColor}`}>{row.result}</div>
+                  </div>
+                </div>
+                {/* Defect counts row */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-red-100 bg-red-50/50 px-4 py-3 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1">OOS Defects</div>
+                    <div className={`text-xl font-black ${oosCount > 0 ? 'text-red-600' : 'text-slate-300'}`}>{oosCount}</div>
+                  </div>
+                  <div className="rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-500 mb-1">Req. Attention</div>
+                    <div className={`text-xl font-black ${reqCount > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{reqCount}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total Defects</div>
+                    <div className="text-xl font-black text-slate-700">{totalDefects}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* System links — driver profile + asset cards */}
+          {(() => {
+            const driver = MOCK_DRIVERS.find(d => d.id === row.driverLink.driverId);
+            const asset  = row.primaryVehicle.assetId ? INITIAL_ASSETS.find(a => a.id === row.primaryVehicle.assetId) : null;
+            const trailer = row.trailerLink?.assetId ? INITIAL_ASSETS.find(a => a.id === row.trailerLink!.assetId) : null;
+            const primaryLic = driver?.licenses?.find(l => l.isPrimary) ?? null;
+            const statusColor = (s?: string) =>
+              s === 'Active'        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+              s === 'Maintenance'   ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              s === 'OutOfService'  ? 'bg-red-50 text-red-700 border-red-200' :
+              'bg-slate-100 text-slate-600 border-slate-200';
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {/* Driver card */}
+                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 space-y-1.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                      {driver?.avatarInitials ?? row.driverLink.driverName.slice(0,2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-blue-900 text-xs truncate">{row.driverLink.driverName}</div>
+                      <div className="text-[10px] font-mono text-blue-500">{row.driverLink.driverId}</div>
+                    </div>
+                    {driver && (
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${statusColor(driver.status)}`}>
+                        {driver.status}
+                      </span>
+                    )}
+                  </div>
+                  {driver && (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                      <div>
+                        <span className="text-slate-400 uppercase tracking-wider font-bold">Type</span>
+                        <div className="text-slate-700 font-medium">{driver.driverType ?? '—'}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase tracking-wider font-bold">Terminal</span>
+                        <div className="text-slate-700 font-medium">{driver.terminal}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase tracking-wider font-bold">Licence</span>
+                        <div className="text-slate-700 font-mono">{primaryLic?.licenseNumber ?? driver.licenseNumber}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase tracking-wider font-bold">State/Prov</span>
+                        <div className="text-slate-700 font-medium">{primaryLic?.province ?? driver.licenseState}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase tracking-wider font-bold">Expiry</span>
+                        <div className="text-slate-700 font-medium">{primaryLic?.expiryDate ?? driver.licenseExpiry}</div>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase tracking-wider font-bold">Class</span>
+                        <div className="text-slate-700 font-medium">{primaryLic?.class ?? '—'}</div>
+                      </div>
+                    </div>
+                  )}
+                  {row.driverLink.rawLicence && (
+                    <div className="text-[9px] text-slate-400 font-mono border-t border-blue-100 pt-1 truncate" title={row.driverLink.rawLicence}>
+                      NSC: {row.driverLink.rawLicence}
+                    </div>
+                  )}
+                </div>
+
+                {/* Asset card — power unit */}
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 space-y-1.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Truck size={14} className="text-indigo-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-indigo-900 text-xs">{row.primaryVehicle.unitNumber}</div>
+                      <div className="text-[10px] font-mono text-indigo-500">{row.primaryVehicle.assetId ?? 'unlinked'}</div>
+                    </div>
+                    {asset && (
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${statusColor(asset.operationalStatus)}`}>
+                        {asset.operationalStatus}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                    {asset ? (
+                      <>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">Year / Make</span>
+                          <div className="text-slate-700 font-medium">{asset.year} {asset.make}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">Model</span>
+                          <div className="text-slate-700 font-medium">{asset.model}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">Plate</span>
+                          <div className="text-slate-700 font-mono">{asset.plateNumber}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">Jurisdiction</span>
+                          <div className="text-slate-700 font-medium">{asset.plateJurisdiction}</div>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">VIN</span>
+                          <div className="text-slate-700 font-mono text-[9px]">{asset.vin}</div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">NSC Plate</span>
+                          <div className="text-slate-700 font-mono">{row.primaryVehicle.plate}</div>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 uppercase tracking-wider font-bold">Make</span>
+                          <div className="text-slate-700">{row.primaryVehicle.make}</div>
+                        </div>
+                        {row.primaryVehicle.vin && (
+                          <div className="col-span-2">
+                            <span className="text-slate-400 uppercase tracking-wider font-bold">VIN</span>
+                            <div className="text-slate-700 font-mono text-[9px]">{row.primaryVehicle.vin}</div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Trailer card (if present) */}
+                {row.trailerLink && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Truck size={14} className="text-slate-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-slate-800 text-xs">{row.trailerLink.unitNumber}</div>
+                        <div className="text-[10px] text-slate-400">Trailer</div>
+                      </div>
+                      {trailer && (
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${statusColor(trailer.operationalStatus)}`}>
+                          {trailer.operationalStatus}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                      {trailer ? (
+                        <>
+                          <div>
+                            <span className="text-slate-400 uppercase tracking-wider font-bold">Year / Make</span>
+                            <div className="text-slate-700 font-medium">{trailer.year} {trailer.make}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 uppercase tracking-wider font-bold">Plate</span>
+                            <div className="text-slate-700 font-mono">{trailer.plateNumber}</div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <span className="text-slate-400 uppercase tracking-wider font-bold">NSC Plate</span>
+                            <div className="text-slate-700 font-mono">{row.trailerLink.plate}</div>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 uppercase tracking-wider font-bold">Make</span>
+                            <div className="text-slate-700">{row.trailerLink.make}</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* OOS / REQ defect grids */}
+          {(oosRows.length > 0 || reqRows.length > 0) && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-red-100 bg-white overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-red-100 bg-red-50/50">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-red-600">Out of Service Defects</div>
+                </div>
+                {oosRows.length > 0 ? (
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y divide-slate-100">
+                      {oosRows.map((d, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 font-medium text-slate-800">{d.category}</td>
+                          <td className="px-3 py-2 text-center text-red-600 font-bold">{(d.vehicleCounts.filter(Boolean).length) || 1}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="px-4 py-3 text-xs text-slate-400">No OOS defects</div>
+                )}
+              </div>
+              <div className="rounded-lg border border-amber-100 bg-white overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-amber-100 bg-amber-50/50">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Requires Attention Defects</div>
+                </div>
+                {reqRows.length > 0 ? (
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y divide-slate-100">
+                      {reqRows.map((d, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 font-medium text-slate-800">{d.category}</td>
+                          <td className="px-3 py-2 text-center text-amber-600 font-bold">{(d.vehicleCounts.filter(Boolean).length) || 1}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="px-4 py-3 text-xs text-slate-400">No req. attention defects</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Violations from NSC catalog */}
+          {violations.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                NSC Violations — {row.doc}
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-bold text-slate-400 uppercase tracking-wider">CCMTA</th>
+                      <th className="px-3 py-2 text-left font-bold text-slate-400 uppercase tracking-wider">Description</th>
+                      <th className="px-3 py-2 text-left font-bold text-slate-400 uppercase tracking-wider">Severity</th>
+                      <th className="px-3 py-2 text-center font-bold text-slate-400 uppercase tracking-wider">Pts</th>
+                      <th className="px-3 py-2 text-left font-bold text-slate-400 uppercase tracking-wider">Category</th>
+                      <th className="px-3 py-2 text-left font-bold text-slate-400 uppercase tracking-wider">Risk</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {violations.map((v, i) => {
+                      const sys = NSC_CODE_TO_SYSTEM[v.code];
+                      const pts = sys?.riskLevel === 'High' ? 3 : sys?.riskLevel === 'Medium' ? 2 : sys ? 1 : null;
+                      return (
+                        <tr key={i} className="hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => setSelectedViolation({ code: v.code, description: v.description, severity: v.severity, isOOS: v.tier === 'OOS' })} title="Click to view violation details">
+                          <td className="px-3 py-2 font-mono font-bold text-slate-700">{v.code}</td>
+                          <td className="px-3 py-2 text-slate-700">{v.description}</td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${
+                              v.severity === 'OOS'   ? 'bg-red-50 text-red-700 border-red-200' :
+                              v.severity === 'Major' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}>{v.severity}</span>
+                          </td>
+                          <td className="px-3 py-2 text-center font-black">
+                            {pts !== null ? (
+                              <span className={pts >= 3 ? 'text-red-600' : pts === 2 ? 'text-amber-600' : 'text-slate-600'}>{pts}</span>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            {sys ? (
+                              <div>
+                                <div className="font-semibold text-slate-800">{sys.categoryLabel}</div>
+                                <div className="text-[10px] text-slate-400">{sys.violationGroup}</div>
+                              </div>
+                            ) : <span className="text-slate-400">—</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            {sys ? (
+                              <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${
+                                sys.riskLevel === 'High'   ? 'bg-red-50 text-red-700 border-red-200' :
+                                sys.riskLevel === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>{sys.riskLevel}</span>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── NSC Violation detail modal ── */}
+      {selectedViolation && (() => {
+        const sys = NSC_CODE_TO_SYSTEM[selectedViolation.code];
+        const riskPct   = sys?.riskLevel === 'High' ? 85 : sys?.riskLevel === 'Medium' ? 45 : 15;
+        const riskColor = sys?.riskLevel === 'High' ? 'bg-red-500' : sys?.riskLevel === 'Medium' ? 'bg-amber-400' : 'bg-emerald-400';
+        const riskText  = sys?.riskLevel === 'High' ? 'text-red-600' : sys?.riskLevel === 'Medium' ? 'text-amber-600' : 'text-slate-600';
+        const points    = sys?.riskLevel === 'High' ? 3 : sys?.riskLevel === 'Medium' ? 2 : 1;
+        const rawRecord = violationDetailsData.find(r => parseCcmtaCode(r.ccmtaCode) === selectedViolation.code);
+        return (
+          <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedViolation(null)}>
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-base font-bold text-slate-900">Violation Details</h4>
+                    <span className="px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200">NSC</span>
+                  </div>
+                  <p className="text-sm text-slate-500 mt-0.5">Inspection {row.doc}</p>
+                </div>
+                <button onClick={() => setSelectedViolation(null)} className="text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-md transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-4 space-y-4 text-sm">
+                {/* CCMTA Code + Act/Section */}
+                <div className="flex items-start gap-4">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">CCMTA Code</div>
+                    <div className="font-mono text-blue-700 font-bold text-base">{selectedViolation.code}</div>
+                  </div>
+                  {rawRecord?.actSection && (
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Act / Section</div>
+                      <div className="text-slate-800 leading-snug text-xs">{rawRecord.actSection}</div>
+                    </div>
+                  )}
+                </div>
+                {/* System Category box */}
+                {sys && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">NSC System Category</span>
+                      <span className="text-xs text-slate-400 font-medium">CCMTA</span>
+                    </div>
+                    <div className="font-mono text-sm font-bold text-slate-800">{sys.categoryLabel}</div>
+                    <div className="text-[13px] text-slate-500 mt-0.5">{sys.violationGroup}</div>
+                    <div className="mt-2 space-y-1">
+                      <div className={`text-xs font-bold ${riskText}`}>{sys.riskLevel.toUpperCase()} RISK — {riskPct}%</div>
+                      <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div className={`h-full rounded-full ${riskColor}`} style={{ width: `${riskPct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Description */}
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Description</div>
+                  <div className="text-slate-900 leading-relaxed">{selectedViolation.description}</div>
+                  {sys && <div className="mt-1 text-xs text-blue-600/90">{sys.violationGroup}</div>}
+                </div>
+                {/* Officer Notes */}
+                {rawRecord?.text && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                    <div className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">Officer Notes</div>
+                    <div className="text-slate-800 leading-relaxed text-[13px] italic">"{rawRecord.text}"</div>
+                  </div>
+                )}
+                {/* Vehicle / Commodity */}
+                {(rawRecord?.vehicle || rawRecord?.commodity) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {rawRecord.vehicle && (
+                      <div>
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Vehicle</div>
+                        <div className="font-mono text-slate-800 font-medium">{rawRecord.vehicle}</div>
+                      </div>
+                    )}
+                    {rawRecord.commodity && rawRecord.commodity !== '—' && rawRecord.commodity !== '' && (
+                      <div>
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Commodity</div>
+                        <div className="text-slate-800">{rawRecord.commodity}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Stats grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider">Severity</div>
+                    <div className={`mt-1 font-bold ${
+                      selectedViolation.severity === 'OOS'   ? 'text-red-600' :
+                      selectedViolation.severity === 'Major' ? 'text-amber-700' : 'text-slate-700'
+                    }`}>{selectedViolation.severity}</div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider">Points</div>
+                    <div className={`mt-1 font-bold text-lg ${
+                      points >= 3 ? 'text-red-600' : points === 2 ? 'text-amber-700' : 'text-slate-700'
+                    }`}>{sys ? points : '—'}</div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider">OOS</div>
+                    <div className={`mt-1 font-bold ${selectedViolation.isOOS ? 'text-red-600' : 'text-slate-700'}`}>
+                      {selectedViolation.isOOS ? 'YES' : 'NO'}
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider">Risk Level</div>
+                    <div className={`mt-1 font-bold ${riskText}`}>{sys?.riskLevel ?? '—'}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end sticky bottom-0">
+                <button onClick={() => setSelectedViolation(null)} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
+
+const PERIOD_OPTIONS = ['1M', '3M', '6M', '12M', '24M'] as const;
+const getPeriodLabel = (period: typeof PERIOD_OPTIONS[number]) => (
+  period === '24M' ? '24 Months' : period === '12M' ? '12 Months' : period === '6M' ? '6 Months' : period === '3M' ? '3 Months' : '1 Month'
+);
+
 // --- MAIN APP ---
 export function InspectionsPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor'>('overview');
+  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor' | 'carrier-profile'>('overview');
+  const [showReport, setShowReport] = useState(false);
   const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('24M');
   const smsBasicCategory = 'All';
   const [smsSummaryView, setSmsSummaryView] = useState<'PERCENTILES' | 'INSPECTIONS'>('PERCENTILES');
@@ -1000,22 +1713,35 @@ export function InspectionsPage() {
     setInspForm(prev => ({ ...prev, units: prev.units.filter((_, i) => i !== idx) }));
   };
 
-  // Derived Stats for Filters
+  // Derived Stats for Filters (includes NSC)
   const stats = useMemo(() => {
+    const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
+    const totalViolations = inspectionsData.reduce((s, i) => s + i.violations.length, 0);
+    const totalPoints = inspectionsData.reduce((s, i) => s + (i.violations || []).reduce((ps: number, v: any) => ps + (v.points || 0), 0), 0);
+    const nscViolations = NSC_INSPECTIONS.reduce((s, row) => {
+      const oosRows = row.details?.oosRows ?? (row.details?.oos ?? []).map((cat: string) => ({ category: cat, vehicleCounts: [1] }));
+      const reqRows = row.details?.reqRows ?? (row.details?.req ?? []).map((cat: string) => ({ category: cat, vehicleCounts: [1] }));
+      return s + oosRows.length + reqRows.length;
+    }, 0);
     return {
-      total: inspectionsData.length,
-      clean: inspectionsData.filter(i => i.isClean).length,
-      oos: inspectionsData.filter(i => i.hasOOS).length,
+      total: inspectionsData.length + NSC_INSPECTIONS.length,
+      clean: inspectionsData.filter(i => i.isClean).length + NSC_INSPECTIONS.filter(r => r.result === 'Passed').length,
+      oos: inspectionsData.filter(i => i.hasOOS).length + nscOos,
       vehicle: inspectionsData.filter(i => i.hasVehicleViolations).length,
       driver: inspectionsData.filter(i => i.hasDriverViolations).length,
       severe: inspectionsData.filter(i => i.violations.some(v => v.severity >= 7)).length,
       cvor: inspectionsData.filter(i => getJurisdiction(i.state) === 'CVOR').length,
       sms: inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA').length,
+      nsc: NSC_INSPECTIONS.length,
+      totalViolations: totalViolations + nscViolations,
+      totalPoints,
     };
   }, []);
 
-  // Filter Logic
-  const filteredData = inspectionsData.filter(insp => {
+  // Unified inspection list: SMS/CVOR (tagged) + NSC records
+  // Each entry is either a legacy record (with _source) or an NscInspectionRecord (with _source='NSC')
+  const filteredSmsOrCvor = inspectionsData.filter(insp => {
+    if (activeFilter === 'NSC') return false;
     const st = searchTerm.toLowerCase();
     const matchesSearch =
       insp.id.toLowerCase().includes(st) ||
@@ -1024,21 +1750,50 @@ export function InspectionsPage() {
       (insp.driverLicense && insp.driverLicense.toLowerCase().includes(st)) ||
       (insp.location?.city && insp.location.city.toLowerCase().includes(st)) ||
       (insp.location?.raw && insp.location.raw.toLowerCase().includes(st));
-    
     let matchesFilter = true;
     switch(activeFilter) {
-      case 'CLEAN': matchesFilter = insp.isClean; break;
-      case 'OOS': matchesFilter = insp.hasOOS; break;
+      case 'CLEAN':   matchesFilter = insp.isClean; break;
+      case 'OOS':     matchesFilter = insp.hasOOS; break;
       case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
-      case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
-      case 'SEVERE': matchesFilter = insp.violations.some(v => v.severity >= 7); break;
-      case 'CVOR': matchesFilter = getJurisdiction(insp.state) === 'CVOR'; break;
-      case 'SMS': matchesFilter = getJurisdiction(insp.state) === 'CSA'; break;
-      default: matchesFilter = true;
+      case 'DRIVER':  matchesFilter = insp.hasDriverViolations; break;
+      case 'SEVERE':  matchesFilter = insp.violations.some(v => v.severity >= 7); break;
+      case 'CVOR':    matchesFilter = getJurisdiction(insp.state) === 'CVOR'; break;
+      case 'SMS':     matchesFilter = getJurisdiction(insp.state) === 'CSA'; break;
+      default:        matchesFilter = true;
     }
-
     return matchesSearch && matchesFilter;
   });
+
+  const filteredNsc = (['ALL', 'NSC', 'OOS', 'CLEAN'].includes(activeFilter))
+    ? NSC_INSPECTIONS.filter(row => {
+        if (activeFilter === 'OOS') return row.result === 'Out Of Service';
+        if (activeFilter === 'CLEAN') return row.result === 'Passed';
+        const st = searchTerm.toLowerCase();
+        if (!st) return true;
+        return (
+          row.doc.toLowerCase().includes(st) ||
+          row.driverLink.driverName.toLowerCase().includes(st) ||
+          row.driverLink.driverId.toLowerCase().includes(st) ||
+          row.primaryVehicle.unitNumber.toLowerCase().includes(st) ||
+          row.primaryVehicle.plate.toLowerCase().includes(st) ||
+          row.jur.toLowerCase().includes(st) ||
+          (row.details?.location?.toLowerCase().includes(st) ?? false)
+        );
+      })
+    : [];
+
+  // Tagged wrapper for type-safe rendering
+  type TaggedLegacy = { _source: 'SMS' | 'CVOR'; record: any };
+  type TaggedNsc    = { _source: 'NSC'; record: NscInspectionRecord };
+  type TaggedEntry  = TaggedLegacy | TaggedNsc;
+
+  const filteredData: TaggedEntry[] = [
+    ...filteredSmsOrCvor.map(r => ({
+      _source: (getJurisdiction(r.state) === 'CVOR' ? 'CVOR' : 'SMS') as 'SMS' | 'CVOR',
+      record: r,
+    })),
+    ...filteredNsc.map(r => ({ _source: 'NSC' as const, record: r })),
+  ];
 
   const pagedData = filteredData.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
@@ -1069,25 +1824,55 @@ export function InspectionsPage() {
         </div>
 
         {/* ===== MAIN TAB NAVIGATION ===== */}
-        <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 gap-1 mb-2">
-          {[
-            { id: 'overview' as const, label: 'Full Overview' },
-            { id: 'sms' as const, label: 'SMS (FMCSA)' },
-            { id: 'cvor' as const, label: 'CVOR (Canadian)' },
-          ].map(tab => (
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
+          <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 gap-1">
+            {[
+              { id: 'overview' as const, label: 'Full Overview' },
+              { id: 'sms' as const, label: 'SMS (FMCSA)' },
+              { id: 'cvor' as const, label: 'CVOR (Canadian)' },
+              { id: 'carrier-profile' as const, label: 'Carrier Profile (NSC)' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveMainTab(tab.id); setShowReport(false); }}
+                className={`px-5 py-2 text-sm font-semibold rounded-md transition-all ${
+                  activeMainTab === tab.id
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Report button — only for reportable tabs */}
+          {activeMainTab !== 'overview' && (
             <button
-              key={tab.id}
-              onClick={() => setActiveMainTab(tab.id)}
-              className={`px-5 py-2 text-sm font-semibold rounded-md transition-all ${
-                activeMainTab === tab.id
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+              onClick={() => setShowReport(p => !p)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
+                showReport
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                  : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
               }`}
             >
-              {tab.label}
+              <FileText size={14} />
+              {showReport ? 'Close Report' : 'Generate Report'}
             </button>
-          ))}
+          )}
         </div>
+
+        {/* ===== REPORT PANEL ===== */}
+        {showReport && activeMainTab !== 'overview' && (
+          <InspectionReportPanel
+            variant={activeMainTab === 'sms' ? 'sms' : activeMainTab === 'cvor' ? 'cvor' : 'nsc'}
+            basicOverview={computedBasicOverview}
+            csaThresholds={csaThresholds}
+            cvorThresholds={cvorThresholds}
+            cvorOosThresholds={cvorOosThresholds}
+            carrierProfile={carrierProfile}
+          />
+        )}
 
         {/* ===== TAB: FULL OVERVIEW ===== */}
         {activeMainTab === 'overview' && (
@@ -1525,42 +2310,76 @@ export function InspectionsPage() {
           </div>
         </div>
 
-        {/* ===== KPI FILTERS (Mini Rectangles) ===== */}
-        <div className="mt-8">
-          <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">Inspection Filters</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-            <MiniKpiCard 
-              title="All Insps." value={stats.total} icon={ClipboardCheck} color="blue"
-              active={activeFilter === 'ALL'} onClick={() => setActiveFilter('ALL')} 
-            />
-            <MiniKpiCard 
-              title="Clean" value={stats.clean} icon={CheckCircle2} color="emerald"
-              active={activeFilter === 'CLEAN'} onClick={() => setActiveFilter('CLEAN')} 
-            />
-            <MiniKpiCard 
-              title="OOS Flags" value={stats.oos} icon={ShieldAlert} color="red"
-              active={activeFilter === 'OOS'} onClick={() => setActiveFilter('OOS')} 
-            />
-            <MiniKpiCard 
-              title="Veh. Issues" value={stats.vehicle} icon={Truck} color="orange"
-              active={activeFilter === 'VEHICLE'} onClick={() => setActiveFilter('VEHICLE')} 
-            />
-            <MiniKpiCard 
-              title="HOS/Driver" value={stats.driver} icon={User} color="purple"
-              active={activeFilter === 'DRIVER'} onClick={() => setActiveFilter('DRIVER')} 
-            />
-            <MiniKpiCard 
-              title="Severe (7+)" value={stats.severe} icon={AlertTriangle} color="yellow"
-              active={activeFilter === 'SEVERE'} onClick={() => setActiveFilter('SEVERE')} 
-            />
-            <MiniKpiCard 
-              title="CVOR" value={stats.cvor} icon={ClipboardCheck} color="rose"
-              active={activeFilter === 'CVOR'} onClick={() => setActiveFilter('CVOR')} 
-            />
-            <MiniKpiCard 
-              title="SMS" value={stats.sms} icon={ClipboardCheck} color="indigo"
-              active={activeFilter === 'SMS'} onClick={() => setActiveFilter('SMS')} 
-            />
+        {/* ===== KPI SUMMARY + FILTER ===== */}
+        <div className="mt-8 space-y-4">
+          {/* Summary stat cards */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5"><ClipboardCheck size={12} className="text-blue-400" /> Total Inspections</div>
+              <div className="text-2xl font-black text-slate-900">{stats.total}</div>
+              <div className="flex gap-2 mt-1 text-[10px] font-medium">
+                <span className="text-indigo-600">SMS {stats.sms}</span>
+                <span className="text-rose-600">CVOR {stats.cvor}</span>
+                <span className="text-emerald-600">NSC {stats.nsc}</span>
+              </div>
+            </div>
+            <div className="bg-white border border-emerald-100 rounded-xl px-4 py-3 shadow-sm">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 mb-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> Clean</div>
+              <div className="text-2xl font-black text-emerald-600">{stats.clean}</div>
+              <div className="text-[10px] text-slate-400 mt-1">{stats.total > 0 ? Math.round((stats.clean / stats.total) * 100) : 0}% pass rate</div>
+            </div>
+            <div className="bg-white border border-red-100 rounded-xl px-4 py-3 shadow-sm">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-red-500 mb-1 flex items-center gap-1.5"><ShieldAlert size={12} /> OOS Flags</div>
+              <div className="text-2xl font-black text-red-600">{stats.oos}</div>
+              <div className="text-[10px] text-slate-400 mt-1">{stats.total > 0 ? Math.round((stats.oos / stats.total) * 100) : 0}% OOS rate</div>
+            </div>
+            <div className="bg-white border border-orange-100 rounded-xl px-4 py-3 shadow-sm">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-orange-500 mb-1 flex items-center gap-1.5"><AlertTriangle size={12} /> Total Violations</div>
+              <div className="text-2xl font-black text-orange-600">{stats.totalViolations}</div>
+              <div className="text-[10px] text-slate-400 mt-1">across all inspections</div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5"><Activity size={12} /> Total Points</div>
+              <div className={`text-2xl font-black ${(stats.totalPoints || 0) > 50 ? 'text-red-600' : (stats.totalPoints || 0) > 20 ? 'text-amber-600' : 'text-slate-900'}`}>{stats.totalPoints ?? 0}</div>
+              <div className="text-[10px] text-slate-400 mt-1">SMS + CVOR accumulated</div>
+            </div>
+          </div>
+
+          {/* Filter pills row */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-1">Source:</span>
+              {([['ALL', 'All Sources', 'bg-slate-100 text-slate-700', 'bg-blue-600 text-white border-blue-600'],
+                 ['SMS', 'SMS (FMCSA)', 'bg-slate-50 text-indigo-700 border border-indigo-200', 'bg-indigo-600 text-white border-indigo-600'],
+                 ['CVOR', 'CVOR', 'bg-slate-50 text-rose-700 border border-rose-200', 'bg-rose-600 text-white border-rose-600'],
+                 ['NSC', 'NSC / CVSA', 'bg-slate-50 text-emerald-700 border border-emerald-200', 'bg-emerald-600 text-white border-emerald-600'],
+              ] as [string, string, string, string][]).map(([key, label, idle, active]) => (
+                <button key={key} onClick={() => setActiveFilter(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeFilter === key ? active : idle}`}>
+                  {label}
+                  <span className={`ml-1.5 px-1.5 py-px rounded text-[10px] ${activeFilter === key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    {key === 'ALL' ? stats.total : key === 'SMS' ? stats.sms : key === 'CVOR' ? stats.cvor : stats.nsc}
+                  </span>
+                </button>
+              ))}
+              <div className="w-px h-5 bg-slate-200 mx-1" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-1">Status:</span>
+              {([['CLEAN', 'Clean', stats.clean, 'text-emerald-700 border-emerald-200', 'bg-emerald-600'],
+                 ['OOS', 'OOS', stats.oos, 'text-red-700 border-red-200', 'bg-red-600'],
+                 ['VEHICLE', 'Veh. Issues', stats.vehicle, 'text-orange-700 border-orange-200', 'bg-orange-500'],
+                 ['DRIVER', 'HOS/Driver', stats.driver, 'text-purple-700 border-purple-200', 'bg-purple-600'],
+                 ['SEVERE', 'Severe (7+)', stats.severe, 'text-amber-700 border-amber-200', 'bg-amber-500'],
+              ] as [string, string, number, string, string][]).map(([key, label, count, idle, activeBg]) => (
+                <button key={key} onClick={() => setActiveFilter(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    activeFilter === key
+                      ? `${activeBg} text-white border-transparent`
+                      : `bg-slate-50 ${idle}`
+                  }`}>
+                  {label} <span className={`ml-1 px-1.5 py-px rounded text-[10px] ${activeFilter === key ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{count}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -1592,22 +2411,36 @@ export function InspectionsPage() {
             {/* Table Header (Hidden on Mobile) */}
             <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
               <div className="col-span-1 pl-2">Date / Time</div>
-              <div className="col-span-1">Report</div>
+              <div className="col-span-1">Source / Doc</div>
               <div className="col-span-1">Location</div>
               <div className="col-span-2">Driver / Licence</div>
-              <div className="col-span-2">Power Unit / Defects</div>
+              <div className="col-span-2">Unit / Vehicle</div>
               <div className="col-span-1 text-center">Violations</div>
               <div className="col-span-1 text-center">Veh Pts</div>
-              <div className="col-span-1 text-center">Dvr Pts</div>
+              <div className="col-span-1 text-center">Drv Pts / OOS</div>
               <div className="col-span-1">Status</div>
             </div>
 
             {/* List Items */}
             <div className="divide-y divide-slate-200">
               {pagedData.length > 0 ? (
-                pagedData.map(record => (
-                  <InspectionRow key={record.id} record={record} onEdit={openEditModal} />
-                ))
+                pagedData.map(entry => {
+                  if (entry._source === 'NSC') {
+                    return <NscOverviewRow key={entry.record.id} row={entry.record} />;
+                  }
+                  const isCvor = entry._source === 'CVOR';
+                  const cvorOverride = isCvor
+                    ? { vehPts: entry.record.cvorPoints?.vehicle ?? null, dvrPts: entry.record.cvorPoints?.driver ?? null, cvrPts: entry.record.cvorPoints?.cvor ?? 0 }
+                    : undefined;
+                  return (
+                    <InspectionRow
+                      key={entry.record.id}
+                      record={entry.record}
+                      onEdit={openEditModal}
+                      cvorOverride={cvorOverride}
+                    />
+                  );
+                })
               ) : (
                 <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
                   <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
@@ -2091,7 +2924,22 @@ export function InspectionsPage() {
 
                   return (
                   <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                    <h3 className="text-base font-bold text-slate-900 mb-4">Out of Service Summary <span className="text-sm font-normal text-slate-400">/ Last {smsPeriod === '24M' ? '24 Months' : smsPeriod === '12M' ? '12 Months' : smsPeriod === '6M' ? '6 Months' : smsPeriod === '3M' ? '3 Months' : '1 Month'}</span></h3>
+                    <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                      <h3 className="text-base font-bold text-slate-900">
+                        Out of Service Summary <span className="text-sm font-normal text-slate-400">/ SMS / Last {getPeriodLabel(smsPeriod)}</span>
+                      </h3>
+                      <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                        {PERIOD_OPTIONS.map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setSmsPeriod(p)}
+                            className={`px-2.5 py-1 text-xs font-bold transition-colors ${smsPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-6">
                       <div className="relative flex-shrink-0">
                         <svg width="110" height="110" viewBox="0 0 110 110">
@@ -4175,7 +5023,22 @@ export function InspectionsPage() {
 
                   return (
                   <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                    <h3 className="text-base font-bold text-slate-900 mb-4">OOS Summary <span className="text-sm font-normal text-slate-400">/ CVOR</span></h3>
+                    <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                      <h3 className="text-base font-bold text-slate-900">
+                        Out of Service Summary <span className="text-sm font-normal text-slate-400">/ CVOR / Last {getPeriodLabel(cvorPeriod)}</span>
+                      </h3>
+                      <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                        {PERIOD_OPTIONS.map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setCvorPeriod(p)}
+                            className={`px-2.5 py-1 text-xs font-bold transition-colors ${cvorPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex items-center gap-6">
                       <div className="relative flex-shrink-0">
                         <svg width="110" height="110" viewBox="0 0 110 110">
@@ -4467,6 +5330,297 @@ export function InspectionsPage() {
         </div>
         );
       })()}
+
+      {/* ===== TAB: CARRIER PROFILE (NSC) ===== */}
+      {activeMainTab === 'carrier-profile' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+              <div className="xl:col-span-5 bg-white border border-slate-200 rounded-xl shadow-sm relative overflow-hidden h-full">
+                <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <Building size={14} className="text-blue-500" />
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Carrier Identity</h3>
+                  </div>
+                  <div className="text-[10px] uppercase font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-sm">
+                    12-Month Report As Of: <span className="font-mono text-blue-600 ml-1">2024 OCT 15</span>
+                  </div>
+                </div>
+                <div className="p-5">
+                  <div className="mb-5 pb-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-3">
+                      <h2 className="text-xl font-black text-slate-900 leading-tight">Acme Trucking Inc.</h2>
+                      <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                        1200 North Dupont Highway<br />
+                        Wilmington, DE 19801, United States
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700">
+                          Federal
+                        </span>
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                          Active Profile
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">NSC Number</div>
+                      <div className="font-mono text-sm font-bold text-slate-900">AB320-9327</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">MVID Number</div>
+                      <div className="font-mono text-sm font-bold text-slate-900">0930-15188</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Profile Period Start</div>
+                      <div className="font-mono text-sm font-bold text-slate-900">2022 OCT 01</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Profile Period End</div>
+                      <div className="font-mono text-sm font-bold text-slate-900">2024 OCT 15</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="xl:col-span-7 h-full">
+                <SafetyRatingOosCard
+                  currentRating="Conditional"
+                  currentRatingClass="bg-amber-100 text-amber-800 border-amber-200"
+                  infoText="NSC uses the same carrier OOS breakdown shown in the Canadian views, paired here with the active safety fitness rating."
+                  rows={[
+                    {
+                      label: 'Overall OOS',
+                      value: `${carrierProfile.cvorAnalysis.counts.oosOverall}%`,
+                      national: `${parseFloat(carrierProfile.oosRates.vehicle.national)}%`,
+                      threshold: `${cvorOosThresholds.overall}%`,
+                      alert: carrierProfile.cvorAnalysis.counts.oosOverall > cvorOosThresholds.overall,
+                    },
+                    {
+                      label: 'Vehicle OOS',
+                      value: `${carrierProfile.cvorAnalysis.counts.oosVehicle}%`,
+                      national: `${parseFloat(carrierProfile.oosRates.vehicle.national)}%`,
+                      threshold: `${cvorOosThresholds.vehicle}%`,
+                      alert: carrierProfile.cvorAnalysis.counts.oosVehicle > cvorOosThresholds.vehicle,
+                    },
+                    {
+                      label: 'Driver OOS',
+                      value: `${carrierProfile.cvorAnalysis.counts.oosDriver}%`,
+                      national: `${parseFloat(carrierProfile.oosRates.driver.national)}%`,
+                      threshold: `${cvorOosThresholds.driver}%`,
+                      alert: carrierProfile.cvorAnalysis.counts.oosDriver > cvorOosThresholds.driver,
+                    },
+                  ]}
+                  certificate={{
+                    number: '002050938',
+                    effectiveDate: '2021 NOV 03',
+                    expiryDate: '2024 OCT 31',
+                    operatingStatus: 'Federal',
+                  }}
+                />
+              </div>
+
+              <div className="xl:col-span-4 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
+                <div className="flex items-center gap-2 mb-4">
+                  <Truck size={14} className="text-blue-500" />
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Fleet Size &amp; Exposure</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Power units</div>
+                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(carrierProfile.cvorAnalysis.counts.trucks)}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Drivers</div>
+                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(carrierProfile.drivers)}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected-period miles</div>
+                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(nscAnalytics.periodMiles)}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Points / MM miles</div>
+                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(nscAnalytics.pointsPerMillionMiles, 2)}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                  <div className="rounded-lg border border-slate-100 bg-red-50/70 px-3 py-3 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-red-500">Overall OOS</div>
+                    <div className="mt-1 text-sm font-black text-red-700">{carrierProfile.cvorAnalysis.counts.oosOverall}%</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-orange-50/70 px-3 py-3 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-orange-500">Vehicle OOS</div>
+                    <div className="mt-1 text-sm font-black text-orange-700">{carrierProfile.cvorAnalysis.counts.oosVehicle}%</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-violet-50/70 px-3 py-3 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-violet-500">Driver OOS</div>
+                    <div className="mt-1 text-sm font-black text-violet-700">{carrierProfile.cvorAnalysis.counts.oosDriver}%</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="xl:col-span-3 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
+                <div className="flex items-center gap-2 mb-4">
+                  <Target size={14} className="text-indigo-500" />
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Monitoring / Intervention</h3>
+                </div>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                  <span className={`px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${nscRiskBand.badge}`}>
+                    {nscRiskBand.label}
+                  </span>
+                  <span className="font-mono text-sm font-bold text-slate-900">{carrierProfile.cvorAnalysis.rating.toFixed(2)}%</span>
+                </div>
+                <p className="text-sm text-slate-600 leading-relaxed">{nscRiskBand.detail}</p>
+                <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-slate-600">Warning threshold</span>
+                    <span className="font-mono text-slate-800">{cvorThresholds.warning}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-slate-600">Intervention threshold</span>
+                    <span className="font-mono text-slate-800">{cvorThresholds.intervention}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-slate-600">Show-cause threshold</span>
+                    <span className="font-mono text-slate-800">{cvorThresholds.showCause}%</span>
+                  </div>
+                </div>
+                <div className="mt-4 text-[11px] text-slate-500 leading-relaxed">
+                  This band is derived from the configured NSC threshold logic already used in the app. An official monitoring dataset is not present in the repo.
+                </div>
+              </div>
+
+              <div className="xl:col-span-5 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
+                <div className="mb-4">
+                  <div className="flex items-center gap-2">
+                    <Activity size={14} className="text-emerald-500" />
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider text-emerald-800">Risk Factor</h3>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1 italic">(dynamically calculated based on profile request date)</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3 relative overflow-hidden group">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">R-Factor Score</div>
+                    <div className="mt-1.5 font-mono text-[16px] font-black text-emerald-600">0.356</div>
+                    <div className="text-[9px] text-slate-400 mt-1 opacity-80">(carrier must strive for the lowest score)</div>
+                    <div className="absolute top-0 right-0 bottom-0 w-1 bg-emerald-400 rounded-r-lg group-hover:w-1.5 transition-all"></div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet Range</div>
+                    <div className="mt-2 text-sm font-bold text-slate-900">8.0-13.9</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3 col-span-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet Type</div>
+                    <div className="mt-1 text-sm font-bold text-slate-900">Truck</div>
+                  </div>
+                </div>
+                <div className="space-y-3 mt-5">
+                  <div className="mb-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Contribution to R-Factor</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 italic">(dynamically calculated based on profile request date)</div>
+                  </div>
+                  {[
+                    { label: 'Convictions', value: '34.6%', color: 'bg-red-500', bg: 'bg-red-50', events: 5 },
+                    { label: 'Administrative Penalties', value: '0.0%', color: 'bg-slate-300', bg: 'bg-slate-50', events: 0 },
+                    { label: 'CVSA Inspections', value: '32.3%', color: 'bg-blue-500', bg: 'bg-blue-50', events: 43 },
+                    { label: 'Reportable Collisions', value: '33.1%', color: 'bg-amber-500', bg: 'bg-amber-50', events: 6 },
+                  ].map((row) => (
+                    <div key={row.label} className={`p-2 rounded-lg border border-slate-100 ${row.bg} relative group cursor-pointer overflow-hidden`}>
+                      <div className="flex items-center justify-between gap-3 mb-1.5 text-sm transition-opacity group-hover:opacity-0 delay-75">
+                        <span className="font-semibold text-slate-700">{row.label}</span>
+                        <span className="font-mono font-black text-slate-900">{row.value}</span>
+                      </div>
+                      <div className="h-2 bg-white rounded-full overflow-hidden border border-slate-200/60 shadow-inner transition-opacity group-hover:opacity-0 delay-75">
+                        <div className={`h-full rounded-full ${row.color}`} style={{ width: row.value }} />
+                      </div>
+                      <div className="absolute inset-0 bg-white/95 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-center px-4 z-10 translate-y-1 group-hover:translate-y-0">
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-1.5">
+                            <Info size={14} className="text-blue-500" />
+                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{row.label} Details</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="bg-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-600">
+                              {row.events} Event{row.events !== 1 ? 's' : ''}
+                            </div>
+                            <div className={`px-2 py-0.5 rounded text-xs font-bold ${row.color.replace('bg-', 'text-').replace('-500', '-700')} ${row.bg}`}>
+                              {row.value} Impact
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+          </div>
+
+          {(() => {
+            const mp = carrierProfile.cvorAnalysis.counts;
+            const conv = (n: number) => mileageUnit === 'km' ? Math.round(n * 1.60934) : n;
+            const fmt = (n: number) => conv(n).toLocaleString();
+            const unit = mileageUnit === 'km' ? 'Kms' : 'Miles';
+            return (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Truck size={14} className="text-blue-500" /> Mileage Summary
+                  </h3>
+                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
+                    {(['km', 'mi'] as const).map(u => (
+                      <button
+                        key={u}
+                        onClick={() => setMileageUnit(u)}
+                        className={`px-2.5 py-1 text-xs font-bold transition-colors ${mileageUnit === u ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {u === 'km' ? 'KM' : 'MI'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                        <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">{unit} Travelled</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-5 py-3 text-slate-700">Ontario {unit}* Travelled</td>
+                        <td className="px-5 py-3 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-5 py-3 text-slate-700">Rest of Canada {unit}* Travelled</td>
+                        <td className="px-5 py-3 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
+                      </tr>
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="px-5 py-3 text-slate-700">US / Mexico {unit}* Travelled</td>
+                        <td className="px-5 py-3 text-right font-bold font-mono text-slate-900">{fmt(mp.totalUSMiles)}</td>
+                      </tr>
+                      <tr className="bg-slate-50 border-t-2 border-slate-300">
+                        <td className="px-5 py-3.5 font-bold text-slate-800">Total {unit}* Travelled</td>
+                        <td className="px-5 py-3.5 text-right font-bold font-mono text-blue-700 text-base">{fmt(mp.totalMiles)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">*{mileageUnit === 'km' ? 'Kilometres' : 'Miles'} shown are the current annual rates most recently reported by the operator for the last 12 months (could include actual and estimated travel).</p>
+              </div>
+            );
+          })()}
+
+          <NscCvsaOverview />
+
+          <NscAnalysis />
+
+          <NscCvsaInspections />
+        </div>
+      )}
 
       {/* ===== UPLOAD MODAL ===== */}
       {showUploadModal && (

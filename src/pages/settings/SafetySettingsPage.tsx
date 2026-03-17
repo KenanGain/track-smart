@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield, Info, RotateCcw, Save,
   BarChart2, Sliders, AlertTriangle, Target, Gauge, Users,
   Truck, FileCheck, BookOpen, Camera, Activity, Bell, Zap,
+  TrendingUp,
 } from 'lucide-react';
+import {
+  loadSafetySettings,
+  saveSafetySettings,
+  DEFAULT_SAFETY_SETTINGS,
+} from '../safety-analysis/safetySettings';
 
 // ─── InfoTip: formula + best-result hint ─────────────────────────────────────
 function InfoTip({ hint, formula }: { hint: string; formula?: string }) {
@@ -193,122 +199,255 @@ function Chips({ options, value, onChange, color = 'blue' }: {
   );
 }
 
-const DEFAULT_WEIGHTS = [
-  { key: 'accidents',   label: 'Accidents',     color: 'bg-red-500',     value: 25 },
-  { key: 'eld',         label: 'ELD / HOS',     color: 'bg-blue-500',    value: 20 },
-  { key: 'vedr',        label: 'Camera / VEDR', color: 'bg-purple-500',  value: 15 },
-  { key: 'inspections', label: 'Inspections',   color: 'bg-emerald-500', value: 20 },
-  { key: 'violations',  label: 'Violations',    color: 'bg-amber-500',   value: 10 },
-  { key: 'trainings',   label: 'Trainings',     color: 'bg-teal-500',    value: 10 },
-];
-
 export function SafetySettingsPage() {
+  // ── Load persisted settings once at mount ────────────────────────────────
+  const _init = loadSafetySettings();
+
   const [saved, setSaved] = useState(false);
-  const [weights, setWeights] = useState(DEFAULT_WEIGHTS.map(w => ({ ...w })));
+  const [weights, setWeights] = useState([
+    { key: 'accidents',   label: 'Accidents',     color: 'bg-red-500',     value: _init.wAccidents   },
+    { key: 'eld',         label: 'ELD / HOS',     color: 'bg-blue-500',    value: _init.wEld         },
+    { key: 'vedr',        label: 'Camera / VEDR', color: 'bg-purple-500',  value: _init.wVedr        },
+    { key: 'inspections', label: 'Inspections',   color: 'bg-emerald-500', value: _init.wInspections },
+    { key: 'violations',  label: 'Violations',    color: 'bg-amber-500',   value: _init.wViolations  },
+    { key: 'trainings',   label: 'Trainings',     color: 'bg-teal-500',    value: _init.wTrainings   },
+  ]);
   const updateWeight = (key: string, val: number) =>
     setWeights(ws => ws.map(w => w.key === key ? { ...w, value: Math.max(0, Math.min(100, val)) } : w));
   const totalWeight = weights.reduce((s, w) => s + w.value, 0);
 
-  const [thresholds, setThresholds] = useState({ excellent: 90, good: 80, fair: 70 });
-  const [timeVol, setTimeVol] = useState(40);
-  const [distVol, setDistVol] = useState(30);
-  const [dateVol, setDateVol] = useState(28);
-  const [windowDecay, setWindowDecay] = useState(60);
-  const [baselineWindow, setBaselineWindow] = useState('12mo');
+  const [thresholds, setThresholds] = useState({ excellent: _init.threshExcellent, good: _init.threshGood, fair: _init.threshFair });
+  const [timeVol, setTimeVol] = useState(_init.timeVol);
+  const [distVol, setDistVol] = useState(_init.distVol);
+  const [dateVol, setDateVol] = useState(_init.dateVol);
+  const [windowDecay, setWindowDecay] = useState(_init.windowDecay);
+  const [baselineWindow, setBaselineWindow] = useState(_init.baselineWindow);
   const [fleetAverage, setFleetAverage] = useState(78);
   const [fleetBenchmark, setFleetBenchmark] = useState(75);
   const [industryBenchmark, setIndustryBenchmark] = useState(72);
   const [showFleetAvgOnRadar, setShowFleetAvgOnRadar] = useState(true);
   const [showIndustryBenchmark, setShowIndustryBenchmark] = useState(false);
-  const [fatalWeight, setFatalWeight] = useState(100);
-  const [injuryWeight, setInjuryWeight] = useState(60);
-  const [propertyWeight, setPropertyWeight] = useState(30);
-  const [nearMissWeight, setNearMissWeight] = useState(10);
-  const [recencyDecay, setRecencyDecay] = useState(20);
-  const [incidentAgeCap, setIncidentAgeCap] = useState(36);
-  const [towAwayMult, setTowAwayMult] = useState(1.5);
-  const [hazmatMult, setHazmatMult] = useState(2.0);
-  const [atFaultMult, setAtFaultMult] = useState(1.8);
-  const [hosWindow, setHosWindow] = useState(70);
-  const [eldGrace, setEldGrace] = useState(5);
-  const [driverAgeCap, setDriverAgeCap] = useState(3);
-  const [minDrivingDays, setMinDrivingDays] = useState(30);
-  const [noEventBonus, setNoEventBonus] = useState(5);
-  const [speedThreshold, setSpeedThreshold] = useState(80);
-  const [harshBrakeG, setHarshBrakeG] = useState(0.4);
-  const [harshAccelG, setHarshAccelG] = useState(0.35);
-  const [activeScore, setActiveScore] = useState(100);
-  const [maintScore, setMaintScore] = useState(50);
-  const [oosStatusScore, setOosStatusScore] = useState(0);
-  const [mileageCurve, setMileageCurve] = useState<'linear' | 'exponential' | 'stepped'>('linear');
-  const [regWarningDays, setRegWarningDays] = useState(60);
-  const [regExpiredPenalty, setRegExpiredPenalty] = useState(40);
-  const [ageDecayStart, setAgeDecayStart] = useState(5);
-  const [ageDecayRate, setAgeDecayRate] = useState(5);
-  const [ageDecayCap, setAgeDecayCap] = useState(40);
-  const [passScore, setPassScore] = useState(100);
-  const [failScore, setFailScore] = useState(40);
-  const [oosScore, setOosScore] = useState(0);
-  const [oosPenalty, setOosPenalty] = useState(20);
-  const [inspDecay, setInspDecay] = useState(15);
-  const [inspAgeCap, setInspAgeCap] = useState(24);
-  const [minInspections, setMinInspections] = useState(3);
-  const [movingWeight, setMovingWeight] = useState(70);
-  const [nonMovingWeight, setNonMovingWeight] = useState(30);
-  const [criticalPenalty, setCriticalPenalty] = useState(25);
-  const [majorPenalty, setMajorPenalty] = useState(15);
-  const [minorPenalty, setMinorPenalty] = useState(5);
-  const [violAgeCap, setViolAgeCap] = useState(24);
-  const [violDecay, setViolDecay] = useState(10);
-  const [completionWeight, setCompletionWeight] = useState(60);
-  const [mandatoryBonus, setMandatoryBonus] = useState(30);
-  const [optionalBonus, setOptionalBonus] = useState(10);
-  const [expiryWarning, setExpiryWarning] = useState(30);
-  const [expiryPenalty, setExpiryPenalty] = useState(15);
-  const [expiredPenalty, setExpiredPenalty] = useState(35);
-  const [minTrainingHrs, setMinTrainingHrs] = useState(8);
-  const [followDistPenalty, setFollowDistPenalty] = useState(10);
-  const [laneDevPenalty, setLaneDevPenalty] = useState(8);
-  const [distractionPenalty, setDistractionPenalty] = useState(15);
-  const [drowsinessPenalty, setDrowsinessPenalty] = useState(20);
-  const [maskingPenalty, setMaskingPenalty] = useState(30);
-  const [coachingBonus, setCoachingBonus] = useState(5);
-  const [vedrDecay, setVedrDecay] = useState(25);
-  const [scoreDropAlert, setScoreDropAlert] = useState(10);
-  const [criticalAlert, setCriticalAlert] = useState(65);
-  const [alertCooldown, setAlertCooldown] = useState(7);
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [inAppAlerts, setInAppAlerts] = useState(true);
-  const [weeklyDigest, setWeeklyDigest] = useState(true);
-  const [autoFlag, setAutoFlag] = useState(true);
-  const [defaultWindow, setDefaultWindow] = useState('12mo');
-  const [defaultMode, setDefaultMode] = useState('time');
-  const [defaultDistUnit, setDefaultDistUnit] = useState('mi');
-  const [defaultInterval, setDefaultInterval] = useState(10000);
-  const [scoreDecimals, setScoreDecimals] = useState(1);
-  const [showPercent, setShowPercent] = useState(true);
-  const [showRankBadges, setShowRankBadges] = useState(true);
-  const [showTrendArrows, setShowTrendArrows] = useState(true);
-  const [colorBlindMode, setColorBlindMode] = useState(false);
+  const [fatalWeight, setFatalWeight] = useState(_init.fatalWeight);
+  const [injuryWeight, setInjuryWeight] = useState(_init.injuryWeight);
+  const [propertyWeight, setPropertyWeight] = useState(_init.propertyWeight);
+  const [nearMissWeight, setNearMissWeight] = useState(_init.nearMissWeight);
+  const [recencyDecay, setRecencyDecay] = useState(_init.recencyDecay);
+  const [incidentAgeCap, setIncidentAgeCap] = useState(_init.incidentAgeCap);
+  const [towAwayMult, setTowAwayMult] = useState(_init.towAwayMult);
+  const [hazmatMult, setHazmatMult] = useState(_init.hazmatMult);
+  const [atFaultMult, setAtFaultMult] = useState(_init.atFaultMult);
+  const [hosWindow, setHosWindow] = useState(_init.hosWindow);
+  const [eldGrace, setEldGrace] = useState(_init.eldGrace);
+  const [driverAgeCap, setDriverAgeCap] = useState(_init.driverAgeCap);
+  const [minDrivingDays, setMinDrivingDays] = useState(_init.minDrivingDays);
+  const [noEventBonus, setNoEventBonus] = useState(_init.noEventBonus);
+  const [speedThreshold, setSpeedThreshold] = useState(_init.speedThreshold);
+  const [harshBrakeG, setHarshBrakeG] = useState(_init.harshBrakeG);
+  const [harshAccelG, setHarshAccelG] = useState(_init.harshAccelG);
+  const [activeScore, setActiveScore] = useState(_init.activeScore);
+  const [maintScore, setMaintScore] = useState(_init.maintScore);
+  const [oosStatusScore, setOosStatusScore] = useState(_init.oosStatusScore);
+  const [mileageCurve, setMileageCurve] = useState<'linear' | 'exponential' | 'stepped'>(_init.mileageCurve);
+  const [regWarningDays, setRegWarningDays] = useState(_init.regWarningDays);
+  const [regExpiredPenalty, setRegExpiredPenalty] = useState(_init.regExpiredPenalty);
+  const [ageDecayStart, setAgeDecayStart] = useState(_init.ageDecayStart);
+  const [ageDecayRate, setAgeDecayRate] = useState(_init.ageDecayRate);
+  const [ageDecayCap, setAgeDecayCap] = useState(_init.ageDecayCap);
+  const [passScore, setPassScore] = useState(_init.passScore);
+  const [failScore, setFailScore] = useState(_init.failScore);
+  const [oosScore, setOosScore] = useState(_init.oosScore);
+  const [oosPenalty, setOosPenalty] = useState(_init.oosPenalty);
+  const [inspDecay, setInspDecay] = useState(_init.inspDecay);
+  const [inspAgeCap, setInspAgeCap] = useState(_init.inspAgeCap);
+  const [minInspections, setMinInspections] = useState(_init.minInspections);
+  const [movingWeight, setMovingWeight] = useState(_init.movingWeight);
+  const [nonMovingWeight, setNonMovingWeight] = useState(_init.nonMovingWeight);
+  const [criticalPenalty, setCriticalPenalty] = useState(_init.criticalPenalty);
+  const [majorPenalty, setMajorPenalty] = useState(_init.majorPenalty);
+  const [minorPenalty, setMinorPenalty] = useState(_init.minorPenalty);
+  const [violAgeCap, setViolAgeCap] = useState(_init.violAgeCap);
+  const [violDecay, setViolDecay] = useState(_init.violDecay);
+  const [completionWeight, setCompletionWeight] = useState(_init.completionWeight);
+  const [mandatoryBonus, setMandatoryBonus] = useState(_init.mandatoryBonus);
+  const [optionalBonus, setOptionalBonus] = useState(_init.optionalBonus);
+  const [expiryWarning, setExpiryWarning] = useState(_init.expiryWarning);
+  const [expiryPenalty, setExpiryPenalty] = useState(_init.expiryPenalty);
+  const [expiredPenalty, setExpiredPenalty] = useState(_init.expiredPenalty);
+  const [minTrainingHrs, setMinTrainingHrs] = useState(_init.minTrainingHrs);
+  const [followDistPenalty, setFollowDistPenalty] = useState(_init.followDistPenalty);
+  const [laneDevPenalty, setLaneDevPenalty] = useState(_init.laneDevPenalty);
+  const [distractionPenalty, setDistractionPenalty] = useState(_init.distractionPenalty);
+  const [drowsinessPenalty, setDrowsinessPenalty] = useState(_init.drowsinessPenalty);
+  const [maskingPenalty, setMaskingPenalty] = useState(_init.maskingPenalty);
+  const [coachingBonus, setCoachingBonus] = useState(_init.coachingBonus);
+  const [vedrDecay, setVedrDecay] = useState(_init.vedrDecay);
+  const [scoreDropAlert, setScoreDropAlert] = useState(_init.scoreDropAlert);
+  const [criticalAlert, setCriticalAlert] = useState(_init.criticalAlert);
+  const [alertCooldown, setAlertCooldown] = useState(_init.alertCooldown);
+  const [emailAlerts, setEmailAlerts] = useState(_init.emailAlerts);
+  const [inAppAlerts, setInAppAlerts] = useState(_init.inAppAlerts);
+  const [weeklyDigest, setWeeklyDigest] = useState(_init.weeklyDigest);
+  const [autoFlag, setAutoFlag] = useState(_init.autoFlag);
+  const [defaultWindow, setDefaultWindow] = useState(_init.defaultWindow);
+  const [defaultMode, setDefaultMode] = useState(_init.defaultMode);
+  const [defaultDistUnit, setDefaultDistUnit] = useState(_init.defaultDistUnit);
+  const [defaultInterval, setDefaultInterval] = useState(_init.defaultInterval);
+  const [scoreDecimals, setScoreDecimals] = useState(_init.scoreDecimals);
+  const [showPercent, setShowPercent] = useState(_init.showPercent);
+  const [showRankBadges, setShowRankBadges] = useState(_init.showRankBadges);
+  const [showTrendArrows, setShowTrendArrows] = useState(_init.showTrendArrows);
+  const [colorBlindMode, setColorBlindMode] = useState(_init.colorBlindMode);
+
+  // ── SMS / FMCSA Configuration ─────────────────────────────────────────────
+  const [smsFormulaMode, setSmsFormulaMode] = useState<'time' | 'distance'>(_init.smsFormulaMode);
+  const [smsCarrierType, setSmsCarrierType] = useState<'general' | 'hm' | 'passenger'>(_init.smsCarrierType);
+  const [smsCarrierSegment, setSmsCarrierSegment] = useState<'combination' | 'straight'>(_init.smsCarrierSegment);
+  const [smsAvgPU, setSmsAvgPU] = useState(_init.smsAvgPU);
+  const [smsAnnualVmtPerPU, setSmsAnnualVmtPerPU] = useState(_init.smsAnnualVmtPerPU);
+  const [smsLookbackMonths, setSmsLookbackMonths] = useState(_init.smsLookbackMonths);
+  const [smsDecayBand1Pct, setSmsDecayBand1Pct] = useState(_init.smsDecayBand1Pct);
+  const [smsDecayBand2Pct, setSmsDecayBand2Pct] = useState(_init.smsDecayBand2Pct);
+  const [smsDecayBand3Pct, setSmsDecayBand3Pct] = useState(_init.smsDecayBand3Pct);
+  const [smsOosBonus, setSmsOosBonus] = useState(_init.smsOosBonus);
+  const [smsPerInspectionCap, setSmsPerInspectionCap] = useState(_init.smsPerInspectionCap);
+
+  // ── Score Blending ────────────────────────────────────────────────────────
+  const [opWeight,   setOpWeight]   = useState(_init.opWeight);
+  const [regWeight,  setRegWeight]  = useState(_init.regWeight);
+  const [smsBlend,   setSmsBlend]   = useState(_init.smsBlend);
+  const [cvorBlend,  setCvorBlend]  = useState(_init.cvorBlend);
+
+  // ── Persist ALL settings to localStorage whenever any setting changes ────────
+  useEffect(() => {
+    const w = weights.reduce((acc, wt) => ({ ...acc, [wt.key]: wt.value }), {} as Record<string, number>);
+    saveSafetySettings({
+      // SMS / FMCSA
+      smsFormulaMode, smsCarrierType, smsCarrierSegment,
+      smsAvgPU, smsAnnualVmtPerPU, smsLookbackMonths,
+      smsDecayBand1Pct, smsDecayBand2Pct, smsDecayBand3Pct,
+      smsOosBonus, smsPerInspectionCap,
+      // Score Blending
+      opWeight, regWeight, smsBlend, cvorBlend,
+      // Component Weights
+      wAccidents: w.accidents ?? 25, wEld: w.eld ?? 20, wVedr: w.vedr ?? 15,
+      wInspections: w.inspections ?? 20, wViolations: w.violations ?? 10, wTrainings: w.trainings ?? 10,
+      // Rating Thresholds
+      threshExcellent: thresholds.excellent, threshGood: thresholds.good, threshFair: thresholds.fair,
+      // Incident
+      fatalWeight, injuryWeight, propertyWeight, nearMissWeight,
+      recencyDecay, incidentAgeCap, towAwayMult, hazmatMult, atFaultMult,
+      // Driver Rules
+      timeVol, distVol, dateVol, windowDecay, baselineWindow,
+      hosWindow, eldGrace, driverAgeCap, minDrivingDays, noEventBonus,
+      speedThreshold, harshBrakeG, harshAccelG,
+      // Asset
+      activeScore, maintScore, oosStatusScore, mileageCurve,
+      regWarningDays, regExpiredPenalty, ageDecayStart, ageDecayRate, ageDecayCap,
+      // Inspection
+      passScore, failScore, oosScore, oosPenalty, inspDecay, inspAgeCap, minInspections,
+      // Violation
+      movingWeight, nonMovingWeight, criticalPenalty, majorPenalty, minorPenalty, violAgeCap, violDecay,
+      // Training
+      completionWeight, mandatoryBonus, optionalBonus, expiryWarning, expiryPenalty, expiredPenalty, minTrainingHrs,
+      // VEDR
+      followDistPenalty, laneDevPenalty, distractionPenalty, drowsinessPenalty,
+      maskingPenalty, coachingBonus, vedrDecay,
+      // Alerts
+      scoreDropAlert, criticalAlert, alertCooldown, emailAlerts, inAppAlerts, weeklyDigest, autoFlag,
+      // Display
+      defaultWindow, defaultMode, defaultDistUnit, defaultInterval,
+      scoreDecimals, showPercent, showRankBadges, showTrendArrows, colorBlindMode,
+    });
+  }, [
+    weights, smsFormulaMode, smsCarrierType, smsCarrierSegment,
+    smsAvgPU, smsAnnualVmtPerPU, smsLookbackMonths,
+    smsDecayBand1Pct, smsDecayBand2Pct, smsDecayBand3Pct, smsOosBonus, smsPerInspectionCap,
+    opWeight, regWeight, smsBlend, cvorBlend,
+    thresholds, fatalWeight, injuryWeight, propertyWeight, nearMissWeight,
+    recencyDecay, incidentAgeCap, towAwayMult, hazmatMult, atFaultMult,
+    timeVol, distVol, dateVol, windowDecay, baselineWindow,
+    hosWindow, eldGrace, driverAgeCap, minDrivingDays, noEventBonus,
+    speedThreshold, harshBrakeG, harshAccelG,
+    activeScore, maintScore, oosStatusScore, mileageCurve,
+    regWarningDays, regExpiredPenalty, ageDecayStart, ageDecayRate, ageDecayCap,
+    passScore, failScore, oosScore, oosPenalty, inspDecay, inspAgeCap, minInspections,
+    movingWeight, nonMovingWeight, criticalPenalty, majorPenalty, minorPenalty, violAgeCap, violDecay,
+    completionWeight, mandatoryBonus, optionalBonus, expiryWarning, expiryPenalty, expiredPenalty, minTrainingHrs,
+    followDistPenalty, laneDevPenalty, distractionPenalty, drowsinessPenalty,
+    maskingPenalty, coachingBonus, vedrDecay,
+    scoreDropAlert, criticalAlert, alertCooldown, emailAlerts, inAppAlerts, weeklyDigest, autoFlag,
+    defaultWindow, defaultMode, defaultDistUnit, defaultInterval,
+    scoreDecimals, showPercent, showRankBadges, showTrendArrows, colorBlindMode,
+  ]);
 
   const handleReset = () => {
-    setWeights(DEFAULT_WEIGHTS.map(w => ({ ...w })));
-    setThresholds({ excellent: 90, good: 80, fair: 70 });
-    setTimeVol(40); setDistVol(30); setDateVol(28); setWindowDecay(60); setBaselineWindow('12mo');
-    setFleetAverage(78); setFleetBenchmark(75); setIndustryBenchmark(72); setShowFleetAvgOnRadar(true); setShowIndustryBenchmark(false);
-    setFatalWeight(100); setInjuryWeight(60); setPropertyWeight(30); setNearMissWeight(10);
-    setRecencyDecay(20); setIncidentAgeCap(36); setTowAwayMult(1.5); setHazmatMult(2.0); setAtFaultMult(1.8);
-    setHosWindow(70); setEldGrace(5); setDriverAgeCap(3); setMinDrivingDays(30); setNoEventBonus(5); setSpeedThreshold(80); setHarshBrakeG(0.4); setHarshAccelG(0.35);
-    setActiveScore(100); setMaintScore(50); setOosStatusScore(0); setMileageCurve('linear'); setRegWarningDays(60); setRegExpiredPenalty(40); setAgeDecayStart(5); setAgeDecayRate(5); setAgeDecayCap(40);
-    setPassScore(100); setFailScore(40); setOosScore(0); setOosPenalty(20); setInspDecay(15); setInspAgeCap(24); setMinInspections(3);
-    setMovingWeight(70); setNonMovingWeight(30); setCriticalPenalty(25); setMajorPenalty(15); setMinorPenalty(5); setViolAgeCap(24); setViolDecay(10);
-    setCompletionWeight(60); setMandatoryBonus(30); setOptionalBonus(10); setExpiryWarning(30); setExpiryPenalty(15); setExpiredPenalty(35); setMinTrainingHrs(8);
-    setFollowDistPenalty(10); setLaneDevPenalty(8); setDistractionPenalty(15); setDrowsinessPenalty(20); setMaskingPenalty(30); setCoachingBonus(5); setVedrDecay(25);
-    setScoreDropAlert(10); setCriticalAlert(65); setAlertCooldown(7); setEmailAlerts(true); setInAppAlerts(true); setWeeklyDigest(true); setAutoFlag(true);
-    setDefaultWindow('12mo'); setDefaultMode('time'); setDefaultDistUnit('mi'); setDefaultInterval(10000); setScoreDecimals(1); setShowPercent(true); setShowRankBadges(true); setShowTrendArrows(true); setColorBlindMode(false);
+    const d = DEFAULT_SAFETY_SETTINGS;
+    setWeights([
+      { key: 'accidents',   label: 'Accidents',     color: 'bg-red-500',     value: d.wAccidents   },
+      { key: 'eld',         label: 'ELD / HOS',     color: 'bg-blue-500',    value: d.wEld         },
+      { key: 'vedr',        label: 'Camera / VEDR', color: 'bg-purple-500',  value: d.wVedr        },
+      { key: 'inspections', label: 'Inspections',   color: 'bg-emerald-500', value: d.wInspections },
+      { key: 'violations',  label: 'Violations',    color: 'bg-amber-500',   value: d.wViolations  },
+      { key: 'trainings',   label: 'Trainings',     color: 'bg-teal-500',    value: d.wTrainings   },
+    ]);
+    setThresholds({ excellent: d.threshExcellent, good: d.threshGood, fair: d.threshFair });
+    setTimeVol(d.timeVol); setDistVol(d.distVol); setDateVol(d.dateVol);
+    setWindowDecay(d.windowDecay); setBaselineWindow(d.baselineWindow);
+    setFleetAverage(78); setFleetBenchmark(75); setIndustryBenchmark(72);
+    setShowFleetAvgOnRadar(true); setShowIndustryBenchmark(false);
+    setFatalWeight(d.fatalWeight); setInjuryWeight(d.injuryWeight);
+    setPropertyWeight(d.propertyWeight); setNearMissWeight(d.nearMissWeight);
+    setRecencyDecay(d.recencyDecay); setIncidentAgeCap(d.incidentAgeCap);
+    setTowAwayMult(d.towAwayMult); setHazmatMult(d.hazmatMult); setAtFaultMult(d.atFaultMult);
+    setHosWindow(d.hosWindow); setEldGrace(d.eldGrace); setDriverAgeCap(d.driverAgeCap);
+    setMinDrivingDays(d.minDrivingDays); setNoEventBonus(d.noEventBonus);
+    setSpeedThreshold(d.speedThreshold); setHarshBrakeG(d.harshBrakeG); setHarshAccelG(d.harshAccelG);
+    setActiveScore(d.activeScore); setMaintScore(d.maintScore); setOosStatusScore(d.oosStatusScore);
+    setMileageCurve(d.mileageCurve); setRegWarningDays(d.regWarningDays);
+    setRegExpiredPenalty(d.regExpiredPenalty); setAgeDecayStart(d.ageDecayStart);
+    setAgeDecayRate(d.ageDecayRate); setAgeDecayCap(d.ageDecayCap);
+    setPassScore(d.passScore); setFailScore(d.failScore); setOosScore(d.oosScore);
+    setOosPenalty(d.oosPenalty); setInspDecay(d.inspDecay); setInspAgeCap(d.inspAgeCap);
+    setMinInspections(d.minInspections);
+    setMovingWeight(d.movingWeight); setNonMovingWeight(d.nonMovingWeight);
+    setCriticalPenalty(d.criticalPenalty); setMajorPenalty(d.majorPenalty); setMinorPenalty(d.minorPenalty);
+    setViolAgeCap(d.violAgeCap); setViolDecay(d.violDecay);
+    setCompletionWeight(d.completionWeight); setMandatoryBonus(d.mandatoryBonus);
+    setOptionalBonus(d.optionalBonus); setExpiryWarning(d.expiryWarning);
+    setExpiryPenalty(d.expiryPenalty); setExpiredPenalty(d.expiredPenalty);
+    setMinTrainingHrs(d.minTrainingHrs);
+    setFollowDistPenalty(d.followDistPenalty); setLaneDevPenalty(d.laneDevPenalty);
+    setDistractionPenalty(d.distractionPenalty); setDrowsinessPenalty(d.drowsinessPenalty);
+    setMaskingPenalty(d.maskingPenalty); setCoachingBonus(d.coachingBonus); setVedrDecay(d.vedrDecay);
+    setScoreDropAlert(d.scoreDropAlert); setCriticalAlert(d.criticalAlert);
+    setAlertCooldown(d.alertCooldown); setEmailAlerts(d.emailAlerts);
+    setInAppAlerts(d.inAppAlerts); setWeeklyDigest(d.weeklyDigest); setAutoFlag(d.autoFlag);
+    setDefaultWindow(d.defaultWindow); setDefaultMode(d.defaultMode);
+    setDefaultDistUnit(d.defaultDistUnit); setDefaultInterval(d.defaultInterval);
+    setScoreDecimals(d.scoreDecimals); setShowPercent(d.showPercent);
+    setShowRankBadges(d.showRankBadges); setShowTrendArrows(d.showTrendArrows);
+    setColorBlindMode(d.colorBlindMode);
+    setSmsFormulaMode(d.smsFormulaMode); setSmsCarrierType(d.smsCarrierType);
+    setSmsCarrierSegment(d.smsCarrierSegment);
+    setSmsAvgPU(d.smsAvgPU); setSmsAnnualVmtPerPU(d.smsAnnualVmtPerPU);
+    setSmsLookbackMonths(d.smsLookbackMonths);
+    setSmsDecayBand1Pct(d.smsDecayBand1Pct); setSmsDecayBand2Pct(d.smsDecayBand2Pct);
+    setSmsDecayBand3Pct(d.smsDecayBand3Pct);
+    setSmsOosBonus(d.smsOosBonus); setSmsPerInspectionCap(d.smsPerInspectionCap);
+    setOpWeight(d.opWeight); setRegWeight(d.regWeight);
+    setSmsBlend(d.smsBlend); setCvorBlend(d.cvorBlend);
   };
 
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+  const isWeightsValid = totalWeight === 100;
+  const isBlendValid   = opWeight + regWeight === 100;
+  const isSmsValid     = smsBlend + cvorBlend === 100;
+  const canSave        = isWeightsValid && isBlendValid && isSmsValid;
+
+  const handleSave = () => {
+    if (!canSave) return;
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 p-8">
@@ -329,11 +468,25 @@ export function SafetySettingsPage() {
           <button onClick={handleReset} className="bg-white text-slate-700 text-sm font-bold py-2.5 px-4 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-2">
             <RotateCcw className="w-4 h-4" /> Reset
           </button>
-          <button onClick={handleSave} className={`text-sm font-bold py-2.5 px-6 rounded-lg transition-colors flex items-center gap-2 shadow-sm ${saved ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+          <button onClick={handleSave} disabled={!canSave}
+            className={`text-sm font-bold py-2.5 px-6 rounded-lg transition-colors flex items-center gap-2 shadow-sm ${saved ? 'bg-emerald-600 text-white' : canSave ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}>
             <Save className="w-4 h-4" /> {saved ? 'Saved!' : 'Save Settings'}
           </button>
         </div>
       </div>
+
+      {/* Validation banner */}
+      {!canSave && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm font-medium">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            {!isWeightsValid && `Component weights must sum to 100% (currently ${totalWeight}%). `}
+            {!isBlendValid  && `Operational + Regulatory weights must sum to 100% (currently ${opWeight + regWeight}%). `}
+            {!isSmsValid    && `SMS + CVOR blend must sum to 100% (currently ${smsBlend + cvorBlend}%). `}
+            Save is disabled until fixed.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-6">
 
@@ -916,6 +1069,320 @@ export function SafetySettingsPage() {
                 hint="Enable if any team members have color vision deficiency. Patterns + text labels ensure no information is lost for any user.">
                 <Toggle checked={colorBlindMode} onChange={setColorBlindMode} label="Enabled" />
               </Row>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Row 8: SMS / FMCSA Configuration ───────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <SectionTitle icon={Zap} label="SMS / FMCSA Configuration"
+            formula={`Unsafe Driving = Σ(sev × eff_wt) / (avgPU × utilFactor)\nOther BASICs  = Σ(sev × eff_wt) / Σ(eff_wt × relevant_insp)\neff_wt        = time_weight × (1 - decay_pct / 100)`} />
+          <p className="text-[11px] text-slate-400 mb-5">
+            Configure the FMCSA Safety Measurement System (SMS) engine used for BASIC score calculation and XLSX export.
+            These settings apply the custom decay bands on top of the FMCSA time-weight methodology.
+          </p>
+
+          <div className="grid grid-cols-2 gap-x-12">
+            {/* Left column */}
+            <div>
+              <Row label="Formula Mode" desc="Whether BASIC scores use time-based or distance-based event weighting."
+                formula={`time mode: bucket = age_months → weight 3/2/1\ndistance mode: bucket = miles_since → weight 3/2/1`}
+                hint="Time mode matches FMCSA standard. Use Distance mode for fleets where utilization varies widely by mileage rather than time.">
+                <Chips value={smsFormulaMode} onChange={v => setSmsFormulaMode(v as 'time' | 'distance')}
+                  options={[{label:'Time',value:'time'},{label:'Distance',value:'distance'}]} />
+              </Row>
+              <Row label="Carrier Type" desc="FMCSA carrier classification for SMS alert threshold lookup."
+                formula={`alert_pct = FMCSA_THRESHOLDS[carrier_type][basic_key]`}
+                hint="General: most motor carriers. Hazmat: stricter thresholds on HM + CS BASICs. Passenger: strictest thresholds on driving & fitness BASICs.">
+                <Chips value={smsCarrierType} onChange={v => setSmsCarrierType(v as 'general' | 'hm' | 'passenger')}
+                  options={[{label:'General',value:'general'},{label:'Hazmat',value:'hm'},{label:'Passenger',value:'passenger'}]} />
+              </Row>
+              <Row label="Carrier Segment" desc="Combination vs straight-truck segment — affects Utilization Factor denominator."
+                formula={`utilFactor = FMCSA_VMT_TABLE[annualVmtPerPU][segment]`}
+                hint="Combination carriers (18-wheelers) have a higher utilization factor per VMT bracket than straight trucks. Impacts Unsafe Driving BASIC denominator.">
+                <Chips value={smsCarrierSegment} onChange={v => setSmsCarrierSegment(v as 'combination' | 'straight')}
+                  options={[{label:'Combination',value:'combination'},{label:'Straight',value:'straight'}]} />
+              </Row>
+              <Row label="Average Power Units (Avg PU)" desc="Average number of trucks in the fleet during the lookback window."
+                formula={`unsafe_driving_denom = avgPU × utilFactor`}
+                hint="Pull from your carrier snapshot or DOT registration. FMCSA uses monthly average PU count across the lookback window.">
+                <NumInput value={smsAvgPU} onChange={setSmsAvgPU} min={1} max={9999} step={1} suffix="trucks" />
+              </Row>
+              <Row label="Annual VMT per Power Unit" desc="Average annual vehicle miles traveled per truck — determines Utilization Factor tier."
+                formula={`utilFactor = FMCSA_VMT_TABLE[annualVmtPerPU][segment]`}
+                hint="Higher VMT = higher utilization factor, which lowers per-event impact on Unsafe Driving BASIC. FMCSA uses 50k / 100k / 150k / 200k+ stepped tiers.">
+                <NumInput value={smsAnnualVmtPerPU} onChange={setSmsAnnualVmtPerPU} min={1000} max={500000} step={5000} suffix="mi/yr" />
+              </Row>
+              <Row label="Lookback Window" desc="Maximum event age included in BASIC score calculation."
+                formula={`include if age_months ≤ ${smsLookbackMonths} (else excluded, weight = 0)`}
+                hint="FMCSA standard is 24 months. Extending to 30–36 may reveal long-term patterns but deviates from regulatory methodology.">
+                <NumInput value={smsLookbackMonths} onChange={setSmsLookbackMonths} min={12} max={60} step={6} suffix="months" />
+              </Row>
+            </div>
+
+            {/* Right column */}
+            <div>
+              <Row label="Decay Band 0–6 Months" desc="Decay applied to events 0–6 months old. 0% = no decay (FMCSA standard)."
+                formula={`age ∈ [0, 6)  → eff_wt = 3 × (1 - ${smsDecayBand1Pct}/100) = ${(3 * (1 - smsDecayBand1Pct/100)).toFixed(2)}`}
+                hint="Keep at 0% to match FMCSA. Raising this would under-penalize the most recent events relative to the standard methodology.">
+                <SliderNum value={smsDecayBand1Pct} onChange={setSmsDecayBand1Pct} min={0} max={50} step={1} suffix="% decay" />
+              </Row>
+              <Row label="Decay Band 6–12 Months" desc="Decay applied to events 6–12 months old. Custom default: 5%."
+                formula={`age ∈ [6, 12) → eff_wt = 2 × (1 - ${smsDecayBand2Pct}/100) = ${(2 * (1 - smsDecayBand2Pct/100)).toFixed(2)}`}
+                hint="5% provides a mild recency boost beyond raw FMCSA weighting. Increase to 10–20% to more aggressively reward improvement over the past year.">
+                <SliderNum value={smsDecayBand2Pct} onChange={setSmsDecayBand2Pct} min={0} max={50} step={1} suffix="% decay" />
+              </Row>
+              <Row label="Decay Band 12–24 Months" desc="Decay applied to events 12–24 months old. Custom default: 40%."
+                formula={`age ∈ [12, 24) → eff_wt = 1 × (1 - ${smsDecayBand3Pct}/100) = ${(1 * (1 - smsDecayBand3Pct/100)).toFixed(2)}`}
+                hint="40% significantly reduces older event impact. Raising to 50–60% further rewards fleets that have dramatically improved in the past year.">
+                <SliderNum value={smsDecayBand3Pct} onChange={setSmsDecayBand3Pct} min={0} max={80} step={5} suffix="% decay" />
+              </Row>
+              <Row label="OOS Severity Bonus" desc="Additional severity points added when a violation triggers an out-of-service order."
+                formula={`oos_sev = base_sev + oos_bonus\nApplies to: HOS, Veh. Maint., HM Compliance, Driver Fitness`}
+                hint="FMCSA standard OOS bonus is +2 severity points. Raising this further emphasizes OOS violations relative to non-OOS violations of the same category.">
+                <NumInput value={smsOosBonus} onChange={setSmsOosBonus} min={0} max={10} step={1} suffix="pts bonus" />
+              </Row>
+              <Row label="Per-Inspection Severity Cap" desc="Maximum summed severity from a single inspection, applied before time weighting."
+                formula={`capped_sev = min(Σsev_per_insp, ${smsPerInspectionCap})\nApplies to: HOS, VM, CS/Alc, HM, Driver Fitness`}
+                hint="FMCSA caps at 30 to prevent a single catastrophic inspection from dominating the BASIC. Lower = more distributed risk; higher = more single-event sensitivity.">
+                <NumInput value={smsPerInspectionCap} onChange={setSmsPerInspectionCap} min={10} max={100} step={5} suffix="pts cap" />
+              </Row>
+            </div>
+          </div>
+
+          {/* SMS BASIC Alert Thresholds reference table */}
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={14} className="text-amber-500" />
+              <span className="text-xs font-bold text-slate-700">FMCSA BASIC Alert Thresholds</span>
+              <span className="text-[10px] text-slate-400 ml-1">(read-only — defined by FMCSA per carrier type)</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {([
+                { type: 'general' as const, label: 'General Carriers',
+                  thresholds: { 'Unsafe Driving': 65, 'Crash Indicator': 65, 'HOS Compliance': 65, 'Veh. Maintenance': 80, 'CS / Alcohol': 80, 'HM Compliance': 80, 'Driver Fitness': 80 } },
+                { type: 'hm' as const, label: 'Hazmat Carriers',
+                  thresholds: { 'Unsafe Driving': 60, 'Crash Indicator': 60, 'HOS Compliance': 60, 'Veh. Maintenance': 75, 'CS / Alcohol': 75, 'HM Compliance': 80, 'Driver Fitness': 75 } },
+                { type: 'passenger' as const, label: 'Passenger Carriers',
+                  thresholds: { 'Unsafe Driving': 50, 'Crash Indicator': 50, 'HOS Compliance': 50, 'Veh. Maintenance': 65, 'CS / Alcohol': 65, 'HM Compliance': 80, 'Driver Fitness': 65 } },
+              ] as { type: 'general' | 'hm' | 'passenger'; label: string; thresholds: Record<string, number> }[]).map(ct => {
+                const isActive = smsCarrierType === ct.type;
+                return (
+                  <div key={ct.type} className={`rounded-xl border p-3 transition-all ${isActive ? 'border-blue-400 bg-blue-50 shadow-sm' : 'border-slate-200 bg-slate-50'}`}>
+                    <div className={`text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-1.5 ${isActive ? 'text-blue-700' : 'text-slate-500'}`}>
+                      {ct.label}
+                      {isActive && <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[8px] font-bold">ACTIVE</span>}
+                    </div>
+                    {Object.entries(ct.thresholds).map(([basic, threshold]) => (
+                      <div key={basic} className="flex items-center justify-between py-0.5">
+                        <span className="text-[10px] text-slate-600">{basic}</span>
+                        <span className={`text-[10px] font-bold tabular-nums ${threshold <= 65 ? 'text-red-600' : 'text-slate-600'}`}>{threshold}%</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Live decay reference table */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Time Weight Effective Values (current settings)</div>
+                <div className="space-y-1.5">
+                  {[
+                    { label: '0 – 6 months',   baseWt: 3, decay: smsDecayBand1Pct },
+                    { label: '6 – 12 months',  baseWt: 2, decay: smsDecayBand2Pct },
+                    { label: '12 – 24 months', baseWt: 1, decay: smsDecayBand3Pct },
+                  ].map(row => {
+                    const factor = 1 - row.decay / 100;
+                    const eff = row.baseWt * factor;
+                    return (
+                      <div key={row.label} className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-600">{row.label}</span>
+                        <span className="font-mono text-slate-700">
+                          {row.baseWt} × {factor.toFixed(2)} = <strong className="text-blue-700">{eff.toFixed(2)}</strong>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-600">&gt; {smsLookbackMonths} months</span>
+                    <span className="font-bold text-red-500">Excluded (wt 0)</span>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Distance Weight Effective Values (current settings)</div>
+                <div className="space-y-1.5">
+                  {[
+                    { label: '0 – 50,000 mi',   baseWt: 3, decay: smsDecayBand1Pct },
+                    { label: '50k – 150k mi',   baseWt: 2, decay: smsDecayBand2Pct },
+                    { label: '150k – 300k mi',  baseWt: 1, decay: smsDecayBand3Pct },
+                  ].map(row => {
+                    const factor = 1 - row.decay / 100;
+                    const eff = row.baseWt * factor;
+                    return (
+                      <div key={row.label} className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-600">{row.label}</span>
+                        <span className="font-mono text-slate-700">
+                          {row.baseWt} × {factor.toFixed(2)} = <strong className="text-blue-700">{eff.toFixed(2)}</strong>
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-600">&gt; 300,000 mi</span>
+                    <span className="font-bold text-red-500">Excluded (wt 0)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Row 9: Score Blending ────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+            <TrendingUp size={18} className="text-blue-600" />
+            <div>
+              <div className="text-sm font-bold text-slate-800">Fleet Safety Score Blending</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                Controls how Operational sub-scores and Regulatory (SMS + CVOR) scores combine into the main fleet safety score
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-8 px-6 py-5">
+
+            {/* Left: Operational vs Regulatory */}
+            <div>
+              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">
+                Fleet Score Composition
+                <InfoTip hint="Higher Regulatory weight = fleet score is more sensitive to SMS/CVOR performance. Default: 70% Operational, 30% Regulatory."
+                  formula={"Fleet Score = (Operational × opWeight%) + (Regulatory × regWeight%)\nOperational = accidentScore×35% + eldScore×25% + vedrScore×20% + inspScore×20%\nRegulatory = SMS×smsBlend% + CVOR×cvorBlend%"} />
+              </div>
+
+              {/* Preview formula */}
+              <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] font-mono text-slate-600 leading-relaxed">
+                Fleet = <span className="text-blue-700 font-bold">Operational × {opWeight}%</span> + <span className="text-amber-700 font-bold">Regulatory × {regWeight}%</span>
+              </div>
+
+              {/* Operational weight */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Operational Weight</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={0} max={100} value={opWeight}
+                      onChange={e => { const v = Math.max(0, Math.min(100, +e.target.value)); setOpWeight(v); setRegWeight(100 - v); }}
+                      className="w-14 text-xs font-bold text-right border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    <span className="text-xs text-slate-400">%</span>
+                  </div>
+                </div>
+                <input type="range" min={0} max={100} value={opWeight}
+                  onChange={e => { const v = +e.target.value; setOpWeight(v); setRegWeight(100 - v); }}
+                  className="w-full h-2 accent-blue-600 cursor-pointer" />
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                  <span>Accidents · ELD · VEDR · Inspections</span>
+                  <span>{opWeight}%</span>
+                </div>
+              </div>
+
+              {/* Regulatory weight (auto-computed) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-600">Regulatory Weight <span className="text-slate-400 font-normal">(auto)</span></label>
+                  <span className="text-xs font-bold text-amber-700">{regWeight}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-amber-400 rounded-full" style={{ width: `${regWeight}%` }} />
+                </div>
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                  <span>SMS BASIC + CVOR Performance</span>
+                  <span>{regWeight}%</span>
+                </div>
+              </div>
+
+              {/* Stacked bar preview */}
+              <div className="mt-4 flex rounded-lg overflow-hidden h-6 text-[10px] font-bold">
+                <div className="flex items-center justify-center bg-blue-500 text-white transition-all" style={{ width: `${opWeight}%` }}>
+                  {opWeight >= 20 ? `Op ${opWeight}%` : ''}
+                </div>
+                <div className="flex items-center justify-center bg-amber-400 text-white transition-all" style={{ width: `${regWeight}%` }}>
+                  {regWeight >= 15 ? `Reg ${regWeight}%` : ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Right: SMS vs CVOR within Regulatory */}
+            <div>
+              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">
+                Regulatory Score Split
+                <InfoTip hint="Controls how much SMS (FMCSA) vs CVOR (Ontario) influences the regulatory component. Default: 60% SMS, 40% CVOR." />
+              </div>
+
+              {/* Preview formula */}
+              <div className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] font-mono text-slate-600 leading-relaxed">
+                Regulatory = <span className="text-indigo-700 font-bold">SMS × {smsBlend}%</span> + <span className="text-emerald-700 font-bold">CVOR × {cvorBlend}%</span>
+              </div>
+
+              {/* SMS blend */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-600">SMS (FMCSA) Weight</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={0} max={100} value={smsBlend}
+                      onChange={e => { const v = Math.max(0, Math.min(100, +e.target.value)); setSmsBlend(v); setCvorBlend(100 - v); }}
+                      className="w-14 text-xs font-bold text-right border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    <span className="text-xs text-slate-400">%</span>
+                  </div>
+                </div>
+                <input type="range" min={0} max={100} value={smsBlend}
+                  onChange={e => { const v = +e.target.value; setSmsBlend(v); setCvorBlend(100 - v); }}
+                  className="w-full h-2 accent-indigo-600 cursor-pointer" />
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                  <span>7 BASICs · time or distance weighted</span>
+                  <span>{smsBlend}%</span>
+                </div>
+              </div>
+
+              {/* CVOR blend (auto) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-600">CVOR (Ontario) Weight <span className="text-slate-400 font-normal">(auto)</span></label>
+                  <span className="text-xs font-bold text-emerald-700">{cvorBlend}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${cvorBlend}%` }} />
+                </div>
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                  <span>Collisions · Convictions · Inspections (24 mo)</span>
+                  <span>{cvorBlend}%</span>
+                </div>
+              </div>
+
+              {/* Stacked bar preview */}
+              <div className="mt-4 flex rounded-lg overflow-hidden h-6 text-[10px] font-bold">
+                <div className="flex items-center justify-center bg-indigo-500 text-white transition-all" style={{ width: `${smsBlend}%` }}>
+                  {smsBlend >= 20 ? `SMS ${smsBlend}%` : ''}
+                </div>
+                <div className="flex items-center justify-center bg-emerald-400 text-white transition-all" style={{ width: `${cvorBlend}%` }}>
+                  {cvorBlend >= 15 ? `CVOR ${cvorBlend}%` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Live formula preview */}
+          <div className="px-6 py-3 border-t border-slate-100 bg-slate-50">
+            <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">Live Formula Preview</div>
+            <div className="text-[11px] font-mono text-slate-700 leading-relaxed">
+              Fleet Score = (Op × <span className="text-blue-700 font-bold">{opWeight}%</span>) + ((<span className="text-indigo-700 font-bold">SMS × {smsBlend}%</span> + <span className="text-emerald-700 font-bold">CVOR × {cvorBlend}%</span>) × <span className="text-amber-700 font-bold">{regWeight}%</span>)
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">
+              Settings are saved automatically and reflected on the Safety Dashboard.
             </div>
           </div>
         </div>
