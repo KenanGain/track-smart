@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type ComponentType } from 'reac
 import {
   AlertCircle,
   AlertTriangle,
+  AlertOctagon,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -265,14 +266,17 @@ function DefectDetailTable({
   tone,
   rows,
   emptyMessage,
+  vehicleLabels = [],
 }: {
   title: string;
   tone: 'red' | 'amber';
   rows: CvsaDefectRow[];
   emptyMessage: string;
+  vehicleLabels?: (string | null)[];
 }) {
   const borderClass = tone === 'red' ? 'border-red-100' : 'border-amber-100';
   const headerClass = tone === 'red' ? 'text-red-600 bg-red-50/60' : 'text-amber-600 bg-amber-50/60';
+  const POSITION_LABELS = ['Truck', 'Trl 1', 'Trl 2', 'Trl 3', 'Dolly', 'Trl 4', 'Trl 5'];
 
   return (
     <div className={`rounded-lg border bg-white ${borderClass}`}>
@@ -285,9 +289,18 @@ function DefectDetailTable({
           <thead className={headerClass}>
             <tr>
               <th className="px-3 py-2 text-left font-bold uppercase tracking-wider text-slate-500">Defect Category / Description</th>
-              {Array.from({ length: 7 }, (_, index) => (
-                <th key={index} className="px-3 py-2 text-center font-bold uppercase tracking-wider text-slate-500">{index + 1}</th>
-              ))}
+              {Array.from({ length: 7 }, (_, index) => {
+                const assetLabel = vehicleLabels[index];
+                return (
+                  <th key={index} className="px-2 py-2 text-center font-bold uppercase tracking-wider text-slate-500">
+                    <div>{index + 1}</div>
+                    <div className="text-[9px] font-normal normal-case tracking-normal text-slate-400 mt-0.5">{POSITION_LABELS[index]}</div>
+                    {assetLabel && (
+                      <div className="text-[9px] font-bold text-slate-600 font-mono normal-case tracking-normal mt-0.5">{assetLabel}</div>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -475,6 +488,8 @@ export function NscCvsaInspections() {
     code: string; description: string; severity: 'Minor' | 'Major' | 'OOS';
     isOOS: boolean; docId: string;
   } | null>(null);
+  // key = `${rowId}-${violIdx}` for per-violation expand in occurrence summary
+  const [expandedViolationKey, setExpandedViolationKey] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [columns, setColumns] = useState<ColumnDef[]>(DEFAULT_COLUMNS);
@@ -897,6 +912,45 @@ export function NscCvsaInspections() {
                       })}
                     </div>
 
+                    {/* ── Violation ↔ Inspection relationship strip ── */}
+                    {totalDefects > 0 && (() => {
+                      const cats = new Map<string, { label: string; isOos: boolean; riskLevel: string; nscSection: string; pts: number }>();
+                      const processDefect = (d: string, isOos: boolean) => {
+                        const prefix = d.split(' - ')[0]?.trim() ?? '';
+                        const nscCode = DEFECT_TO_NSC[prefix];
+                        const sys = nscCode ? NSC_CODE_TO_SYSTEM[nscCode] : undefined;
+                        if (sys) {
+                          const base = sys.riskLevel === 'High' ? 3 : sys.riskLevel === 'Medium' ? 2 : 1;
+                          const bonus = isOos ? 1 : 0;
+                          const key = sys.category + (isOos ? '_oos' : '_req');
+                          const ex = cats.get(key);
+                          if (!ex) {
+                            cats.set(key, { label: sys.categoryLabel, isOos, riskLevel: sys.riskLevel, nscSection: sys.nscSection ?? '', pts: base + bonus });
+                          } else {
+                            cats.set(key, { ...ex, pts: ex.pts + base + bonus });
+                          }
+                        }
+                      };
+                      (row.details?.oos ?? []).forEach(d => processDefect(d, true));
+                      (row.details?.req ?? []).forEach(d => processDefect(d, false));
+                      const items = Array.from(cats.values());
+                      if (items.length === 0) return null;
+                      return (
+                        <div className="hidden md:flex items-center gap-2 px-5 pb-2.5 flex-wrap cursor-pointer" onClick={() => row.details && setExpandedRow(isExpanded ? null : row.id)}>
+                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mr-1">NSC Violation Categories:</span>
+                          {items.map((item, i) => (
+                            <span key={i} className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.isOos ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.isOos ? 'bg-red-500' : 'bg-amber-500'}`} />
+                              {item.label}
+                              {item.isOos && <span className="bg-red-200/60 text-red-800 text-[8px] font-black px-1 rounded ml-0.5">OOS</span>}
+                              {item.nscSection && <span className="text-[8px] text-slate-400 font-normal">{item.nscSection}</span>}
+                              {item.pts > 0 && <span className="text-[8px] font-black opacity-60">{item.pts}pt</span>}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     <div
                       className="md:hidden px-4 py-4 space-y-3 cursor-pointer"
                       onClick={() => row.details && setExpandedRow(isExpanded ? null : row.id)}
@@ -1105,7 +1159,9 @@ export function NscCvsaInspections() {
                             <div className="bg-white border border-slate-200 rounded-lg shadow-sm h-full overflow-hidden">
                               {/* Power unit header */}
                               <div className="px-3 py-2.5 border-b border-slate-100">
-                                <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Truck</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Truck</div>
+                                </div>
                                 <div className="text-sm font-semibold text-slate-900 font-mono">{row.primaryVehicle.unitNumber}</div>
                                 <div className="text-xs text-slate-500">Asset ID: {row.primaryVehicle.assetId ?? 'unlinked'}</div>
                               </div>
@@ -1235,80 +1291,217 @@ export function NscCvsaInspections() {
                         </div>
 
                         {/* ── 4. Defect tables by vehicle position ── */}
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                          <DefectDetailTable title="Out of Service"    tone="red"   rows={oosRows} emptyMessage="No out of service defects on this inspection." />
-                          <DefectDetailTable title="Requires Attention" tone="amber" rows={reqRows} emptyMessage="No requires attention defects on this inspection." />
-                        </div>
+                        {(() => {
+                          const vLabels: (string | null)[] = [
+                            row.primaryVehicle.unitNumber ?? null,
+                            row.trailerLink ? (row.trailerLink.unitNumber ?? row.trailerLink.plate ?? null) : null,
+                            null, null, null, null, null,
+                          ];
+                          return (
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                              <DefectDetailTable title="Out of Service"    tone="red"   rows={oosRows} emptyMessage="No out of service defects on this inspection." vehicleLabels={vLabels} />
+                              <DefectDetailTable title="Requires Attention" tone="amber" rows={reqRows} emptyMessage="No requires attention defects on this inspection." vehicleLabels={vLabels} />
+                            </div>
+                          );
+                        })()}
 
-                        {/* ── 5. Detailed violations table ── */}
-                        {allViolations.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-wider">
-                              <FileText size={13} className="text-slate-400" /> Detailed Violations — {getDocType(row.doc).label} {row.doc}
-                            </h4>
-                            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-x-auto">
-                              <table className="w-full text-left text-sm">
-                                <thead className="bg-white border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                  <tr>
-                                    <th className="px-4 py-3">CCMTA Code</th>
-                                    <th className="px-4 py-3">Category</th>
-                                    <th className="px-4 py-3">Description</th>
-                                    <th className="px-4 py-3 text-center">Risk Level</th>
-                                    <th className="px-4 py-3 text-center">Severity</th>
-                                    <th className="px-4 py-3 text-center">OOS</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {allViolations.map((v, i) => {
-                                    const sys = NSC_CODE_TO_SYSTEM[v.code];
-                                    const riskPct = sys?.riskLevel === 'High' ? 85 : sys?.riskLevel === 'Medium' ? 45 : 15;
-                                    const riskColor = sys?.riskLevel === 'High' ? 'bg-red-500' : sys?.riskLevel === 'Medium' ? 'bg-amber-400' : 'bg-emerald-400';
-                                    const riskText  = sys?.riskLevel === 'High' ? 'text-red-700' : sys?.riskLevel === 'Medium' ? 'text-amber-700' : 'text-slate-600';
-                                    return (
-                                      <tr key={i} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => setSelectedViolation({ ...v, docId: row.doc })} title="Click to view violation details">
-                                        <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{v.code}</td>
-                                        <td className="px-4 py-3.5 text-slate-700">
-                                          {sys ? (
-                                            <div>
-                                              <div className="font-medium text-slate-800">{sys.categoryLabel}</div>
-                                              <div className="text-[10px] text-blue-400 font-medium mt-0.5">{sys.violationGroup}</div>
-                                            </div>
-                                          ) : <span className="text-slate-400">—</span>}
-                                        </td>
-                                        <td className="px-4 py-3.5">
-                                          <div className="font-medium text-slate-800 leading-snug">{v.description}</div>
-                                        </td>
-                                        <td className="px-4 py-3.5">
-                                          {sys ? (
-                                            <div className="flex flex-col items-center gap-1 min-w-[90px]">
-                                              <span className={`text-xs font-bold ${riskText}`}>{sys.riskLevel.toUpperCase()} RISK {riskPct}%</span>
-                                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                                <div className={`h-full rounded-full ${riskColor}`} style={{ width: `${riskPct}%` }} />
+                        {/* ── 5. Violation Occurrence Summary ── */}
+                        {allViolations.length > 0 && (() => {
+                          const totalPoints = allViolations.reduce((sum, v) => {
+                            const sys = NSC_CODE_TO_SYSTEM[v.code];
+                            const base = sys?.riskLevel === 'High' ? 3 : sys?.riskLevel === 'Medium' ? 2 : 1;
+                            return sum + base + (v.isOOS ? 1 : 0);
+                          }, 0);
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-wider">
+                                  <FileText size={13} className="text-slate-400" /> Violation Occurrence Summary — {getDocType(row.doc).label} {row.doc}
+                                </h4>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{allViolations.length} Violations</span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${totalPoints >= 8 ? 'bg-red-50 text-red-700 border-red-200' : totalPoints >= 4 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                    {totalPoints} pts total
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                                {/* Column headers */}
+                                <div className="grid grid-cols-[80px_1fr_130px_56px_140px_160px_32px] px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider gap-3">
+                                  <span>Date</span>
+                                  <span>Document / Violation</span>
+                                  <span className="text-center">Severity / Pts</span>
+                                  <span className="text-center">Jur</span>
+                                  <span>Vehicle</span>
+                                  <span>Driver</span>
+                                  <span/>
+                                </div>
+                                {allViolations.map((v, i) => {
+                                  const sys = NSC_CODE_TO_SYSTEM[v.code];
+                                  const vKey = `${row.id}-${i}`;
+                                  const isVExp = expandedViolationKey === vKey;
+                                  const pts = (sys?.riskLevel === 'High' ? 3 : sys?.riskLevel === 'Medium' ? 2 : 1) + (v.isOOS ? 1 : 0);
+                                  const sevCls = v.severity === 'OOS' ? 'bg-red-50 text-red-700 border-red-200' : v.severity === 'Major' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200';
+                                  const riskBg = sys?.riskLevel === 'High' ? 'bg-red-50/70 border-red-200' : sys?.riskLevel === 'Medium' ? 'bg-amber-50/70 border-amber-200' : 'bg-slate-50 border-slate-200';
+                                  const riskBadge = sys?.riskLevel === 'High' ? 'bg-red-600 text-white' : sys?.riskLevel === 'Medium' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white';
+                                  const riskIcon = sys?.riskLevel === 'High' ? 'text-red-600' : sys?.riskLevel === 'Medium' ? 'text-amber-600' : 'text-slate-500';
+                                  const driverName = driver?.name ?? row.driverLink.driverName;
+                                  const driverId   = driver?.id   ?? row.driverLink.driverId;
+                                  const licNo      = primaryLic?.licenseNumber ?? (driver as any)?.licenseNumber ?? '—';
+                                  const unitNo     = asset?.unitNumber ?? row.primaryVehicle.unitNumber ?? row.plate;
+                                  const plateNo    = asset?.plateNumber ?? row.plate;
+                                  return (
+                                    <div key={i} className="border-b border-slate-100 last:border-0">
+                                      {/* Summary row */}
+                                      <div
+                                        className="grid grid-cols-[80px_1fr_130px_56px_140px_160px_32px] px-4 py-3 hover:bg-slate-50/60 cursor-pointer items-center gap-3 transition-colors"
+                                        onClick={() => setExpandedViolationKey(isVExp ? null : vKey)}
+                                      >
+                                        <div>
+                                          <div className="text-xs font-bold text-slate-800 leading-tight">{row.date}</div>
+                                          <div className="text-[9px] text-slate-400 mt-0.5">#{i + 1}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-bold font-mono text-slate-700">{row.doc}</div>
+                                          <div className="text-[11px] text-slate-500 mt-0.5 truncate">{v.description}</div>
+                                        </div>
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${sevCls}`}>{v.severity}</span>
+                                          <span className="text-[10px] font-black bg-slate-800 text-white px-1.5 py-0.5 rounded tabular-nums">{pts}pt</span>
+                                        </div>
+                                        <div className="flex justify-center">
+                                          <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">{row.jur}</span>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-mono font-semibold text-slate-700 truncate">{unitNo}</div>
+                                          <div className="text-[10px] text-slate-400 font-mono">{plateNo}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-slate-700 truncate">{driverName}</div>
+                                          <div className="text-[10px] text-slate-400 font-mono">{driverId}</div>
+                                        </div>
+                                        <div className="flex justify-center">
+                                          <ChevronDown size={14} className={`text-slate-400 transition-transform ${isVExp ? 'rotate-180' : ''}`} />
+                                        </div>
+                                      </div>
+
+                                      {/* Expanded detail */}
+                                      {isVExp && (
+                                        <div className="px-4 pb-4 pt-3 bg-slate-50/50 border-t border-slate-100 space-y-3 animate-in slide-in-from-top-1 duration-150">
+
+                                          {/* ── Info cards ── */}
+                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            {/* Date / Time / Location */}
+                                            <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-1">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1.5"><Info size={10}/>Date / Time / Location</div>
+                                              <div className="text-sm font-semibold text-slate-800">{row.date}{row.details?.time ? ` · ${row.details.time}` : ''}</div>
+                                              <div className="text-xs text-slate-500">{row.details?.location ?? row.jur}</div>
+                                              <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-100 mt-1">
+                                                <span className="font-bold uppercase tracking-wide">Officer Notes:</span> —
                                               </div>
                                             </div>
-                                          ) : null}
-                                        </td>
-                                        <td className="px-4 py-3.5 text-center">
-                                          <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${
-                                            v.severity === 'OOS'   ? 'bg-red-50 text-red-700 border-red-200' :
-                                            v.severity === 'Major' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                            'bg-slate-100 text-slate-600 border-slate-200'
-                                          }`}>{v.severity}</span>
-                                        </td>
-                                        <td className="px-4 py-3.5 text-center">
-                                          {v.isOOS
-                                            ? <span className="font-bold text-red-600 text-sm">YES</span>
-                                            : <span className="text-slate-400">—</span>
-                                          }
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
+                                            {/* Issuing Agency */}
+                                            <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-1">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1.5"><ShieldAlert size={10}/>Issuing Agency</div>
+                                              <div className="text-sm font-semibold text-slate-800 leading-snug">{row.details?.agency ?? 'Agency not listed'}</div>
+                                              {row.details?.dateEntered && (
+                                                <div className="text-[10px] text-slate-400">Entered: {row.details.dateEntered}</div>
+                                              )}
+                                              <div className="text-[10px] text-slate-400">Jurisdiction: <span className="font-bold text-slate-700">{row.jur}</span></div>
+                                            </div>
+                                            {/* Driver / Vehicle */}
+                                            <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-1">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1.5"><User size={10}/>Driver / Vehicle</div>
+                                              <div className="text-sm font-semibold text-slate-800">{driverName}</div>
+                                              <div className="text-[10px] text-slate-500">
+                                                ID: <span className="font-mono">{driverId}</span>
+                                              </div>
+                                              <div className="text-[10px] text-slate-500">
+                                                Licence: <span className="font-mono font-bold">{licNo}</span>
+                                              </div>
+                                              <div className="border-t border-slate-100 mt-1.5 pt-1.5 text-[10px] text-slate-600 font-mono space-y-0.5">
+                                                <div className="font-semibold text-slate-800">{unitNo}{asset ? ` · ${asset.year} ${asset.make} ${asset.model}` : ''}</div>
+                                                <div>Plate: {plateNo}</div>
+                                                {asset?.vin && <div className="text-[9px] text-slate-400 truncate">VIN: {asset.vin}</div>}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* ── Legislative Reference ── */}
+                                          <div className="bg-white border border-slate-200 rounded-lg p-3">
+                                            <div className="flex items-center justify-between mb-3">
+                                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Legislative Reference</div>
+                                              <div className="flex items-center gap-2">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${sevCls}`}>{v.severity?.toUpperCase()}</span>
+                                                <span className="text-[10px] font-black bg-slate-800 text-white px-2 py-0.5 rounded">{pts} pts</span>
+                                              </div>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-3 mb-2.5">
+                                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">NSC / CCMTA Code</span>
+                                              <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{v.code}</span>
+                                              <span className="text-sm text-slate-600 uppercase tracking-wide">{v.description}</span>
+                                            </div>
+                                            {sys?.nscSection && (
+                                              <div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Act / Section</div>
+                                                <div className="bg-blue-50 border border-blue-100 rounded px-3 py-2 text-sm text-slate-700">
+                                                  {sys.nscSection} — {sys.violationGroup}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* ── System Violation Risk Matrix ── */}
+                                          {sys && (
+                                            <div className={`rounded-lg border p-3 ${riskBg}`}>
+                                              <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-1.5">
+                                                  <AlertOctagon size={13} className={riskIcon} />
+                                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">System Violation Risk Matrix</span>
+                                                </div>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${riskBadge}`}>{sys.riskLevel.toUpperCase()} RISK</span>
+                                              </div>
+                                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                <div>
+                                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">System Category</div>
+                                                  <div className="text-sm font-semibold text-slate-800">{sys.categoryLabel}</div>
+                                                </div>
+                                                <div>
+                                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Violation Group</div>
+                                                  <div className="text-sm font-semibold text-slate-800">{sys.violationGroup}</div>
+                                                </div>
+                                                <div>
+                                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">NSC Section</div>
+                                                  <div className="text-xs text-slate-700 font-medium">{sys.nscSection ?? '—'}</div>
+                                                </div>
+                                                <div>
+                                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Severity Score</div>
+                                                  <div className="flex items-baseline gap-1">
+                                                    <span className="text-2xl font-black text-slate-900">{pts}</span>
+                                                    <span className="text-[10px] text-slate-400">/ 4 pts max</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <div className="mt-2.5 pt-2.5 border-t border-slate-200/60 flex items-center gap-3 text-[10px] text-slate-500">
+                                                <span>Category Key: <span className="font-mono font-bold text-slate-700 bg-white/70 px-1.5 py-0.5 rounded border border-slate-200 inline-block">{sys.category}</span></span>
+                                                {v.isOOS && <span className="font-bold text-red-700">+ 1 OOS bonus point</span>}
+                                              </div>
+                                              {sys.oosEligible && (
+                                                <div className="mt-2 pt-2 border-t border-red-200 text-[10px] text-red-600 font-semibold flex items-center gap-1">
+                                                  <AlertOctagon size={10} /> OOS eligible — vehicle may be placed out of service for this violation
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                       </div>
                     );

@@ -1,1211 +1,1144 @@
 import React, { useState, useMemo } from 'react';
 import {
-    Search, Download, Plus, ChevronLeft, ChevronRight,
-    AlertTriangle, LayoutGrid,
-    FileWarning, ShieldAlert, Ban,
-    X, Edit3, Flag, Info,
-    ArrowUpDown, ArrowUp, ArrowDown,
-    DollarSign, Gavel, Truck, User, MapPin,
-    ClipboardList
+  Search, Download, Plus, ChevronLeft, ChevronRight,
+  AlertTriangle, LayoutGrid, FileWarning, Ban, Clock,
+  DollarSign, MapPin, Activity, ChevronDown, ChevronUp,
+  X, Users, Truck, List,
 } from 'lucide-react';
-import { MOCK_VIOLATION_RECORDS, type ViolationRecord, getViolation } from './violations-list.data';
-import { MOCK_ASSET_VIOLATION_RECORDS, type AssetViolationRecord } from './asset-violations.data';
+import { MOCK_VIOLATION_RECORDS, getViolation, ALL_VIOLATIONS } from './violations-list.data';
+import { violationDetailsData, parseCcmtaCode, NSC_VIOLATION_CATALOG } from '../inspections/NscAnalysis';
+import { NSC_CODE_TO_SYSTEM } from '../inspections/nscInspectionsData';
+import { inspectionsData } from '../inspections/inspectionsData';
+import { MOCK_ASSET_VIOLATION_RECORDS, getAssetViolationDef } from './asset-violations.data';
 import { ViolationEditForm } from './ViolationEditForm';
 
-// ─── System UI Primitives ──────────────────────────────────────────────────────
+// ─── cn helper ────────────────────────────────────────────────────────────────
+const cn = (...classes: (string | boolean | undefined | null)[]) =>
+  classes.filter(Boolean).join(' ');
 
-const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
+// ─── UnifiedViolation Interface ───────────────────────────────────────────────
+interface UnifiedViolation {
+  id: string;
+  source: 'SMS' | 'NSC' | 'CVOR';
+  date: string;
+  time: string;
+  driverName: string;
+  driverId: string;
+  vehicleUnit: string;
+  vehiclePlate: string;
+  code: string;
+  description: string;
+  category: string;
+  group: string;
+  riskLevel: 'High' | 'Medium' | 'Low';
+  crashLikelihoodPercent: number;
+  maintenanceProbability: number;
+  isOos: boolean;
+  driverPts: number;
+  assetPts: number;
+  carrierPts: number;
+  severity: string;
+  fineAmount: number;
+  expenseAmount: number;
+  currency: 'USD' | 'CAD';
+  result: string;
+  status: 'Open' | 'Closed' | 'Under Review';
+  location: string;
+  locationState: string;
+  locationCountry: string;
+  inspectionId: string;
+  regulatoryRef: string;
+  notes: string;
+}
 
-const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }>(
-    ({ className, variant = 'default', size = 'default', ...props }, ref) => {
-        const variants: Record<string, string> = {
-            default:  'bg-[#2563EB] text-white hover:bg-blue-700 shadow-sm border border-transparent',
-            outline:  'border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-medium',
-            ghost:    'hover:bg-slate-100 text-slate-500 hover:text-slate-900',
-        };
-        const sizes: Record<string, string> = {
-            default: 'h-9 px-4 py-2',
-            sm:      'h-8 px-3 text-xs',
-            icon:    'h-8 w-8',
-        };
-        return (
-            <button
-                ref={ref}
-                className={cn(
-                    'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]',
-                    variants[variant],
-                    sizes[size],
-                    className
-                )}
-                {...props}
-            />
-        );
+// ─── Build SMS violations ─────────────────────────────────────────────────────
+const smsViolations: UnifiedViolation[] = MOCK_VIOLATION_RECORDS.map(record => {
+  const def = getViolation(record.violationDataId);
+  const rl: 'High' | 'Medium' | 'Low' =
+    record.driverRiskCategory === 1 ? 'High' :
+    record.driverRiskCategory === 2 ? 'Medium' : 'Low';
+  const cl = Math.min(record.crashLikelihood, 100);
+  return {
+    id: record.id,
+    source: 'SMS',
+    date: record.date,
+    time: record.time,
+    driverName: record.driverName,
+    driverId: record.driverId,
+    vehicleUnit: record.assetName || '—',
+    vehiclePlate: '—',
+    code: record.violationCode,
+    description: record.violationType,
+    category: record.violationGroup,
+    group: record.violationGroup,
+    riskLevel: rl,
+    crashLikelihoodPercent: cl,
+    maintenanceProbability: Math.round(cl * 0.45),
+    isOos: record.isOos,
+    driverPts: def?.severityWeight?.driver ?? 0,
+    assetPts: 0,
+    carrierPts: def?.severityWeight?.carrier ?? 0,
+    severity: record.isOos ? 'OOS' :
+      record.driverRiskCategory === 1 ? 'Critical' :
+      record.driverRiskCategory === 2 ? 'Serious' : 'Moderate',
+    fineAmount: record.fineAmount,
+    expenseAmount: record.expenseAmount ?? 0,
+    currency: record.currency,
+    result: record.result,
+    status: record.status,
+    location: [record.locationCity, record.locationState].filter(Boolean).join(', ') || record.locationState,
+    locationState: record.locationState,
+    locationCountry: record.locationCountry || 'US',
+    inspectionId: record.inspectionId || '',
+    regulatoryRef: record.violationCode,
+    notes: '',
+  };
+});
+
+// ─── Build NSC violations ─────────────────────────────────────────────────────
+const NSC_DRIVER_CATS = new Set(['driver_fitness', 'hours_of_service', 'unsafe_driving']);
+
+const nscViolations: UnifiedViolation[] = violationDetailsData.map(v => {
+  const numCode = parseCcmtaCode(v.ccmtaCode);
+  const catalog = NSC_VIOLATION_CATALOG[numCode];
+  const sys = NSC_CODE_TO_SYSTEM[numCode];
+  const sev = v.severity ?? catalog?.severity ?? 'Minor';
+  const rl: 'High' | 'Medium' | 'Low' =
+    sys?.riskLevel === 'High' ? 'High' :
+    sys?.riskLevel === 'Medium' ? 'Medium' : 'Low';
+  const pts = rl === 'High' ? 3 : rl === 'Medium' ? 2 : 1;
+  const isDriverCat = sys ? NSC_DRIVER_CATS.has(sys.category) : false;
+
+  return {
+    id: `NSC-${v.id}`,
+    source: 'NSC',
+    date: v.date,
+    time: v.time || '00:00',
+    driverName: v.driver,
+    driverId: '',
+    vehicleUnit: v.vehicle,
+    vehiclePlate: v.commodity,
+    code: numCode || v.ccmtaCode,
+    description: catalog?.description ?? v.description,
+    category: sys?.categoryLabel ?? v.actSection ?? 'NSC Violation',
+    group: sys?.violationGroup ?? catalog?.group ?? 'NSC',
+    riskLevel: rl,
+    crashLikelihoodPercent: rl === 'High' ? 75 : rl === 'Medium' ? 45 : 20,
+    maintenanceProbability:
+      sys?.category === 'vehicle_maintenance'
+        ? rl === 'High' ? 70 : rl === 'Medium' ? 45 : 25
+        : 15,
+    isOos: sev === 'OOS',
+    driverPts: isDriverCat ? pts : 0,
+    assetPts: !isDriverCat ? pts : 0,
+    carrierPts: pts,
+    severity: sev,
+    fineAmount: 0,
+    expenseAmount: 0,
+    currency: 'CAD',
+    result: sev === 'OOS' ? 'OOS Order' : 'Citation Issued',
+    status: 'Closed',
+    location: v.location,
+    locationState: v.jurisdiction,
+    locationCountry: 'CA',
+    inspectionId: v.document,
+    regulatoryRef: v.actSection,
+    notes: v.text || '',
+  };
+});
+
+// ─── Build CVOR violations ────────────────────────────────────────────────────
+const CVOR_DRIVER_CATS = new Set(['Unsafe Driving', 'Hours of Service', 'Driver Fitness', 'Controlled Substances']);
+
+const cvorViolations: UnifiedViolation[] = inspectionsData
+  .filter((r: any) => r.state === 'ON' && !r.isClean)
+  .flatMap((insp: any) => {
+    const locRaw = insp.location;
+    const locStr = locRaw
+      ? typeof locRaw === 'object'
+        ? `${locRaw.city}, ${locRaw.province}`
+        : locRaw
+      : insp.state;
+
+    const plate = insp.units?.[0]?.license || insp.vehiclePlate || '—';
+
+    return (insp.violations ?? []).map((v: any) => {
+      const rl: 'High' | 'Medium' | 'Low' =
+        (v.driverRiskCategory === 1 || (v.crashLikelihoodPercent ?? 0) >= 65) ? 'High' :
+        (v.driverRiskCategory === 2 || (v.crashLikelihoodPercent ?? 0) >= 35) ? 'Medium' : 'Low';
+      const cl = v.crashLikelihoodPercent ??
+        (v.driverRiskCategory === 1 ? 82 : v.driverRiskCategory === 2 ? 52 : 22);
+      const isDrv = CVOR_DRIVER_CATS.has(v.category);
+      const sev =
+        typeof v.severity === 'number'
+          ? v.severity >= 5 ? 'Critical' : v.severity >= 3 ? 'Serious' : 'Moderate'
+          : v.oos ? 'OOS' : 'Moderate';
+
+      return {
+        id: `CVOR-${insp.id}-${v.code.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        source: 'CVOR' as const,
+        date: insp.date,
+        time: insp.startTime || '00:00',
+        driverName: insp.driver?.split(',')[0] ?? '—',
+        driverId: insp.driverId ?? '',
+        vehicleUnit: plate,
+        vehiclePlate: plate,
+        code: v.code,
+        description: v.description,
+        category: v.category,
+        group: v.subDescription || v.category,
+        riskLevel: rl,
+        crashLikelihoodPercent: Math.min(cl, 100),
+        maintenanceProbability: !isDrv
+          ? (rl === 'High' ? 68 : rl === 'Medium' ? 42 : 22)
+          : 12,
+        isOos: !!v.oos,
+        driverPts: isDrv ? (v.points ?? 0) : 0,
+        assetPts: !isDrv ? (v.points ?? 0) : 0,
+        carrierPts: v.points ?? 0,
+        severity: sev,
+        fineAmount: 0,
+        expenseAmount: 0,
+        currency: 'CAD' as const,
+        result: v.oos ? 'OOS Order' : 'Citation Issued',
+        status: 'Closed' as const,
+        location: locStr,
+        locationState: insp.state,
+        locationCountry: 'CA',
+        inspectionId: insp.id,
+        regulatoryRef: v.code,
+        notes: '',
+      } as UnifiedViolation;
     });
-Button.displayName = 'Button';
+  });
 
-const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-    ({ className, ...props }, ref) => (
-        <input
-            className={cn(
-                'flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm font-normal transition-all placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5',
-                className
-            )}
-            ref={ref}
-            {...props}
-        />
-    ));
-Input.displayName = 'Input';
+// ─── Build Asset violations ───────────────────────────────────────────────────
+const assetUnifiedViolations: UnifiedViolation[] = MOCK_ASSET_VIOLATION_RECORDS.map(record => {
+  const def = getAssetViolationDef(record.violationDefId);
+  const rl: 'High' | 'Medium' | 'Low' =
+    record.crashLikelihoodPercent >= 65 ? 'High' :
+    record.crashLikelihoodPercent >= 35 ? 'Medium' : 'Low';
+  return {
+    id: `ASSET-${record.id}`,
+    source: 'SMS' as const,
+    date: record.date,
+    time: record.time,
+    driverName: record.linkedDriverName || '—',
+    driverId: record.linkedDriverId || '',
+    vehicleUnit: record.assetUnitNumber,
+    vehiclePlate: record.assetPlate,
+    code: record.violationCode,
+    description: def?.description ?? record.violationType,
+    category: record.violationCategory,
+    group: record.violationCategory,
+    riskLevel: rl,
+    crashLikelihoodPercent: record.crashLikelihoodPercent,
+    maintenanceProbability: rl === 'High' ? 72 : rl === 'Medium' ? 45 : 20,
+    isOos: record.isOos,
+    driverPts: 0,
+    assetPts: record.severity === 'Critical' ? 3 : record.severity === 'Serious' ? 2 : 1,
+    carrierPts: record.severity === 'Critical' ? 3 : record.severity === 'Serious' ? 2 : 1,
+    severity: record.severity,
+    fineAmount: record.fineAmount,
+    expenseAmount: record.expenseAmount,
+    currency: record.currency,
+    result: record.result,
+    status: record.status,
+    location: [record.locationCity, record.locationState].filter(Boolean).join(', ') || record.locationState,
+    locationState: record.locationState,
+    locationCountry: record.locationCountry || 'US',
+    inspectionId: record.inspectionId || '',
+    regulatoryRef: `49 CFR §${record.violationCode}`,
+    notes: record.notes || '',
+  };
+});
 
-const TH = ({ children, className, align = 'left', sortable, sorted, onSort }: { 
-    children?: React.ReactNode; 
-    className?: string; 
-    align?: 'left' | 'center' | 'right';
-    sortable?: boolean;
-    sorted?: 'asc' | 'desc' | null;
-    onSort?: () => void;
-}) => (
-    <th 
-        className={cn(
-            'px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 select-none group bg-slate-50/50 first:rounded-tl-lg last:rounded-tr-lg',
-            align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
-            sortable && 'cursor-pointer hover:bg-slate-100 hover:text-blue-600 transition-colors',
-            className
+// ─── Combined dataset ─────────────────────────────────────────────────────────
+const ALL_UNIFIED: UnifiedViolation[] = [
+  ...smsViolations,
+  ...nscViolations,
+  ...cvorViolations,
+].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+const ALL_ASSET_UNIFIED: UnifiedViolation[] = [
+  ...assetUnifiedViolations,
+  ...nscViolations.filter(v => v.assetPts > 0),
+  ...cvorViolations.filter(v => v.assetPts > 0),
+].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+const ALL_DRIVER_UNIFIED: UnifiedViolation[] = ALL_UNIFIED.filter(v => v.driverPts > 0 || v.source === 'SMS');
+
+// ─── Formatting helpers ───────────────────────────────────────────────────────
+const fmt = (n: number, cur: string) =>
+  `${cur === 'CAD' ? 'CA$' : '$'}${n.toLocaleString()}`;
+
+const fmtDate = (d: string) => {
+  if (!d) return '—';
+  const parts = d.split(' ');
+  if (parts.length === 3) {
+    const months: Record<string, string> = {
+      JAN:'Jan',FEB:'Feb',MAR:'Mar',APR:'Apr',MAY:'May',JUN:'Jun',
+      JUL:'Jul',AUG:'Aug',SEP:'Sep',OCT:'Oct',NOV:'Nov',DEC:'Dec',
+    };
+    return `${parts[0]} ${months[parts[1]] || parts[1]} ${parts[2]}`;
+  }
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return d;
+  return dt.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: '2-digit' });
+};
+
+// ─── Badge helpers ────────────────────────────────────────────────────────────
+const SOURCE_BADGE: Record<string, string> = {
+  SMS:  'bg-blue-100 text-blue-700 border border-blue-200',
+  NSC:  'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  CVOR: 'bg-rose-100 text-rose-700 border border-rose-200',
+};
+const RISK_BADGE: Record<string, string> = {
+  High:   'bg-red-100 text-red-700 border border-red-200',
+  Medium: 'bg-amber-100 text-amber-700 border border-amber-200',
+  Low:    'bg-slate-100 text-slate-600 border border-slate-200',
+};
+const RESULT_BADGE: Record<string, string> = {
+  'OOS Order':       'bg-red-100 text-red-700 border border-red-200',
+  'Citation Issued': 'bg-amber-100 text-amber-700 border border-amber-200',
+  'Warning':         'bg-yellow-100 text-yellow-700 border border-yellow-200',
+  'Clean Inspection':'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  'Under Review':    'bg-blue-100 text-blue-700 border border-blue-200',
+};
+const STATUS_BADGE: Record<string, string> = {
+  Open:           'bg-orange-100 text-orange-700 border border-orange-200',
+  Closed:         'bg-slate-100 text-slate-600 border border-slate-200',
+  'Under Review': 'bg-blue-100 text-blue-700 border border-blue-200',
+};
+
+const Badge = ({ label, cls }: { label: string; cls: string }) => (
+  <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold', cls)}>
+    {label}
+  </span>
+);
+
+// ─── Crash Likelihood Mini Bar ────────────────────────────────────────────────
+const CrashBar = ({ pct }: { pct: number }) => {
+  const color =
+    pct >= 65 ? 'bg-red-500' :
+    pct >= 40 ? 'bg-amber-400' :
+    'bg-blue-400';
+  return (
+    <div className="flex items-center gap-1.5 min-w-[70px]">
+      <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+        <div className={cn('h-full rounded-full', color)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs text-slate-600 tabular-nums w-7 text-right">{pct}%</span>
+    </div>
+  );
+};
+
+// ─── Regulatory Reference formatter ──────────────────────────────────────────
+function fmtRegulatoryRef(v: UnifiedViolation): string {
+  if (v.source === 'NSC') {
+    const ref = v.regulatoryRef || v.code;
+    return ref.startsWith('NSC') || ref.startsWith('Sch') ? ref : `NSC Act / ${ref}`;
+  }
+  if (v.source === 'CVOR') {
+    return `HTA / CVOR — ${v.regulatoryRef || v.code}`;
+  }
+  // SMS / asset
+  const ref = v.regulatoryRef || v.code;
+  if (ref.startsWith('49 CFR') || ref.startsWith('CFR')) return ref;
+  return `49 CFR §${ref}`;
+}
+
+// ─── Lookup regulatory codes from VIOLATION_DATA master chart ────────────────
+function lookupRegulatoryCodes(v: UnifiedViolation) {
+  const codeNorm = v.code.replace(/[^a-zA-Z0-9.()]/g, '').toLowerCase();
+  const match = ALL_VIOLATIONS.find(item => {
+    const itemNorm = item.violationCode.replace(/[^a-zA-Z0-9.()]/g, '').toLowerCase();
+    return itemNorm === codeNorm;
+  });
+  return match?.regulatoryCodes ?? null;
+}
+
+// ─── Regulatory Codes Section (cross-jurisdictional) ─────────────────────────
+const RegulatoryCodesSection = ({ v }: { v: UnifiedViolation }) => {
+  const codes = lookupRegulatoryCodes(v);
+  if (!codes) return null;
+
+  const hasUSA = codes.usa && codes.usa.length > 0;
+  const hasCanada = codes.canada && codes.canada.length > 0;
+  if (!hasUSA && !hasCanada) return null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2.5">
+      <p className="text-xs text-slate-400 uppercase tracking-wide font-bold mb-2">Equivalent Regulatory Codes</p>
+
+      <div className={cn('grid gap-3', hasUSA && hasCanada ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1')}>
+        {/* USA Regulatory Codes */}
+        {hasUSA && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">🇺🇸 USA</span>
+            </div>
+            {codes.usa.map((entry, i) => (
+              <div key={i} className="bg-blue-50/60 border border-blue-100 rounded-lg p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider bg-blue-100 px-1.5 py-0.5 rounded">{entry.authority}</span>
+                </div>
+                {entry.cfr && entry.cfr.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {entry.cfr.map((ref, j) => (
+                      <code key={j} className="text-[10px] font-mono font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200">
+                        {ref}
+                      </code>
+                    ))}
+                  </div>
+                )}
+                {entry.statute && entry.statute.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {entry.statute.map((ref, j) => (
+                      <span key={j} className="text-[10px] font-medium bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200">
+                        {ref}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {entry.description && (
+                  <p className="text-[10px] text-slate-500 leading-relaxed">{entry.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
         )}
-        onClick={sortable ? onSort : undefined}
-    >
-        <div className={cn(
-            "flex items-center gap-1.5",
-            align === 'right' && "justify-end",
-            align === 'center' && "justify-center"
-        )}>
-            {children}
-            {sortable && (
-                <span className={cn(
-                    "transition-all duration-200",
-                    sorted ? "text-blue-600 opacity-100" : "text-slate-300 opacity-0 group-hover:opacity-100"
-                )}>
-                    {sorted === 'asc' ? <ArrowUp size={12} strokeWidth={3} /> : sorted === 'desc' ? <ArrowDown size={12} strokeWidth={3} /> : <ArrowUpDown size={12} />}
-                </span>
-            )}
-        </div>
-    </th>
-);
 
-const TD = ({ children, className, align = 'left' }: { children?: React.ReactNode; className?: string; align?: string }) => (
-    <td className={cn(
-        'px-6 py-4 text-sm whitespace-nowrap align-middle border-b border-slate-100 last:border-0 relative group-hover:bg-blue-50/10 transition-colors',
-        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
-        className
-    )}>
-        {children}
-    </td>
-);
-
-// ─── Shared Badge Components (Utilized by List & Modal) ──────────────────────────
-
-const StateBadge = ({ state }: { state: string }) => (
-    <span className="inline-flex items-center justify-center h-5 w-8 rounded text-[11px] font-bold text-slate-700 bg-white border border-slate-200 shadow-sm">
-        {state}
-    </span>
-);
-
-const DriverTypeBadge = ({ type }: { type: string }) => {
-    let colors = "bg-slate-100 text-slate-600 border-slate-200"; // Default
-    if (type.includes('Long Haul')) colors = "bg-green-50 text-green-700 border-green-200";
-    if (type.includes('Local')) colors = "bg-blue-50 text-blue-700 border-blue-200";
-    if (type.includes('Owner')) colors = "bg-purple-50 text-purple-700 border-purple-200";
-
-    return (
-        <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border", colors)}>
-            {type}
-        </span>
-    );
-};
-
-const ViolationCodePill = ({ code }: { code: string }) => (
-    <code className="text-blue-600 font-mono text-[11px] font-bold hover:underline cursor-pointer">
-        §{code}
-    </code>
-);
-
-const OOSBadge = () => (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-600 border border-red-200/50 text-[9px] font-bold uppercase tracking-wide ml-2">
-        OOS
-    </span>
-);
-
-const CrashLikelihoodBar = ({ value }: { value: number }) => {
-    const width = Math.min(Math.max(value, 5), 100);
-    let color = 'bg-emerald-500';
-    let label = 'Low Risk';
-    
-    if (value > 30) { color = 'bg-amber-500'; label = 'Medium Risk'; }
-    if (value > 60) { color = 'bg-red-500'; label = 'High Risk'; }
-    
-    return (
-        <div className="w-24">
-            <div className="flex justify-between items-end mb-1">
-                <span className="text-[10px] font-bold text-slate-700 uppercase">{label}</span>
-                <span className="text-[10px] font-bold text-slate-400">{value}%</span>
+        {/* Canada Regulatory Codes */}
+        {hasCanada && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">🇨🇦 Canada</span>
             </div>
-            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className={cn("h-full rounded-full transition-all duration-500", color)} style={{ width: `${width}%` }} />
-            </div>
-        </div>
-    );
-};
-
-const ResultBadge = ({ result }: { result: ViolationRecord['result'] }) => {
-    let colors = "text-slate-600 bg-slate-100 border-slate-200";
-    if (result === 'Citation Issued') colors = "text-red-700 bg-red-50 border-red-200";
-    if (result === 'Warning') colors = "text-amber-700 bg-amber-50 border-amber-200";
-    if (result === 'OOS Order') colors = "text-rose-700 bg-rose-50 border-rose-200 font-black";
-    if (result === 'Clean Inspection') colors = "text-emerald-700 bg-emerald-50 border-emerald-200";
-
-    return (
-        <span className={cn(
-            "inline-flex items-center px-2.5 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide",
-            colors
-        )}>
-            {result}
-        </span>
-    );
-};
-
-// ─── Violation Detail Modal ────────────────────────────────────────────────────
-
-const ViolationDetailModal = ({ record, onClose }: { record: ViolationRecord | AssetViolationRecord | null; onClose: () => void }) => {
-    if (!record) return null;
-
-    // Helper formatting
-    const fmt$ = (n: number) =>
-        n === 0 ? 'No Fee' : new Intl.NumberFormat('en-US', { style: 'currency', currency: record.currency || 'USD' }).format(n);
-
-    // Determine Entity Info
-    const isAssetRecord = (r: any): r is AssetViolationRecord => 'assetUnitNumber' in r;
-    const isAsset = isAssetRecord(record);
-
-    // Lookup full violation data for regulatory codes (Drivers only for now)
-    const fullViolation = !isAsset ? getViolation((record as ViolationRecord).violationDataId) : null;
-
-    let entityName = '';
-    let entitySub = '';
-    let entityId = '';
-    let entityAvatar = null;
-    let linkedEntity = null;
-
-    if (isAsset) { // Asset Record
-        entityName = `Unit ${record.assetUnitNumber}`;
-        entitySub = `${record.assetMakeModel} (${record.assetPlate})`;
-        entityId = record.assetId;
-        entityAvatar = <Truck size={24} />;
-        if (record.linkedDriverName) {
-            linkedEntity = { label: 'Linked Driver', value: record.linkedDriverName, id: record.linkedDriverId };
-        }
-    } else { // Driver Record
-        entityName = record.driverName;
-        entitySub = record.driverType;
-        entityId = record.driverId;
-        const names = record.driverName.split(' ');
-        const initials = names.length > 1 ? `${names[0][0]}${names[names.length-1][0]}` : names[0]?.slice(0, 2);
-        entityAvatar = initials;
-        if (record.assetName) {
-            linkedEntity = { label: 'Asset Involved', value: record.assetName, id: record.assetId };
-        }
-    }
-    
-    // Violation Data Lookup
-    // For drivers we use 'getViolation', for assets we use 'getAssetViolationDef' (imported or find locally)
-    // To keep it simple we rely on record fields which should be populated.
-    
-    const totalCost = (record.fineAmount || 0) + (record.expenseAmount || 0);
-    const finePercent = totalCost > 0 ? (record.fineAmount || 0) / totalCost * 100 : 0;
-    const expPercent = totalCost > 0 ? (record.expenseAmount || 0) / totalCost * 100 : 0;
-
-    return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/30">
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <h3 className="text-xl font-bold text-slate-900">Violation Details</h3>
-                            <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold font-mono">
-                                {record.id}
-                            </span>
-                        </div>
-                        <p className="text-sm text-slate-500">Recorded on {new Date(record.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at {record.time}</p>
-                    </div>
-                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors">
-                        <X size={18} />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-8 overflow-y-auto custom-scrollbar">
-                    <div className="space-y-8">
-                        {/* Entity Section */}
-                        <div className="flex items-start gap-5 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                            <div className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center text-xl font-bold text-blue-600 shadow-sm shrink-0">
-                                {entityAvatar}
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-1">
-                                    {entityName}
-                                    {!isAsset && <DriverTypeBadge type={entitySub} />}
-                                </h4>
-                                <div className="text-sm text-slate-500 flex flex-wrap gap-x-6 gap-y-2 mb-3">
-                                    <span>ID: <code className="font-bold text-slate-700">{entityId}</code></span>
-                                    {isAsset && <span>{entitySub}</span>}
-                                    {/* Linked Entity */}
-                                    {linkedEntity && (
-                                        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-bold border border-blue-100">
-                                            {linkedEntity.label}: {linkedEntity.value}
-                                        </span>
-                                    )}
-                                </div>
-
-                                {/* Address Block */}
-                                <div className="text-sm text-slate-500 mt-3 border-t border-slate-200/60 pt-3">
-                                    <div className="flex items-start gap-2.5">
-                                        <MapPin size={15} className="text-slate-400 shrink-0 mt-0.5" />
-                                        <div className="leading-snug">
-                                            {record.locationStreet && <span className="block font-medium text-slate-700">{record.locationStreet}</span>}
-                                            <span className="block">{record.locationCity || 'Unknown City'}, {record.locationState} {record.locationZip}</span>
-                                            <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400 mt-0.5">{record.locationCountry || 'US'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* OUTCOME & STATUS SECTION */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                    <Gavel size={14} /> Official Outcome
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <ResultBadge result={record.result} />
-                                    {record.isOos && <OOSBadge />}
-                                </div>
-                            </div>
-                            
-                            {/* Total Cost & Graph */}
-                            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                                    <DollarSign size={14} /> Total (Fine & Expenses)
-                                </div>
-                                <div className="mb-3">
-                                    <div className="text-2xl font-bold text-slate-900 font-mono flex items-baseline gap-1">
-                                        {record.currency === 'USD' ? '$' : 'C$'}
-                                        {totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        <span className="text-sm text-slate-400 font-sans font-normal">{record.currency || 'USD'}</span>
-                                    </div>
-                                </div>
-
-                                {/* Mini Cost Breakdown Graph */}
-                                {totalCost > 0 && (
-                                    <div className="space-y-2">
-                                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden flex">
-                                            <div className="h-full bg-rose-500" style={{ width: `${finePercent}%` }} />
-                                            <div className="h-full bg-blue-500" style={{ width: `${expPercent}%` }} />
-                                        </div>
-                                        <div className="flex justify-between text-[10px] font-medium uppercase tracking-wide">
-                                            <span className="text-rose-600 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Fine: {fmt$(record.fineAmount || 0)}</span>
-                                            <span className="text-blue-600 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Exp: {fmt$(record.expenseAmount || 0)}</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Violation Codes */}
-                        <div>
-                            <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <Flag size={14} /> Violation Information
-                            </h5>
-                            <div className="bg-white border-l-4 border-red-500 pl-4 py-1 mb-4">
-                                <div className="text-2xl font-bold text-slate-900 mb-1">{record.violationCode}</div>
-                                <div className="text-lg text-slate-700 font-medium leading-relaxed">{record.violationType}</div>
-                            </div>
-                            
-                            {/* Detailed Regulatory Info — USA */}
-                            {fullViolation && fullViolation.regulatoryCodes && (
-                                <div className="grid gap-3 mt-4">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">🇺🇸 USA Regulatory Codes</p>
-                                    {fullViolation.regulatoryCodes.usa?.map((code: any, i: number) => (
-                                        <div key={i} className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{code.authority}</span>
-                                                <span className="text-xs font-mono font-bold text-slate-600">{code.cfr?.[0] || 'N/A'}</span>
-                                            </div>
-                                            <p className="text-sm text-slate-600 italic">"{code.description}"</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Canadian Regulatory Codes */}
-                            {fullViolation?.regulatoryCodes?.canada && fullViolation.regulatoryCodes.canada.length > 0 && (
-                                <div className="grid gap-3 mt-4">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">🇨🇦 Canada Regulatory Codes</p>
-                                    {fullViolation.regulatoryCodes.canada.map((code: any, i: number) => (
-                                        <div key={i} className="p-3 bg-red-50/30 rounded-lg border border-red-100">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded uppercase">{code.authority}</span>
-                                                <span className="text-xs font-mono font-bold text-slate-600">{code.reference?.[0] || 'N/A'}</span>
-                                                {code.province?.map((p: string) => (
-                                                    <span key={p} className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1 py-0.5 rounded">{p}</span>
-                                                ))}
-                                            </div>
-                                            <p className="text-sm text-slate-600 italic">"{code.description}"</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Canadian Enforcement Detail Card */}
-                            {fullViolation?.canadaEnforcement && (
-                                <div className="mt-4 p-4 bg-gradient-to-br from-red-50/50 to-white rounded-xl border border-red-200/60">
-                                    <h5 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        🇨🇦 Canadian Enforcement
-                                    </h5>
-                                    <div className="grid grid-cols-2 gap-3 mb-3">
-                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">CCMTA Code</div>
-                                            <div className="text-xl font-bold text-purple-700">{fullViolation.canadaEnforcement.ccmtaCode}</div>
-                                        </div>
-                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Offence Code</div>
-                                            <div className="text-sm font-mono font-bold text-slate-900">{fullViolation.canadaEnforcement.code}</div>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3 mb-3">
-                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">NSC Points</div>
-                                            <div className={`text-xl font-bold font-mono ${(fullViolation.canadaEnforcement.points.nsc || 0) >= 5 ? 'text-red-600' : 'text-slate-800'}`}>
-                                                {fullViolation.canadaEnforcement.points.nsc ?? '—'}
-                                            </div>
-                                        </div>
-                                        <div className="bg-white rounded-lg border border-slate-200 p-3 text-center">
-                                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">CVOR Points</div>
-                                            <div className={`text-xl font-bold font-mono ${(fullViolation.canadaEnforcement.points.cvor?.max || 0) >= 10 ? 'text-red-600' : 'text-slate-800'}`}>
-                                                {fullViolation.canadaEnforcement.points.cvor
-                                                    ? (fullViolation.canadaEnforcement.points.cvor.min === fullViolation.canadaEnforcement.points.cvor.max
-                                                        ? fullViolation.canadaEnforcement.points.cvor.min
-                                                        : `${fullViolation.canadaEnforcement.points.cvor.min}–${fullViolation.canadaEnforcement.points.cvor.max}`)
-                                                    : '—'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1.5 text-sm">
-                                        <div className="flex justify-between"><span className="text-slate-500">Act</span><span className="font-semibold text-slate-900">{fullViolation.canadaEnforcement.act}</span></div>
-                                        <div className="flex justify-between"><span className="text-slate-500">Section</span><span className="font-mono text-xs text-slate-700">{fullViolation.canadaEnforcement.section}</span></div>
-                                        {fullViolation.canadaEnforcement.category && <div className="flex justify-between"><span className="text-slate-500">Category</span><span className="text-xs text-slate-700">{fullViolation.canadaEnforcement.category}</span></div>}
-                                        {fullViolation.canadaEnforcement.cvorClassification && (
-                                            <div className="flex justify-between"><span className="text-slate-500">Conviction Type</span><span className="text-xs font-bold text-slate-700">{fullViolation.canadaEnforcement.cvorClassification.convictionType}</span></div>
-                                        )}
-                                        {fullViolation.canadaEnforcement.descriptions?.conviction && (
-                                            <div className="flex justify-between"><span className="text-slate-500">Conviction</span><span className="text-xs text-slate-700 italic">{fullViolation.canadaEnforcement.descriptions.conviction}</span></div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Impact & Status (Crash Likelihood) */}
-                        <div>
-                            <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <Info size={14} /> Impact & Status
-                            </h5>
-                            <div className="p-4 border border-slate-200 rounded-xl bg-white">
-                                <div className="text-xs text-slate-500 mb-1">Crash Likelihood</div>
-                                <div className="flex items-end gap-2">
-                                    <span className="text-2xl font-bold text-slate-900">{isAsset ? (record as AssetViolationRecord).crashLikelihoodPercent : (record as ViolationRecord).crashLikelihood}%</span>
-                                    <div className="flex-1 h-2 bg-slate-100 rounded-full mb-1.5 overflow-hidden">
-                                        <div 
-                                            className={`h-full rounded-full ${((isAsset ? (record as AssetViolationRecord).crashLikelihoodPercent : (record as ViolationRecord).crashLikelihood) || 0) >= 50 ? 'bg-red-500' : 'bg-blue-500'}`} 
-                                            style={{ width: `${Math.min((isAsset ? (record as AssetViolationRecord).crashLikelihoodPercent : (record as ViolationRecord).crashLikelihood) || 0, 100)}%` }} 
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-
-                {/* Footer */}
-                <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/30 flex justify-end gap-3 rounded-b-2xl">
-                    <Button variant="outline" onClick={onClose}>Close</Button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
-
-type SortField = 'date' | 'driverName' | 'assetName' | 'violationType' | 'driverRiskCategory' | 'crashLikelihood' | 'expenses' | 'fineAmount';
-type SortOrder = 'asc' | 'desc';
-type PageView = 'drivers' | 'assets';
-
-
-
-const ColumnSelector = ({ visibleColumns, onChange, options }: { visibleColumns: Set<string>, onChange: (cols: Set<string>) => void, options: { id: string, label: string }[] }) => {
-    const [isOpen, setIsOpen] = useState(false);
-
-    const toggle = (id: string) => {
-        // e.stopPropagation();
-        const next = new Set(visibleColumns);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        onChange(next);
-    };
-
-    return (
-        <div className="relative">
-            <Button variant="outline" size="sm" onClick={() => setIsOpen(!isOpen)} className="gap-2 border-slate-300 text-slate-700 bg-white shadow-sm">
-                <LayoutGrid size={16} /> Columns
-            </Button>
-            {isOpen && (
-                <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-                    <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-50 p-2 animate-in fade-in zoom-in-95 duration-100">
-                        <div className="flex justify-between items-center px-2 py-1 mb-1">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Visible Columns</span>
-                            <button onClick={() => onChange(new Set(options.map(o => o.id)))} className="text-[10px] font-bold text-blue-600 hover:underline">Reset</button>
-                        </div>
-                        <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-0.5">
-                            {options.map(opt => (
-                                <label key={opt.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer text-sm text-slate-700 select-none">
-                                    <input 
-                                        type="checkbox" 
-                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                                        checked={visibleColumns.has(opt.id)}
-                                        onChange={() => toggle(opt.id)}
-                                    />
-                                    {opt.label}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                </>
-            )}
-        </div>
-    );
-};
-
-export function ViolationsListPage() {
-    const [pageView, setPageView]         = useState<PageView>('drivers');
-    const [search, setSearch]             = useState('');
-    const [filterResult, setFilterResult] = useState('all');
-    const [filterRisk]                    = useState('all');
-    
-    // KPI Filter State (clicking a KPI card sets this)
-    const [activeKpiFilter, setActiveKpiFilter] = useState<string | null>(null);
-
-    // Pagination Customization
-    const [currentPage, setCurrentPage]   = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
-    
-    const [selectedRecord, setSelectedRecord] = useState<ViolationRecord | AssetViolationRecord | null>(null);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [editingRecord, setEditingRecord] = useState<ViolationRecord | AssetViolationRecord | null>(null);
-
-    const [driverVisibleColumns, setDriverVisibleColumns] = useState<Set<string>>(new Set([
-        'date', 'time', 'driverName', 'driverType', 'assetName', 
-        'locationCity', 'locationState', 'locationFull',
-        'violationType', 'violationGroup', 'ccmtaCode', 'offenceCode',
-        'crashLikelihood', 'result', 'totalCost', 'actions'
-    ]));
-
-    const [assetVisibleColumns, setAssetVisibleColumns] = useState<Set<string>>(new Set([
-        'date', 'time', 'assetUnitNumber', 'assetMakeModel', 
-        'locationCity', 'locationState', 'locationFull',
-        'violationType', 'crashLikelihood', 'result', 'totalCost', 'actions',
-        'linkedDriverName'
-    ]));
-
-    const visibleColumns = pageView === 'drivers' ? driverVisibleColumns : assetVisibleColumns;
-    const setVisibleColumns = pageView === 'drivers' ? setDriverVisibleColumns : setAssetVisibleColumns;
-
-    // State for records (initialized from mock data)
-    const [records, setRecords] = useState<ViolationRecord[]>(MOCK_VIOLATION_RECORDS);
-    const [assetRecords, setAssetRecords] = useState<AssetViolationRecord[]>(MOCK_ASSET_VIOLATION_RECORDS);
-
-    // Sorting State
-    const [sortField, setSortField] = useState<SortField>('date');
-    const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-
-    const handleSort = (field: SortField) => {
-        if (sortField === field) {
-            setSortOrder(current => current === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortField(field);
-            setSortOrder('desc'); // Default to desc for new field
-        }
-    };
-
-    const handleEdit = (record: ViolationRecord | AssetViolationRecord) => {
-        setEditingRecord(record);
-        setIsEditModalOpen(true);
-    };
-
-    const handleSaveEdit = (updated: any) => {
-        console.log("Updated record:", updated);
-        
-        if (pageView === 'drivers') {
-            const record = updated as ViolationRecord;
-            if (record.id) {
-                setRecords(prev => prev.map(r => r.id === record.id ? record : r));
-            } else {
-                setRecords(prev => [{ ...record, id: `V-${Date.now()}` }, ...prev]);
-            }
-        } else {
-            const record = updated as AssetViolationRecord;
-            if (record.id) {
-                setAssetRecords(prev => prev.map(r => r.id === record.id ? record : r));
-            } else {
-                setAssetRecords(prev => [{ ...record, id: `AV-${Date.now()}` }, ...prev]);
-            }
-        }
-        
-        setIsEditModalOpen(false);
-        setEditingRecord(null);
-    };
-
-    const handleRowClick = (record: ViolationRecord | AssetViolationRecord) => {
-        setSelectedRecord(record);
-    };
-
-    // ── Stats Calculation ────────────────────────────────────────────────────
-    const driverStats = useMemo(() => ({
-        total:    records.length,
-        open:     records.filter(r => r.status === 'Open').length,
-        oos:      records.filter(r => r.result === 'OOS Order').length,
-        highRisk: records.filter(r => r.driverRiskCategory === 1).length,
-        cited:    records.filter(r => r.result === 'Citation Issued').length,
-        warning:  records.filter(r => r.result === 'Warning').length,
-    }), [records]);
-
-    const assetStats = useMemo(() => ({
-        total:    assetRecords.length,
-        open:     assetRecords.filter(r => r.status === 'Open').length,
-        oos:      assetRecords.filter(r => r.isOos && r.result === 'OOS Order').length,
-        highRisk: assetRecords.filter(r => r.crashLikelihoodPercent >= 80).length,
-        cited:    assetRecords.filter(r => r.result === 'Citation Issued').length,
-        warning:  assetRecords.filter(r => r.result === 'Warning').length,
-    }), [assetRecords]);
-
-    const stats = pageView === 'drivers' ? driverStats : assetStats;
-
-    // ── Filter & Sort Logic ──────────────────────────────────────────────────
-    const filteredDriverRecords = useMemo(() => {
-        let res = records.filter(r => {
-            const q = search.toLowerCase();
-            const matchSearch = !q
-                || r.driverName.toLowerCase().includes(q)
-                || r.violationType.toLowerCase().includes(q)
-                || r.violationCode.toLowerCase().includes(q)
-                || r.violationGroup.toLowerCase().includes(q)
-                || r.id.toLowerCase().includes(q);
-
-            // Manual dropdown filters
-            const matchResult = filterResult === 'all' || r.result === filterResult;
-            const matchRisk   = filterRisk   === 'all' || r.driverRiskCategory === Number(filterRisk);
-            
-            // KPI Card filters
-            let matchKpi = true;
-            if (activeKpiFilter === 'open')     matchKpi = r.status === 'Open';
-            if (activeKpiFilter === 'oos')      matchKpi = r.result === 'OOS Order';
-            if (activeKpiFilter === 'highRisk') matchKpi = r.driverRiskCategory === 1;
-            if (activeKpiFilter === 'cited')    matchKpi = r.result === 'Citation Issued';
-            if (activeKpiFilter === 'warning')  matchKpi = r.result === 'Warning';
-            
-            return matchSearch && matchResult && matchRisk && matchKpi;
-        });
-
-        // Sorting
-        res.sort((a, b) => {
-            let valA: any = a[sortField];
-            let valB: any = b[sortField];
-
-            // Handle date comparison
-            if (sortField === 'date') {
-                valA = new Date(a.date).getTime();
-                valB = new Date(b.date).getTime();
-            }
-
-            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        return res;
-    }, [search, filterResult, filterRisk, activeKpiFilter, sortField, sortOrder]);
-
-
-    const fmt$ = (n: number) =>
-        n === 0 ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-
-    // ── Asset Violations filtered & sorted ──────────────────────────────────
-    const filteredAssetRecords = useMemo(() => {
-        const q = search.toLowerCase();
-        let res = assetRecords.filter(r => {
-            const matchSearch = !q
-            || r.assetUnitNumber.toLowerCase().includes(q)
-            || r.assetMakeModel.toLowerCase().includes(q)
-            || r.violationType.toLowerCase().includes(q)
-            || r.violationCode.toLowerCase().includes(q)
-            || r.assetPlate.toLowerCase().includes(q)
-            || r.id.toLowerCase().includes(q);
-
-            // KPI Card filters
-            let matchKpi = true;
-            if (activeKpiFilter === 'open')     matchKpi = r.status === 'Open';
-            if (activeKpiFilter === 'oos')      matchKpi = r.isOos && r.result === 'OOS Order';
-            if (activeKpiFilter === 'highRisk') matchKpi = r.crashLikelihoodPercent >= 80;
-            if (activeKpiFilter === 'cited')    matchKpi = r.result === 'Citation Issued';
-            if (activeKpiFilter === 'warning')  matchKpi = r.result === 'Warning';
-
-            return matchSearch && matchKpi;
-        });
-        
-        // Basic sorting for assets (by date desc default)
-        return res.sort((a, b) => (a.date < b.date ? 1 : -1));
-    }, [assetRecords, search, activeKpiFilter]);
-
-    const currentFilteredRecords = pageView === 'drivers' ? filteredDriverRecords : filteredAssetRecords;
-
-    const totalPages = Math.max(1, Math.ceil(currentFilteredRecords.length / itemsPerPage));
-    const driverPageData = useMemo(() => {
-        if (pageView !== 'drivers') return [];
-        return filteredDriverRecords.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-    }, [filteredDriverRecords, currentPage, itemsPerPage, pageView]);
-
-    const assetPageData = useMemo(() => {
-        if (pageView !== 'assets') return [];
-        return filteredAssetRecords.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-    }, [filteredAssetRecords, currentPage, itemsPerPage, pageView]);
-
-
-    // Reverted KPI Card Component ("Chart/Bar Style")
-    const KpiCard = ({ label, value, icon: Icon, borderCls, filter, isActive }: any) => (
-        <div 
-            onClick={() => {
-                setActiveKpiFilter(isActive ? null : filter);
-                setCurrentPage(1);
-            }}
-            className={cn(
-                'cursor-pointer bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-all relative overflow-hidden group h-full flex flex-col',
-                isActive ? 'ring-2 ring-blue-500 bg-blue-50/10' : ''
-            )}
-        >
-            {/* Colored left border */}
-            <div className={cn("absolute left-0 top-0 bottom-0 w-1", borderCls.replace('border-l-', 'bg-'))} />
-            
-            <div className="p-4 flex flex-col justify-between h-full pl-6">
-                <div className="flex justify-between items-start mb-2">
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-                        <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
-                    </div>
-                    <div className={cn("p-2 rounded-lg bg-slate-50 text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-colors")}>
-                        <Icon size={18} strokeWidth={2} />
-                    </div>
-                </div>
-                
-                {/* "Chart/Bar" thing - a progress bar at bottom */}
-                <div className="mt-2">
-                    <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div className={cn("h-full rounded-full opacity-60", borderCls.replace('border-l-', 'bg-'))} style={{ width: '65%' }} />
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    return (
-        <div className="h-full flex flex-col bg-[#F8FAFC] text-slate-900 overflow-hidden font-sans">
-            {/* ── Header ─────────────────────────────────────────────────── */}
-            <div className="px-8 pt-6 pb-6 shrink-0 space-y-6 bg-white border-b border-slate-200 shadow-sm z-20">
-                <div className="flex justify-between items-center">
-                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Violations Management</h1>
-                        <p className="text-slate-500 text-sm mt-1 font-medium">Monitor compliance, track citations, and manage driver safety records.</p>
-                    </div>
-                     <div className="flex items-center gap-3">
-                        {/* ── Page View Toggle ── */}
-                        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
-                            {([['drivers', User, 'Drivers'], ['assets', Truck, 'Assets']] as const).map(([view, Icon, label]) => (
-                                <button
-                                    key={view}
-                                    onClick={() => { setPageView(view); setSearch(''); }}
-                                    className={`flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-md transition-all ${
-                                        pageView === view
-                                            ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
-                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                                    }`}
-                                >
-                                    <Icon size={13} />{label}
-                                </button>
-                            ))}
-                        </div>
-                        <Button variant="outline" size="sm" className="gap-2 border-slate-300 text-slate-700">
-                            <Download size={16} /> Export
-                        </Button>
-                        <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm shadow-blue-500/20" onClick={() => {
-                            setEditingRecord({} as any); // TODO: Pass type
-                            setIsEditModalOpen(true);
-                        }}>
-                            <Plus size={18} strokeWidth={2.5} /> Add Violation
-                        </Button>
-                    </div>
-                </div>
-
-                {/* ── Reverted KPI Cards ────────────────────── */}
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                        {[
-                            { label: 'Total Violations', value: stats.total,    icon: LayoutGrid,   borderCls: 'border-l-blue-500',   filter: null },
-                            { label: 'Open Cases',       value: stats.open,     icon: ShieldAlert,  borderCls: 'border-l-amber-500',  filter: 'open' },
-                            { label: 'OOS Orders',       value: stats.oos,      icon: Ban,          borderCls: 'border-l-slate-800',  filter: 'oos' },
-                            { label: 'High Risk',        value: stats.highRisk, icon: AlertTriangle,borderCls: 'border-l-red-500',    filter: 'highRisk' },
-                            { label: 'Citations',        value: stats.cited,    icon: FileWarning,  borderCls: 'border-l-rose-500',   filter: 'cited' },
-                            { label: 'Warnings',         value: stats.warning,  icon: AlertTriangle,borderCls: 'border-l-yellow-500', filter: 'warning' },
-                        ].map(s => (
-                            <KpiCard key={s.label} {...s} isActive={activeKpiFilter === s.filter} />
-                        ))}
-                    </div>
-            </div>
-
-            {/* ── Content ─────────────────────────────────────────────────── */}
-            <div className="flex-1 flex flex-col overflow-hidden px-8 py-6">
-                
-                {/* ── Search + Filters ─────────────────────────────────── */}
-                <div className="flex items-center justify-between mb-4">
-                    <div className="relative w-full max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <Input
-                            placeholder={pageView === 'assets' ? 'Filter asset violations...' : 'Filter violations...'}
-                            className="pl-10 h-10 border-slate-300 rounded-lg shadow-sm"
-                            value={search}
-                            onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                         <ColumnSelector 
-                            visibleColumns={visibleColumns} 
-                            onChange={setVisibleColumns}
-                            options={pageView === 'drivers' ? [
-                                { id: 'date', label: 'Date' },
-                                { id: 'time', label: 'Time' },
-                                { id: 'driverName', label: 'Driver Name' },
-                                { id: 'driverType', label: 'Driver Type' },
-                                { id: 'assetName', label: 'Asset ID' },
-                                { id: 'locationCity', label: 'City' },
-                                { id: 'locationState', label: 'State' },
-                                { id: 'locationFull', label: 'Full Address' },
-                                { id: 'violationType', label: 'Violation Type' },
-                                { id: 'violationGroup', label: 'Violation Group' },
-                                { id: 'ccmtaCode', label: 'CCMTA Code' },
-                                { id: 'offenceCode', label: 'Offence Code' },
-                                { id: 'cfrCode', label: 'CFR' },
-                                { id: 'authority', label: 'Authority' },
-                                { id: 'nscPoints', label: 'NSC Points' },
-                                { id: 'cvorPoints', label: 'CVOR Points' },
-                                { id: 'crashLikelihood', label: 'Risk Level' },
-                                { id: 'result', label: 'Result' },
-                                { id: 'totalCost', label: 'Total (Fine & Expenses)' },
-                                { id: 'actions', label: 'Actions' },
-                            ] : [
-                                { id: 'date', label: 'Date' },
-                                { id: 'time', label: 'Time' },
-                                { id: 'assetUnitNumber', label: 'Asset Unit #' },
-                                { id: 'assetMakeModel', label: 'Asset Details' },
-                                { id: 'locationCity', label: 'City' },
-                                { id: 'locationState', label: 'State' },
-                                { id: 'locationFull', label: 'Full Address' },
-                                { id: 'violationType', label: 'Violation Type' },
-                                { id: 'crashLikelihood', label: 'Risk Level' },
-                                { id: 'linkedDriverName', label: 'Linked Driver' },
-                                { id: 'result', label: 'Result' },
-                                { id: 'totalCost', label: 'Total (Fine & Expenses)' },
-                                { id: 'actions', label: 'Actions' },
-                            ]}
-                         />
-                         <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                             {currentFilteredRecords.length} RECORDS FOUND
-                         </span>
-                    </div>
-                </div>
-
-                {/* ── Table ─────────────────────────────────────────────────── */}
-                {pageView === 'drivers' && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-auto custom-scrollbar">
-                        <table className="w-full text-left border-collapse min-w-[1200px]">
-                            <thead className="sticky top-0 z-10 bg-white shadow-sm">
-                                <tr>
-                                    {visibleColumns.has('date') && <TH className="pl-6 w-[120px]" sortable sorted={sortField === 'date' ? sortOrder : null} onSort={() => handleSort('date')}>Date</TH>}
-                                    {visibleColumns.has('time') && <TH className="w-[80px]">Time</TH>}
-                                    {visibleColumns.has('driverName') && <TH className="w-[200px]" sortable sorted={sortField === 'driverName' ? sortOrder : null} onSort={() => handleSort('driverName')}>Driver</TH>}
-                                    {visibleColumns.has('driverType') && <TH>Driver Type</TH>}
-                                    {visibleColumns.has('assetName') && <TH className="w-[120px]" sortable sorted={sortField === 'assetName' ? sortOrder : null} onSort={() => handleSort('assetName')}>Asset</TH>}
-                                    {visibleColumns.has('locationCity') && <TH className="w-[120px]">City</TH>}
-                                    {visibleColumns.has('locationState') && <TH className="w-[80px] text-center">State</TH>}
-                                    {visibleColumns.has('locationFull') && <TH className="w-[200px]">Address</TH>}
-                                    {visibleColumns.has('violationType') && <TH className="w-[250px]" sortable sorted={sortField === 'violationType' ? sortOrder : null} onSort={() => handleSort('violationType')}>Violation</TH>}
-                                    {visibleColumns.has('violationGroup') && <TH className="w-[130px]">Group</TH>}
-                                    {visibleColumns.has('ccmtaCode') && <TH className="w-[90px]" align="center">CCMTA</TH>}
-                                    {visibleColumns.has('offenceCode') && <TH className="w-[140px]">Offence Code</TH>}
-                                    {visibleColumns.has('cfrCode') && <TH className="w-[160px]">CFR</TH>}
-                                    {visibleColumns.has('authority') && <TH className="w-[100px]" align="center">Authority</TH>}
-                                    {visibleColumns.has('nscPoints') && <TH className="w-[80px]" align="center">NSC Pts</TH>}
-                                    {visibleColumns.has('cvorPoints') && <TH className="w-[90px]" align="center">CVOR Pts</TH>}
-                                    {visibleColumns.has('crashLikelihood') && <TH sortable sorted={sortField === 'crashLikelihood' ? sortOrder : null} onSort={() => handleSort('crashLikelihood')}>Risk Level</TH>}
-                                    {visibleColumns.has('result') && <TH>Result</TH>}
-                                    {visibleColumns.has('totalCost') && <TH align="right" sortable sorted={sortField === 'fineAmount' ? sortOrder : null} onSort={() => handleSort('fineAmount')}>Total (Fine & Expenses)</TH>}
-                                    {visibleColumns.has('actions') && <TH align="right" className="w-[80px]">Action</TH>}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 text-slate-600">
-                                {driverPageData.length > 0 ? driverPageData.map(r => {
-                                    const totalCost = (r.fineAmount || 0) + (r.expenseAmount || 0);
-                                    const currency = r.currency || 'USD';
-                                    const fullV = getViolation(r.violationDataId);
-                                    const caEnf = fullV?.canadaEnforcement;
-                                    const usaCfr = fullV?.regulatoryCodes?.usa?.[0];
-                                    
-                                    return (
-                                    <tr 
-                                        key={r.id} 
-                                        onClick={() => handleRowClick(r)}
-                                        className="hover:bg-slate-50 transition-colors cursor-pointer group"
-                                    >
-                                        {visibleColumns.has('date') && <TD className="pl-6 font-medium text-slate-900">
-                                            {new Date(r.date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
-                                        </TD>}
-                                        {visibleColumns.has('time') && <TD className="text-slate-500 text-xs font-mono">{r.time}</TD>}
-                                        {visibleColumns.has('driverName') && <TD>
-                                            <div className="font-bold text-slate-800 text-sm mb-0.5">{r.driverName}</div>
-                                            <div className="text-[10px] text-slate-400 font-mono tracking-wide">ID: {r.driverId}</div>
-                                        </TD>}
-                                        {visibleColumns.has('driverType') && <TD>
-                                            <DriverTypeBadge type={r.driverType} />
-                                        </TD>}
-                                        {visibleColumns.has('assetName') && <TD>
-                                            {r.assetName ? (
-                                                <div className="font-medium text-slate-700">{r.assetName}</div>
-                                            ) : (
-                                                <span className="text-slate-300 text-xs">—</span>
-                                            )}
-                                        </TD>}
-                                        {visibleColumns.has('locationCity') && <TD>
-                                            <span className="text-slate-700">{r.locationCity || '—'}</span>
-                                        </TD>}
-                                        {visibleColumns.has('locationState') && <TD align="center">
-                                            <StateBadge state={r.locationState} />
-                                        </TD>}
-                                        {visibleColumns.has('locationFull') && <TD>
-                                            <div className="text-xs text-slate-600 truncate max-w-[150px]" title={`${r.locationStreet || ''}, ${r.locationCity}, ${r.locationState} ${r.locationZip || ''}`}>
-                                                {r.locationStreet ? `${r.locationStreet}, ` : ''}{r.locationCity}, {r.locationState}
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('violationType') && <TD>
-                                            <div className="font-medium text-slate-800 leading-snug mb-1 truncate max-w-[280px]" title={r.violationType}>
-                                                {r.violationType}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <ViolationCodePill code={r.violationCode} />
-                                                {r.isOos && <OOSBadge />}
-                                                {r.inspectionId && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 text-[9px] font-bold uppercase tracking-wide" title={`From Inspection ${r.inspectionId}`}>
-                                                        <ClipboardList size={9} strokeWidth={2.5} />INSP
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('violationGroup') && <TD>
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold uppercase tracking-wide truncate max-w-[120px]" title={r.violationGroup}>
-                                                {r.violationGroup}
-                                            </span>
-                                        </TD>}
-                                        {visibleColumns.has('ccmtaCode') && <TD align="center">
-                                            {caEnf?.ccmtaCode ? (
-                                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold uppercase tracking-wide">
-                                                    {caEnf.ccmtaCode}
-                                                </span>
-                                            ) : <span className="text-slate-300 text-xs">—</span>}
-                                        </TD>}
-                                        {visibleColumns.has('offenceCode') && <TD>
-                                            {caEnf?.code ? (
-                                                <span className="font-mono text-[11px] font-bold text-slate-700" title={caEnf.descriptions?.full}>
-                                                    {caEnf.code}
-                                                </span>
-                                            ) : <span className="text-slate-300 text-xs">—</span>}
-                                        </TD>}
-                                        {visibleColumns.has('cfrCode') && <TD>
-                                            {usaCfr?.cfr?.[0] ? (
-                                                <span className="font-mono text-[11px] text-blue-600 font-semibold" title={usaCfr.description}>
-                                                    {usaCfr.cfr[0]}
-                                                </span>
-                                            ) : <span className="text-slate-300 text-xs">—</span>}
-                                        </TD>}
-                                        {visibleColumns.has('authority') && <TD align="center">
-                                            {usaCfr?.authority ? (
-                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-bold uppercase">
-                                                    {usaCfr.authority}
-                                                </span>
-                                            ) : <span className="text-slate-300 text-xs">—</span>}
-                                        </TD>}
-                                        {visibleColumns.has('nscPoints') && <TD align="center">
-                                            {caEnf?.points?.nsc != null ? (
-                                                <span className={`font-mono font-bold text-sm ${caEnf.points.nsc >= 5 ? 'text-red-600' : caEnf.points.nsc >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>
-                                                    {caEnf.points.nsc}
-                                                </span>
-                                            ) : <span className="text-slate-300 text-xs">—</span>}
-                                        </TD>}
-                                        {visibleColumns.has('cvorPoints') && <TD align="center">
-                                            {caEnf?.points?.cvor ? (
-                                                <span className={`font-mono font-bold text-sm ${(caEnf.points.cvor.max || 0) >= 10 ? 'text-red-600' : (caEnf.points.cvor.max || 0) >= 5 ? 'text-amber-600' : 'text-slate-700'}`} title={`Raw: ${caEnf.points.cvor.raw}`}>
-                                                    {caEnf.points.cvor.min === caEnf.points.cvor.max ? caEnf.points.cvor.min : `${caEnf.points.cvor.min}–${caEnf.points.cvor.max}`}
-                                                </span>
-                                            ) : <span className="text-slate-300 text-xs">—</span>}
-                                        </TD>}
-                                        {visibleColumns.has('crashLikelihood') && <TD>
-                                            <CrashLikelihoodBar value={r.crashLikelihood} />
-                                        </TD>}
-                                        {visibleColumns.has('result') && <TD>
-                                            <ResultBadge result={r.result} />
-                                        </TD>}
-                                        {visibleColumns.has('totalCost') && <TD align="right" className="font-mono font-medium text-slate-700">
-                                            <div title={`Fine: ${fmt$(r.fineAmount || 0)}\nExpenses: ${fmt$(r.expenseAmount || 0)}`}>
-                                                {currency === 'USD' ? '$' : 'C$'}{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                <span className="text-[10px] text-slate-400 ml-1">{currency}</span>
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('actions') && <TD align="right">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleEdit(r); }}
-                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="Edit Record"
-                                            >
-                                                <Edit3 size={16} />
-                                            </button>
-                                        </TD>}
-                                    </tr>
-                                    );
-                                }) : (
-                                    <tr>
-                                        <td colSpan={10} className="py-20 text-center text-slate-400">
-                                            <div className="flex flex-col items-center justify-center gap-2">
-                                                <Search size={24} className="opacity-20" />
-                                                <p className="text-sm font-medium">No violations found matching your filters.</p>
-                                                <Button size="sm" variant="outline" onClick={() => { setSearch(''); setActiveKpiFilter(null); setFilterResult('all'); }} className="mt-2">
-                                                    Reset Filters
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                )}
-
-                {/* ── Asset Violations Table ─────────────────────────────────── */}
-                {pageView === 'assets' && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-auto custom-scrollbar">
-                        <table className="w-full text-left border-collapse min-w-[1200px]">
-                            <thead className="sticky top-0 z-10 bg-white shadow-sm">
-                                <tr>
-                                    {visibleColumns.has('date') && <TH className="pl-6 w-[120px]">Date</TH>}
-                                    {visibleColumns.has('time') && <TH className="w-[80px]">Time</TH>}
-                                    {visibleColumns.has('assetUnitNumber') && <TH className="w-[180px]">Asset (Unit #)</TH>}
-                                    {visibleColumns.has('assetMakeModel') && <TH>Make / Model / Year</TH>}
-                                    {visibleColumns.has('locationCity') && <TH className="w-[120px]">City</TH>}
-                                    {visibleColumns.has('locationState') && <TH className="w-[80px] text-center">State</TH>}
-                                    {visibleColumns.has('locationFull') && <TH className="w-[200px]">Address</TH>}
-                                    {visibleColumns.has('violationType') && <TH className="w-[250px]">Violation</TH>}
-                                    {visibleColumns.has('crashLikelihood') && <TH>Risk Level</TH>}
-                                    {visibleColumns.has('linkedDriverName') && <TH>Linked Driver</TH>}
-                                    {visibleColumns.has('result') && <TH>Result</TH>}
-                                    {visibleColumns.has('totalCost') && <TH align="right">Total (Fine & Expenses)</TH>}
-                                    {visibleColumns.has('actions') && <TH align="right" className="w-[80px]">Action</TH>}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 text-slate-600">
-                                {assetPageData.length > 0 ? assetPageData.map(r => (
-                                    <tr 
-                                        key={r.id} 
-                                        onClick={() => handleRowClick(r)}
-                                        className="hover:bg-slate-50 transition-colors group cursor-pointer"
-                                    >
-                                        {visibleColumns.has('date') && <TD className="pl-6 font-medium text-slate-900">
-                                            {new Date(r.date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
-                                        </TD>}
-                                        {visibleColumns.has('time') && <TD className="text-slate-500 text-xs font-mono">{r.time}</TD>}
-                                        {visibleColumns.has('assetUnitNumber') && <TD>
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-1.5 bg-slate-100 rounded-lg"><Truck size={14} className="text-slate-600" /></div>
-                                                <div>
-                                                    <div className="font-bold text-slate-800 text-sm">{r.assetUnitNumber}</div>
-                                                    <div className="text-[10px] text-slate-400">{r.assetType} · {r.assetPlate}</div>
-                                                </div>
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('assetMakeModel') && <TD>
-                                            <div className="text-sm text-slate-700">{r.assetMakeModel}</div>
-                                        </TD>}
-                                        {visibleColumns.has('locationCity') && <TD>
-                                            <span className="text-slate-700">{r.locationCity || '—'}</span>
-                                        </TD>}
-                                        {visibleColumns.has('locationState') && <TD align="center">
-                                            <StateBadge state={r.locationState} />
-                                        </TD>}
-                                        {visibleColumns.has('locationFull') && <TD>
-                                            <div className="text-xs text-slate-600 truncate max-w-[150px]" title={`${r.locationStreet || ''}, ${r.locationCity||''}, ${r.locationState} ${r.locationZip || ''}`}>
-                                                {r.locationStreet ? `${r.locationStreet}, ` : ''}{r.locationCity || ''}, {r.locationState}
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('violationType') && <TD>
-                                            <div className="font-medium text-slate-800 leading-snug mb-1 truncate max-w-[280px]" title={r.violationType}>
-                                                {r.violationType}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <ViolationCodePill code={r.violationCode} />
-                                                {r.isOos && <OOSBadge />}
-                                                {r.inspectionId && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 text-[9px] font-bold uppercase tracking-wide" title={`From Inspection ${r.inspectionId}`}>
-                                                        <ClipboardList size={9} strokeWidth={2.5} />INSP
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('crashLikelihood') && <TD>
-                                            <CrashLikelihoodBar value={r.crashLikelihoodPercent} />
-                                        </TD>}
-                                        {visibleColumns.has('linkedDriverName') && <TD>
-                                            {r.linkedDriverName ? (
-                                                <div className="flex items-center gap-1.5">
-                                                    <User size={12} className="text-slate-400" />
-                                                    <span className="text-sm text-slate-700">{r.linkedDriverName}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-slate-400 italic">—</span>
-                                            )}
-                                        </TD>}
-                                        {visibleColumns.has('result') && <TD>
-                                            <ResultBadge result={r.result} />
-                                        </TD>}
-                                        {visibleColumns.has('totalCost') && <TD align="right" className="font-mono font-medium text-slate-700">
-                                            <div>
-                                                ${(r.fineAmount||0).toLocaleString()}
-                                                <span className="text-[10px] text-slate-400 ml-1">USD</span>
-                                            </div>
-                                        </TD>}
-                                        {visibleColumns.has('actions') && <TD align="right">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleEdit(r); }}
-                                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="Edit Asset Record"
-                                            >
-                                                <Edit3 size={16} />
-                                            </button>
-                                        </TD>}
-                                    </tr>
-                                )) : (
-                                    <tr>
-                                        <td colSpan={10} className="py-20 text-center text-slate-400">
-                                            <div className="flex flex-col items-center justify-center gap-2">
-                                                <Truck size={24} className="opacity-20" />
-                                                <p className="text-sm font-medium">No asset violations found.</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                )}
-
-                {/* Pagination - Matching Screenshot Exact Layout */}
-                <div className="mt-4 flex items-center justify-end text-sm text-slate-600 select-none">
-                    <span className="mr-4">
-                        Showing <span className="font-bold text-slate-900">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentFilteredRecords.length, currentPage * itemsPerPage)}</span> of <span className="font-bold text-slate-900">{currentFilteredRecords.length}</span> results
+            {codes.canada!.map((entry, i) => (
+              <div key={i} className="bg-emerald-50/60 border border-emerald-100 rounded-lg p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-100 px-1.5 py-0.5 rounded">{entry.authority}</span>
+                  {entry.province && entry.province.length > 0 && (
+                    <span className="text-[9px] font-medium text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">
+                      {entry.province.join(', ')}
                     </span>
-                    
-                    <span className="mx-4 text-slate-300">|</span>
-                    
-                    <span className="mr-2">Rows per page:</span>
-                    <select 
-                        className="h-8 rounded border border-slate-300 bg-white text-sm px-2 focus:border-blue-500 focus:outline-none mr-6"
-                        value={itemsPerPage}
-                        onChange={(e) => {
-                            setItemsPerPage(Number(e.target.value));
-                            setCurrentPage(1);
-                        }}
-                    >
-                        <option value={10}>10</option>
-                        <option value={20}>20</option>
-                        <option value={50}>50</option>
-                    </select>
-
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                            className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                        >
-                            <ChevronLeft size={14} />
-                        </button>
-
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                            <button
-                                key={p}
-                                onClick={() => setCurrentPage(p)}
-                                className={cn(
-                                    "w-8 h-8 flex items-center justify-center rounded border text-sm font-medium transition-colors",
-                                    currentPage === p 
-                                        ? "bg-blue-600 text-white border-blue-600 shadow-sm" 
-                                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                                )}
-                            >
-                                {p}
-                            </button>
-                        ))}
-
-                        <button
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                            className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                        >
-                            <ChevronRight size={14} />
-                        </button>
-                    </div>
+                  )}
                 </div>
+                {entry.reference && entry.reference.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {entry.reference.map((ref, j) => (
+                      <code key={j} className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200">
+                        {ref}
+                      </code>
+                    ))}
+                  </div>
+                )}
+                {entry.description && (
+                  <p className="text-[10px] text-slate-500 leading-relaxed">{entry.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
+// ─── Expanded Row Panel ───────────────────────────────────────────────────────
+const ExpandedPanel = ({ v }: { v: UnifiedViolation }) => {
+  const clColor =
+    v.crashLikelihoodPercent >= 65 ? 'bg-red-500' :
+    v.crashLikelihoodPercent >= 40 ? 'bg-amber-400' :
+    'bg-blue-500';
+  const clTextColor =
+    v.crashLikelihoodPercent >= 65 ? 'text-red-600' :
+    v.crashLikelihoodPercent >= 40 ? 'text-amber-600' :
+    'text-blue-600';
+  const mpColor =
+    v.maintenanceProbability >= 55 ? 'bg-rose-500' :
+    v.maintenanceProbability >= 35 ? 'bg-amber-400' :
+    'bg-blue-400';
+  const mpTextColor =
+    v.maintenanceProbability >= 55 ? 'text-rose-600' :
+    v.maintenanceProbability >= 35 ? 'text-amber-600' :
+    'text-blue-600';
+
+  const totalCost = v.fineAmount + v.expenseAmount;
+  const finePct   = totalCost > 0 ? Math.round((v.fineAmount / totalCost) * 100) : 0;
+  const expPct    = 100 - finePct;
+
+  const regRef = fmtRegulatoryRef(v);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 bg-slate-50/70 border-t border-slate-100">
+      {/* Left — Violation Details */}
+      <div className="p-4 border-r border-slate-100 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Violation Details</span>
+        </div>
+
+        {/* Code + Regulatory */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <code className="px-2 py-1 bg-slate-900 text-white rounded text-xs font-mono font-bold tracking-wide">{v.code}</code>
+            <Badge label={v.source} cls={SOURCE_BADGE[v.source] ?? 'bg-slate-100 text-slate-600'} />
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Regulatory Reference</p>
+            <p className="text-sm font-semibold text-slate-700">{regRef}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Description</p>
+            <p className="text-sm text-slate-600 leading-relaxed">{v.description}</p>
+          </div>
+          {/* Category + Group — only show group if different from category */}
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            <Badge label={v.category} cls="bg-blue-50 text-blue-700 border border-blue-200" />
+            {v.group && v.group !== v.category && (
+              <Badge label={v.group} cls="bg-slate-100 text-slate-600 border border-slate-200" />
+            )}
+            <Badge label={v.severity} cls={RISK_BADGE[v.riskLevel] ?? 'bg-slate-100 text-slate-600'} />
+          </div>
+          {v.notes && (
+            <div className="border-t border-slate-100 pt-2">
+              <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Notes</p>
+              <p className="text-xs text-slate-500 italic leading-relaxed">{v.notes}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Equivalent Regulatory Codes */}
+        <RegulatoryCodesSection v={v} />
+
+        {/* Official Outcome */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1.5">Official Outcome</p>
+          <div className="flex flex-wrap gap-1.5">
+            <Badge label={v.result} cls={RESULT_BADGE[v.result] ?? 'bg-slate-100 text-slate-600'} />
+            {v.isOos && <Badge label="OOS Order Issued" cls="bg-red-100 text-red-700 border border-red-200" />}
+            <Badge label={v.status} cls={STATUS_BADGE[v.status] ?? 'bg-slate-100 text-slate-600'} />
+          </div>
+        </div>
+      </div>
+
+      {/* Middle — Event Info */}
+      <div className="p-4 border-r border-slate-100 space-y-2.5">
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Event Info</p>
+
+        {/* Date / Time / Location */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <MapPin className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-400 mb-0.5">Date & Time</p>
+              <p className="text-sm font-semibold text-slate-700">{fmtDate(v.date)} · {v.time}</p>
+              {v.location && <p className="text-xs text-slate-500 mt-1">{v.location}</p>}
+              <p className="text-xs text-slate-400 mt-0.5">{v.locationState}{v.locationState && v.locationCountry ? ' · ' : ''}{v.locationCountry}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Driver */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-400 mb-0.5">Driver</p>
+            <p className="text-sm font-semibold text-slate-700 truncate">{v.driverName || '—'}</p>
+            {v.driverId && <p className="text-xs text-slate-400 font-mono">{v.driverId}</p>}
+          </div>
+        </div>
+
+        {/* Asset */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+            <Truck className="w-4 h-4 text-slate-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-400 mb-0.5">Asset / Vehicle</p>
+            <p className="text-sm font-semibold text-slate-700 font-mono truncate">{v.vehicleUnit || '—'}</p>
+            {v.vehiclePlate && v.vehiclePlate !== '—' && (
+              <p className="text-xs text-slate-400">Plate: {v.vehiclePlate}</p>
+            )}
+          </div>
+        </div>
+
+        {v.inspectionId && (
+          <div className="bg-white border border-slate-200 rounded-lg p-3">
+            <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Inspection Report</p>
+            <p className="text-sm font-mono text-slate-600">{v.inspectionId}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Right — Impact Analysis */}
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Activity className="w-3.5 h-3.5 text-slate-500" />
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Impact Analysis</span>
+        </div>
+
+        {/* Crash Likelihood */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-medium text-slate-600">Crash Likelihood</span>
+            <span className={cn('text-sm font-bold tabular-nums', clTextColor)}>{v.crashLikelihoodPercent}%</span>
+          </div>
+          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all', clColor)}
+              style={{ width: `${v.crashLikelihoodPercent}%` }}
+            />
+          </div>
+          <p className="text-xs text-slate-400 mt-1.5">
+            {v.crashLikelihoodPercent >= 65 ? 'High crash risk — immediate action required'
+              : v.crashLikelihoodPercent >= 40 ? 'Elevated crash risk — monitor closely'
+              : 'Low crash risk — standard monitoring'}
+          </p>
+        </div>
+
+        {/* Maintenance Probability */}
+        <div className="bg-white border border-slate-200 rounded-lg p-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-medium text-slate-600">Maintenance Probability</span>
+            <span className={cn('text-sm font-bold tabular-nums', mpTextColor)}>{v.maintenanceProbability}%</span>
+          </div>
+          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all', mpColor)}
+              style={{ width: `${v.maintenanceProbability}%` }}
+            />
+          </div>
+          <p className="text-xs text-slate-400 mt-1.5">
+            {v.maintenanceProbability >= 55 ? 'Vehicle maintenance event likely'
+              : v.maintenanceProbability >= 35 ? 'Moderate maintenance risk'
+              : 'Low maintenance impact'}
+          </p>
+        </div>
+
+        {/* Points breakdown */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-2.5 text-center">
+            <p className="text-xl font-black text-blue-700 leading-none">{v.driverPts}</p>
+            <p className="text-xs text-blue-500 mt-1 font-medium">Driver</p>
+          </div>
+          <div className="bg-slate-100 border border-slate-200 rounded-lg p-2.5 text-center">
+            <p className="text-xl font-black text-slate-600 leading-none">{v.assetPts}</p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Asset</p>
+          </div>
+          <div className="bg-purple-50 border border-purple-100 rounded-lg p-2.5 text-center">
+            <p className="text-xl font-black text-purple-700 leading-none">{v.carrierPts}</p>
+            <p className="text-xs text-purple-500 mt-1 font-medium">Carrier</p>
+          </div>
+        </div>
+
+        {/* Financial breakdown */}
+        {totalCost > 0 && (
+          <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Financial Impact</p>
+            {/* Proportional bar */}
+            <div className="h-3 rounded-full overflow-hidden flex bg-slate-100">
+              {v.fineAmount > 0 && (
+                <div className="bg-red-400 h-full" style={{ width: `${finePct}%` }} title={`Fine: ${fmt(v.fineAmount, v.currency)}`} />
+              )}
+              {v.expenseAmount > 0 && (
+                <div className="bg-blue-400 h-full" style={{ width: `${expPct}%` }} title={`Expenses: ${fmt(v.expenseAmount, v.currency)}`} />
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              {v.fineAmount > 0 && (
+                <div className="flex items-center gap-1">
+                  <div className="w-2.5 h-2.5 rounded-sm bg-red-400 shrink-0" />
+                  <span className="text-slate-500">Fine:</span>
+                  <span className="font-bold text-slate-700">{fmt(v.fineAmount, v.currency)}</span>
+                </div>
+              )}
+              {v.expenseAmount > 0 && (
+                <div className="flex items-center gap-1">
+                  <div className="w-2.5 h-2.5 rounded-sm bg-blue-400 shrink-0" />
+                  <span className="text-slate-500">Repair:</span>
+                  <span className="font-bold text-slate-700">{fmt(v.expenseAmount, v.currency)}</span>
+                </div>
+              )}
+            </div>
+            <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center">
+              <span className="text-xs text-slate-400">Total Exposure</span>
+              <span className="text-sm font-black text-slate-800">{fmt(totalCost, v.currency)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export function ViolationsListPage() {
+  const [search, setSearch]               = useState('');
+  const [pageView, setPageView]           = useState<'all' | 'drivers' | 'assets'>('all');
+  const [sourceFilter, setSourceFilter]   = useState<'all' | 'SMS' | 'NSC' | 'CVOR'>('all');
+  const [riskFilter, setRiskFilter]       = useState<'all' | 'High' | 'Medium' | 'Low'>('all');
+  const [statusFilter, setStatusFilter]   = useState<'all' | 'Open' | 'Closed' | 'Under Review'>('all');
+  const [resultFilter, setResultFilter]   = useState<'all' | 'Citation Issued' | 'Warning' | 'OOS Order' | 'Clean Inspection' | 'Under Review'>('all');
+  const [expandedId, setExpandedId]       = useState<string | null>(null);
+  const [page, setPage]                   = useState(1);
+  const [perPage, setPerPage]             = useState(20);
+  const [isEditModalOpen, setEditModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<any>(null);
+
+  // Active dataset based on pageView
+  const activeDataset = pageView === 'drivers' ? ALL_DRIVER_UNIFIED
+    : pageView === 'assets' ? ALL_ASSET_UNIFIED
+    : ALL_UNIFIED;
+
+  // ─── KPI calculations ────────────────────────────────────────────────────
+  const kpi = useMemo(() => {
+    const total       = activeDataset.length;
+    const oos         = activeDataset.filter(v => v.isOos || v.result === 'OOS Order').length;
+    const highRisk    = activeDataset.filter(v => v.riskLevel === 'High').length;
+    const citations   = activeDataset.filter(v => v.result === 'Citation Issued').length;
+    const openCases   = activeDataset.filter(v => v.status === 'Open').length;
+    const totalFines  = activeDataset.reduce((s, v) => s + v.fineAmount, 0);
+    return { total, oos, highRisk, citations, openCases, totalFines };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageView]);
+
+  // ─── Filtered data ────────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return activeDataset.filter(v => {
+      if (sourceFilter !== 'all' && v.source !== sourceFilter) return false;
+      if (riskFilter !== 'all' && v.riskLevel !== riskFilter) return false;
+      if (statusFilter !== 'all' && v.status !== statusFilter) return false;
+      if (resultFilter !== 'all' && v.result !== resultFilter) return false;
+      if (q) {
+        return (
+          v.driverName.toLowerCase().includes(q) ||
+          v.code.toLowerCase().includes(q) ||
+          v.description.toLowerCase().includes(q) ||
+          v.category.toLowerCase().includes(q) ||
+          v.location.toLowerCase().includes(q) ||
+          v.vehicleUnit.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, sourceFilter, riskFilter, statusFilter, resultFilter, pageView]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const safePageNum = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePageNum - 1) * perPage, safePageNum * perPage);
+
+  const anyFilter = search || sourceFilter !== 'all' || riskFilter !== 'all' || statusFilter !== 'all' || resultFilter !== 'all';
+
+  const clearFilters = () => {
+    setSearch('');
+    setSourceFilter('all');
+    setRiskFilter('all');
+    setStatusFilter('all');
+    setResultFilter('all');
+    setPage(1);
+  };
+
+  // ─── KPI Cards ────────────────────────────────────────────────────────────
+  const KPICard = ({
+    label, value, subtitle, icon: Icon, barColor, textColor,
+  }: {
+    label: string; value: string | number; subtitle?: string;
+    icon: React.ElementType; barColor: string; textColor: string;
+  }) => (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex overflow-hidden">
+      <div className={cn('w-1.5 shrink-0', barColor)} />
+      <div className="flex-1 p-3 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500 truncate">{label}</p>
+            <p className={cn('text-2xl font-bold mt-0.5', textColor)}>{value}</p>
+            {subtitle && <p className="text-xs text-slate-400 truncate">{subtitle}</p>}
+          </div>
+          <div className={cn('rounded-lg p-1.5 shrink-0', barColor.replace('bg-', 'bg-').replace('-500', '-100').replace('-600', '-100'))}>
+            <Icon className={cn('w-4 h-4', textColor)} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 shrink-0">
+        <div className="px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+          <nav className="flex items-center gap-2 mb-1 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
+            <span>Safety</span>
+            <span className="text-slate-300">/</span>
+            <span className="text-slate-900">Violations</span>
+          </nav>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Violations</h1>
+          <p className="mt-1 text-xs text-slate-500">
+            {activeDataset.length.toLocaleString()} records · SMS · NSC · CVOR
+          </p>
+        </div>
+        <div className="ml-auto flex flex-col items-end gap-4">
+          {/* Driver / Assets toggle */}
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200/50">
+            {([
+              { key: 'all',     label: 'All',     Icon: List },
+              { key: 'drivers', label: 'Drivers', Icon: Users },
+              { key: 'assets',  label: 'Assets',  Icon: Truck },
+            ] as const).map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => { setPageView(key); setPage(1); setExpandedId(null); }}
+                className={cn(
+                  'flex items-center gap-2 text-xs font-medium px-4 py-1.5 rounded-md transition-all',
+                  pageView === key
+                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 transition-all"
+              onClick={() => {}}
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all"
+              onClick={() => { setEditingRecord(null); setEditModalOpen(true); }}
+            >
+              <Plus className="w-4 h-4" />
+              Add Violation
+            </button>
+          </div>
+        </div>
+        </div>
+      </header>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="p-4 space-y-4">
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+            <KPICard
+              label="Total Violations"
+              value={kpi.total.toLocaleString()}
+              icon={LayoutGrid}
+              barColor="bg-blue-500"
+              textColor="text-blue-700"
+            />
+            <KPICard
+              label="OOS Orders"
+              value={kpi.oos}
+              subtitle="vehicles/drivers halted"
+              icon={Ban}
+              barColor="bg-red-500"
+              textColor="text-red-700"
+            />
+            <KPICard
+              label="High Risk"
+              value={kpi.highRisk}
+              subtitle="crash likelihood ≥65%"
+              icon={AlertTriangle}
+              barColor="bg-rose-500"
+              textColor="text-rose-700"
+            />
+            <KPICard
+              label="Citations Issued"
+              value={kpi.citations}
+              icon={FileWarning}
+              barColor="bg-amber-500"
+              textColor="text-amber-700"
+            />
+            <KPICard
+              label="Open Cases"
+              value={kpi.openCases}
+              icon={Clock}
+              barColor="bg-orange-500"
+              textColor="text-orange-700"
+            />
+            <KPICard
+              label="Total Fines"
+              value={`$${kpi.totalFines.toLocaleString()}`}
+              subtitle="USD + CAD combined"
+              icon={DollarSign}
+              barColor="bg-emerald-500"
+              textColor="text-emerald-700"
+            />
+          </div>
+
+          {/* Filters */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-3 space-y-2.5">
+            {/* Row 1: Search + Source pills */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  className="w-full h-8 pl-8 pr-3 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                  placeholder="Search driver, code, description, location…"
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                {(['all', 'SMS', 'NSC', 'CVOR'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => { setSourceFilter(s); setPage(1); }}
+                    className={cn(
+                      'px-3 h-8 rounded-lg text-xs font-semibold border transition-colors',
+                      sourceFilter === s
+                        ? s === 'SMS' ? 'bg-blue-600 text-white border-blue-600'
+                          : s === 'NSC' ? 'bg-emerald-600 text-white border-emerald-600'
+                          : s === 'CVOR' ? 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-slate-700 text-white border-slate-700'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    )}
+                  >
+                    {s === 'all' ? 'All Sources' : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Row 2: Dropdowns + Clear */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="h-8 px-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={riskFilter}
+                onChange={e => { setRiskFilter(e.target.value as typeof riskFilter); setPage(1); }}
+              >
+                <option value="all">All Risk Levels</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+              <select
+                className="h-8 px-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={statusFilter}
+                onChange={e => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1); }}
+              >
+                <option value="all">All Statuses</option>
+                <option value="Open">Open</option>
+                <option value="Closed">Closed</option>
+                <option value="Under Review">Under Review</option>
+              </select>
+              <select
+                className="h-8 px-2 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={resultFilter}
+                onChange={e => { setResultFilter(e.target.value as typeof resultFilter); setPage(1); }}
+              >
+                <option value="all">All Results</option>
+                <option value="Citation Issued">Citation Issued</option>
+                <option value="Warning">Warning</option>
+                <option value="OOS Order">OOS Order</option>
+                <option value="Clean Inspection">Clean Inspection</option>
+                <option value="Under Review">Under Review</option>
+              </select>
+              {anyFilter && (
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-1 h-8 px-2.5 text-xs font-medium border border-slate-200 rounded-lg bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors"
+                >
+                  <X className="w-3 h-3" /> Clear filters
+                </button>
+              )}
+              <span className="ml-auto text-xs text-slate-400">
+                {filtered.length.toLocaleString()} results
+              </span>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Date/Time</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Driver / Asset</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Source</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Code</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Category</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Risk</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Crash %</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Points</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">OOS</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Result</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fine</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.length === 0 && (
+                    <tr>
+                      <td colSpan={13} className="text-center py-12 text-slate-400 text-sm">
+                        No violations match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                  {pageRows.map(v => {
+                    const isExpanded = expandedId === v.id;
+                    return (
+                      <React.Fragment key={v.id}>
+                        <tr
+                          className={cn(
+                            'border-b border-slate-100 cursor-pointer transition-colors',
+                            isExpanded
+                              ? 'bg-blue-50/10 border-l-2 border-l-blue-400'
+                              : 'hover:bg-blue-50/20'
+                          )}
+                          onClick={() => setExpandedId(isExpanded ? null : v.id)}
+                        >
+                          {/* Date/Time */}
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <p className="font-medium text-slate-700 text-xs">{fmtDate(v.date)}</p>
+                            <p className="text-xs text-slate-400">{v.time}</p>
+                          </td>
+                          {/* Driver / Asset */}
+                          <td className="px-3 py-2.5 max-w-[160px]">
+                            <p className="font-semibold text-slate-700 text-xs truncate">{v.driverName || '—'}</p>
+                            <p className="text-xs text-slate-400 font-mono truncate">{v.vehicleUnit}</p>
+                          </td>
+                          {/* Source */}
+                          <td className="px-3 py-2.5">
+                            <Badge label={v.source} cls={SOURCE_BADGE[v.source] ?? 'bg-slate-100 text-slate-600'} />
+                          </td>
+                          {/* Code */}
+                          <td className="px-3 py-2.5">
+                            <code className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-bold font-mono whitespace-nowrap">
+                              {v.code}
+                            </code>
+                          </td>
+                          {/* Category */}
+                          <td className="px-3 py-2.5 max-w-[150px]">
+                            <p className="text-xs text-slate-700 truncate">{v.category}</p>
+                            <p className="text-xs text-slate-400 truncate">{v.group}</p>
+                          </td>
+                          {/* Risk */}
+                          <td className="px-3 py-2.5">
+                            <Badge label={v.riskLevel} cls={RISK_BADGE[v.riskLevel]} />
+                          </td>
+                          {/* Crash % */}
+                          <td className="px-3 py-2.5">
+                            <CrashBar pct={v.crashLikelihoodPercent} />
+                          </td>
+                          {/* Points */}
+                          <td className="px-3 py-2.5">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-medium">
+                                D:{v.driverPts}
+                              </span>
+                              <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-medium">
+                                A:{v.assetPts}
+                              </span>
+                              <span className="inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded font-medium">
+                                C:{v.carrierPts}
+                              </span>
+                            </div>
+                          </td>
+                          {/* OOS */}
+                          <td className="px-3 py-2.5">
+                            {v.isOos
+                              ? <Badge label="YES" cls="bg-red-100 text-red-700 border border-red-200" />
+                              : <span className="text-slate-300">—</span>
+                            }
+                          </td>
+                          {/* Result */}
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <Badge label={v.result} cls={RESULT_BADGE[v.result] ?? 'bg-slate-100 text-slate-600'} />
+                          </td>
+                          {/* Fine */}
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {v.fineAmount > 0
+                              ? <span className="font-bold text-slate-700 text-xs">{fmt(v.fineAmount, v.currency)}</span>
+                              : <span className="text-slate-300 text-xs">—</span>
+                            }
+                          </td>
+                          {/* Status */}
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <Badge label={v.status} cls={STATUS_BADGE[v.status] ?? 'bg-slate-100 text-slate-600'} />
+                          </td>
+                          {/* Chevron */}
+                          <td className="px-2 py-2.5">
+                            {isExpanded
+                              ? <ChevronUp className="w-4 h-4 text-blue-500" />
+                              : <ChevronDown className="w-4 h-4 text-slate-400" />
+                            }
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="border-b border-blue-100">
+                            <td colSpan={13} className="p-0">
+                              <ExpandedPanel v={v} />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            {/* Modals */}
-            <ViolationDetailModal 
-                record={selectedRecord} 
-                onClose={() => setSelectedRecord(null)} 
-            />
-            
-            <ViolationEditForm 
-                isOpen={isEditModalOpen}
-                record={editingRecord as any}
-                mode={pageView === 'drivers' ? 'driver' : 'asset'}
-                onClose={() => setIsEditModalOpen(false)}
-                onSave={handleSaveEdit}
-            />
+            {/* Pagination */}
+            <div className="border-t border-slate-200 px-4 py-3 flex items-center justify-between gap-3 flex-wrap bg-slate-50/50">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>Rows per page:</span>
+                <select
+                  className="h-7 px-2 border border-slate-200 rounded bg-white text-xs focus:outline-none"
+                  value={perPage}
+                  onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }}
+                >
+                  {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">
+                  Page {safePageNum} of {totalPages}
+                  {' '}· {filtered.length.toLocaleString()} total
+                </span>
+                <button
+                  disabled={safePageNum <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="h-7 w-7 flex items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  disabled={safePageNum >= totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  className="h-7 w-7 flex items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-    );
+      </div>
+
+      {/* Edit Modal */}
+      <ViolationEditForm
+        isOpen={isEditModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        record={editingRecord}
+        mode="driver"
+        onSave={(_updated: any) => { setEditModalOpen(false); }}
+      />
+    </div>
+  );
 }

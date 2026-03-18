@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import {
-  Info, ChevronDown, ChevronUp, ShieldAlert,
+  Info, ChevronDown, ChevronUp, ShieldAlert, MapPin, Building2, User, Truck,
 } from 'lucide-react';
 import { NSC_CODE_TO_SYSTEM } from './nscViolationMap';
 
@@ -241,62 +241,468 @@ export function parseCcmtaCode(raw: string): string {
 }
 
 export const violationDetailsData: ViolationDetailRow[] = [
+  // ── Inspection ONEA01655892 · 2024 JUL 23 · ON ──────────────────────────
   {
     id: 1,
-    date: '2020 JAN 30',
-    time: '09:54',
-    document: 'TVR 12461XE1',
-    jurisdiction: 'AB',
-    dateEntered: '2021 JUL 17',
-    issuingAgency: 'Government Alberta - SHP - Leduc',
-    location: 'Leduc - VIS',
-    vehicle: '000000 AB',
-    driver: 'Joe Smith',
-    commodity: '000000 BC',
-    actSection: 'TSA s.21(1)(a) Operate unregistered motor vehicle or trailer',
-    ccmtaCode: '209 UNREGISTERED MOTOR VEH.',
-    text: 'Expired 2021/06/30 vehicle must be registered prior to leaving VIS.',
+    date: '2024 JUL 23',
+    time: '00:00',
+    document: 'ONEA01655892',
+    jurisdiction: 'ON',
+    dateEntered: '2024 JUL 30',
+    issuingAgency: 'Ministry of Transportation Ontario',
+    location: 'WHITBY TIS',
+    vehicle: 'TR-1049',
+    driver: 'James Sullivan',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 6 — Brake Systems (OOS)',
+    ccmtaCode: '601 IMPROPER BRAKES - OOS',
+    text: 'Brake system defect — vehicle placed out of service.',
     detailNumber: 1,
-    description: 'FAULTY LIGHTS, NOT OOS',
-    severity: NSC_VIOLATION_CATALOG['209']?.severity,
+    description: 'Improper brakes',
+    severity: NSC_VIOLATION_CATALOG['601']?.severity,
   },
   {
     id: 2,
-    date: '2020 FEB 11',
-    time: '09:54',
-    document: 'TVR 12521XE1',
-    jurisdiction: 'AB',
-    dateEntered: '2021 JUL 17',
-    issuingAgency: 'Government Alberta - SHP - Leduc',
-    location: 'Leduc - VIS',
-    vehicle: '000000 AB',
-    driver: 'Joe Smith',
-    commodity: '000000 BC',
-    actSection: 'TSA s.16(7) Fail to produce financial responsibility card',
-    ccmtaCode: '210 FALSE OR NO INFO PROVIDED',
-    text: 'Cannot be a photocopy.',
+    date: '2024 JUL 23',
+    time: '00:00',
+    document: 'ONEA01655892',
+    jurisdiction: 'ON',
+    dateEntered: '2024 JUL 30',
+    issuingAgency: 'Ministry of Transportation Ontario',
+    location: 'WHITBY TIS',
+    vehicle: 'TR-1049',
+    driver: 'James Sullivan',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 7 — Tires',
+    ccmtaCode: '701 TIRE DEFECT',
+    text: 'Tire defect — requires attention.',
     detailNumber: 2,
-    description: 'UNAUTHORIZED USE REG',
-    severity: NSC_VIOLATION_CATALOG['210']?.severity,
+    description: 'Tire defect',
+    severity: NSC_VIOLATION_CATALOG['701']?.severity,
   },
+  // ── Inspection 9079427 · 2024 JUL 03 · BC ───────────────────────────────
   {
     id: 3,
-    date: '2021 JAN 01',
-    time: '19:13',
-    document: 'TVR AB12121X',
-    jurisdiction: 'AB',
-    dateEntered: '2021 AUG 26',
-    issuingAgency: 'Government Alberta - SHP - Atmore',
-    location: 'Atmore - VIS',
-    vehicle: '000000 AB',
-    driver: 'Joe Smith',
-    commodity: '000000 AB',
-    actSection: '122/095(2) Fail to maintain anti-lock braking system in good working order',
+    date: '2024 JUL 03',
+    time: '00:00',
+    document: '9079427',
+    jurisdiction: 'BC',
+    dateEntered: '2024 JUL 09',
+    issuingAgency: 'BC Ministry of Transportation',
+    location: 'Kamloops Junction',
+    vehicle: 'TR-3055',
+    driver: 'Robert Chen',
+    commodity: '0AB116 AB',
+    actSection: 'NSC 7 — Tires (OOS)',
+    ccmtaCode: '702 TIRE TREAD DEPTH VIOLATION - OOS',
+    text: 'Tire tread depth below OOS threshold.',
+    detailNumber: 1,
+    description: 'Tire tread depth violation',
+    severity: NSC_VIOLATION_CATALOG['702']?.severity,
+  },
+  {
+    id: 4,
+    date: '2024 JUL 03',
+    time: '00:00',
+    document: '9079427',
+    jurisdiction: 'BC',
+    dateEntered: '2024 JUL 09',
+    issuingAgency: 'BC Ministry of Transportation',
+    location: 'Kamloops Junction',
+    vehicle: 'TR-3055',
+    driver: 'Robert Chen',
+    commodity: '0AB116 AB',
+    actSection: 'NSC 6 — Brake Adjustment (OOS)',
+    ccmtaCode: '602 BRAKE OUT OF ADJUSTMENT - OOS',
+    text: 'Brake adjustment out of specification — OOS order issued.',
+    detailNumber: 2,
+    description: 'Brake out of adjustment',
+    severity: NSC_VIOLATION_CATALOG['602']?.severity,
+  },
+  {
+    id: 5,
+    date: '2024 JUL 03',
+    time: '00:00',
+    document: '9079427',
+    jurisdiction: 'BC',
+    dateEntered: '2024 JUL 09',
+    issuingAgency: 'BC Ministry of Transportation',
+    location: 'Kamloops Junction',
+    vehicle: 'TR-3055',
+    driver: 'Robert Chen',
+    commodity: '0AB116 AB',
+    actSection: 'NSC 6 — Brake Systems (OOS)',
     ccmtaCode: '601 IMPROPER BRAKES - OOS',
-    text: 'ABS not working during ABS selftest.',
+    text: 'Brake system defect — vehicle placed out of service.',
     detailNumber: 3,
-    description: 'FAULTY BRAKES, NOT OOS',
+    description: 'Improper brakes',
     severity: NSC_VIOLATION_CATALOG['601']?.severity,
+  },
+  {
+    id: 6,
+    date: '2024 JUL 03',
+    time: '00:00',
+    document: '9079427',
+    jurisdiction: 'BC',
+    dateEntered: '2024 JUL 09',
+    issuingAgency: 'BC Ministry of Transportation',
+    location: 'Kamloops Junction',
+    vehicle: 'TR-3055',
+    driver: 'Robert Chen',
+    commodity: '0AB116 AB',
+    actSection: 'NSC 10 — Driver Credentials',
+    ccmtaCode: '1001 DRIVER LICENCE VIOLATION',
+    text: 'Driver credentials deficiency noted during inspection.',
+    detailNumber: 4,
+    description: 'Driver licence violation',
+    severity: NSC_VIOLATION_CATALOG['1001']?.severity,
+  },
+  {
+    id: 7,
+    date: '2024 JUL 03',
+    time: '00:00',
+    document: '9079427',
+    jurisdiction: 'BC',
+    dateEntered: '2024 JUL 09',
+    issuingAgency: 'BC Ministry of Transportation',
+    location: 'Kamloops Junction',
+    vehicle: 'TR-3055',
+    driver: 'Robert Chen',
+    commodity: '0AB116 AB',
+    actSection: 'NSC 13 — Frames / Structural',
+    ccmtaCode: '1301 VEHICLE MAINTENANCE DEFECT',
+    text: 'Frame structural defect requires attention.',
+    detailNumber: 5,
+    description: 'Vehicle maintenance defect',
+    severity: NSC_VIOLATION_CATALOG['1301']?.severity,
+  },
+  {
+    id: 8,
+    date: '2024 JUL 03',
+    time: '00:00',
+    document: '9079427',
+    jurisdiction: 'BC',
+    dateEntered: '2024 JUL 09',
+    issuingAgency: 'BC Ministry of Transportation',
+    location: 'Kamloops Junction',
+    vehicle: 'TR-3055',
+    driver: 'Robert Chen',
+    commodity: '0AB116 AB',
+    actSection: 'NSC 8 — Lighting Devices',
+    ccmtaCode: '801 LIGHTING DEFECT',
+    text: 'Lighting device defect noted.',
+    detailNumber: 6,
+    description: 'Lighting defect',
+    severity: NSC_VIOLATION_CATALOG['801']?.severity,
+  },
+  // ── Inspection V241439653 · 2024 JUN 13 · TX ────────────────────────────
+  {
+    id: 9,
+    date: '2024 JUN 13',
+    time: '00:00',
+    document: 'V241439653',
+    jurisdiction: 'TX',
+    dateEntered: '2024 JUL 02',
+    issuingAgency: 'Texas DPS - Commercial Vehicle Enforcement',
+    location: 'IH45 NB NEW WAVERLY SCALE',
+    vehicle: 'TR-6001',
+    driver: 'Sarah Johnson',
+    commodity: 'A85916 AB',
+    actSection: 'NSC 8 — Lighting Devices (OOS)',
+    ccmtaCode: '802 INOPERATIVE BRAKE LIGHTS - OOS',
+    text: 'Brake lights inoperative — OOS order issued.',
+    detailNumber: 1,
+    description: 'Inoperative brake lights',
+    severity: NSC_VIOLATION_CATALOG['802']?.severity,
+  },
+  {
+    id: 10,
+    date: '2024 JUN 13',
+    time: '00:00',
+    document: 'V241439653',
+    jurisdiction: 'TX',
+    dateEntered: '2024 JUL 02',
+    issuingAgency: 'Texas DPS - Commercial Vehicle Enforcement',
+    location: 'IH45 NB NEW WAVERLY SCALE',
+    vehicle: 'TR-6001',
+    driver: 'Sarah Johnson',
+    commodity: 'A85916 AB',
+    actSection: 'NSC 8 — Windshield Wipers',
+    ccmtaCode: '801 LIGHTING DEFECT',
+    text: 'Windshield wiper defect requires attention.',
+    detailNumber: 2,
+    description: 'Lighting defect',
+    severity: NSC_VIOLATION_CATALOG['801']?.severity,
+  },
+  // ── Inspection 1002415045 · 2024 MAY 29 · PA ────────────────────────────
+  {
+    id: 11,
+    date: '2024 MAY 29',
+    time: '00:00',
+    document: '1002415045',
+    jurisdiction: 'PA',
+    dateEntered: '2024 JUN 11',
+    issuingAgency: 'Pennsylvania State Police - CMV Unit',
+    location: 'PA TOLL 576 WESTBOUND, ON RAMP',
+    vehicle: 'TR-1049',
+    driver: 'Michael Brown',
+    commodity: '0AP132 AB',
+    actSection: 'NSC 10 — Driver Credentials',
+    ccmtaCode: '1001 DRIVER LICENCE VIOLATION',
+    text: 'Driver credentials deficiency noted during inspection.',
+    detailNumber: 1,
+    description: 'Driver licence violation',
+    severity: NSC_VIOLATION_CATALOG['1001']?.severity,
+  },
+  // ── Inspection 679383 · 2024 MAY 01 · NS ────────────────────────────────
+  {
+    id: 12,
+    date: '2024 MAY 01',
+    time: '00:00',
+    document: '679383',
+    jurisdiction: 'NS',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'Nova Scotia Highway Safety Division',
+    location: 'AMHERST (OUT)',
+    vehicle: 'TR-5200',
+    driver: 'John Smith',
+    commodity: '0AU350 AB',
+    actSection: 'NSC 9 — Cargo Securement',
+    ccmtaCode: '901 CARGO NOT SECURED',
+    text: 'Cargo securement deficiency noted.',
+    detailNumber: 1,
+    description: 'Cargo not secured',
+    severity: NSC_VIOLATION_CATALOG['901']?.severity,
+  },
+  // ── Inspection ON0001738260 · 2024 APR 26 · ON ──────────────────────────
+  {
+    id: 13,
+    date: '2024 APR 26',
+    time: '00:00',
+    document: 'ON0001738260',
+    jurisdiction: 'ON',
+    dateEntered: '2024 MAY 14',
+    issuingAgency: 'Ministry of Transportation Ontario',
+    location: 'HWY 6/NORTH OF GUELPH',
+    vehicle: 'TR-7044',
+    driver: 'Sarah Miller',
+    commodity: 'A45934 AB',
+    actSection: 'NSC 6 — Brake Systems (OOS)',
+    ccmtaCode: '601 IMPROPER BRAKES - OOS',
+    text: 'Brake system defect — vehicle placed out of service.',
+    detailNumber: 1,
+    description: 'Improper brakes',
+    severity: NSC_VIOLATION_CATALOG['601']?.severity,
+  },
+  {
+    id: 14,
+    date: '2024 APR 26',
+    time: '00:00',
+    document: 'ON0001738260',
+    jurisdiction: 'ON',
+    dateEntered: '2024 MAY 14',
+    issuingAgency: 'Ministry of Transportation Ontario',
+    location: 'HWY 6/NORTH OF GUELPH',
+    vehicle: 'TR-7044',
+    driver: 'Sarah Miller',
+    commodity: 'A45934 AB',
+    actSection: 'NSC 10 — Driver Credentials',
+    ccmtaCode: '1001 DRIVER LICENCE VIOLATION',
+    text: 'Driver credentials deficiency noted during inspection.',
+    detailNumber: 2,
+    description: 'Driver licence violation',
+    severity: NSC_VIOLATION_CATALOG['1001']?.severity,
+  },
+  {
+    id: 15,
+    date: '2024 APR 26',
+    time: '00:00',
+    document: 'ON0001738260',
+    jurisdiction: 'ON',
+    dateEntered: '2024 MAY 14',
+    issuingAgency: 'Ministry of Transportation Ontario',
+    location: 'HWY 6/NORTH OF GUELPH',
+    vehicle: 'TR-7044',
+    driver: 'Sarah Miller',
+    commodity: 'A45934 AB',
+    actSection: 'NSC 11 — Hours of Service',
+    ccmtaCode: '1101 HOURS OF SERVICE VIOLATION',
+    text: 'Hours of service violation noted.',
+    detailNumber: 3,
+    description: 'Hours of service violation',
+    severity: NSC_VIOLATION_CATALOG['1101']?.severity,
+  },
+  {
+    id: 16,
+    date: '2024 APR 26',
+    time: '00:00',
+    document: 'ON0001738260',
+    jurisdiction: 'ON',
+    dateEntered: '2024 MAY 14',
+    issuingAgency: 'Ministry of Transportation Ontario',
+    location: 'HWY 6/NORTH OF GUELPH',
+    vehicle: 'TR-7044',
+    driver: 'Sarah Miller',
+    commodity: 'A45934 AB',
+    actSection: 'NSC 8 — Lighting Devices',
+    ccmtaCode: '801 LIGHTING DEFECT',
+    text: 'Lighting device defect noted.',
+    detailNumber: 4,
+    description: 'Lighting defect',
+    severity: NSC_VIOLATION_CATALOG['801']?.severity,
+  },
+  // ── Inspection 462948 · 2024 APR 17 · NB ────────────────────────────────
+  {
+    id: 17,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 13 — Trailer Bodies (OOS)',
+    ccmtaCode: '1301 VEHICLE MAINTENANCE DEFECT - OOS',
+    text: 'Van/open-top trailer body defect — OOS order issued.',
+    detailNumber: 1,
+    description: 'Vehicle maintenance defect',
+    severity: NSC_VIOLATION_CATALOG['1301']?.severity,
+  },
+  {
+    id: 18,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 6 — Brake Systems (OOS)',
+    ccmtaCode: '601 IMPROPER BRAKES - OOS',
+    text: 'Brake system defect — vehicle placed out of service.',
+    detailNumber: 2,
+    description: 'Improper brakes',
+    severity: NSC_VIOLATION_CATALOG['601']?.severity,
+  },
+  {
+    id: 19,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 13 — Coupling Devices (OOS)',
+    ccmtaCode: '1301 VEHICLE MAINTENANCE DEFECT - OOS',
+    text: 'Coupling device defect — OOS order issued.',
+    detailNumber: 3,
+    description: 'Vehicle maintenance defect',
+    severity: NSC_VIOLATION_CATALOG['1301']?.severity,
+  },
+  {
+    id: 20,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 8 — Lighting Devices (OOS)',
+    ccmtaCode: '802 INOPERATIVE BRAKE LIGHTS - OOS',
+    text: 'Lighting OOS — brake lights inoperative.',
+    detailNumber: 4,
+    description: 'Inoperative brake lights',
+    severity: NSC_VIOLATION_CATALOG['802']?.severity,
+  },
+  {
+    id: 21,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 13 — Trailer Bodies',
+    ccmtaCode: '1301 VEHICLE MAINTENANCE DEFECT',
+    text: 'Van/open-top trailer body defect requires attention.',
+    detailNumber: 5,
+    description: 'Vehicle maintenance defect',
+    severity: NSC_VIOLATION_CATALOG['1301']?.severity,
+  },
+  {
+    id: 22,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 6 — Brake Systems',
+    ccmtaCode: '601 IMPROPER BRAKES',
+    text: 'Brake system defect requires attention.',
+    detailNumber: 6,
+    description: 'Improper brakes',
+    severity: NSC_VIOLATION_CATALOG['601']?.severity,
+  },
+  {
+    id: 23,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 13 — Coupling Devices',
+    ccmtaCode: '1301 VEHICLE MAINTENANCE DEFECT',
+    text: 'Coupling device defect requires attention.',
+    detailNumber: 7,
+    description: 'Vehicle maintenance defect',
+    severity: NSC_VIOLATION_CATALOG['1301']?.severity,
+  },
+  {
+    id: 24,
+    date: '2024 APR 17',
+    time: '00:00',
+    document: '462948',
+    jurisdiction: 'NB',
+    dateEntered: '2024 MAY 07',
+    issuingAgency: 'New Brunswick Motor Vehicle Branch',
+    location: 'SALISBURY',
+    vehicle: 'TR-1049',
+    driver: 'John Smith',
+    commodity: 'A41990 AB',
+    actSection: 'NSC 8 — Lighting Devices',
+    ccmtaCode: '801 LIGHTING DEFECT',
+    text: 'Lighting device defect noted.',
+    detailNumber: 8,
+    description: 'Lighting defect',
+    severity: NSC_VIOLATION_CATALOG['801']?.severity,
   },
 ];
 
@@ -1158,17 +1564,17 @@ export function NscAnalysis() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {violationSummaryData.filter(row => row.count > 0).map((row, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-4 py-2 text-center text-slate-400">{row.count}</td>
-                                <td className="px-4 py-2 text-center text-slate-400">{row.percent}</td>
-                                <td className="px-4 py-2 text-left text-slate-700 font-medium">{row.group}</td>
+                            {violationSummaryData.map((row, idx) => (
+                              <tr key={idx} className={`hover:bg-slate-50 transition-colors ${row.count === 0 ? 'opacity-50' : ''}`}>
+                                <td className={`px-4 py-2 text-center font-mono ${row.count > 0 ? 'font-bold text-slate-800' : 'text-slate-400'}`}>{row.count}</td>
+                                <td className={`px-4 py-2 text-center ${row.count > 0 ? 'font-semibold text-slate-700' : 'text-slate-400'}`}>{row.percent}</td>
+                                <td className={`px-4 py-2 text-left font-medium ${row.count > 0 ? 'text-slate-900' : 'text-slate-400'}`}>{row.group}</td>
                               </tr>
                             ))}
-                            <tr className="bg-slate-50 font-bold text-slate-800 border-t border-slate-200">
-                              <td className="px-4 py-3 text-center">0</td>
-                              <td className="px-4 py-3 text-center">0%</td>
-                              <td className="px-4 py-3 text-left">TOTAL VIOLATIONS</td>
+                            <tr className="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-300">
+                              <td className="px-4 py-3 text-center font-black text-slate-900">{violationSummaryData.reduce((s, r) => s + r.count, 0)}</td>
+                              <td className="px-4 py-3 text-center font-black text-slate-900">100%</td>
+                              <td className="px-4 py-3 text-left uppercase tracking-wide">Total Violations</td>
                             </tr>
                           </tbody>
                         </table>
@@ -1176,178 +1582,387 @@ export function NscAnalysis() {
                     </div>
                     <div>
                       <h5 className="text-xs font-bold text-slate-700 uppercase mb-3 tracking-wide">Violation Occurrence Summary</h5>
-                      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
-                        <table className="w-full text-sm text-left">
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                        <table className="min-w-full text-sm text-left whitespace-nowrap">
                           <thead>
-                            <tr className="border-b border-slate-200 text-slate-500 text-[10px] uppercase tracking-wider bg-slate-50">
-                              <th className="px-4 py-3 font-medium">Date</th>
-                              <th className="px-4 py-3 font-medium">Document</th>
-                              <th className="px-4 py-3 font-medium text-center">Severity</th>
-                              <th className="px-4 py-3 font-medium text-center">Jur</th>
-                              <th className="px-4 py-3 font-medium">Vehicle</th>
-                              <th className="px-4 py-3 font-medium">Driver Name</th>
+                            <tr className="border-b border-slate-200 bg-slate-50/80 text-[10px] uppercase tracking-wider text-slate-500">
+                              <th className="px-3 py-2.5 font-bold">Date</th>
+                              <th className="px-3 py-2.5 font-bold">Document / Violation</th>
+                              <th className="px-3 py-2.5 font-bold text-center">Code</th>
+                              <th className="px-3 py-2.5 font-bold">Category</th>
+                              <th className="px-3 py-2.5 font-bold">Description</th>
+                              <th className="px-3 py-2.5 font-bold text-center">Risk Level</th>
+                              <th className="px-3 py-2.5 font-bold text-center">Severity</th>
+                              <th className="px-3 py-2.5 font-bold text-center">Weight</th>
+                              <th className="px-3 py-2.5 font-bold text-center">Points</th>
+                              <th className="px-3 py-2.5 font-bold text-center">OOS</th>
+                              <th className="px-3 py-2.5 font-bold text-center">Jur</th>
+                              <th className="px-3 py-2.5 font-bold">Vehicle</th>
+                              <th className="px-3 py-2.5 font-bold">Driver</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {violationDetailsData.map((row) => {
                               const rowOpen = expandedViolations[row.id];
+                              const numCode  = parseCcmtaCode(row.ccmtaCode);
+                              const catalog  = NSC_VIOLATION_CATALOG[numCode];
+                              const sys      = NSC_CODE_TO_SYSTEM[numCode];
+                              const sev      = row.severity ?? catalog?.severity;
+                              const isOos    = sev === 'OOS';
+                              const baseWt   = sys?.riskLevel === 'High' ? 3 : sys?.riskLevel === 'Medium' ? 2 : 1;
+                              const totalPts = baseWt + (isOos ? 1 : 0);
+                              const sevCls   = sev === 'OOS'   ? 'bg-red-50 text-red-700 border-red-200' :
+                                               sev === 'Major' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                 'bg-slate-100 text-slate-600 border-slate-200';
+                              const riskCls  = sys?.riskLevel === 'High'   ? 'bg-red-50 text-red-700 border-red-200' :
+                                               sys?.riskLevel === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                             'bg-slate-100 text-slate-600 border-slate-200';
+                              const ptsCls   = totalPts >= 4 ? 'bg-red-600 text-white' :
+                                               totalPts >= 3 ? 'bg-red-500 text-white' :
+                                               totalPts >= 2 ? 'bg-amber-500 text-white' :
+                                                               'bg-slate-400 text-white';
                               return (
                                 <Fragment key={row.id}>
                                   <tr
-                                    className={`hover:bg-slate-50 transition-colors align-top cursor-pointer ${rowOpen ? 'bg-slate-50' : ''}`}
+                                    className={`group hover:bg-blue-50/30 transition-colors align-middle cursor-pointer ${rowOpen ? 'bg-blue-50/20' : ''}`}
                                     onClick={() => toggleViolation(row.id)}
                                   >
-                                    <td className="px-4 py-3">
-                                      <div className="font-medium text-slate-900">{row.date}</div>
-                                      <div className="mt-1 font-mono text-xs text-slate-500">{row.detailNumber}</div>
+                                    {/* Date */}
+                                    <td className="px-3 py-3">
+                                      <div className="font-semibold text-slate-900 text-[13px]">{row.date}</div>
+                                      <div className="mt-0.5 text-[10px] text-slate-400 font-mono">{row.time}</div>
                                     </td>
-                                    <td className="px-4 py-3">
-                                      <div className="flex items-start justify-between gap-3">
+                                    {/* Document / Violation */}
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center justify-between gap-3">
                                         <div>
-                                          <div className="font-medium text-slate-800">{row.document}</div>
-                                          <div className="mt-1 text-xs font-semibold text-slate-700 uppercase">{row.description}</div>
+                                          <div className="font-mono font-semibold text-slate-800 text-[13px]">{row.document}</div>
+                                          <div className="mt-0.5 text-[10px] font-bold text-slate-500 uppercase tracking-wide">{row.description}</div>
                                         </div>
-                                        {rowOpen ? <ChevronUp className="mt-0.5 h-4 w-4 text-slate-400" /> : <ChevronDown className="mt-0.5 h-4 w-4 text-slate-400" />}
+                                        <div className={`shrink-0 transition-transform duration-150 ${rowOpen ? 'rotate-180' : ''}`}>
+                                          <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                                        </div>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-3 text-center">
-                                      {(() => {
-                                        const sev = row.severity ?? NSC_VIOLATION_CATALOG[parseCcmtaCode(row.ccmtaCode)]?.severity;
-                                        if (!sev) return <span className="text-slate-400 text-xs">—</span>;
-                                        const cls = sev === 'OOS'   ? 'bg-red-50 text-red-700 border-red-200' :
-                                                    sev === 'Major' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                                      'bg-slate-100 text-slate-600 border-slate-200';
-                                        return <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${cls}`}>{sev}</span>;
-                                      })()}
+                                    {/* Code */}
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="font-mono font-black text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[12px]">{numCode || '—'}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">{row.jurisdiction}</span>
+                                    {/* Category */}
+                                    <td className="px-3 py-3">
+                                      <span className="text-[12px] font-semibold text-slate-700">{sys?.categoryLabel ?? '—'}</span>
                                     </td>
-                                    <td className="px-4 py-3 font-medium text-slate-700">{row.vehicle}</td>
-                                    <td className="px-4 py-3 font-medium text-slate-700">{row.driver}</td>
+                                    {/* Description */}
+                                    <td className="px-3 py-3">
+                                      <span className="text-[12px] text-slate-600">{catalog?.description ?? row.description}</span>
+                                    </td>
+                                    {/* Risk Level */}
+                                    <td className="px-3 py-3 text-center">
+                                      {sys?.riskLevel
+                                        ? <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${riskCls}`}>{sys.riskLevel}</span>
+                                        : <span className="text-slate-300">—</span>}
+                                    </td>
+                                    {/* Severity */}
+                                    <td className="px-3 py-3 text-center">
+                                      {sev
+                                        ? <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${sevCls}`}>{sev}</span>
+                                        : <span className="text-slate-300">—</span>}
+                                    </td>
+                                    {/* Weight */}
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="font-mono font-bold text-slate-700 text-[13px]">{baseWt}</span>
+                                    </td>
+                                    {/* Points */}
+                                    <td className="px-3 py-3 text-center">
+                                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-black ${ptsCls}`}>{totalPts}</span>
+                                    </td>
+                                    {/* OOS */}
+                                    <td className="px-3 py-3 text-center">
+                                      {isOos
+                                        ? <span className="inline-flex px-2 py-0.5 rounded border text-[10px] font-bold bg-red-50 text-red-700 border-red-200">YES</span>
+                                        : <span className="inline-flex px-2 py-0.5 rounded border text-[10px] font-bold bg-slate-50 text-slate-400 border-slate-200">NO</span>}
+                                    </td>
+                                    {/* Jur */}
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 border border-slate-200">{row.jurisdiction}</span>
+                                    </td>
+                                    {/* Vehicle */}
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="w-5 h-5 rounded bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                          <Truck size={10} className="text-slate-500" />
+                                        </div>
+                                        <div>
+                                          <div className="font-mono font-bold text-slate-800 text-[12px]">{row.vehicle}</div>
+                                          <div className="text-[10px] text-slate-400 font-mono">{row.commodity}</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    {/* Driver */}
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="w-6 h-6 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 text-[9px] font-bold text-blue-600">
+                                          {row.driver.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
+                                        </div>
+                                        <div className="text-[12px] font-semibold text-slate-800">{row.driver}</div>
+                                      </div>
+                                    </td>
                                   </tr>
+
                                   {rowOpen && (
                                     <tr>
-                                      <td colSpan={6} className="p-0 border-t border-slate-200 bg-slate-100/60">
-                                        {/* ── Occurrence meta strip ── */}
-                                        <div className="flex flex-wrap gap-4 px-4 pt-4 pb-3">
-                                          {/* Date / Time / Location */}
-                                          <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center gap-3 min-w-[200px]">
-                                            <div className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                                              <Info size={13} className="text-slate-500" />
-                                            </div>
-                                            <div>
-                                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Date / Time / Location</div>
-                                              <div className="text-sm font-semibold text-slate-800 leading-snug">{row.date} &middot; {row.time}</div>
-                                              <div className="text-xs text-slate-500">{row.location} &mdash; {row.jurisdiction}</div>
-                                            </div>
-                                          </div>
-                                          {/* Issuing Agency */}
-                                          <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center gap-3 min-w-[200px]">
-                                            <div className="w-7 h-7 rounded bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
-                                              <ShieldAlert size={13} className="text-blue-500" />
-                                            </div>
-                                            <div>
-                                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Issuing Agency</div>
-                                              <div className="text-sm font-semibold text-slate-800 leading-snug">{row.issuingAgency}</div>
-                                              <div className="text-xs text-slate-500">Entered: {row.dateEntered}</div>
-                                            </div>
-                                          </div>
-                                          {/* Driver / Vehicle */}
-                                          <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center gap-3 min-w-[200px]">
-                                            <div className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center shrink-0">
-                                              <Info size={13} className="text-slate-500" />
-                                            </div>
-                                            <div>
-                                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Driver / Vehicle</div>
-                                              <div className="text-sm font-semibold text-slate-800 leading-snug">{row.driver}</div>
-                                              <div className="text-xs text-slate-500 font-mono">{row.vehicle}{row.commodity ? ` / ${row.commodity}` : ''}</div>
-                                            </div>
-                                          </div>
-                                        </div>
+                                      <td colSpan={13} className="p-0 border-t border-slate-200">
+                                        <div className="bg-slate-50/70 px-4 pt-4 pb-5 space-y-4">
 
-                                        {/* ── Act Section + CCMTA Code card ── */}
-                                        <div className="mx-4 mb-4 bg-white border border-slate-200 rounded-xl overflow-hidden">
-                                          <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Legislative Reference</span>
+                                          {/* ── Meta grid: 3 equal-height cards ── */}
+                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch">
+                                            {/* Date / Time / Location */}
+                                            <div className="flex flex-col gap-1.5">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <MapPin size={10} /> Date / Time / Location
+                                              </div>
+                                              <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col gap-3">
+                                                <div>
+                                                  <div className="text-[13px] font-bold text-slate-900">{row.date} · {row.time}</div>
+                                                  <div className="mt-1.5 text-xs text-slate-500 flex items-center gap-1.5">
+                                                    <MapPin size={10} className="text-slate-400 shrink-0" />
+                                                    <span className="truncate">{row.location}</span>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 mt-auto">
+                                                  <span className="text-[10px] bg-slate-100 border border-slate-200 rounded px-2 py-0.5 font-bold text-slate-700">{row.jurisdiction}</span>
+                                                  <span className="text-[10px] text-slate-400">Entered: <span className="font-medium text-slate-500">{row.dateEntered}</span></span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Issuing Agency */}
+                                            <div className="flex flex-col gap-1.5">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <Building2 size={10} /> Issuing Agency
+                                              </div>
+                                              <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col gap-3">
+                                                <div className="flex items-start gap-3">
+                                                  <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                                                    <ShieldAlert size={15} className="text-blue-500" />
+                                                  </div>
+                                                  <div className="min-w-0">
+                                                    <div className="text-[13px] font-bold text-slate-900 leading-snug">{row.issuingAgency}</div>
+                                                    <div className="mt-0.5 text-[11px] text-slate-400">Enforcement Authority</div>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 pt-2 border-t border-slate-100 mt-auto">
+                                                  <span className="text-[10px] text-slate-400">Document:</span>
+                                                  <span className="text-[11px] font-mono font-semibold text-slate-700">{row.document}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Driver / Vehicle */}
+                                            <div className="flex flex-col gap-1.5">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <User size={10} /> Driver / Vehicle
+                                              </div>
+                                              <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                                                <div className="flex items-center gap-3 px-4 py-3 flex-1 border-b border-slate-100">
+                                                  <div className="w-9 h-9 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 text-[11px] font-bold text-blue-600">
+                                                    {row.driver.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()}
+                                                  </div>
+                                                  <div className="min-w-0">
+                                                    <div className="text-[13px] font-semibold text-slate-900 truncate">{row.driver}</div>
+                                                    <div className="text-[11px] text-slate-400">Driver</div>
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 px-4 py-3 flex-1">
+                                                  <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                                    <Truck size={14} className="text-slate-500" />
+                                                  </div>
+                                                  <div className="min-w-0">
+                                                    <div className="text-[13px] font-bold font-mono text-slate-900">{row.vehicle}</div>
+                                                    <div className="text-[11px] font-mono text-slate-400">{row.commodity}</div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* ── Legislative Reference + Risk Matrix ── */}
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                                            {/* Legislative Reference */}
+                                            <div className="flex flex-col gap-1.5">
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                <Info size={10} /> Legislative Reference
+                                              </div>
+                                              <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                                                <div className="bg-slate-50 border-b border-slate-100 px-4 py-2.5 flex items-center justify-between">
+                                                  <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">CCMTA Code</span>
+                                                    {(() => {
+                                                      const numCode = parseCcmtaCode(row.ccmtaCode);
+                                                      const label  = row.ccmtaCode.replace(/^\d+\s*/, '');
+                                                      return (
+                                                        <>
+                                                          <span className="font-mono font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-sm shadow-sm">{numCode || row.ccmtaCode}</span>
+                                                          {label && <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</span>}
+                                                        </>
+                                                      );
+                                                    })()}
+                                                  </div>
+                                                  {sev && <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border shrink-0 ${sevCls}`}>{sev}</span>}
+                                                </div>
+                                                <div className="p-4 space-y-3 flex-1">
+                                                  <div>
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Act / Section</div>
+                                                    <div className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-800">{row.actSection}</div>
+                                                  </div>
+                                                  {row.text && (
+                                                    <div>
+                                                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Officer Notes</div>
+                                                      <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 text-[13px] text-amber-900 italic leading-relaxed">"{row.text}"</div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* System Violation Risk Matrix */}
                                             {(() => {
                                               const numCode = parseCcmtaCode(row.ccmtaCode);
-                                              const sev = row.severity ?? NSC_VIOLATION_CATALOG[numCode]?.severity;
-                                              if (!sev) return null;
-                                              const cls = sev === 'OOS'   ? 'bg-red-100 text-red-700 border-red-200' :
-                                                          sev === 'Major' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                                                            'bg-slate-100 text-slate-600 border-slate-200';
-                                              return <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${cls}`}>{sev}</span>;
+                                              const sys = NSC_CODE_TO_SYSTEM[numCode];
+                                              if (!sys) return <div />;
+                                              const isHigh = sys.riskLevel === 'High';
+                                              const isMed  = sys.riskLevel === 'Medium';
+                                              const borderCls = isHigh ? 'border-red-200'   : isMed ? 'border-amber-200'  : 'border-slate-200';
+                                              const bgCls     = isHigh ? 'bg-red-50'        : isMed ? 'bg-amber-50'       : 'bg-slate-50';
+                                              const cellCls   = isHigh ? 'bg-white border-red-100'   : isMed ? 'bg-white border-amber-100'  : 'bg-white border-slate-100';
+                                              const badgeCls  = isHigh ? 'bg-red-100 text-red-700 border-red-200' : isMed ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200';
+                                              const iconCls   = isHigh ? 'text-red-500'     : isMed ? 'text-amber-500'    : 'text-slate-400';
+                                              return (
+                                                <div className="flex flex-col gap-1.5">
+                                                  <div className={`text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5`}>
+                                                    <ShieldAlert size={10} className={iconCls} /> System Violation Risk Matrix
+                                                  </div>
+                                                  <div className={`flex-1 rounded-xl border shadow-sm overflow-hidden flex flex-col ${borderCls}`}>
+                                                    <div className={`border-b ${borderCls} ${bgCls} px-4 py-2.5 flex items-center justify-between`}>
+                                                      <span className="text-[11px] font-semibold text-slate-700">Risk Assessment</span>
+                                                      <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${badgeCls}`}>{sys.riskLevel} Risk</span>
+                                                    </div>
+                                                    <div className={`flex-1 p-4 ${bgCls}`}>
+                                                      <div className="grid grid-cols-3 gap-2 h-full">
+                                                        <div className={`rounded-lg border px-3 py-3 ${cellCls}`}>
+                                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">System Category</div>
+                                                          <div className="text-[13px] font-bold text-slate-800 leading-tight">{sys.categoryLabel}</div>
+                                                        </div>
+                                                        <div className={`rounded-lg border px-3 py-3 ${cellCls}`}>
+                                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Violation Group</div>
+                                                          <div className="text-[13px] font-bold text-slate-800 leading-tight">{sys.violationGroup}</div>
+                                                        </div>
+                                                        <div className={`rounded-lg border px-3 py-3 ${cellCls}`}>
+                                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">NSC Section</div>
+                                                          <div className="text-[13px] font-bold text-slate-800">{sys.nscSection ?? '—'}</div>
+                                                          <div className="text-[10px] font-mono text-slate-400 mt-1">{sys.category}</div>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
                                             })()}
                                           </div>
-                                          <div className="p-4 space-y-3">
-                                            {/* CCMTA Code badge row */}
-                                            <div className="flex flex-wrap items-center gap-2">
-                                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">CCMTA Code</span>
-                                              {(() => {
-                                                const numCode = parseCcmtaCode(row.ccmtaCode);
-                                                const label  = row.ccmtaCode.replace(/^\d+\s*/, '');
-                                                return (
-                                                  <>
-                                                    <span className="font-mono font-black text-slate-900 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-sm">{numCode || row.ccmtaCode}</span>
-                                                    {label && <span className="text-xs font-medium text-slate-600">{label}</span>}
-                                                  </>
-                                                );
-                                              })()}
-                                            </div>
-                                            {/* Act Section */}
-                                            <div>
-                                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Act / Section</div>
-                                              <div className="bg-slate-50 border border-slate-100 rounded px-3 py-1.5 text-sm font-medium text-slate-800">{row.actSection}</div>
-                                            </div>
-                                            {/* Text / Note */}
-                                            {row.text && (
+
+                                          {/* ── Impact Analysis ── */}
+                                          {(() => {
+                                            const numCode = parseCcmtaCode(row.ccmtaCode);
+                                            const sys = NSC_CODE_TO_SYSTEM[numCode];
+                                            if (!sys) return null;
+                                            const isOos      = sev === 'OOS';
+                                            const basePoints = sys.riskLevel === 'High' ? 3 : sys.riskLevel === 'Medium' ? 2 : 1;
+                                            const oosBonus   = isOos ? 1 : 0;
+                                            const total      = basePoints + oosBonus;
+                                            const totalColor = total >= 4 ? 'text-red-600' : total >= 3 ? 'text-red-500' : total >= 2 ? 'text-amber-600' : 'text-slate-700';
+                                            const totalBg    = total >= 4 ? 'bg-red-600'   : total >= 3 ? 'bg-red-500'   : total >= 2 ? 'bg-amber-500'   : 'bg-slate-500';
+                                            const impactLabel = total >= 4 ? 'Critical' : total >= 3 ? 'High' : total >= 2 ? 'Moderate' : 'Low';
+                                            const impactDesc  = total >= 4
+                                              ? 'OOS violation in a high-risk category. Immediate corrective action required. Significant carrier score impact.'
+                                              : total >= 3
+                                              ? 'High-risk violation with direct NSC score impact. Corrective action strongly recommended.'
+                                              : total >= 2
+                                              ? 'Moderate-risk violation. Review maintenance and compliance procedures.'
+                                              : 'Low-risk administrative violation. Monitor for recurrence.';
+                                            const borderCls = total >= 3 ? 'border-red-200' : total >= 2 ? 'border-amber-200' : 'border-slate-200';
+                                            const bgCls     = total >= 3 ? 'bg-red-50'      : total >= 2 ? 'bg-amber-50'      : 'bg-slate-50';
+                                            return (
                                               <div>
-                                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Officer Notes</div>
-                                                <div className="bg-amber-50 border border-amber-100 rounded px-3 py-1.5 text-sm text-amber-900 italic">"{row.text}"</div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                                                  <ShieldAlert size={10} className={total >= 3 ? 'text-red-500' : total >= 2 ? 'text-amber-500' : 'text-slate-400'} /> Impact Analysis
+                                                </div>
+                                                <div className={`rounded-xl border shadow-sm overflow-hidden ${borderCls}`}>
+                                                  <div className={`px-4 py-2.5 border-b ${borderCls} ${bgCls} flex items-center justify-between`}>
+                                                    <span className="text-[11px] font-semibold text-slate-700">NSC Carrier Score Impact</span>
+                                                    <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                                                      total >= 4 ? 'bg-red-100 text-red-700 border-red-200' :
+                                                      total >= 3 ? 'bg-red-100 text-red-700 border-red-200' :
+                                                      total >= 2 ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                                                   'bg-slate-100 text-slate-600 border-slate-200'
+                                                    }`}>{impactLabel} Impact</span>
+                                                  </div>
+                                                  <div className={`p-4 ${bgCls}`}>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                      {/* Base Points */}
+                                                      <div className="bg-white border border-slate-200 rounded-lg px-3 py-3">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Base Points</div>
+                                                        <div className="flex items-end gap-1.5">
+                                                          <span className="text-2xl font-black text-slate-800 leading-none">{basePoints}</span>
+                                                          <span className="text-[11px] text-slate-400 mb-0.5">pts</span>
+                                                        </div>
+                                                        <div className="mt-1 text-[10px] text-slate-400">{sys.riskLevel} Risk Level</div>
+                                                      </div>
+                                                      {/* OOS Bonus */}
+                                                      <div className={`rounded-lg px-3 py-3 border ${isOos ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">OOS Bonus</div>
+                                                        <div className="flex items-end gap-1.5">
+                                                          <span className={`text-2xl font-black leading-none ${isOos ? 'text-red-600' : 'text-slate-300'}`}>+{oosBonus}</span>
+                                                          <span className={`text-[11px] mb-0.5 ${isOos ? 'text-red-400' : 'text-slate-300'}`}>pts</span>
+                                                        </div>
+                                                        <div className={`mt-1 text-[10px] ${isOos ? 'text-red-500 font-semibold' : 'text-slate-400'}`}>{isOos ? 'Out-of-Service' : 'Not OOS'}</div>
+                                                      </div>
+                                                      {/* Total */}
+                                                      <div className={`rounded-lg px-3 py-3 border ${borderCls} ${bgCls}`}>
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Total Points</div>
+                                                        <div className="flex items-center gap-2">
+                                                          <div className={`w-9 h-9 rounded-lg ${totalBg} flex items-center justify-center shrink-0`}>
+                                                            <span className="text-white font-black text-[15px] leading-none">{total}</span>
+                                                          </div>
+                                                          <div>
+                                                            <div className={`text-xl font-black leading-none ${totalColor}`}>{total} <span className="text-sm font-bold">pts</span></div>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                      {/* Carrier Impact */}
+                                                      <div className="bg-white border border-slate-200 rounded-lg px-3 py-3">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Score Effect</div>
+                                                        <div className={`text-[13px] font-bold leading-tight ${totalColor}`}>{impactLabel}</div>
+                                                        <div className="mt-1.5">
+                                                          <div className="flex gap-0.5">
+                                                            {[1,2,3,4].map(i => (
+                                                              <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= total ? totalBg : 'bg-slate-200'}`} />
+                                                            ))}
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                    {/* Description */}
+                                                    <div className="mt-3 flex items-start gap-2 bg-white/70 border border-white rounded-lg px-3 py-2.5">
+                                                      <Info size={12} className={`mt-0.5 shrink-0 ${total >= 3 ? 'text-red-400' : total >= 2 ? 'text-amber-400' : 'text-slate-400'}`} />
+                                                      <p className="text-[12px] text-slate-600 leading-relaxed">{impactDesc}</p>
+                                                    </div>
+                                                  </div>
+                                                </div>
                                               </div>
-                                            )}
-                                          </div>
+                                            );
+                                          })()}
+
                                         </div>
-                                        {/* ── System Violation Risk Matrix mapping ── */}
-                                        {(() => {
-                                          const numCode = parseCcmtaCode(row.ccmtaCode);
-                                          const sys = NSC_CODE_TO_SYSTEM[numCode];
-                                          if (!sys) return null;
-                                          const riskColor =
-                                            sys.riskLevel === 'High'   ? 'border-red-200 bg-red-50'    :
-                                            sys.riskLevel === 'Medium' ? 'border-amber-200 bg-amber-50' :
-                                            'border-slate-200 bg-slate-50';
-                                          const riskBadge =
-                                            sys.riskLevel === 'High'   ? 'bg-red-100 text-red-700 border-red-200'     :
-                                            sys.riskLevel === 'Medium' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                            'bg-slate-100 text-slate-600 border-slate-200';
-                                          return (
-                                            <div className={`mx-4 mb-4 rounded-xl border p-4 ${riskColor}`}>
-                                              <div className="flex items-center gap-2 mb-3">
-                                                <ShieldAlert size={14} className={sys.riskLevel === 'High' ? 'text-red-600' : sys.riskLevel === 'Medium' ? 'text-amber-600' : 'text-slate-500'} />
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">System Violation Risk Matrix</span>
-                                                <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${riskBadge}`}>
-                                                  {sys.riskLevel} Risk
-                                                </span>
-                                              </div>
-                                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                                                <div>
-                                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">System Category</div>
-                                                  <div className="font-semibold text-slate-800">{sys.categoryLabel}</div>
-                                                </div>
-                                                <div>
-                                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Violation Group</div>
-                                                  <div className="font-semibold text-slate-800">{sys.violationGroup}</div>
-                                                </div>
-                                                <div>
-                                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Category Key</div>
-                                                  <div className="font-mono text-slate-600">{sys.category}</div>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          );
-                                        })()}
                                       </td>
                                     </tr>
                                   )}
