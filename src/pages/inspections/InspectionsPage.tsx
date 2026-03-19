@@ -1833,7 +1833,6 @@ export function InspectionsPage() {
   const [showReport, setShowReport] = useState(false);
   const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('24M');
   const smsBasicCategory = 'All';
-  const [smsSummaryView, setSmsSummaryView] = useState<'PERCENTILES' | 'INSPECTIONS'>('PERCENTILES');
   const [smsTopViolSort, setSmsTopViolSort] = useState<'POINTS' | 'COUNT'>('POINTS');
   const [smsMetricsView, setSmsMetricsView] = useState<'INSPECTIONS' | 'VIOLATIONS' | 'POINTS'>('POINTS');
   const [metricsSort, setMetricsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'total', dir: 'desc' });
@@ -1850,10 +1849,17 @@ export function InspectionsPage() {
   const [expandedCvorAnalysis, setExpandedCvorAnalysis] = useState<string | null>(null);
   const [cvorAnalysisChartView, setCvorAnalysisChartView] = useState<Record<string, 'MEASURE' | 'INSPECTIONS'>>({});
   const [expandedCvorLevel, setExpandedCvorLevel] = useState<string | null>(null);
-  const [expandedSmsLevel, setExpandedSmsLevel] = useState<string | null>(null);
-  // Independent period filters for Level Comparison blocks
-  const [smsLevelPeriod, setSmsLevelPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('24M');
+  // Independent period filter for CVOR Level Comparison
   const [cvorLevelPeriod, setCvorLevelPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M'>('24M');
+  const [smsListPeriod, setSmsListPeriod] = useState<'7d' | '30d' | '90d' | '6mo' | '12mo' | 'custom'>('12mo');
+  const [smsCustomFrom, setSmsCustomFrom] = useState('');
+  const [smsCustomTo, setSmsCustomTo] = useState('');
+  const [smsPopupRecord, setSmsPopupRecord] = useState<any>(null);
+  const [smsVisibleCols, setSmsVisibleCols] = useState<Record<string, boolean>>({
+    date: true, report: true, location: true, driver: true, vehicle: true,
+    violations: true, vehPts: true, drvPts: true, carrPts: true, status: true,
+  });
+  const [smsColPickerOpen, setSmsColPickerOpen] = useState(false);
   const [mileageUnit, setMileageUnit] = useState<'km' | 'mi'>('km');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
@@ -2950,35 +2956,6 @@ export function InspectionsPage() {
       {/* ===== TAB: SMS (FMCSA) ===== */}
       {activeMainTab === 'sms' && (() => {
         const smsInspections = inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA');
-        const smsStats = {
-          total: smsInspections.length,
-          clean: smsInspections.filter(i => i.isClean).length,
-          oos: smsInspections.filter(i => i.hasOOS).length,
-          vehicle: smsInspections.filter(i => i.hasVehicleViolations).length,
-          driver: smsInspections.filter(i => i.hasDriverViolations).length,
-          severe: smsInspections.filter(i => i.violations.some(v => v.severity >= 7)).length,
-        };
-        const smsFilteredData = smsInspections.filter(insp => {
-          const st = searchTerm.toLowerCase();
-          const matchesSearch = insp.id.toLowerCase().includes(st) ||
-            insp.driver.toLowerCase().includes(st) ||
-            insp.vehiclePlate.toLowerCase().includes(st) ||
-            (insp.driverLicense && insp.driverLicense.toLowerCase().includes(st)) ||
-            (insp.location?.city && insp.location.city.toLowerCase().includes(st)) ||
-            (insp.location?.raw && insp.location.raw.toLowerCase().includes(st));
-          let matchesFilter = true;
-          switch(activeFilter) {
-            case 'CLEAN': matchesFilter = insp.isClean; break;
-            case 'OOS': matchesFilter = insp.hasOOS; break;
-            case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
-            case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
-            case 'SEVERE': matchesFilter = insp.violations.some(v => v.severity >= 7); break;
-            default: matchesFilter = true;
-          }
-          return matchesSearch && matchesFilter;
-        });
-        const smsPagedData = smsFilteredData.slice((page - 1) * rowsPerPage, page * rowsPerPage);
-
         return (
         <div className="space-y-6">
           {/* Last Updated banner */}
@@ -2989,206 +2966,11 @@ export function InspectionsPage() {
               <span className="font-mono font-bold">December 15, 2025 — 3:42 PM EST</span>
             </div>
           </div>
-          {/* Top Row: Safety Rating & OOS + Licensing */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Safety Rating & OOS */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
-                <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS Rates
-              </h3>
-              <div className="mb-4 text-sm font-medium text-slate-700">
-                Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
-              </div>
-              <div className="overflow-x-auto rounded border border-slate-100 mt-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Type</th>
-                      <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
-                      <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Vehicle</td>
-                      <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Driver</td>
-                      <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 text-slate-700">Hazmat</td>
-                      <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
-                      <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
-            {/* Licensing */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <FileSignature size={14} className="text-purple-500"/> Licensing
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Property</span>
-                  <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Passenger</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Household</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600">Broker</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* ===== SMS Mileage Summary ===== */}
-          {(() => {
-            const mp = carrierProfile.cvorAnalysis.counts;
-            const conv = (n: number) => mileageUnit === 'km' ? Math.round(n * 1.60934) : n;
-            const fmt = (n: number) => conv(n).toLocaleString();
-            const unit = mileageUnit === 'km' ? 'Kms' : 'Miles';
-            return (
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                    <Truck size={14} className="text-blue-500"/> Mileage Summary
-                  </h3>
-                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                    {(['km', 'mi'] as const).map(u => (
-                      <button key={u} onClick={() => setMileageUnit(u)} className={`px-2.5 py-1 text-xs font-bold transition-colors ${mileageUnit === u ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}>
-                        {u === 'km' ? 'KM' : 'MI'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
-                        <th className="px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">{unit} Travelled</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr className="hover:bg-slate-50/50">
-                        <td className="px-4 py-2.5 text-slate-700">Ontario {unit}* Travelled</td>
-                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.onMiles)}</td>
-                      </tr>
-                      <tr className="hover:bg-slate-50/50">
-                        <td className="px-4 py-2.5 text-slate-700">Rest of Canada {unit}* Travelled</td>
-                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.canadaMiles)}</td>
-                      </tr>
-                      <tr className="hover:bg-slate-50/50">
-                        <td className="px-4 py-2.5 text-slate-700">US / Mexico {unit}* Travelled</td>
-                        <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-900">{fmt(mp.totalUSMiles)}</td>
-                      </tr>
-                      <tr className="bg-slate-50 border-t-2 border-slate-300">
-                        <td className="px-4 py-3 font-bold text-slate-800">Total {unit}* Travelled</td>
-                        <td className="px-4 py-3 text-right font-bold font-mono text-blue-700 text-base">{fmt(mp.totalMiles)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">*{mileageUnit === 'km' ? 'Kilometres' : 'Miles'} shown are the current annual rates most recently reported by the operator for the last 12 months (could include actual and estimated travel).</p>
-              </div>
-            );
-          })()}
 
-          {/* ===== SECTION 1: BASIC CATEGORIES SUMMARY BAR ===== */}
-          {(() => {
-            const basics = computedBasicOverview.filter(b => b.category !== 'Others');
-            const displayedBasics = smsBasicCategory === 'All' ? basics : basics.filter(b => b.category === smsBasicCategory);
 
-            // Period-filtered SMS inspections for chart data
-            const now = new Date('2025-12-31'); // reference date matching "Updated December 2025"
-            const periodMonths = smsPeriod === '1M' ? 1 : smsPeriod === '3M' ? 3 : smsPeriod === '6M' ? 6 : smsPeriod === '12M' ? 12 : 24;
-            const cutoff = new Date(now);
-            cutoff.setMonth(cutoff.getMonth() - periodMonths);
-            const periodInspections = smsInspections.filter(i => new Date(i.date) >= cutoff);
-
-            return (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-              <div className="flex items-center justify-end mb-4 flex-wrap gap-3">
-                {/* Period selector */}
-                <div className="flex items-center gap-3">
-                  <div className="inline-flex items-center px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-slate-600">
-                    Percentile Formula
-                    <InfoTooltip
-                      title="How Percentile Is Calculated"
-                      text="1) BASIC violations are weighted by severity and recency (0-6 months = 3x, 6-12 = 2x, 12-24 = 1x). 2) Weighted violations are normalized by exposure (inspections/power units). 3) The normalized score is ranked against similar carriers in the same peer group. 4) That rank is shown as percentile, where higher percentile means higher risk."
-                    />
-                  </div>
-                  <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Updated December 2025</span>
-                  <div className="inline-flex bg-slate-100 rounded-md p-0.5" id="sms-categories-period">
-                    {(['1M', '3M', '6M', '12M', '24M'] as const).map(p => (
-                      <button
-                        key={p}
-                        onClick={() => {
-                          const anchor = document.getElementById('sms-categories-period');
-                          const top = anchor?.getBoundingClientRect().top ?? 0;
-                          setSmsPeriod(p);
-                          requestAnimationFrame(() => {
-                            const newTop = anchor?.getBoundingClientRect().top ?? 0;
-                            if (Math.abs(newTop - top) > 2) {
-                              window.scrollBy(0, newTop - top);
-                            }
-                          });
-                        }}
-                        className={`px-2.5 py-1 text-xs font-bold transition-colors ${smsPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Category percentile cards */}
-              <div className={`grid gap-3 ${displayedBasics.length === 1 ? 'grid-cols-1 max-w-[200px]' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-7'}`}>
-                {displayedBasics.map((b, i) => {
-                  const pct = parseInt(b.percentile) || 0;
-                  const isAlert = b.percentile !== 'N/A' && pct >= csaThresholds.warning;
-                  // Compute actual count from period-filtered data
-                  const catInspections = periodInspections.filter(insp =>
-                    insp.violations.some(v => v.category === b.category)
-                  ).length;
-                  return (
-                    <div key={i} className="group relative text-center p-2 rounded-lg hover:bg-slate-50 transition-colors">
-                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 truncate" title={b.category}>{b.category}</div>
-                      <div className={`text-lg font-bold ${isAlert ? 'text-red-600' : 'text-slate-800'}`}>
-                        {b.percentile === 'N/A' ? '0%' : b.percentile}
-                      </div>
-                      {isAlert && <span className="text-[11px] text-red-500 font-bold">▲ {pct}</span>}
-                      <div className="text-[11px] text-slate-400 mt-0.5">{catInspections} insp.</div>
-                      <div className="pointer-events-none absolute z-20 left-1/2 top-full mt-2 -translate-x-1/2 w-56 rounded-lg border border-slate-200 bg-white p-2.5 text-left shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                        <div className="text-[11px] font-bold text-slate-700">{b.category}</div>
-                        <div className="mt-1 text-[11px] text-slate-500">Percentile: <span className="font-semibold text-slate-700">{b.percentile === 'N/A' ? '0%' : b.percentile}</span></div>
-                        <div className="text-[11px] text-slate-500">Inspections: <span className="font-semibold text-slate-700">{catInspections}</span></div>
-                        <div className="text-[11px] text-slate-500">Status: <span className={`font-semibold ${isAlert ? 'text-red-600' : 'text-emerald-600'}`}>{isAlert ? 'Over Threshold' : 'Within Threshold'}</span></div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            );
-          })()}
-
-          {/* ===== SECTION 2: BASIC SUMMARY + OOS DONUT + TOP VIOLATIONS ===== */}
+          {/* ===== COMBINED SMS PERFORMANCE CARD ===== */}
           {(() => {
             // Period-filtered inspections
             const now = new Date('2025-12-31');
@@ -3202,315 +2984,593 @@ export function InspectionsPage() {
               ? periodInspections
               : periodInspections.filter(insp => insp.violations.some(v => v.category === smsBasicCategory));
 
-            return (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            // BASIC Scores table data
+            const basicScoringRows: Array<{ label: string; category: string; threshold: number }> = [
+              { label: 'Unsafe Driving', category: 'Unsafe Driving', threshold: 65 },
+              { label: 'Crash Indicator', category: 'Crash Indicator', threshold: 65 },
+              { label: 'HOS Compliance', category: 'Hours-of-service Compliance', threshold: 65 },
+              { label: 'Vehicle Maintenance', category: 'Vehicle Maintenance', threshold: 80 },
+              { label: 'Controlled Substances/Alcohol', category: 'Controlled Substances', threshold: 80 },
+              { label: 'HM Compliance', category: 'Hazmat compliance', threshold: 80 },
+              { label: 'Driver Fitness', category: 'Driver Fitness', threshold: 80 },
+            ];
 
-              {/* LEFT: BASIC Summary Chart */}
-              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-bold text-slate-900">BASIC Summary <span className="text-sm font-normal text-slate-400">/ December 2025</span></h3>
-                  <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                    <button
-                      onClick={() => setSmsSummaryView('PERCENTILES')}
-                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${smsSummaryView === 'PERCENTILES' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                    >PERCENTILES</button>
-                    <button
-                      onClick={() => setSmsSummaryView('INSPECTIONS')}
-                      className={`px-3 py-1.5 text-sm font-bold transition-all ${smsSummaryView === 'INSPECTIONS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                    >INSPECTIONS</button>
+            // SMS Level data
+            const smsLevels = [
+              { level: 'Level 1', name: 'Level I – North American Standard', desc: 'Full inspection of the driver and vehicle – includes driver credentials (CDL, medical card, HOS), vehicle mechanical fitness, cargo securement, hazmat compliance (if applicable), and all safety systems.' },
+              { level: 'Level 2', name: 'Level II – Walk-Around', desc: 'Walk-around driver/vehicle inspection – covers driver credentials, HOS, seat belt use, DVIR, and an exterior examination of the vehicle without going underneath.' },
+              { level: 'Level 3', name: 'Level III – Driver/Credential', desc: 'Driver-only inspection – verifies CDL, medical certificate, HOS records, seat belt compliance, DVIR, and carrier credentials. No vehicle mechanical inspection.' },
+              { level: 'Level 4', name: 'Level IV – Special Inspections', desc: 'Special one-time inspection or examination – typically a single item of interest (e.g., cargo, hazmat placards, specific regulatory concern).' },
+              { level: 'Level 5', name: 'Level V – Vehicle Only', desc: 'Vehicle-only inspection – conducted without the driver present. Covers all mechanical components and safety systems.' },
+              { level: 'Level 6', name: 'Level VI – Transuranic Waste / Radioactive', desc: 'Enhanced NAS inspection for transuranic waste and highway-route-controlled radioactive material shipments – includes Level I items plus radiological requirements.' },
+              { level: 'Level 7', name: 'Level VII – Jurisdictional Mandated', desc: 'Jurisdiction-mandated commercial vehicle inspection – covers specific items required by the state or province, including credential verification.' },
+              { level: 'Level 8', name: 'Level VIII – Electronic Inspection', desc: 'Electronic inspection using wireless roadside technology – verifies driver and vehicle credentials, safety data, and compliance electronically (e.g., ELD, transponder, USDOT data).' },
+            ];
+
+            const levelStats = smsLevels.map(l => {
+              const levelInsp = periodInspections.filter(i => i.level === l.level);
+              const count = levelInsp.length;
+              const oosCount = levelInsp.filter(i => i.hasOOS).length;
+              const pct = count > 0 ? ((oosCount / count) * 100) : 0;
+              return { ...l, count, oosCount, pct };
+            });
+
+            const totalInsp = levelStats.reduce((s, l) => s + l.count, 0);
+            const totalOos = levelStats.reduce((s, l) => s + l.oosCount, 0);
+
+            // ── Time-trend computation for BASIC Scores ──────────────────────
+            const trendRef = new Date('2026-01-30');
+            const computeWinMeasure = (category: string, fromM: number, toM: number) => {
+              const wEnd = new Date(now); wEnd.setMonth(wEnd.getMonth() - fromM);
+              const wStart = new Date(now); wStart.setMonth(wStart.getMonth() - toM);
+              const wInsp = smsInspections.filter(i => {
+                const d = new Date(i.date);
+                return d >= wStart && d <= wEnd && i.violations.some((v: any) => v.category === category);
+              });
+              if (!wInsp.length) return 0;
+              let ws = 0;
+              wInsp.forEach(insp => {
+                const tw = getTimeWeightTop(insp.date, trendRef);
+                insp.violations.filter((v: any) => v.category === category).forEach((v: any) => { ws += (v.severity || 0) * tw; });
+              });
+              return Math.round((ws / wInsp.length) * 100) / 100;
+            };
+            const basicSparkData = basicScoringRows.map(row => {
+              const s0 = computeWinMeasure(row.category, 18, 24);
+              const s1 = computeWinMeasure(row.category, 12, 18);
+              const s2 = computeWinMeasure(row.category, 6, 12);
+              const s3 = computeWinMeasure(row.category, 0, 6);
+              const prev = computeWinMeasure(row.category, periodMonths, Math.min(periodMonths * 2, 24));
+              const curr = computeWinMeasure(row.category, 0, periodMonths);
+              return { ...row, sparks: [s0, s1, s2, s3], prev, curr, delta: curr - prev };
+            });
+
+            // ── OOS / Top Violations ─────────────────────────────────────────
+            const totalViolations2 = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => smsBasicCategory === 'All' || v.category === smsBasicCategory).length, 0);
+            const oosViolations2 = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => v.oos && (smsBasicCategory === 'All' || v.category === smsBasicCategory)).length, 0);
+            const nonOosViolations2 = totalViolations2 - oosViolations2;
+            const oosPercent2 = totalViolations2 > 0 ? Math.round((oosViolations2 / totalViolations2) * 100) : 0;
+            const nonOosPercent2 = 100 - oosPercent2;
+            const circ2 = 2 * Math.PI * 32;
+            const nonOosStroke2 = (nonOosPercent2 / 100) * circ2;
+            const oosStroke2 = circ2 - nonOosStroke2;
+
+            const violationMap2: Record<string, { points: number; count: number }> = {};
+            relevantInspections.forEach(insp => {
+              insp.violations.filter((v: any) => smsBasicCategory === 'All' || v.category === smsBasicCategory).forEach((v: any) => {
+                const key = v.description.length > 36 ? v.description.substring(0, 36) + '…' : v.description;
+                if (!violationMap2[key]) violationMap2[key] = { points: 0, count: 0 };
+                violationMap2[key].points += v.points;
+                violationMap2[key].count += 1;
+              });
+            });
+            const topViol2 = Object.entries(violationMap2)
+              .sort((a, b) => smsTopViolSort === 'POINTS' ? b[1].points - a[1].points : b[1].count - a[1].count)
+              .slice(0, 6);
+            const maxTopVal2 = Math.max(1, ...topViol2.map(([, d]) => smsTopViolSort === 'POINTS' ? d.points : d.count));
+
+            // ── Monthly bar chart data ────────────────────────────────────────
+            const monthMap2: Record<string, { withViol: number; withoutViol: number }> = {};
+            relevantInspections.forEach(insp => {
+              const d = new Date(insp.date);
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              if (!monthMap2[key]) monthMap2[key] = { withViol: 0, withoutViol: 0 };
+              const hasCat = smsBasicCategory === 'All' ? insp.violations.length > 0 : insp.violations.some((v: any) => v.category === smsBasicCategory);
+              if (hasCat) monthMap2[key].withViol++; else monthMap2[key].withoutViol++;
+            });
+            const months2: string[] = [];
+            const ms2 = new Date(cutoff); ms2.setDate(1);
+            for (let m = new Date(ms2); m <= now; m.setMonth(m.getMonth() + 1)) {
+              months2.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+            }
+            const maxBarVal2 = Math.max(1, ...months2.map(m => (monthMap2[m]?.withViol || 0) + (monthMap2[m]?.withoutViol || 0)));
+            const monthNames2 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+            return (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+
+              {/* ── Dark Header ── */}
+              <div className="bg-slate-800 px-5 py-3 flex items-center justify-between gap-3" id="sms-combined-period">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center flex-shrink-0">
+                    <ShieldAlert size={16} className="text-white"/>
+                  </div>
+                  <div className="[&>p:last-child]:hidden">
+                    <div className="text-sm font-bold text-white">FMCSA SMS Performance</div>
+                    <div className="text-xs text-slate-400">BASIC Scores · Level Analysis · OOS Summary</div>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
 
-                {smsSummaryView === 'PERCENTILES' ? (
-                  <>
-                    {/* Legend */}
-                    <div className="flex items-center gap-5 mb-5 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                        <span className="text-slate-600">Under Threshold</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                        <span className="text-slate-600">Over Threshold</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                        <span className="text-slate-600">Intervention Threshold</span>
-                      </div>
-                    </div>
+                  {/* Period filter */}
+                  <div className="inline-flex bg-slate-700 rounded-md p-0.5">
+                    {(['1M', '3M', '6M', '12M', '24M'] as const).map(p => (
+                      <button
+                        key={p}
+                        onClick={() => {
+                          const anchor = document.getElementById('sms-combined-period');
+                          const top = anchor?.getBoundingClientRect().top ?? 0;
+                          setSmsPeriod(p);
+                          requestAnimationFrame(() => {
+                            const newTop = anchor?.getBoundingClientRect().top ?? 0;
+                            if (Math.abs(newTop - top) > 2) window.scrollBy(0, newTop - top);
+                          });
+                        }}
+                        className={`px-2.5 py-1 text-xs font-bold transition-colors rounded ${smsPeriod === p ? 'bg-slate-500 text-white shadow-sm' : 'text-slate-300 hover:text-white'}`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-                    {/* Horizontal Bars */}
-                    <div className="space-y-5">
-                      {computedBasicOverview
-                        .filter(b => b.category !== 'Others')
-                        .filter(b => smsBasicCategory === 'All' || b.category === smsBasicCategory)
-                        .map((b, i) => {
-                        const pct = parseInt(b.percentile) || 0;
-                        const isNA = b.percentile === 'N/A';
-                        let barColor = 'bg-blue-500';
-                        let dotColor = 'bg-blue-500';
-                        let statusLabel = 'Under Threshold';
-                        if (!isNA && pct >= csaThresholds.critical) { barColor = 'bg-red-500'; dotColor = 'bg-red-500'; statusLabel = 'Intervention Threshold'; }
-                        else if (!isNA && pct >= csaThresholds.warning) { barColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; statusLabel = 'Over Threshold'; }
-                        return (
-                          <div key={i} className="group/bar flex items-center gap-3 relative">
-                            <div className="w-40 text-sm font-semibold text-slate-700 truncate" title={b.category}>{b.category}</div>
-                            <div className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${dotColor}`}></div>
-                            <div className="flex-1 relative h-6 bg-slate-100 rounded-full overflow-visible cursor-pointer">
-                              {!isNA && pct > 0 && (
-                                <div className={`absolute left-0 top-0 h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
-                              )}
-                              <div className="absolute top-0 h-full border-l border-slate-300" style={{ left: `${csaThresholds.warning}%` }}></div>
-                              <div className="absolute top-0 h-full border-l-2 border-red-400" style={{ left: `${csaThresholds.critical}%` }}></div>
-                              {!isNA && pct > 0 && (
-                                <div className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white shadow ${barColor}`} style={{ left: `calc(${Math.min(pct, 100)}% - 8px)` }}></div>
-                              )}
-                              {/* Hover tooltip */}
-                              <div className="hidden group-hover/bar:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
-                                <div className="bg-slate-900 text-white text-sm rounded-lg px-3.5 py-2.5 shadow-xl whitespace-nowrap">
-                                  <div className="font-bold text-blue-300 mb-0.5">{b.category}</div>
-                                  <div>Percentile: <span className="font-bold">{b.percentile}</span></div>
-                                  <div>Measure: <span className="font-bold">{b.measure}</span></div>
-                                  <div>Status: <span className="font-bold">{isNA ? 'Insufficient Data' : statusLabel}</span></div>
-                                  <div className="text-slate-400 mt-0.5 max-w-[220px] whitespace-normal">{b.details}</div>
-                                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
+              {/* ── BASIC Scores Table with time sparklines ── */}
+              <div className="border-t border-slate-200">
+                <div className="px-5 py-3 flex items-center justify-between gap-3 bg-white border-b border-slate-100 [&>span:last-of-type]:hidden">
+                  <span className="text-base font-bold text-slate-700">FMCSA SMS BASIC Scores</span>
+                  <div className="text-xs text-right text-slate-400 font-medium">Time-weighted · 24-month lookback</div>
+                  <span className="text-[11px] text-slate-400 font-medium">Time-weighted · 24-month lookback · Sparkline = 18-24M → 12-18M → 6-12M → 0-6M</span>
+                </div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-[0.14em] border-b border-slate-100">
+                      <th className="px-5 py-3 text-left">BASIC Category</th>
+                      <th className="px-4 py-3 text-right">Measure</th>
+                      <th className="px-4 py-3 text-left" style={{ minWidth: 180 }}>Percentile</th>
+                      <th className="px-4 py-3 text-right">Alert</th>
+                      <th className="px-5 py-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {basicSparkData.map((row, i) => {
+                      const basicEntry = computedBasicOverview.find(b => b.category === row.category);
+                      const percentile = basicEntry?.percentile ?? 'N/A';
+                      const measure = basicEntry?.measure ?? '—';
+                      const hasSufficientData = percentile !== 'N/A';
+                      const pctNum = hasSufficientData ? parseInt(percentile) : 0;
+                      const isAlert = hasSufficientData && pctNum >= row.threshold;
+                      const isWarn = hasSufficientData && pctNum >= row.threshold * 0.75 && !isAlert;
+                      const barColor = isAlert ? 'bg-red-500' : isWarn ? 'bg-amber-500' : 'bg-emerald-500';
+                      const deltaSign = row.delta > 0.05 ? '▲' : row.delta < -0.05 ? '▼' : '–';
+                      const deltaCls = row.delta > 0.05 ? 'text-red-500' : row.delta < -0.05 ? 'text-emerald-600' : 'text-slate-400';
+                      const isExpanded = expandedBasic === row.category;
+                      const chartTab = basicChartView[row.category] ?? 'MEASURE';
+
+                      // Bucket data by period — max 8 points (monthly ≤6M, bi-monthly 12M, quarterly 24M)
+                      const mnNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                      const bucketStep = periodMonths <= 6 ? 1 : periodMonths <= 12 ? 2 : 3;
+                      const numBuckets = Math.round(periodMonths / bucketStep);
+                      const bubbleMonths: Array<{ label: string; date: Date; measure: number; inspCount: number; violCount: number }> = [];
+                      for (let b = numBuckets - 1; b >= 0; b--) {
+                        const toM = b * bucketStep;
+                        const fromM = toM + bucketStep;
+                        const bEnd = new Date(now); bEnd.setMonth(bEnd.getMonth() - toM + 1); bEnd.setDate(0);
+                        const bStart = new Date(now); bStart.setMonth(bStart.getMonth() - fromM + 1); bStart.setDate(1);
+                        const midDate = new Date(now); midDate.setMonth(midDate.getMonth() - Math.round((toM + fromM) / 2));
+                        const mInsp = smsInspections.filter(insp => { const d = new Date(insp.date); return d >= bStart && d <= bEnd; });
+                        const mViol = mInsp.flatMap(insp => insp.violations.filter((v: any) => v.category === row.category));
+                        let ws = 0;
+                        mViol.forEach((v: any) => { ws += (v.severity || 1); });
+                        const mMeasure = mInsp.length > 0 ? Math.round((ws / mInsp.length) * 100) / 100 : 0;
+                        const lbl = bucketStep === 1
+                          ? `${mnNames[midDate.getMonth()]} ${String(midDate.getDate()).padStart(2,'0')}\n${midDate.getFullYear()}`
+                          : `${mnNames[bStart.getMonth()]}–${mnNames[bEnd.getMonth()]}\n${bEnd.getFullYear()}`;
+                        bubbleMonths.push({ label: lbl, date: midDate, measure: mMeasure, inspCount: mInsp.length, violCount: mViol.length });
+                      }
+                      const maxBubble = Math.max(1, ...bubbleMonths.map(b => b.measure));
+                      const yPad = 30; const xPad = 52; const chartW = 560; const chartH = 220;
+                      const yMax = Math.ceil(maxBubble * 1.3 + 0.5);
+                      const yMin = -1;
+                      const yTicks = [yMax, Math.round((yMax + yMin) * 0.65), Math.round((yMax + yMin) * 0.3), yMin];
+                      const yScale = (v: number) => yPad + (chartH - yPad) * (1 - (v - yMin) / (yMax - yMin));
+                      const xStep = bubbleMonths.length > 1 ? (chartW - xPad * 0.5) / (bubbleMonths.length - 1) : (chartW - xPad * 0.5) / 2;
+
+                      // Monthly inspection count for INSPECTION RESULTS bar chart
+                      const inspBarMax = Math.max(1, ...bubbleMonths.map(b => b.inspCount));
+
+                      return (
+                        <Fragment key={i}>
+                        <tr
+                          onClick={() => setExpandedBasic(isExpanded ? null : row.category)}
+                          className={`group/brow cursor-pointer select-none transition-colors ${isExpanded ? 'bg-blue-50' : i % 2 === 0 ? 'bg-white hover:bg-blue-50/30' : 'bg-slate-50/20 hover:bg-blue-50/30'}`}
+                        >
+                          <td className="px-5 py-3 text-sm font-semibold text-slate-700">
+                            <div className="flex items-center gap-2">
+                              <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7"/></svg>
+                              {row.label}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-sm text-slate-600">{measure}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                {hasSufficientData && pctNum > 0 && <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(pctNum, 100)}%` }}></div>}
+                              </div>
+                              <span className={`text-sm font-bold w-10 text-right ${isAlert ? 'text-red-600' : isWarn ? 'text-amber-600' : 'text-slate-500'}`}>{hasSufficientData ? percentile : 'N/A'}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-bold text-slate-400">{row.threshold}%</td>
+                          <td className="px-5 py-3 text-center">
+                            {isAlert ? <span className="inline-flex px-2.5 py-1 rounded-md text-[11px] font-bold bg-red-100 text-red-700">ALERT</span>
+                              : !hasSufficientData ? <span className="inline-flex px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-400">Low Data</span>
+                              : <span className="inline-flex px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-700">OK</span>}
+                          </td>
+                        </tr>
+
+                        {/* ── Expanded dropdown chart ── */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={5} className="p-0 border-b border-slate-200">
+                              <div className="flex border-t-2 border-blue-200 bg-white">
+
+                                {/* Left sidebar */}
+                                <div className="w-56 flex-shrink-0 bg-slate-50 border-r border-slate-200 p-4 flex flex-col gap-3">
+                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold self-start ${isAlert ? 'bg-red-600 text-white' : isWarn ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white'}`}>
+                                    BASIC: {row.label.toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-700 mb-2">On-Road Performance</p>
+                                    <div className="space-y-1 text-xs text-slate-600">
+                                      <div className="flex items-center gap-1">
+                                        <span>Measure:</span>
+                                        <span className="font-bold text-slate-800">{measure}</span>
+                                        <span className="text-slate-400 cursor-help" title="Time-weighted violation severity per inspection">?</span>
+                                      </div>
+                                      <div>
+                                        <span>Percentile: </span>
+                                        <span className={`font-black text-base ${isAlert ? 'text-red-600' : isWarn ? 'text-amber-600' : 'text-slate-700'}`}>{hasSufficientData ? `${percentile}%` : 'N/A'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {basicEntry?.details && (
+                                    <div className="text-[11px] text-blue-600 leading-relaxed">{basicEntry.details}</div>
+                                  )}
+                                  <div className="text-[11px] text-slate-500 space-y-0.5">
+                                    <div>{bubbleMonths.reduce((s, b) => s + b.violCount, 0)} violations across {bubbleMonths.reduce((s, b) => s + b.inspCount, 0)} inspections</div>
+                                    <div>{bubbleMonths.filter(b => b.violCount > 0).length} months with violations | Weighted Severity: {measure}</div>
+                                  </div>
+                                  {isAlert && (
+                                    <div className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
+                                      <span className="font-bold">Investigation Results</span><br/>Alert — carrier exceeds intervention threshold
+                                    </div>
+                                  )}
+                                  <div className="mt-auto">
+                                    <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                      <span className={`font-bold ${deltaCls}`}>{deltaSign}</span>
+                                      <span>{Math.abs(row.delta).toFixed(2)} vs prev period</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right chart area */}
+                                <div className="flex-1 p-4 min-w-0">
+                                  {/* Tab bar */}
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="flex gap-0">
+                                      {(['MEASURE', 'INSPECTIONS'] as const).map(tab => (
+                                        <button
+                                          key={tab}
+                                          onClick={e => { e.stopPropagation(); setBasicChartView(prev => ({ ...prev, [row.category]: tab })); }}
+                                          className={`px-3 py-1.5 text-[11px] font-bold border-b-2 transition-colors ${chartTab === tab ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                          {tab === 'MEASURE' ? 'CARRIER MEASURE OVER TIME' : 'INSPECTION RESULTS'}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {chartTab === 'MEASURE' ? (
+                                    <>
+                                      <p className="text-xs font-bold text-slate-700 text-center mb-0.5">CARRIER MEASURE OVER TIME</p>
+                                      <p className="text-[11px] text-slate-400 text-center mb-3">Based on last {periodMonths} month{periodMonths > 1 ? 's' : ''} of on-road performance. Zero indicates best performance.</p>
+                                      {/* Bubble chart */}
+                                      <div className="overflow-x-auto w-full">
+                                        <svg width="100%" viewBox={`0 0 ${chartW + xPad + 10} ${chartH + 50}`} style={{ minWidth: 420, display: 'block' }}>
+                                          {/* Y-axis grid & labels */}
+                                          {yTicks.map((tick, ti) => (
+                                            <g key={ti}>
+                                              <line x1={xPad} y1={yScale(tick)} x2={chartW + xPad} y2={yScale(tick)} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="5 4"/>
+                                              <text x={xPad - 6} y={yScale(tick) + 4} textAnchor="end" fontSize="11" fill="#94a3b8">{tick}</text>
+                                            </g>
+                                          ))}
+                                          {/* X-axis baseline */}
+                                          <line x1={xPad} y1={chartH} x2={chartW + xPad} y2={chartH} stroke="#cbd5e1" strokeWidth="1.5"/>
+                                          {/* Connecting dashed line */}
+                                          <polyline
+                                            points={bubbleMonths.map((b, bi) => `${xPad + bi * xStep},${yScale(b.measure)}`).join(' ')}
+                                            fill="none" stroke="#93c5fd" strokeWidth="2" strokeDasharray="6 4"
+                                          />
+                                          {/* Bubbles */}
+                                          {bubbleMonths.map((b, bi) => {
+                                            const cx = xPad + bi * xStep;
+                                            const cy = yScale(b.measure);
+                                            const r = Math.max(18, Math.min(34, 18 + (b.measure / (maxBubble || 1)) * 16));
+                                            const tipW = 148; const tipH = 68;
+                                            const tipX = cx + r + 6 > chartW + xPad - tipW ? cx - r - tipW - 6 : cx + r + 6;
+                                            const tipY = Math.max(4, cy - tipH / 2);
+                                            return (
+                                              <g key={bi} className="group/bubble">
+                                                {/* Hit area */}
+                                                <circle cx={cx} cy={cy} r={r + 6} fill="transparent"/>
+                                                {/* Bubble */}
+                                                <circle cx={cx} cy={cy} r={r} fill="#2563eb" opacity="0.88" className="group-hover/bubble:opacity-100 transition-opacity"/>
+                                                <text x={cx} y={cy + 5} textAnchor="middle" fontSize={r > 24 ? 13 : 11} fontWeight="700" fill="white">{b.measure}</text>
+                                                {/* X-axis label */}
+                                                {b.label.split('\n').map((line, li) => (
+                                                  <text key={li} x={cx} y={chartH + 16 + li * 13} textAnchor="middle" fontSize="10" fill="#94a3b8">{line}</text>
+                                                ))}
+                                                {/* Hover tooltip */}
+                                                <g className="opacity-0 group-hover/bubble:opacity-100 pointer-events-none transition-opacity" style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.18))' }}>
+                                                  <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="8" fill="#0f172a"/>
+                                                  <text x={tipX + 10} y={tipY + 18} fontSize="11" fontWeight="700" fill="#93c5fd">{b.label.replace('\n', ' ')}</text>
+                                                  <text x={tipX + 10} y={tipY + 34} fontSize="10" fill="#cbd5e1">Measure: <tspan fontWeight="700" fill="white">{b.measure}</tspan></text>
+                                                  <text x={tipX + 10} y={tipY + 48} fontSize="10" fill="#cbd5e1">Inspections: <tspan fontWeight="700" fill="white">{b.inspCount}</tspan></text>
+                                                  <text x={tipX + 10} y={tipY + 62} fontSize="10" fill="#cbd5e1">Violations: <tspan fontWeight="700" fill={b.violCount > 0 ? '#fca5a5' : '#86efac'}>{b.violCount}</tspan></text>
+                                                </g>
+                                              </g>
+                                            );
+                                          })}
+                                        </svg>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <p className="text-xs font-bold text-slate-700 text-center mb-0.5">INSPECTION RESULTS</p>
+                                      <p className="text-[11px] text-slate-400 text-center mb-3">Monthly inspection count for this BASIC category · Last {getPeriodLabel(smsPeriod)}</p>
+                                      <div className="overflow-x-auto w-full">
+                                        <svg width="100%" viewBox={`0 0 ${chartW + xPad + 10} ${chartH + 50}`} style={{ minWidth: 420, display: 'block' }}>
+                                          {[inspBarMax, Math.round(inspBarMax / 2), 0].map((tick, ti) => {
+                                            const ty = yPad + (chartH - yPad) * (1 - tick / inspBarMax);
+                                            return (
+                                              <g key={ti}>
+                                                <line x1={xPad} y1={ty} x2={chartW + xPad} y2={ty} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="5 4"/>
+                                                <text x={xPad - 6} y={ty + 4} textAnchor="end" fontSize="11" fill="#94a3b8">{tick}</text>
+                                              </g>
+                                            );
+                                          })}
+                                          <line x1={xPad} y1={chartH} x2={chartW + xPad} y2={chartH} stroke="#cbd5e1" strokeWidth="1.5"/>
+                                          {bubbleMonths.map((b, bi) => {
+                                            const bW = Math.max(18, xStep * 0.52);
+                                            const cx = xPad + bi * xStep;
+                                            const bH = inspBarMax > 0 ? ((b.inspCount / inspBarMax) * (chartH - yPad)) : 0;
+                                            const vH = b.inspCount > 0 ? ((b.violCount / b.inspCount) * bH) : 0;
+                                            const tipW = 148; const tipH = 68;
+                                            const tipX = cx + bW / 2 + 6 > chartW + xPad - tipW ? cx - bW / 2 - tipW - 6 : cx + bW / 2 + 6;
+                                            const tipY = Math.max(4, chartH - bH - tipH - 8);
+                                            return (
+                                              <g key={bi} className="group/bar">
+                                                {/* Clean inspections */}
+                                                <rect x={cx - bW / 2} y={chartH - bH} width={bW} height={bH} fill="#bfdbfe" rx="3"/>
+                                                {/* Violations overlay */}
+                                                {b.violCount > 0 && <rect x={cx - bW / 2} y={chartH - vH} width={bW} height={vH} fill="#2563eb" rx="3"/>}
+                                                {/* X-axis label */}
+                                                {b.label.split('\n').map((line, li) => (
+                                                  <text key={li} x={cx} y={chartH + 16 + li * 13} textAnchor="middle" fontSize="10" fill="#94a3b8">{line}</text>
+                                                ))}
+                                                {/* Hit area */}
+                                                <rect x={cx - bW / 2} y={chartH - bH - 4} width={bW} height={bH + 4} fill="transparent"/>
+                                                {/* Hover tooltip */}
+                                                <g className="opacity-0 group-hover/bar:opacity-100 pointer-events-none transition-opacity" style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.18))' }}>
+                                                  <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="8" fill="#0f172a"/>
+                                                  <text x={tipX + 10} y={tipY + 18} fontSize="11" fontWeight="700" fill="#93c5fd">{b.label.replace('\n', ' ')}</text>
+                                                  <text x={tipX + 10} y={tipY + 34} fontSize="10" fill="#cbd5e1">Total Inspections: <tspan fontWeight="700" fill="white">{b.inspCount}</tspan></text>
+                                                  <text x={tipX + 10} y={tipY + 48} fontSize="10" fill="#cbd5e1">w/ Violations: <tspan fontWeight="700" fill={b.violCount > 0 ? '#fca5a5' : '#86efac'}>{b.violCount}</tspan></text>
+                                                  <text x={tipX + 10} y={tipY + 62} fontSize="10" fill="#cbd5e1">Clean: <tspan fontWeight="700" fill="#86efac">{b.inspCount - b.violCount}</tspan></text>
+                                                </g>
+                                              </g>
+                                            );
+                                          })}
+                                        </svg>
+                                      </div>
+                                      <div className="flex items-center gap-4 justify-center mt-1 text-[11px] text-slate-500">
+                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block"></span>w/ violations</span>
+                                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-200 inline-block"></span>clean</span>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               </div>
-                            </div>
-                            <span className={`text-sm font-bold w-12 text-right ${pct >= csaThresholds.critical ? 'text-red-600' : pct >= csaThresholds.warning ? 'text-amber-600' : 'text-slate-500'}`}>
-                              {isNA ? '0%' : b.percentile}
-                            </span>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 [&>p]:hidden">
+                  <div className="text-xs text-slate-400">Carrier: General · UD/CI/HOS ≥65% alert · VM/CS/HM/DF ≥80% alert · Percentile 0 = best, 100 = worst</div>
+                  <p className="text-[10px] text-slate-400">Carrier: General · UD/CI/HOS ≥65% alert · VM/CS/HM/DF ≥80% alert · Percentile 0 = best, 100 = worst · ▲ worse / ▼ improving vs prev period</p>
+                </div>
+              </div>
+
+              {/* ── Bento Grid: Bar Chart | OOS Donut | Top Violations | Level Comparison ── */}
+              <div className="border-t border-slate-200 bg-slate-50/40 p-4">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+                {/* Inspections Bar Chart — col-span-2 */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col min-w-0">
+                  <div className="flex items-center justify-between mb-4 gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">Inspections by Month</p>
+                      <p className="text-xs text-slate-400">Last {getPeriodLabel(smsPeriod)}</p>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-900 inline-block"></span>w/ violations</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-200 inline-block"></span>clean</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex items-end gap-2 min-h-[160px]">
+                    <div className="flex flex-col justify-between h-full pr-2 text-[11px] text-slate-300 font-mono w-7 flex-shrink-0 min-h-[160px]">
+                      {[maxBarVal2, Math.round(maxBarVal2/2), 0].map((v, i) => <span key={i}>{v}</span>)}
+                    </div>
+                    <div className="flex-1 flex items-end gap-1 h-full border-b border-l border-slate-100 relative min-h-[160px]">
+                      {months2.map(m => {
+                        const data = monthMap2[m] || { withViol: 0, withoutViol: 0 };
+                        const hWith = maxBarVal2 > 0 ? (data.withViol / maxBarVal2) * 100 : 0;
+                        const hWithout = maxBarVal2 > 0 ? (data.withoutViol / maxBarVal2) * 100 : 0;
+                        const [y, mo] = m.split('-');
+                        const lbl = `${monthNames2[parseInt(mo)-1]} ${y.slice(2)}`;
+                        return (
+                          <div key={m} className="group/col2 flex-1 flex items-end justify-center h-full relative gap-1">
+                            {data.withViol > 0 && <div className="bg-blue-900/80 rounded-t-sm w-3" style={{ height: `${hWith}%`, minHeight: 4 }}></div>}
+                            {data.withoutViol > 0 && <div className="bg-blue-200 rounded-t-sm w-3" style={{ height: `${hWithout}%`, minHeight: 4 }}></div>}
+                            {(data.withViol > 0 || data.withoutViol > 0) && (
+                              <div className="hidden group-hover/col2:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none">
+                                <div className="bg-slate-900 text-white text-[11px] rounded-lg px-2.5 py-2 shadow-xl whitespace-nowrap">
+                                  <div className="font-bold text-blue-300">{lbl}</div>
+                                  <div>Violations: <b>{data.withViol}</b></div>
+                                  <div>Clean: <b>{data.withoutViol}</b></div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
-                  </>
-                ) : (
-                  <>
-                    {/* INSPECTIONS view - Vertical bar chart by month */}
-                    <div className="flex items-center gap-5 mb-5 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-sm bg-blue-900"></div>
-                        <span className="text-slate-600">Inspections with Violations</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-sm bg-blue-300"></div>
-                        <span className="text-slate-600">Inspections without Violations</span>
-                      </div>
+                  </div>
+                  <div className="flex ml-9 mt-2">
+                    {months2.length <= 6 ? months2.map((m, i) => {
+                      const [, mo] = m.split('-');
+                      return <div key={i} className="flex-1 text-center text-[11px] text-slate-300">{monthNames2[parseInt(mo)-1]}</div>;
+                    }) : (
+                      <>
+                        <div className="text-[11px] text-slate-300">{monthNames2[new Date(cutoff).getMonth()]} {cutoff.getFullYear()}</div>
+                        <div className="flex-1"></div>
+                        <div className="text-[11px] text-slate-300">Dec 2025</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* OOS Donut */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col min-w-0">
+                  <p className="text-sm font-bold text-slate-700 mb-4">Out of Service</p>
+                  <div className="flex-1 flex items-center justify-center">
+                  <div className="relative">
+                    <svg width="120" height="120" viewBox="0 0 80 80">
+                      <circle cx="40" cy="40" r="32" fill="none" stroke="#e2e8f0" strokeWidth="8"/>
+                      {totalViolations2 > 0 && <circle cx="40" cy="40" r="32" fill="none" stroke="#3b82f6" strokeWidth="8" strokeDasharray={`${nonOosStroke2} ${oosStroke2}`} strokeLinecap="round" transform="rotate(-90 40 40)"/>}
+                      {oosViolations2 > 0 && <circle cx="40" cy="40" r="32" fill="none" stroke="#ef4444" strokeWidth="8" strokeDasharray={`${oosStroke2} ${nonOosStroke2}`} strokeDashoffset={-nonOosStroke2} strokeLinecap="round" transform="rotate(-90 40 40)"/>}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-3xl font-black text-slate-900">{totalViolations2}</span>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">Viol</span>
                     </div>
-                    {(() => {
-                      // Group period inspections by month
-                      const monthMap: Record<string, { withViol: number; withoutViol: number }> = {};
-                      relevantInspections.forEach(insp => {
-                        const d = new Date(insp.date);
-                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                        if (!monthMap[key]) monthMap[key] = { withViol: 0, withoutViol: 0 };
-                        const hasCategory = smsBasicCategory === 'All'
-                          ? insp.violations.length > 0
-                          : insp.violations.some(v => v.category === smsBasicCategory);
-                        if (hasCategory) monthMap[key].withViol++;
-                        else monthMap[key].withoutViol++;
-                      });
+                  </div>
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                      <div className="flex items-center gap-2 mb-2"><div className="w-2.5 h-2.5 rounded-sm bg-blue-500 flex-shrink-0"></div><span className="font-semibold text-slate-600">Non OOS</span></div>
+                      <div className="flex items-end justify-between"><span className="text-2xl font-black text-slate-800">{nonOosPercent2}%</span><span className="text-slate-400 font-semibold">{nonOosViolations2}</span></div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                      <div className="flex items-center gap-2 mb-2"><div className="w-2.5 h-2.5 rounded-sm bg-red-500 flex-shrink-0"></div><span className="font-semibold text-slate-600">OOS</span></div>
+                      <div className="flex items-end justify-between"><span className="text-2xl font-black text-red-600">{oosPercent2}%</span><span className="text-slate-400 font-semibold">{oosViolations2}</span></div>
+                    </div>
+                  </div>
+                </div>
 
-                      // Fill missing months
-                      const months: string[] = [];
-                      const start = new Date(cutoff);
-                      start.setDate(1);
-                      for (let m = new Date(start); m <= now; m.setMonth(m.getMonth() + 1)) {
-                        months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
-                      }
-                      const maxVal = Math.max(1, ...months.map(m => (monthMap[m]?.withViol || 0) + (monthMap[m]?.withoutViol || 0)));
-                      const yLabels = Array.from({ length: 5 }, (_, i) => Math.round((maxVal / 4) * (4 - i) * 10) / 10);
-                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
+                {/* Top Violations */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col min-w-0">
+                  <div className="flex items-center justify-between mb-4 gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">Top Violations</p>
+                      <p className="text-xs text-slate-400">Sorted by points or count</p>
+                    </div>
+                    <div className="inline-flex bg-slate-100 rounded-lg p-1">
+                      <button onClick={() => setSmsTopViolSort('POINTS')} className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors ${smsTopViolSort === 'POINTS' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>PTS</button>
+                      <button onClick={() => setSmsTopViolSort('COUNT')} className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors ${smsTopViolSort === 'COUNT' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>CNT</button>
+                    </div>
+                  </div>
+                  <div className="space-y-3 flex-1">
+                    {topViol2.length > 0 ? topViol2.map(([name, data], i) => {
+                      const val = smsTopViolSort === 'POINTS' ? data.points : data.count;
+                      const pct = maxTopVal2 > 0 ? (val / maxTopVal2) * 100 : 0;
                       return (
-                        <div className="mt-3">
-                          <div className="text-sm text-slate-400 font-bold uppercase mb-3">{maxVal} inspections</div>
-                          <div className="flex items-end gap-px" style={{ height: 260 }}>
-                            {/* Y-axis labels */}
-                            <div className="flex flex-col justify-between h-full pr-2 text-xs text-slate-400 font-mono w-10 flex-shrink-0">
-                              {yLabels.map((v, i) => <span key={i}>{v}</span>)}
-                              <span>0</span>
+                        <div key={i} className="group/tv relative rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-slate-400 w-4 flex-shrink-0">{i+1}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-slate-700 truncate" title={name}>{name}</div>
+                              <div className="h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
+                                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }}></div>
+                              </div>
                             </div>
-                            {/* Bars */}
-                            <div className="flex-1 flex items-end gap-1 h-full border-b border-l border-slate-200 px-1 pb-0.5 relative">
-                              {/* Horizontal grid lines */}
-                              {yLabels.map((_, i) => (
-                                <div key={i} className="absolute left-0 right-0 border-t border-slate-100" style={{ bottom: `${((4 - i) / 4) * 100}%` }}></div>
-                              ))}
-                              {months.map(m => {
-                                const data = monthMap[m] || { withViol: 0, withoutViol: 0 };
-                                const hWith = maxVal > 0 ? (data.withViol / maxVal) * 100 : 0;
-                                const hWithout = maxVal > 0 ? (data.withoutViol / maxVal) * 100 : 0;
-                                const [y, mo] = m.split('-');
-                                const label = periodMonths <= 3
-                                  ? `${monthNames[parseInt(mo) - 1]}`
-                                  : `${monthNames[parseInt(mo) - 1]} ${y.slice(2)}`;
-                                return (
-                                  <div key={m} className="group/col flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer">
-                                    <div className="flex gap-0.5 items-end w-full justify-center" style={{ height: '100%' }}>
-                                      {data.withViol > 0 && <div className="bg-blue-900 rounded-t-sm w-4 group-hover/col:opacity-80 transition-opacity" style={{ height: `${hWith}%`, minHeight: data.withViol > 0 ? 4 : 0 }}></div>}
-                                      {data.withoutViol > 0 && <div className="bg-blue-300 rounded-t-sm w-4 group-hover/col:opacity-80 transition-opacity" style={{ height: `${hWithout}%`, minHeight: data.withoutViol > 0 ? 4 : 0 }}></div>}
-                                    </div>
-                                    {(data.withViol > 0 || data.withoutViol > 0) && (
-                                      <div className="hidden group-hover/col:block absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1 pointer-events-none">
-                                        <div className="bg-slate-900 text-white text-sm rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
-                                          <div className="font-bold text-blue-300 mb-0.5">{label}</div>
-                                          <div>With violations: <span className="font-bold">{data.withViol}</span></div>
-                                          <div>Clean: <span className="font-bold">{data.withoutViol}</span></div>
-                                          <div>Total: <span className="font-bold">{data.withViol + data.withoutViol}</span></div>
-                                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-900"></div>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          {/* X-axis labels */}
-                          <div className="flex ml-10 mt-1">
-                            {months.length <= 12 ? (
-                              months.map((m, i) => {
-                                const [y, mo] = m.split('-');
-                                return <div key={i} className="flex-1 text-center text-xs text-slate-400">{monthNames[parseInt(mo) - 1]} {y.slice(2)}</div>;
-                              })
-                            ) : (
-                              <>
-                                <div className="flex-none text-xs text-slate-400">{monthNames[new Date(cutoff).getMonth()]} {cutoff.getFullYear()}</div>
-                                <div className="flex-1"></div>
-                                <div className="flex-none text-xs text-slate-400">Dec 2025</div>
-                              </>
-                            )}
+                            <span className="text-sm font-bold text-slate-800 flex-shrink-0">{val}</span>
                           </div>
                         </div>
                       );
-                    })()}
-                  </>
-                )}
-              </div>
-
-              {/* RIGHT: OOS Donut + Top Violations */}
-              <div className="space-y-4">
-
-                {/* Out of Service Summary */}
-                {(() => {
-                  const totalViolations = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => smsBasicCategory === 'All' || v.category === smsBasicCategory).length, 0);
-                  const oosViolations = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => v.oos && (smsBasicCategory === 'All' || v.category === smsBasicCategory)).length, 0);
-                  const nonOosViolations = totalViolations - oosViolations;
-                  const oosPercent = totalViolations > 0 ? Math.round((oosViolations / totalViolations) * 100) : 0;
-                  const nonOosPercent = 100 - oosPercent;
-                  const circumference = 2 * Math.PI * 45;
-                  const nonOosStroke = (nonOosPercent / 100) * circumference;
-                  const oosStroke = circumference - nonOosStroke;
-
-                  return (
-                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                    <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-                      <h3 className="text-base font-bold text-slate-900">
-                        Out of Service Summary <span className="text-sm font-normal text-slate-400">/ SMS / Last {getPeriodLabel(smsPeriod)}</span>
-                      </h3>
-                      <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                        {PERIOD_OPTIONS.map(p => (
-                          <button
-                            key={p}
-                            onClick={() => setSmsPeriod(p)}
-                            className={`px-2.5 py-1 text-xs font-bold transition-colors ${smsPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-6">
-                      <div className="relative flex-shrink-0">
-                        <svg width="110" height="110" viewBox="0 0 110 110">
-                          <circle cx="55" cy="55" r="45" fill="none" stroke="#e2e8f0" strokeWidth="10" />
-                          {totalViolations > 0 && (
-                            <circle cx="55" cy="55" r="45" fill="none" stroke="#3b82f6" strokeWidth="10"
-                              strokeDasharray={`${nonOosStroke} ${oosStroke}`}
-                              strokeLinecap="round"
-                              transform="rotate(-90 55 55)" />
-                          )}
-                          {oosViolations > 0 && (
-                            <circle cx="55" cy="55" r="45" fill="none" stroke="#ef4444" strokeWidth="10"
-                              strokeDasharray={`${oosStroke} ${nonOosStroke}`}
-                              strokeDashoffset={-nonOosStroke}
-                              strokeLinecap="round"
-                              transform="rotate(-90 55 55)" />
-                          )}
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-xl font-bold text-slate-900">{totalViolations}</span>
-                          <span className="text-xs text-slate-500 uppercase tracking-wider font-bold">Violations</span>
-                        </div>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-sm bg-blue-500"></div>
-                          <span className="text-slate-600">Non OOS</span>
-                          <span className="ml-auto font-bold text-slate-700">{nonOosPercent}%</span>
-                          <span className="text-slate-500 w-6 text-right">{nonOosViolations}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-sm bg-red-500"></div>
-                          <span className="text-slate-600">Out-of-service</span>
-                          <span className="ml-auto font-bold text-slate-700">{oosPercent}%</span>
-                          <span className="text-slate-500 w-6 text-right">{oosViolations}</span>
-                        </div>
-                      </div>
-                    </div>
+                    }) : <p className="text-sm text-slate-400 text-center py-8">No violations.</p>}
                   </div>
-                  );
-                })()}
+                </div>
 
-                {/* Top Violations */}
-                {(() => {
-                  const violationMap: Record<string, { points: number; count: number }> = {};
-                  relevantInspections.forEach(insp => {
-                    insp.violations
-                      .filter(v => smsBasicCategory === 'All' || v.category === smsBasicCategory)
-                      .forEach(v => {
-                        const key = v.description.length > 40 ? v.description.substring(0, 40) + '…' : v.description;
-                        if (!violationMap[key]) violationMap[key] = { points: 0, count: 0 };
-                        violationMap[key].points += v.points;
-                        violationMap[key].count += 1;
-                      });
-                  });
-                  const topViolations = Object.entries(violationMap)
-                    .sort((a, b) => smsTopViolSort === 'POINTS' ? b[1].points - a[1].points : b[1].count - a[1].count)
-                    .slice(0, 5);
-
-                  return (
-                  <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-base font-bold text-slate-900">Top Violations</h3>
-                      <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                        <button
-                          onClick={() => setSmsTopViolSort('POINTS')}
-                          className={`px-2.5 py-1.5 text-sm font-bold transition-colors ${smsTopViolSort === 'POINTS' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                        >POINTS</button>
-                        <button
-                          onClick={() => setSmsTopViolSort('COUNT')}
-                          className={`px-2.5 py-1.5 text-sm font-bold transition-colors ${smsTopViolSort === 'COUNT' ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                        >COUNT</button>
-                      </div>
-                    </div>
-                    <div className="space-y-2.5">
-                      {topViolations.length > 0 ? topViolations.map(([name, data], i) => (
-                        <div key={i} className="flex items-center justify-between text-sm gap-2">
-                          <span className="text-slate-700 truncate" title={name}>{name}</span>
-                          <span className="font-bold text-slate-900 flex-shrink-0">{smsTopViolSort === 'POINTS' ? data.points : data.count}</span>
-                        </div>
-                      )) : (
-                        <p className="text-sm text-slate-400 text-center py-4">No violations in this period.</p>
-                      )}
-                    </div>
+              {/* ── SMS Level Comparison — Bento 2-col card grid ── */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col min-w-0">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">SMS Inspection Levels</p>
+                    <div className="text-xs text-slate-400">FMCSA Levels I-VIII · Last {getPeriodLabel(smsPeriod)} · Total: <span className="font-bold text-slate-600">{totalInsp}</span> · OOS: <span className="font-bold text-red-600">{totalOos}</span></div>
+                    <p className="text-[10px] text-slate-400">FMCSA Levels I–VIII · Last {getPeriodLabel(smsPeriod)} · Total: <span className="font-bold text-slate-600">{totalInsp}</span> · OOS: <span className="font-bold text-red-600">{totalOos}</span></p>
                   </div>
-                  );
-                })()}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 flex-1 content-start">
+                  {levelStats.map((l) => {
+                    const pctColor = l.pct >= 50 ? 'text-red-600' : l.pct >= 25 ? 'text-amber-600' : 'text-emerald-600';
+                    const barColor = l.pct >= 50 ? 'bg-red-500' : l.pct >= 25 ? 'bg-amber-500' : 'bg-emerald-400';
+                    const dotColor = l.count > 0 ? barColor : 'bg-slate-200';
+                    return (
+                      <div key={l.level} className="group/lcard relative rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5 hover:bg-blue-50/50 transition-colors">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`}></div>
+                          <div className="text-[11px] font-bold text-slate-700 truncate min-w-0 flex-1" title={l.name}>
+                            {l.name.replace('Level ', 'Lvl ')}
+                          </div>
+                          <span className={`text-[11px] font-black tabular-nums flex-shrink-0 ${l.count > 0 ? pctColor : 'text-slate-300'}`}>{l.pct.toFixed(0)}%</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mb-1.5">
+                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(l.pct, 100)}%` }}></div>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span><span className="font-bold text-slate-600">{l.count}</span> insp</span>
+                          <span><span className={`font-bold ${l.oosCount > 0 ? 'text-red-500' : 'text-slate-300'}`}>{l.oosCount}</span> OOS</span>
+                        </div>
+                        {/* Hover tooltip */}
+                        <div className="pointer-events-none absolute z-30 right-0 bottom-full mb-1 hidden group-hover/lcard:block">
+                          <div className="bg-slate-900 text-white text-[10px] rounded-lg px-2.5 py-2 shadow-xl w-48 whitespace-normal">
+                            <div className="font-bold text-blue-300 mb-1">{l.name}</div>
+                            <p className="text-slate-300 leading-relaxed">{l.desc}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+          </div>
+        </div>
             );
           })()}
 
@@ -3647,16 +3707,7 @@ export function InspectionsPage() {
 
 
 
-          {/* Intervention Warning Banner */}
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
-            <AlertOctagon className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
-            <div>
-              <h4 className="text-sm font-bold text-red-800 uppercase tracking-wide">FMCSA Intervention Warning</h4>
-              <p className="text-sm text-red-700 mt-1 leading-relaxed">
-                The carrier exceeds the FMCSA Intervention Threshold relative to its safety event grouping based on roadside data. This carrier may be prioritized for an intervention action and roadside inspection.
-              </p>
-            </div>
-          </div>
+
 
           {/* CSA BASIC Status - Full Width */}
           {(() => {
@@ -4097,221 +4148,564 @@ export function InspectionsPage() {
             );
           })()}
 
-          {/* ===== SMS Level Comparison ===== */}
+          {/* ── SMS List Time Period Filter ─────────────────────────── */}
           {(() => {
-            const smsLevels = [
-              { level: 'Level 1', name: 'Level I – North American Standard', desc: 'Full inspection of the driver and vehicle – includes driver credentials (CDL, medical card, HOS), vehicle mechanical fitness, cargo securement, hazmat compliance (if applicable), and all safety systems.' },
-              { level: 'Level 2', name: 'Level II – Walk-Around', desc: 'Walk-around driver/vehicle inspection – covers driver credentials, HOS, seat belt use, DVIR, and an exterior examination of the vehicle without going underneath.' },
-              { level: 'Level 3', name: 'Level III – Driver/Credential', desc: 'Driver-only inspection – verifies CDL, medical certificate, HOS records, seat belt compliance, DVIR, and carrier credentials. No vehicle mechanical inspection.' },
-              { level: 'Level 4', name: 'Level IV – Special Inspections', desc: 'Special one-time inspection or examination – typically a single item of interest (e.g., cargo, hazmat placards, specific regulatory concern).' },
-              { level: 'Level 5', name: 'Level V – Vehicle Only', desc: 'Vehicle-only inspection – conducted without the driver present. Covers all mechanical components and safety systems.' },
-              { level: 'Level 6', name: 'Level VI – Transuranic Waste / Radioactive', desc: 'Enhanced NAS inspection for transuranic waste and highway-route-controlled radioactive material shipments – includes Level I items plus radiological requirements.' },
-              { level: 'Level 7', name: 'Level VII – Jurisdictional Mandated', desc: 'Jurisdiction-mandated commercial vehicle inspection – covers specific items required by the state or province, including credential verification.' },
-              { level: 'Level 8', name: 'Level VIII – Electronic Inspection', desc: 'Electronic inspection using wireless roadside technology – verifies driver and vehicle credentials, safety data, and compliance electronically (e.g., ELD, transponder, USDOT data).' },
-            ];
+            const now2 = new Date('2025-12-31');
+            // Compute cutoff for list
+            const getListCutoff = () => {
+              if (smsListPeriod === 'custom' && smsCustomFrom) return new Date(smsCustomFrom);
+              const c = new Date(now2);
+              if (smsListPeriod === '7d') c.setDate(c.getDate() - 7);
+              else if (smsListPeriod === '30d') c.setDate(c.getDate() - 30);
+              else if (smsListPeriod === '90d') c.setDate(c.getDate() - 90);
+              else if (smsListPeriod === '6mo') c.setMonth(c.getMonth() - 6);
+              else c.setMonth(c.getMonth() - 12); // 12mo default
+              return c;
+            };
+            const listCutoff = getListCutoff();
+            const listCustomTo = smsListPeriod === 'custom' && smsCustomTo ? new Date(smsCustomTo) : now2;
 
-            const now = new Date('2025-12-31');
-            const smsLvlMonths = smsLevelPeriod === '1M' ? 1 : smsLevelPeriod === '3M' ? 3 : smsLevelPeriod === '6M' ? 6 : smsLevelPeriod === '12M' ? 12 : 24;
-            const cutoff = new Date(now);
-            cutoff.setMonth(cutoff.getMonth() - smsLvlMonths);
-            const periodInsp = smsInspections.filter(i => new Date(i.date) >= cutoff);
-
-            const levelStats = smsLevels.map(l => {
-              const levelInsp = periodInsp.filter(i => i.level === l.level);
-              const count = levelInsp.length;
-              const oosCount = levelInsp.filter(i => i.hasOOS).length;
-              const pct = count > 0 ? ((oosCount / count) * 100) : 0;
-              return { ...l, count, oosCount, pct };
+            const periodFilteredSms = smsInspections.filter(insp => {
+              const d = new Date(insp.date);
+              return d >= listCutoff && d <= listCustomTo;
             });
 
-            const totalInsp = levelStats.reduce((s, l) => s + l.count, 0);
-            const totalOos = levelStats.reduce((s, l) => s + l.oosCount, 0);
+            const listStats = {
+              total: periodFilteredSms.length,
+              clean: periodFilteredSms.filter(i => i.isClean).length,
+              oos: periodFilteredSms.filter(i => i.hasOOS).length,
+              vehicle: periodFilteredSms.filter(i => i.hasVehicleViolations).length,
+              driver: periodFilteredSms.filter(i => i.hasDriverViolations).length,
+              severe: periodFilteredSms.filter(i => i.violations.some((v: any) => v.severity >= 7)).length,
+            };
+            const cleanPct = listStats.total > 0 ? Math.round((listStats.clean / listStats.total) * 100) : 0;
+            const oosPct = listStats.total > 0 ? Math.round((listStats.oos / listStats.total) * 100) : 0;
+
+            const listFiltered = periodFilteredSms.filter(insp => {
+              const st = searchTerm.toLowerCase();
+              const matchesSearch = !st || insp.id.toLowerCase().includes(st) ||
+                insp.driver.toLowerCase().includes(st) ||
+                insp.vehiclePlate.toLowerCase().includes(st) ||
+                (insp.driverLicense && insp.driverLicense.toLowerCase().includes(st)) ||
+                (insp.location?.city && insp.location.city.toLowerCase().includes(st));
+              let matchesFilter = true;
+              switch (activeFilter) {
+                case 'CLEAN': matchesFilter = insp.isClean; break;
+                case 'OOS': matchesFilter = insp.hasOOS; break;
+                case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
+                case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
+                case 'SEVERE': matchesFilter = insp.violations.some((v: any) => v.severity >= 7); break;
+              }
+              return matchesSearch && matchesFilter;
+            });
+
+            const listPaged = listFiltered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+            const COL_DEFS = [
+              { id: 'date', label: 'Date' },
+              { id: 'report', label: 'Report ID' },
+              { id: 'location', label: 'Location' },
+              { id: 'driver', label: 'Driver' },
+              { id: 'vehicle', label: 'Vehicle' },
+              { id: 'violations', label: 'Violations' },
+              { id: 'vehPts', label: 'Veh Pts' },
+              { id: 'drvPts', label: 'Drv Pts' },
+              { id: 'carrPts', label: 'Carr Pts' },
+              { id: 'status', label: 'Status' },
+            ];
 
             return (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                      <ClipboardCheck size={16} className="text-blue-600"/>
-                    </div>
+              <div className="space-y-4">
+
+                {/* Time Period Row */}
+                <div className="bg-white border border-slate-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center gap-3">
+                  <div className="flex items-start gap-1 min-w-[160px]">
+                    <div className="w-1 self-stretch rounded-full bg-blue-500 mr-1 flex-shrink-0"/>
                     <div>
-                      <h3 className="text-base font-bold text-slate-900">SMS Level Comparison</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">Last {smsLevelPeriod === '24M' ? '24 Months' : smsLevelPeriod === '12M' ? '12 Months' : smsLevelPeriod === '6M' ? '6 Months' : smsLevelPeriod === '3M' ? '3 Months' : '1 Month'} &middot; FMCSA Inspection Levels I–VIII</p>
+                      <p className="text-sm font-bold text-slate-800">Time Period</p>
+                      <p className="text-xs text-blue-500">Global date range for all dashboard data</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-slate-500">Total: <span className="font-bold text-slate-800">{totalInsp}</span></span>
-                      <span className="text-slate-500">OOS: <span className="font-bold text-red-600">{totalOos}</span></span>
-                    </div>
-                    <div className="inline-flex bg-slate-100 rounded-md p-0.5">
-                      {(['1M', '3M', '6M', '12M', '24M'] as const).map(p => (
-                        <button
-                          key={p}
-                          onClick={() => setSmsLevelPeriod(p)}
-                          className={`px-2.5 py-1 text-xs font-bold transition-colors ${smsLevelPeriod === p ? 'bg-white text-blue-600 shadow-sm rounded' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                    {(['7d','30d','90d','6mo','12mo'] as const).map(p => (
+                      <button key={p} onClick={() => { setSmsListPeriod(p); setPage(1); }}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${smsListPeriod === p ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                        {p}
+                      </button>
+                    ))}
                   </div>
-                </div>
-              </div>
-
-              {/* Table Header */}
-              <div className="grid grid-cols-12 px-6 py-2.5 bg-slate-50 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <div className="col-span-5">Level</div>
-                <div className="col-span-2 text-center">Inspections</div>
-                <div className="col-span-2 text-center">OOS</div>
-                <div className="col-span-2 text-center">OOS %</div>
-                <div className="col-span-1"></div>
-              </div>
-
-              {/* Level Rows */}
-              {levelStats.map((l) => {
-                const isExpanded = expandedSmsLevel === l.level;
-                const pctColor = l.pct >= 50 ? 'text-red-600' : l.pct >= 25 ? 'text-amber-600' : 'text-emerald-600';
-                const barColor = l.pct >= 50 ? 'bg-red-500' : l.pct >= 25 ? 'bg-amber-500' : 'bg-emerald-500';
-                return (
-                  <div key={l.level}>
-                    <div
-                      className={`grid grid-cols-12 px-6 py-3 items-center cursor-pointer transition-colors hover:bg-slate-50 border-b border-slate-50 ${isExpanded ? 'bg-blue-50/50' : ''}`}
-                      onClick={() => setExpandedSmsLevel(isExpanded ? null : l.level)}
-                    >
-                      <div className="col-span-5 flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${l.count > 0 ? barColor : 'bg-slate-300'}`}></div>
-                        <span className="text-sm font-medium text-slate-700">{l.name}</span>
-                      </div>
-                      <div className="col-span-2 text-center">
-                        <span className="text-sm font-bold text-slate-800">{l.count}</span>
-                      </div>
-                      <div className="col-span-2 text-center">
-                        <span className={`text-sm font-bold ${l.oosCount > 0 ? 'text-red-600' : 'text-slate-400'}`}>{l.oosCount}</span>
-                      </div>
-                      <div className="col-span-2 text-center flex items-center justify-center gap-2">
-                        <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(l.pct, 100)}%` }}></div>
-                        </div>
-                        <span className={`text-sm font-bold ${pctColor}`}>{l.pct.toFixed(l.pct % 1 === 0 ? 0 : 2)}%</span>
-                      </div>
-                      <div className="col-span-1 flex justify-end">
-                        {isExpanded ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
-                      </div>
-                    </div>
-
-                    {/* Expanded Description */}
-                    {isExpanded && (
-                      <div className="px-6 py-4 bg-blue-50/30 border-b border-slate-100">
-                        <div className="flex items-start gap-3">
-                          <Info size={14} className="text-blue-500 mt-0.5 flex-shrink-0"/>
-                          <div>
-                            <div className="text-sm font-semibold text-slate-700 mb-1">{l.name}</div>
-                            <p className="text-sm text-slate-600 leading-relaxed">{l.desc}</p>
-                            {l.count > 0 && (
-                              <div className="mt-3 flex items-center gap-4 text-xs">
-                                <span className="bg-white border border-slate-200 rounded-md px-2.5 py-1 text-slate-600">
-                                  <span className="font-bold text-slate-800">{l.count}</span> inspections
-                                </span>
-                                <span className="bg-white border border-slate-200 rounded-md px-2.5 py-1 text-slate-600">
-                                  <span className="font-bold text-red-600">{l.oosCount}</span> out-of-service
-                                </span>
-                                <span className={`bg-white border border-slate-200 rounded-md px-2.5 py-1 font-bold ${pctColor}`}>
-                                  {l.pct.toFixed(l.pct % 1 === 0 ? 0 : 2)}% OOS rate
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setSmsListPeriod('custom')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md border transition-colors ${smsListPeriod === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-300 text-slate-500 hover:border-blue-400'}`}>
+                      Custom
+                    </button>
+                    {smsListPeriod === 'custom' && (
+                      <div className="flex items-center gap-2">
+                        <input type="date" value={smsCustomFrom} onChange={e => setSmsCustomFrom(e.target.value)}
+                          className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:ring-2 focus:ring-blue-300 focus:outline-none"/>
+                        <span className="text-slate-400 text-xs">–</span>
+                        <input type="date" value={smsCustomTo} onChange={e => setSmsCustomTo(e.target.value)}
+                          className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:ring-2 focus:ring-blue-300 focus:outline-none"/>
                       </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {[
+                    { key: 'ALL', label: 'Total Inspections', value: listStats.total, sub: 'all records', color: 'blue', icon: '📋' },
+                    { key: 'CLEAN', label: 'Clean', value: listStats.clean, sub: `${cleanPct}% pass rate`, color: 'emerald', icon: '✓' },
+                    { key: 'OOS', label: 'Out of Service', value: listStats.oos, sub: `${oosPct}% OOS rate`, color: 'red', icon: '⛔' },
+                    { key: 'VEHICLE', label: 'Veh. Issues', value: listStats.vehicle, sub: 'vehicle violations', color: 'orange', icon: '🚛' },
+                    { key: 'DRIVER', label: 'HOS / Driver', value: listStats.driver, sub: 'driver violations', color: 'purple', icon: '👤' },
+                    { key: 'SEVERE', label: 'Severe (7+)', value: listStats.severe, sub: 'high severity', color: 'amber', icon: '⚠' },
+                  ].map(kpi => {
+                    const isActive = activeFilter === kpi.key;
+                    const colorMap: Record<string, string> = {
+                      blue: 'border-blue-200 bg-blue-50 text-blue-700',
+                      emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                      red: 'border-red-200 bg-red-50 text-red-700',
+                      orange: 'border-orange-200 bg-orange-50 text-orange-700',
+                      purple: 'border-purple-200 bg-purple-50 text-purple-700',
+                      amber: 'border-amber-200 bg-amber-50 text-amber-700',
+                    };
+                    const activeMap: Record<string, string> = {
+                      blue: 'bg-blue-600 border-blue-600 text-white',
+                      emerald: 'bg-emerald-600 border-emerald-600 text-white',
+                      red: 'bg-red-600 border-red-600 text-white',
+                      orange: 'bg-orange-500 border-orange-500 text-white',
+                      purple: 'bg-purple-600 border-purple-600 text-white',
+                      amber: 'bg-amber-500 border-amber-500 text-white',
+                    };
+                    return (
+                      <button key={kpi.key} onClick={() => { setActiveFilter(kpi.key); setPage(1); }}
+                        className={`rounded-xl border p-3.5 text-left transition-all shadow-sm hover:shadow-md ${isActive ? activeMap[kpi.color] : `bg-white border-slate-200 hover:${colorMap[kpi.color]}`}`}>
+                        <div className={`text-2xl font-black leading-tight ${isActive ? 'text-white' : ''}`}>{kpi.value}</div>
+                        <div className={`text-xs font-bold mt-0.5 ${isActive ? 'text-white/90' : 'text-slate-700'}`}>{kpi.label}</div>
+                        <div className={`text-[11px] mt-0.5 ${isActive ? 'text-white/70' : 'text-slate-400'}`}>{kpi.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* List Table */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+
+                  {/* Toolbar */}
+                  <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                    <div className="relative flex-1 max-w-xs">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                      <input
+                        value={searchTerm}
+                        onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
+                        placeholder="Search inspections..."
+                        className="w-full pl-8 pr-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:outline-none"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-400 ml-auto">
+                      Showing <span className="font-bold text-slate-700">{Math.min((page - 1) * rowsPerPage + 1, listFiltered.length)}–{Math.min(page * rowsPerPage, listFiltered.length)}</span> of <span className="font-bold text-slate-700">{listFiltered.length}</span>
+                    </span>
+                    {/* Column picker */}
+                    <div className="relative">
+                      <button onClick={() => setSmsColPickerOpen(o => !o)}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 transition-colors">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                        Columns
+                      </button>
+                      {smsColPickerOpen && (
+                        <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl p-3 w-44">
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Visible Columns</p>
+                          {COL_DEFS.map(col => (
+                            <label key={col.id} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-50 rounded px-1">
+                              <input type="checkbox" checked={smsVisibleCols[col.id] !== false}
+                                onChange={() => setSmsVisibleCols(prev => ({ ...prev, [col.id]: prev[col.id] === false ? true : false }))}
+                                className="rounded border-slate-300 text-blue-600"/>
+                              <span className="text-xs text-slate-700">{col.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Table Header */}
+                  <div className="hidden md:flex items-center px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider gap-2">
+                    {smsVisibleCols['date'] !== false && <div className="w-24 flex-shrink-0">Date</div>}
+                    {smsVisibleCols['report'] !== false && <div className="w-28 flex-shrink-0">Report</div>}
+                    {smsVisibleCols['location'] !== false && <div className="w-28 flex-shrink-0">Location</div>}
+                    {smsVisibleCols['driver'] !== false && <div className="flex-1 min-w-0">Driver</div>}
+                    {smsVisibleCols['vehicle'] !== false && <div className="w-28 flex-shrink-0">Vehicle</div>}
+                    {smsVisibleCols['violations'] !== false && <div className="w-20 flex-shrink-0 text-center">Violations</div>}
+                    {smsVisibleCols['vehPts'] !== false && <div className="w-16 flex-shrink-0 text-center">Veh Pts</div>}
+                    {smsVisibleCols['drvPts'] !== false && <div className="w-16 flex-shrink-0 text-center">Drv Pts</div>}
+                    {smsVisibleCols['carrPts'] !== false && <div className="w-20 flex-shrink-0 text-center">Carr Pts</div>}
+                    {smsVisibleCols['status'] !== false && <div className="w-20 flex-shrink-0 text-center">Status</div>}
+                  </div>
+
+                  {/* Rows */}
+                  <div className="divide-y divide-slate-100">
+                    {listPaged.length > 0 ? listPaged.map(record => {
+                      const vehPts = (record.violations || []).filter((v: any) => !v.driverViolation).reduce((s: number, v: any) => s + (v.points || 0), 0);
+                      const drvPts = (record.violations || []).filter((v: any) => v.driverViolation).reduce((s: number, v: any) => s + (v.points || 0), 0);
+                      const carrPts = vehPts + drvPts;
+                      const statusColor = record.hasOOS ? 'bg-red-100 text-red-700' : record.isClean ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+                      const statusLabel = record.hasOOS ? 'OOS' : record.isClean ? 'OK' : 'DEFECT';
+                      const basicCats = [...new Set((record.violations || []).map((v: any) => v.category).filter(Boolean))] as string[];
+                      return (
+                        <div key={record.id}
+                          onClick={() => setSmsPopupRecord(record)}
+                          className="flex items-center px-4 py-3 gap-2 cursor-pointer hover:bg-blue-50/40 transition-colors group">
+                          {smsVisibleCols['date'] !== false && (
+                            <div className="w-24 flex-shrink-0">
+                              <div className="text-sm font-bold text-slate-800">{record.date?.slice(5)}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{record.startTime?.slice(0,5) || ''}</div>
+                            </div>
+                          )}
+                          {smsVisibleCols['report'] !== false && (
+                            <div className="w-28 flex-shrink-0">
+                              <div className="text-xs font-bold text-blue-600 truncate">{record.id}</div>
+                              <span className="inline-flex px-1.5 py-px rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 mt-0.5">SMS L{record.level?.replace(/level\s*/i,'') || '1'}</span>
+                            </div>
+                          )}
+                          {smsVisibleCols['location'] !== false && (
+                            <div className="w-28 flex-shrink-0">
+                              <div className="text-xs font-semibold text-slate-700 truncate">{record.location?.city || record.state}</div>
+                              <div className="text-[10px] text-slate-400">{record.state}, USA</div>
+                            </div>
+                          )}
+                          {smsVisibleCols['driver'] !== false && (
+                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 flex-shrink-0">
+                                {record.driver?.charAt(0) || '?'}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-slate-800 truncate">{record.driver}</div>
+                                <div className="text-[10px] text-slate-400 font-mono truncate">{record.driverLicense}</div>
+                              </div>
+                            </div>
+                          )}
+                          {smsVisibleCols['vehicle'] !== false && (
+                            <div className="w-28 flex-shrink-0">
+                              <div className="text-xs font-bold text-slate-800">{record.vehiclePlate}</div>
+                              {record.powerUnitDefects
+                                ? <div className="text-[10px] text-amber-600 truncate" title={record.powerUnitDefects}>{record.powerUnitDefects.slice(0,22)}…</div>
+                                : <div className="text-[10px] text-emerald-600">No defects</div>}
+                            </div>
+                          )}
+                          {smsVisibleCols['violations'] !== false && (
+                            <div className="w-20 flex-shrink-0 text-center">
+                              {record.isClean
+                                ? <span className="text-xs font-bold text-emerald-600">Clean</span>
+                                : <div>
+                                    <span className="text-sm font-black text-orange-600">{record.violations.length}</span>
+                                    {basicCats.slice(0,1).map((cat: string) => (
+                                      <div key={cat} className="text-[9px] text-slate-400 truncate leading-tight" title={cat}>{cat.replace('Hours-of-service','HOS').replace('Compliance','').replace('Vehicle Maintenance','Veh. Maint.').trim()}</div>
+                                    ))}
+                                  </div>}
+                            </div>
+                          )}
+                          {smsVisibleCols['vehPts'] !== false && (
+                            <div className="w-16 flex-shrink-0 text-center">
+                              <span className={`text-sm font-bold ${vehPts > 0 ? 'text-red-600' : 'text-slate-300'}`}>{vehPts}</span>
+                            </div>
+                          )}
+                          {smsVisibleCols['drvPts'] !== false && (
+                            <div className="w-16 flex-shrink-0 text-center">
+                              <span className={`text-sm font-bold ${drvPts > 0 ? 'text-orange-600' : 'text-slate-300'}`}>{drvPts}</span>
+                            </div>
+                          )}
+                          {smsVisibleCols['carrPts'] !== false && (
+                            <div className="w-20 flex-shrink-0 text-center">
+                              <span className={`text-sm font-black ${carrPts > 100 ? 'text-red-700' : carrPts > 50 ? 'text-orange-600' : carrPts > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{carrPts}</span>
+                            </div>
+                          )}
+                          {smsVisibleCols['status'] !== false && (
+                            <div className="w-20 flex-shrink-0 flex justify-center">
+                              <span className={`inline-flex px-2.5 py-1 rounded-lg text-[11px] font-bold ${statusColor}`}>{statusLabel}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }) : (
+                      <div className="py-16 text-center">
+                        <div className="text-4xl mb-3">📋</div>
+                        <p className="text-sm font-bold text-slate-700">No inspections found</p>
+                        <p className="text-xs text-slate-400 mt-1">Try adjusting your filters or time period</p>
+                        <button onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); setPage(1); }}
+                          className="mt-4 px-4 py-2 text-xs font-bold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pagination */}
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Rows per page:</span>
+                      {[10, 25, 50].map(n => (
+                        <button key={n} onClick={() => { setRowsPerPage(n); setPage(1); }}
+                          className={`px-2 py-1 text-xs font-bold rounded-md transition-colors ${rowsPerPage === n ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+                      </button>
+                      {Array.from({ length: Math.ceil(listFiltered.length / rowsPerPage) }, (_, i) => i + 1)
+                        .filter(p => p === 1 || p === Math.ceil(listFiltered.length / rowsPerPage) || Math.abs(p - page) <= 1)
+                        .reduce<Array<number | '...'>>((acc, p, idx, arr) => {
+                          if (idx > 0 && typeof arr[idx-1] === 'number' && (p as number) - (arr[idx-1] as number) > 1) acc.push('...');
+                          acc.push(p); return acc;
+                        }, [])
+                        .map((p, idx) => p === '...' ? (
+                          <span key={`ellipsis-${idx}`} className="px-1 text-slate-400 text-xs">…</span>
+                        ) : (
+                          <button key={p} onClick={() => setPage(p as number)}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${page === p ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                            {p}
+                          </button>
+                        ))
+                      }
+                      <button onClick={() => setPage(p => Math.min(Math.ceil(listFiltered.length / rowsPerPage), p + 1))} disabled={page >= Math.ceil(listFiltered.length / rowsPerPage)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Inspection Detail Popup ───────────────────────────────── */}
+                {smsPopupRecord && (() => {
+                  const r = smsPopupRecord;
+                  const vehPtsP = (r.violations || []).filter((v: any) => !v.driverViolation).reduce((s: number, v: any) => s + (v.points || 0), 0);
+                  const drvPtsP = (r.violations || []).filter((v: any) => v.driverViolation).reduce((s: number, v: any) => s + (v.points || 0), 0);
+                  const carrPtsP = vehPtsP + drvPtsP;
+                  const maxSev = (r.violations || []).reduce((m: number, v: any) => Math.max(m, v.severity || 0), 0);
+                  const avgSev = r.violations?.length ? (r.violations.reduce((s: number, v: any) => s + (v.severity || 0), 0) / r.violations.length).toFixed(1) : '0';
+                  const oosViolations = (r.violations || []).filter((v: any) => v.oos);
+                  const driverPassed = !r.hasDriverViolations;
+                  const vehiclePassed = !r.hasVehicleViolations;
+                  const locationStr = r.location?.city ? `${r.location.city}, ${r.state}` : `${r.state}, USA`;
+                  const levelNum = r.level?.replace(/level\s*/i, '') || '1';
+                  return (
+                    <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 pb-4 px-4" onClick={() => setSmsPopupRecord(null)}>
+                      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm"/>
+                      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+
+                        {/* ── Header ── */}
+                        <div className="px-6 pt-5 pb-4 border-b border-slate-100">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h2 className="text-xl font-black text-slate-900">Inspection Detail — {r.id}</h2>
+                              <p className="text-sm text-slate-500 mt-0.5">{r.date} • Level {levelNum} • {locationStr}</p>
+                            </div>
+                            <button onClick={() => setSmsPopupRecord(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1">
+
+                          {/* ── Info 3-col grid ── */}
+                          <div className="grid grid-cols-3 gap-6 px-6 py-5 border-b border-slate-100">
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Driver</p>
+                              <p className="text-sm font-bold text-slate-900">{r.driver}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">License</p>
+                              <p className="text-sm font-bold text-slate-900 font-mono">{r.driverLicense || '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Vehicle</p>
+                              <span className="inline-flex px-2.5 py-1 bg-slate-100 text-slate-800 text-sm font-bold rounded-lg border border-slate-200">{r.vehiclePlate}</span>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Location</p>
+                              <p className="text-sm font-semibold text-slate-800">{locationStr}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Time</p>
+                              <p className="text-sm font-semibold text-slate-800">
+                                {r.startTime ? `${r.startTime}${r.endTime ? ` — ${r.endTime}` : ''}` : '—'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Severity Rate</p>
+                              <p className={`text-sm font-black ${maxSev >= 7 ? 'text-red-600' : maxSev >= 4 ? 'text-amber-600' : 'text-slate-800'}`}>{avgSev}</p>
+                            </div>
+                          </div>
+
+                          {/* ── Status badges ── */}
+                          <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-slate-100">
+                            {!r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 text-amber-700 bg-amber-50">VIOLATIONS FOUND</span>}
+                            {r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400 text-emerald-700 bg-emerald-50">✓ CLEAN</span>}
+                            {r.hasOOS && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-red-400 text-red-700 bg-red-50">OOS</span>}
+                            <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border ${driverPassed ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : 'border-red-300 text-red-700 bg-red-50'}`}>
+                              DRIVER: {driverPassed ? 'PASSED' : 'FAILED'}
+                            </span>
+                            <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border ${vehiclePassed ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : 'border-red-300 text-red-700 bg-red-50'}`}>
+                              VEHICLE: {vehiclePassed ? 'PASSED' : 'FAILED'}
+                            </span>
+                          </div>
+
+                          {/* ── Defects Found ── */}
+                          {r.powerUnitDefects && (
+                            <div className="mx-6 my-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                              <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-1.5">Defects Found</p>
+                              <p className="text-sm text-slate-700"><span className="font-semibold">Power Unit:</span> {r.powerUnitDefects}</p>
+                              {r.trailerDefects && <p className="text-sm text-slate-700 mt-0.5"><span className="font-semibold">Trailer:</span> {r.trailerDefects}</p>}
+                            </div>
+                          )}
+
+                          {/* ── Units Inspected ── */}
+                          {r.units && r.units.length > 0 && (
+                            <div className="px-6 pb-4">
+                              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Units Inspected ({r.units.length})</p>
+                              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200">
+                                      {['Type','Make','License','VIN'].map(h => (
+                                        <th key={h} className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {r.units.map((u: any, ui: number) => (
+                                      <tr key={ui} className="hover:bg-slate-50/60">
+                                        <td className="px-3 py-2.5 text-xs font-semibold text-slate-700 capitalize">{u.type || '—'}</td>
+                                        <td className="px-3 py-2.5 text-xs font-bold text-blue-600">{u.make || '—'}</td>
+                                        <td className="px-3 py-2.5 text-xs font-bold text-slate-800">{u.license || '—'}</td>
+                                        <td className="px-3 py-2.5 text-[11px] font-mono text-slate-400">{u.vin || '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ── Violations table ── */}
+                          <div className="px-6 pb-4">
+                            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              Violations ({r.violations?.length || 0})
+                            </p>
+                            {r.isClean || !r.violations?.length ? (
+                              <div className="flex items-center gap-3 py-6 px-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                                <div className="w-9 h-9 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-black text-lg">✓</div>
+                                <div>
+                                  <p className="font-bold text-sm text-emerald-800">No violations recorded</p>
+                                  <p className="text-xs text-emerald-600 mt-0.5">This inspection passed without any defects</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200">
+                                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-blue-600 uppercase tracking-wider">Code</th>
+                                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                                      <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Description</th>
+                                      <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">Severity</th>
+                                      <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">Points</th>
+                                      <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">OOS</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {(r.violations || []).map((v: any, vi: number) => (
+                                      <tr key={vi} className={`${v.oos ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50/60'} transition-colors`}>
+                                        <td className="px-3 py-2.5 font-mono text-xs text-blue-600 font-bold whitespace-nowrap">{v.code || v.violationCode || '—'}</td>
+                                        <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{v.category || '—'}</td>
+                                        <td className="px-3 py-2.5 text-xs text-slate-700 leading-snug">{v.description}</td>
+                                        <td className="px-3 py-2.5 text-center">
+                                          <span className={`text-xs font-bold ${v.severity >= 7 ? 'text-red-600' : v.severity >= 4 ? 'text-amber-500' : v.severity > 0 ? 'text-slate-600' : 'text-slate-300'}`}>
+                                            {v.severity ?? 0}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center">
+                                          <span className={`text-xs font-bold ${v.points > 0 ? 'text-slate-800' : 'text-slate-300'}`}>{v.points ?? 0}</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center">
+                                          {v.oos
+                                            ? <span className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-600 text-white">OOS</span>
+                                            : <span className="text-slate-300 text-xs">—</span>}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── SMS Points ── */}
+                          <div className="mx-6 mb-4 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">SMS Points</p>
+                            <div className="flex items-center gap-6 text-sm">
+                              <span className="text-slate-600">Vehicle: <span className={`font-black text-base ml-1 ${vehPtsP > 0 ? 'text-red-600' : 'text-slate-400'}`}>{vehPtsP}</span></span>
+                              <span className="text-slate-600">Driver: <span className={`font-black text-base ml-1 ${drvPtsP > 0 ? 'text-orange-600' : 'text-slate-400'}`}>{drvPtsP}</span></span>
+                              <span className="text-slate-600">Carrier: <span className={`font-black text-base ml-1 ${carrPtsP > 100 ? 'text-red-700' : carrPtsP > 0 ? 'text-slate-800' : 'text-slate-400'}`}>{carrPtsP}</span></span>
+                            </div>
+                          </div>
+
+                          {/* ── Attached Documents ── */}
+                          <div className="px-6 pb-6">
+                            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              Attached Documents ({1 + oosViolations.length})
+                            </p>
+                            <div className="space-y-2">
+                              {/* Main report */}
+                              <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                                <div className="w-8 h-8 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-slate-800">Inspection Report — {r.id}</p>
+                                  <p className="text-[11px] text-slate-500">Level {levelNum} · {r.date} · {locationStr}</p>
+                                </div>
+                                <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors flex-shrink-0">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                  PDF
+                                </button>
+                              </div>
+                              {/* Per-OOS-violation docs */}
+                              {oosViolations.map((v: any, vi: number) => (
+                                <div key={vi} className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                                  <div className="w-8 h-8 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center flex-shrink-0">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-bold text-slate-800">Violation: {v.code || v.violationCode || `#${vi + 1}`}</p>
+                                      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white">OOS</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 truncate">{v.category} — {v.description}</p>
+                                  </div>
+                                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 text-xs font-bold hover:bg-red-600 hover:text-white transition-colors flex-shrink-0">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    PDF
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              </div>
             );
           })()}
-
-          {/* SMS Inspection Filters */}
-          <div>
-            <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">SMS Inspection Filters</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <MiniKpiCard title="All SMS" value={smsStats.total} icon={ClipboardCheck} color="blue" active={activeFilter === 'ALL'} onClick={() => setActiveFilter('ALL')} />
-              <MiniKpiCard title="Clean" value={smsStats.clean} icon={CheckCircle2} color="emerald" active={activeFilter === 'CLEAN'} onClick={() => setActiveFilter('CLEAN')} />
-              <MiniKpiCard title="OOS Flags" value={smsStats.oos} icon={ShieldAlert} color="red" active={activeFilter === 'OOS'} onClick={() => setActiveFilter('OOS')} />
-              <MiniKpiCard title="Veh. Issues" value={smsStats.vehicle} icon={Truck} color="orange" active={activeFilter === 'VEHICLE'} onClick={() => setActiveFilter('VEHICLE')} />
-              <MiniKpiCard title="HOS/Driver" value={smsStats.driver} icon={User} color="purple" active={activeFilter === 'DRIVER'} onClick={() => setActiveFilter('DRIVER')} />
-              <MiniKpiCard title="Severe (7+)" value={smsStats.severe} icon={AlertTriangle} color="yellow" active={activeFilter === 'SEVERE'} onClick={() => setActiveFilter('SEVERE')} />
-            </div>
-          </div>
-
-          {/* SMS Inspection List */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">SMS Inspections</h2>
-              <InfoTooltip title="US Inspections" text="Inspections conducted under US federal jurisdiction (FMCSA / SMS)." />
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <DataListToolbar
-                searchValue={searchTerm}
-                onSearchChange={setSearchTerm}
-                searchPlaceholder="Search SMS inspections..."
-                columns={columns}
-                onToggleColumn={(id) => setColumns(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
-                totalItems={smsFilteredData.length}
-                currentPage={page}
-                rowsPerPage={rowsPerPage}
-                onPageChange={setPage}
-                onRowsPerPageChange={setRowsPerPage}
-              />
-
-              {/* Table Header */}
-              <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                <div className="col-span-1 pl-2">Date / Time</div>
-                <div className="col-span-1">Report</div>
-                <div className="col-span-1">Location</div>
-                <div className="col-span-2">Driver / Licence</div>
-                <div className="col-span-2">Power Unit / Defects</div>
-                <div className="col-span-1 text-center">Violations</div>
-                <div className="col-span-1 text-center">Veh Pts</div>
-                <div className="col-span-1 text-center">Drv Pts</div>
-                <div className="col-span-1 text-center">Carr Pts</div>
-                <div className="col-span-1">Status</div>
-              </div>
-
-              <div className="divide-y divide-slate-200">
-                {smsPagedData.length > 0 ? (
-                  smsPagedData.map(record => (
-                    <InspectionRow key={record.id} record={record} onEdit={openEditModal} />
-                  ))
-                ) : (
-                  <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
-                    <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
-                      <AlertCircle size={32} className="text-slate-400" />
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-900 tracking-wide">No SMS records found</h3>
-                    <p className="text-sm text-slate-500 mt-1 mb-5 max-w-sm">No US/FMCSA inspections match your current search or filter criteria.</p>
-                    <button
-                      onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); }}
-                      className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors text-sm shadow-sm"
-                    >
-                      Clear all filters
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <PaginationBar
-                totalItems={smsFilteredData.length}
-                currentPage={page}
-                rowsPerPage={rowsPerPage}
-                onPageChange={setPage}
-                onRowsPerPageChange={setRowsPerPage}
-              />
-            </div>
-          </div>
 
         </div>
         );
@@ -6686,6 +7080,3 @@ export function InspectionsPage() {
     </div>
   );
 }
-
-
-
