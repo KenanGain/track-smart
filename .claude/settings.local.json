@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python cvor_restore.py)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(python cvor_final_fix.py)",
+      "Bash(grep -n \"CVOR.*tab\\\\|tab.*CVOR\\\\|cvorTab\\\\|activeTab\\\\|CVOR Canadian\\\\|= ''cvor''\" src/pages/inspections/InspectionsPage.tsx)"
+    ]
+  }
+}

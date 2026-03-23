@@ -1,0 +1,103 @@
+                const Tip = ({
+                  cx, cy, d, focusMetric, chartH
+                }: {
+                  cx: number; cy: number;
+                  d: typeof histData[0];
+                  focusMetric: string;
+                  chartH: number;
+                }) => {
+                  const win = windowOf(d.reportDate);
+                  const rc = ratingColor(d.rating);
+                  const al = alertLevel(d);
+                  const pullMonthLabel = new Date(d.reportDate).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' });
+                  
+                  const tw = 280; 
+                  const th = 320;
+
+                  const frameBottom = pT + chartH + pB - 10;
+                  const txBase = cx > VW * 0.62 ? cx - tw - 16 : cx + 16;
+                  const tx = Math.max(pL + 12, Math.min(txBase, VW - tw - 14));
+                  
+                  let ty = cy - th / 2 + 15;
+                  if (ty < 12) ty = 12;
+                  if (ty + th > frameBottom) ty = frameBottom - th;
+
+                  const alertColors: any = {
+                    critical: { border: 'border-red-500', bg: 'bg-red-100/60', text: 'text-red-500', label: 'Critical' },
+                    warning: { border: 'border-amber-400', bg: 'bg-amber-100/60', text: 'text-amber-600', label: 'Warning' },
+                    ok: { border: 'border-emerald-500', bg: 'bg-emerald-100/60', text: 'text-emerald-500', label: 'Healthy' }
+                  };
+                  const ac = alertColors[al] || alertColors.ok;
+                  
+                  return (
+                    <g style={{ pointerEvents: 'none' }} className="z-[100]">
+                      <foreignObject x={tx} y={ty} width={tw + 20} height={th + 20} className="overflow-visible" style={{ pointerEvents: 'none' }}>
+                        <div className={`w-[280px] bg-white rounded-[14px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-[2px] ${ac.border} flex flex-col p-[14px] pt-[12px] overflow-hidden`}>
+                           {/* Header */}
+                           <div className="flex items-start justify-between">
+                             <div className="flex flex-col">
+                               <div className="text-[17px] leading-tight font-[800] text-slate-900 tracking-tight">{d.periodLabel}</div>
+                               <div className="text-[11px] text-indigo-500 font-mono mt-1.5 whitespace-nowrap">{win.label.replace(' - ', ' \u2192 ')}</div>
+                               <div className="text-[11px] text-slate-500 mt-[2px] mb-2 whitespace-nowrap">24-month rolling window</div>
+                             </div>
+                             <div className={`text-[12px] font-medium px-2.5 py-1 rounded-[8px] ${ac.bg} ${ac.text}`}>
+                               {ac.label}
+                             </div>
+                           </div>
+
+                           {/* Metrics Body */}
+                           <div className="flex flex-col gap-[3px]">
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='rating'?'bg-emerald-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='rating'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>CVOR Rating</span>
+                               <span className="text-[12.5px] font-[600] font-mono tracking-tight" style={{color: rc}}>{d.rating.toFixed(2)}%</span>
+                             </div>
+                             
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='col'?'bg-blue-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='col'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>Collisions</span>
+                               <span className={`text-[12.5px] ${focusMetric==='col'?'font-[700]':'font-[600]'} font-mono text-blue-500 tracking-tight`}>{d.colContrib.toFixed(2)}%</span>
+                             </div>
+
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='con'?'bg-amber-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='con'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>Convictions</span>
+                               <span className={`text-[12.5px] ${focusMetric==='con'?'font-[700]':'font-[600]'} font-mono text-amber-500 tracking-tight`}>{d.conContrib.toFixed(2)}%</span>
+                             </div>
+
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='ins'?'bg-red-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='ins'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>Inspections</span>
+                               <span className={`text-[12.5px] ${focusMetric==='ins'?'font-[700]':'font-[600]'} font-mono text-red-500 tracking-tight`}>{d.insContrib.toFixed(2)}%</span>
+                             </div>
+                             
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='oosOv'?'bg-red-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='oosOv'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>OOS Overall</span>
+                               <span className={`text-[12.5px] ${focusMetric==='oosOv'?'font-[700]':'font-[600]'} font-mono tracking-tight ${d.oosOverall>20?'text-red-500':'text-emerald-500'}`}>{d.oosOverall>0?`${d.oosOverall.toFixed(1)}%`:'—'}</span>
+                             </div>
+
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='oosVh'?'bg-red-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='oosVh'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>OOS Vehicle</span>
+                               <span className={`text-[12.5px] ${focusMetric==='oosVh'?'font-[700]':'font-[600]'} font-mono tracking-tight ${d.oosVehicle>20?'text-red-500':'text-emerald-500'}`}>{d.oosVehicle>0?`${d.oosVehicle.toFixed(1)}%`:'—'}</span>
+                             </div>
+
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='oosDr'?'bg-emerald-100/60':''}`}>
+                               <span className={`text-[12.5px] ${focusMetric==='oosDr'?'font-bold text-slate-900':'font-medium text-slate-500'}`}>OOS Driver</span>
+                               <span className={`text-[12.5px] ${focusMetric==='oosDr'?'font-[700]':'font-[600]'} font-mono tracking-tight ${d.oosDriver>5?'text-amber-500':'text-emerald-500'}`}>{d.oosDriver>0?`${d.oosDriver.toFixed(1)}%`:'—'}</span>
+                             </div>
+
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded ${focusMetric==='events'?'bg-slate-100/80':''}`}>
+                               <span className={`text-[12px] ${focusMetric==='events'?'font-bold text-slate-900':'font-medium text-slate-500'}`}># Col / Conv</span>
+                               <span className={`text-[12px] font-[500] font-mono tracking-tight ${focusMetric==='events'?'text-slate-500 font-[700]':'text-slate-400'}`}>{d.collisionEvents} / {d.convictionEvents}</span>
+                             </div>
+                             
+                             <div className={`flex items-center justify-between px-2 py-[4px] rounded`}>
+                               <span className={`text-[12px] font-medium text-slate-500`}>Col Pts / Conv Pts</span>
+                               <span className={`text-[12px] font-[500] font-mono text-slate-400 tracking-tight`}>{d.totalCollisionPoints} / {d.convictionPoints}</span>
+                             </div>
+                           </div>
+
+                           <div className="mt-[18px] text-center">
+                             <span className="text-[12px] text-indigo-500 hover:text-indigo-600 font-medium tracking-tight">Click to view {pullMonthLabel} inspections</span>
+                           </div>
+                        </div>
+                      </foreignObject>
+                    </g>
+                  );
+                };

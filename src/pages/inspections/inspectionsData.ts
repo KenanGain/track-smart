@@ -1748,3 +1748,63 @@ export const nscRiskBand = {
   detail: 'Carrier has exceeded warning thresholds and may require an intervention.'
 };
 
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CVOR PERIODIC REPORT SNAPSHOTS
+// Each row = one actual MTO CVOR abstract pull for the carrier.
+// Real pull dates: Apr 2022 → Jan 2024 (15 pulls).
+// colContrib/conContrib/insContrib are the weighted contributions to overall rating.
+// colPctOfThresh = colContrib / 0.40, conPctOfThresh = conContrib / 0.40,
+// insPctOfThresh = insContrib / 0.20
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CvorPeriodicReport = {
+  reportDate:           string;   // ISO date of actual pull
+  periodLabel:          string;   // display label e.g. "Apr 4, 2022"
+  rating:               number;   // overall CVOR %
+  // Weighted contributions to overall rating
+  colContrib:           number;   // % Collisions contribution (weight 40%)
+  conContrib:           number;   // % Convictions contribution (weight 40%)
+  insContrib:           number;   // % Inspections contribution (weight 20%)
+  // % of threshold used (derived: colContrib/0.40, conContrib/0.40, insContrib/0.20)
+  colPctOfThresh:       number;
+  conPctOfThresh:       number;
+  insPctOfThresh:       number;
+  // Event counts
+  collisionEvents:      number;
+  convictionEvents:     number;
+  // OOS rates
+  oosOverall:           number;
+  oosVehicle:           number;
+  oosDriver:            number;
+  // Fleet stats
+  trucks:               number;
+  onMiles:              number;
+  canadaMiles:          number;
+  totalMiles:           number;
+  // Points breakdown
+  collWithPoints:       number;
+  collWithoutPoints:    number;
+  totalCollisionPoints: number;
+  convictionPoints:     number;
+};
+
+// 15 real CVOR abstract pulls (Apr 2022 → Jan 2024)
+export const cvorPeriodicReports: CvorPeriodicReport[] = [
+  { reportDate:'2024-06-23', periodLabel:'Jun 23/24',  rating:24.29, colContrib:2.52,  conContrib:5.17, insContrib:16.59, colPctOfThresh:6.30,  conPctOfThresh:12.93, insPctOfThresh:82.95, collisionEvents:21, convictionEvents:27, oosOverall:26.58, oosVehicle:27.69, oosDriver:3.80, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:6,  collWithoutPoints:15, totalCollisionPoints:14, convictionPoints:74 },
+  { reportDate:'2024-07-25', periodLabel:'Jul 25/24',  rating:24.16, colContrib:2.52,  conContrib:5.06, insContrib:16.57, colPctOfThresh:6.30,  conPctOfThresh:12.65, insPctOfThresh:82.85, collisionEvents:22, convictionEvents:26, oosOverall:25.33, oosVehicle:26.67, oosDriver:4.00, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:6,  collWithoutPoints:16, totalCollisionPoints:14, convictionPoints:71 },
+  { reportDate:'2024-10-21', periodLabel:'Oct 21/24',  rating:26.55, colContrib:2.52,  conContrib:6.23, insContrib:17.79, colPctOfThresh:6.30,  conPctOfThresh:15.58, insPctOfThresh:88.95, collisionEvents:22, convictionEvents:30, oosOverall:27.59, oosVehicle:29.41, oosDriver:4.60, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:6,  collWithoutPoints:16, totalCollisionPoints:14, convictionPoints:86 },
+  { reportDate:'2024-11-20', periodLabel:'Nov 20/24',  rating:26.40, colContrib:2.92,  conContrib:5.75, insContrib:17.73, colPctOfThresh:7.30,  conPctOfThresh:14.38, insPctOfThresh:88.65, collisionEvents:23, convictionEvents:27, oosOverall:27.91, oosVehicle:28.99, oosDriver:4.65, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:7,  collWithoutPoints:16, totalCollisionPoints:16, convictionPoints:76 },
+  { reportDate:'2025-01-06', periodLabel:'Jan 6/25', rating:26.34, colContrib:2.92,  conContrib:5.74, insContrib:17.68, colPctOfThresh:7.30,  conPctOfThresh:14.35, insPctOfThresh:88.40, collisionEvents:23, convictionEvents:26, oosOverall:27.78, oosVehicle:29.58, oosDriver:4.44, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:7,  collWithoutPoints:7,  totalCollisionPoints:7,  convictionPoints:7  },
+  { reportDate:'2025-02-11', periodLabel:'Feb 11/25', rating:27.21, colContrib:3.31,  conContrib:5.62, insContrib:18.29, colPctOfThresh:8.28,  conPctOfThresh:14.05, insPctOfThresh:91.45, collisionEvents:22, convictionEvents:26, oosOverall:28.57, oosVehicle:31.43, oosDriver:4.40, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:8,  collWithoutPoints:14, totalCollisionPoints:18, convictionPoints:72 },
+  { reportDate:'2025-05-04', periodLabel:'May 4/25', rating:26.33, colContrib:3.02,  conContrib:5.00, insContrib:18.30, colPctOfThresh:7.55,  conPctOfThresh:12.50, insPctOfThresh:91.50, collisionEvents:23, convictionEvents:22, oosOverall:28.72, oosVehicle:33.33, oosDriver:3.19, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:7,  collWithoutPoints:16, totalCollisionPoints:16, convictionPoints:61 },
+  { reportDate:'2025-06-02', periodLabel:'Jun 2/25', rating:27.18, colContrib:3.02,  conContrib:4.82, insContrib:19.34, colPctOfThresh:7.55,  conPctOfThresh:12.05, insPctOfThresh:96.70, collisionEvents:23, convictionEvents:20, oosOverall:30.77, oosVehicle:36.23, oosDriver:3.30, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:7,  collWithoutPoints:16, totalCollisionPoints:16, convictionPoints:58 },
+  { reportDate:'2025-07-13', periodLabel:'Jul 13/25', rating:28.39, colContrib:2.74,  conContrib:5.07, insContrib:20.58, colPctOfThresh:6.85,  conPctOfThresh:12.68, insPctOfThresh:102.90, collisionEvents:23, convictionEvents:22, oosOverall:34.12, oosVehicle:41.94, oosDriver:3.53, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:6,  collWithoutPoints:17, totalCollisionPoints:14, convictionPoints:61 },
+  { reportDate:'2025-08-19', periodLabel:'Aug 19/25', rating:28.71, colContrib:2.45,  conContrib:4.70, insContrib:21.56, colPctOfThresh:6.13,  conPctOfThresh:11.75, insPctOfThresh:107.80, collisionEvents:22, convictionEvents:21, oosOverall:36.36, oosVehicle:45.45, oosDriver:3.90, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:0,  collWithoutPoints:0,  totalCollisionPoints:12, convictionPoints:53 },
+  { reportDate:'2025-08-20', periodLabel:'Aug 20/25',  rating:29.67, colContrib:2.74,  conContrib:5.02, insContrib:21.91, colPctOfThresh:6.85,  conPctOfThresh:12.55, insPctOfThresh:109.55, collisionEvents:24, convictionEvents:23, oosOverall:36.36, oosVehicle:45.45, oosDriver:3.90, trucks:130, onMiles:16388058, canadaMiles:666469, totalMiles:17054528, collWithPoints:0,  collWithoutPoints:18, totalCollisionPoints:14, convictionPoints:59 },
+  { reportDate:'2025-10-22', periodLabel:'Oct 22/25',  rating:25.62, colContrib:2.39,  conContrib:3.06, insContrib:20.17, colPctOfThresh:5.98,  conPctOfThresh:7.65,  insPctOfThresh:100.85, collisionEvents:22, convictionEvents:35, oosOverall:31.94, oosVehicle:41.67, oosDriver:4.17, trucks:135, onMiles:12407962, canadaMiles:3372498, totalMiles:15780460, collWithPoints:5,  collWithoutPoints:17, totalCollisionPoints:12, convictionPoints:35 },
+  { reportDate:'2026-01-02', periodLabel:'Jan 2/26', rating:20.98, colContrib:2.39,  conContrib:2.81, insContrib:15.78, colPctOfThresh:5.98,  conPctOfThresh:7.03,  insPctOfThresh:78.90, collisionEvents:21, convictionEvents:14, oosOverall:29.11, oosVehicle:38.46, oosDriver:3.80, trucks:135, onMiles:12407962, canadaMiles:3372498, totalMiles:15780460, collWithPoints:5,  collWithoutPoints:16, totalCollisionPoints:12, convictionPoints:32 },
+  { reportDate:'2026-02-02', periodLabel:'Feb 2/26', rating:22.31, colContrib:2.81,  conContrib:3.00, insContrib:16.49, colPctOfThresh:7.03,  conPctOfThresh:7.50,  insPctOfThresh:82.45, collisionEvents:23, convictionEvents:14, oosOverall:30.00, oosVehicle:42.00, oosDriver:3.75, trucks:135, onMiles:12407962, canadaMiles:3372498, totalMiles:15780460, collWithPoints:6,  collWithoutPoints:17, totalCollisionPoints:14, convictionPoints:34 },
+  { reportDate:'2026-04-02', periodLabel:'Apr 2/26', rating:21.81, colContrib:2.81,  conContrib:2.16, insContrib:16.84, colPctOfThresh:7.03,  conPctOfThresh:5.40,  insPctOfThresh:84.20, collisionEvents:18, convictionEvents:11, oosOverall:0,     oosVehicle:0,     oosDriver:0,    trucks:135, onMiles:12407962, canadaMiles:3372498, totalMiles:15780460, collWithPoints:0,  collWithoutPoints:0,  totalCollisionPoints:14, convictionPoints:24 },
+];
