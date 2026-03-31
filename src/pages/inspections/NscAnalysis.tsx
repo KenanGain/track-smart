@@ -150,7 +150,7 @@ const accordionSections: AccordionSection[] = [
   { id: 'HISTORICAL SUMMARY', title: 'HISTORICAL SUMMARY' },
 ];
 
-const collisionData: CollisionRow[] = [
+export const collisionData: CollisionRow[] = [
   { id: 1, date: '2024 APR 04', doc: 'NB2060948', jur: 'NB', plate: '0AU350 AB', status: 'Not Reviewed', result: '-', severity: 'Damage', points: 2, driver: 'QADIR GHULAM', time: '00:00', driverLic: 'Q01032820810405 ON', location: 'NB', vin: '3AKJHHDR8NSMX1157', entered: '2024 APR 16', severityColor: 'bg-slate-100 text-slate-700' },
   { id: 2, date: '2024 MAR 22', doc: 'NB2060733', jur: 'NB', plate: '0AP012 AB', status: 'Not Reviewed', result: '-', severity: 'Damage', points: 2, driver: 'TEGBARU YOHANES YONATAN', time: '00:00', driverLic: 'T22187909910531 ON', location: 'NB', vin: '1FUJHHDR9MLMD4298', entered: '2024 APR 02', severityColor: 'bg-slate-100 text-slate-700' },
   { id: 3, date: '2023 AUG 23', doc: '32112732', jur: 'ON', plate: 'A41990 AB', status: 'Reviewed', result: 'Supported', severity: 'Injury', points: 0, driver: 'PARMINDER SINGH', time: '00:00', driverLic: 'P06320000990826 ON', location: 'MISSISSAUGA,403', vin: '3AKJHHDRXKSKA3234', entered: '2023 OCT 18', severityColor: 'bg-orange-100 text-orange-800' },
@@ -159,7 +159,7 @@ const collisionData: CollisionRow[] = [
   { id: 6, date: '2022 DEC 09', doc: '403152212090005', jur: 'QC', plate: 'A49908 AB', status: 'Not Reviewed', result: '-', severity: 'Damage', points: 0, driver: 'UNKNOWN', time: '00:00', driverLic: '-', location: 'SAINTE-JULIE', vin: '3AKJHHDR4JSJZ9815', entered: '2022 DEC 27', severityColor: 'bg-slate-100 text-slate-700' },
 ];
 
-const collisionSummaryData: CollisionSummaryRow[] = [
+export const collisionSummaryData: CollisionSummaryRow[] = [
   {
     severity: 'Property Damage',
     supported: collisionData.filter((row) => row.severity === 'Damage' && row.result === 'Supported').length,
@@ -743,7 +743,7 @@ const convictionDetailsData: ConvictionDetailRow[] = [
   { id: 5, date: '2022 SEP 07', doc: 'OPC 1004003042195675', docket: '1004003042195675', jur: 'QC', vehicle: 'A41838 AB', driver: 'GURBHAGAT, SINGH AULAKH', description: 'FAIL TO OBEY DEVICE', points: 0, time: '-', location: '-', entered: '-', convictionDate: '-', ccmta: '-' },
 ];
 
-const cvsaSummaryData: CvsaSummaryRow[] = [
+export const cvsaSummaryData: CvsaSummaryRow[] = [
   { desc: '1 - Driver Credentials', oos: 8, req: null, total: 8, percent: '12.9%' },
   { desc: '2 - Hours Of Service', oos: 4, req: 5, total: 9, percent: '14.5%' },
   { desc: '3 - Brake Adjustment', oos: null, req: 1, total: 1, percent: '1.6%' },

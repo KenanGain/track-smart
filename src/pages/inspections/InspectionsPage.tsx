@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment, type ReactNode } from 'react';
 import { 
   ClipboardCheck, 
   AlertTriangle, 
@@ -27,7 +27,13 @@ import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, g
 import { NscAnalysis } from './NscAnalysis';
 import { NscCvsaOverview } from './NscCvsaOverview';
 import { NscCvsaInspections } from './NscCvsaInspections';
+import { NscPerformanceCard, type NscPerformanceCardProps } from './NscPerformanceCard';
 import { InspectionReportPanel } from './InspectionReportPanel';
+import { NscBcCarrierProfile, INERTIA_CARRIER_BC_DATA } from './NscBcCarrierProfile';
+import { NscBcPerformanceHistory } from './NscBcPerformanceHistory';
+import { NscAbPerformanceHistory } from './NscAbPerformanceHistory';
+import { BcAccidentPanel, BcCvsaPanel } from './BcPanels';
+import { NscMonitoringHistory } from './NscMonitoringHistory';
 import { NSC_INSPECTIONS, DEFECT_TO_NSC, NSC_CODE_TO_SYSTEM } from './nscInspectionsData';
 import type { NscInspectionRecord } from './nscInspectionsData';
 import { NSC_VIOLATION_CATALOG, violationDetailsData, parseCcmtaCode } from './NscAnalysis';
@@ -111,6 +117,449 @@ const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { tit
     </div>
   );
 };
+
+const ALBERTA_NSC_PERFORMANCE_CARD: NscPerformanceCardProps = {
+  carrierName: 'VM Motors Inc.',
+  profileDate: '2026 FEB 23',
+  rFactor: 0.062,
+  monitoringStage: 'Not Monitored',
+  fleetRange: '30.0-44.9',
+  fleetType: 'Truck',
+  stageThresholds: [
+    { stage: 1, low: 0.42, high: 0.617 },
+    { stage: 2, low: 0.618, high: 0.849 },
+    { stage: 3, low: 0.85, high: 1.104 },
+    { stage: 4, low: 1.105, high: null },
+  ],
+  statusMessage: 'Not on NSC monitoring — performance is within acceptable range for fleet 30.0-44.9',
+  contributions: {
+    convictions: { pct: 34.6, events: 5 },
+    adminPenalties: { pct: 0.0, events: 0 },
+    cvsaInspections: { pct: 32.3, events: 43 },
+    reportableCollisions: { pct: 33.1, events: 6 },
+  },
+  carrierInfo: {
+    nscNumber: 'AB257-4556',
+    mvidNumber: '0895-41544',
+    operatingStatus: 'Federal',
+    certNumber: '002449387',
+    certEffective: '2026 JAN 07',
+    certExpiry: '2028 DEC 31',
+    safetyRating: 'Satisfactory Unaudited',
+    monitoringAsOf: '2026 JAN 31',
+    monitoringRFactor: 0.185,
+    monitoringStage: 'Not on Monitoring',
+    totalCarriersAB: 17704,
+    fleetAvg: 40.0,
+    fleetCurrent: 40,
+    convictionDocs: 3,
+    convictionCount: 3,
+    convictionPoints: 3,
+  },
+};
+
+const BcReportAccordionItem = ({
+  title,
+  description,
+  meta,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  description: string;
+  meta?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setIsOpen(open => !open)}
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-slate-50"
+      >
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-800">{title}</div>
+          <div className="mt-1 text-sm text-slate-500">{description}</div>
+        </div>
+        <div className="flex items-center gap-3">
+          {meta && (
+            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-700">
+              {meta}
+            </span>
+          )}
+          {isOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+        </div>
+      </button>
+      {isOpen && children}
+    </div>
+  );
+};
+
+const getBcStatusBadgeClass = (status: string) => {
+  const normalized = status.toLowerCase();
+  if (normalized.includes('unsatisfactory') || normalized.includes('triggered')) return 'border-red-200 bg-red-50 text-red-700';
+  if (normalized.includes('conditional') || normalized.includes('pending')) return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+};
+
+const BC_CONTRAVENTION_SECTIONS = [
+  {
+    title: 'Driver Contraventions (Guilty)',
+    rows: [
+      { date: '13-Mar-2025', document: 'DRV-20984', party: 'Harjit Sandhu', offence: 'Hours of service record incomplete', points: 2, status: 'Guilty' },
+      { date: '18-Dec-2024', document: 'DRV-20166', party: 'Baljinder Gill', offence: 'Failure to produce daily log on demand', points: 1, status: 'Guilty' },
+    ],
+  },
+  {
+    title: 'Carrier Contraventions (Guilty)',
+    rows: [
+      { date: '04-Nov-2024', document: 'CAR-77810', party: 'INERTIA CARRIER LTD.', offence: 'Vehicle operated with expired inspection interval', points: 2, status: 'Guilty' },
+    ],
+  },
+  {
+    title: 'Pending Driver Contraventions',
+    rows: [
+      { date: '21-Feb-2025', document: 'DRV-21241', party: 'Gurpreet Mann', offence: 'Inaccurate duty status entry under review', points: 0, status: 'Pending' },
+    ],
+  },
+  {
+    title: 'Pending Carrier Contraventions',
+    rows: [
+      { date: '27-Jan-2025', document: 'CAR-78112', party: 'INERTIA CARRIER LTD.', offence: 'Preventive maintenance documentation review pending', points: 0, status: 'Pending' },
+    ],
+  },
+];
+
+function NscPerfomate() {
+  return <NscBcCarrierProfile {...INERTIA_CARRIER_BC_DATA} />;
+}
+
+function BcProfileScoresContent() {
+  const thresholdRows = [
+    {
+      status: 'Satisfactory',
+      statusClass: 'text-emerald-600',
+      contraventions: '0.00 - 1.76',
+      cvsa: '0.00 - 0.93',
+      accidents: '0.00 - 0.23',
+      total: '0.00 - 2.13',
+    },
+    {
+      status: 'Conditional',
+      statusClass: 'text-amber-600',
+      contraventions: '1.77 - 2.98',
+      cvsa: '0.94 - 1.08',
+      accidents: '0.24 - 0.27',
+      total: '2.14 - 3.64',
+    },
+    {
+      status: 'Unsatisfactory',
+      statusClass: 'text-red-600',
+      contraventions: '2.99 and above',
+      cvsa: '1.09 and above',
+      accidents: '0.28 and above',
+      total: '3.65 and above',
+    },
+  ];
+
+  return (
+    <div className="space-y-5 border-t border-slate-100 bg-slate-50/60 p-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">As Of Date</div>
+          <div className="mt-2 text-lg font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.complianceReview.asOfDate}</div>
+          <div className="mt-1 text-xs text-slate-500">Current profile scores loaded for BC carrier monitoring.</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Average Fleet Size</div>
+          <div className="mt-2 text-lg font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.complianceReview.averageFleetSize.toFixed(2)}</div>
+          <div className="mt-1 text-xs text-slate-500">24 month snapshot history ending 31-Mar-2025.</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Profile Status</div>
+          <div className="mt-2 text-lg font-black text-emerald-700">{INERTIA_CARRIER_BC_DATA.certificate.profileStatus}</div>
+          <div className="mt-1 text-xs text-slate-500">All current BC profile scores remain in the satisfactory range.</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Total Score</div>
+          <div className="mt-2 text-lg font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.complianceReview.totalScore.toFixed(2)}</div>
+          <div className="mt-1 text-xs text-slate-500">Combined contraventions, CVSA, and accident score.</div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-700">Current Profile Scores as of 31-Mar-2025</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Carrier</th>
+                <th className="px-4 py-3 text-right">Average Fleet Size</th>
+                <th className="px-4 py-3 text-right">Contraventions</th>
+                <th className="px-4 py-3 text-right">CVSA (Out of Service)</th>
+                <th className="px-4 py-3 text-right">Accidents</th>
+                <th className="px-4 py-3 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-slate-100">
+                <td className="px-4 py-3 font-semibold text-slate-900">{INERTIA_CARRIER_BC_DATA.demographics.carrierName}</td>
+                <td className="px-4 py-3 text-right font-mono text-slate-800">{INERTIA_CARRIER_BC_DATA.complianceReview.averageFleetSize.toFixed(2)}</td>
+                {INERTIA_CARRIER_BC_DATA.complianceReview.scores.map(score => (
+                  <td key={score.category} className="px-4 py-3 text-right font-mono text-slate-800">{score.score.toFixed(2)}</td>
+                ))}
+                <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">{INERTIA_CARRIER_BC_DATA.complianceReview.totalScore.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm leading-relaxed text-slate-600">
+          The carrier&apos;s profile status is set based on the score ranges listed below. If scores in all areas are in the{' '}
+          <span className="font-semibold text-emerald-600">Satisfactory</span> range, the profile status will be Satisfactory. If any score is in the{' '}
+          <span className="font-semibold text-amber-600">Conditional</span> range, the profile status will be Conditional. If any score is in the{' '}
+          <span className="font-semibold text-red-600">Unsatisfactory</span> range, the profile status will be Unsatisfactory.
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Profile Status</th>
+                <th className="px-4 py-3 text-right">Contraventions</th>
+                <th className="px-4 py-3 text-right">CVSA (Out of Service)</th>
+                <th className="px-4 py-3 text-right">Accidents</th>
+                <th className="px-4 py-3 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {thresholdRows.map(range => (
+                <tr key={range.status} className="border-t border-slate-100">
+                  <td className={`px-4 py-3 font-semibold ${range.statusClass}`}>{range.status}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-700">{range.contraventions}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-700">{range.cvsa}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-700">{range.accidents}</td>
+                  <td className="px-4 py-3 text-right font-mono text-slate-700">{range.total}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <NscMonitoringHistory />
+    </div>
+  );
+}
+
+function BcActiveFleetTable() {
+  const fleetRows = INITIAL_ASSETS.filter(asset => asset.operationalStatus === 'Active').slice(0, 8);
+
+  return (
+    <div className="space-y-4 border-t border-slate-100 bg-slate-50/60 p-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Licensed Vehicles</div>
+          <div className="mt-2 text-2xl font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.demographics.numberOfLicensedVehicles}</div>
+          <div className="mt-1 text-xs text-slate-500">Vehicles actively registered to this BC carrier.</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Business Type</div>
+          <div className="mt-2 text-lg font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.demographics.primaryBusinessType}</div>
+          <div className="mt-1 text-xs text-slate-500">Jurisdiction: {INERTIA_CARRIER_BC_DATA.demographics.jurisdiction}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Certificate Issued</div>
+          <div className="mt-2 text-lg font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.demographics.certificateIssueDate}</div>
+          <div className="mt-1 text-xs text-slate-500">{INERTIA_CARRIER_BC_DATA.demographics.extraProvincial ? 'Extra-provincial carrier' : 'Intraprovinical carrier'}</div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-700">Active Fleet Sample</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Unit</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Vehicle</th>
+                <th className="px-4 py-3">Plate</th>
+                <th className="px-4 py-3">VIN</th>
+                <th className="px-4 py-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fleetRows.map(asset => (
+                <tr key={asset.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-semibold text-slate-900">{asset.unitNumber}</td>
+                  <td className="px-4 py-3 text-slate-600">{asset.assetType}</td>
+                  <td className="px-4 py-3 text-slate-700">{asset.year} {asset.make} {asset.model}</td>
+                  <td className="px-4 py-3 font-mono text-slate-700">{asset.plateNumber} ({asset.plateJurisdiction})</td>
+                  <td className="px-4 py-3 font-mono text-slate-500">{asset.vin}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+                      {asset.operationalStatus}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BcContraventionsContent() {
+  return (
+    <div className="space-y-5 border-t border-slate-100 bg-slate-50/60 p-4">
+      {BC_CONTRAVENTION_SECTIONS.map(section => (
+        <div key={section.title} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-700">{section.title}</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Document</th>
+                  <th className="px-4 py-3">Party</th>
+                  <th className="px-4 py-3">Offence</th>
+                  <th className="px-4 py-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {section.rows.map(row => (
+                  <tr key={`${section.title}-${row.document}`} className="border-t border-slate-100">
+                    <td className="px-4 py-3 font-mono text-slate-700">{row.date}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">{row.document}</td>
+                    <td className="px-4 py-3 text-slate-700">{row.party}</td>
+                    <td className="px-4 py-3 text-slate-600">{row.offence}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${getBcStatusBadgeClass(row.status)}`}>
+                        {row.status}{row.points > 0 ? ` · ${row.points} pts` : ''}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BcAuditSummaryPanel() {
+  return (
+    <div className="space-y-4 border-t border-slate-100 bg-slate-50/60 p-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Audit Status</div>
+          <div className="mt-2 text-lg font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.certificate.auditStatus}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Profile Status</div>
+          <div className="mt-2 text-lg font-black text-emerald-700">{INERTIA_CARRIER_BC_DATA.certificate.profileStatus}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Safety Rating</div>
+          <div className="mt-2 text-base font-black text-slate-900">{INERTIA_CARRIER_BC_DATA.certificate.safetyRating}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Certificate Status</div>
+          <div className="mt-2 text-lg font-black text-emerald-700">{INERTIA_CARRIER_BC_DATA.certificate.certificateStatus}</div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-700">Intervention Trigger History</div>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {INERTIA_CARRIER_BC_DATA.interventions.map(intervention => (
+            <div key={`${intervention.type}-${intervention.date}`} className="flex items-start justify-between gap-4 px-4 py-4">
+              <div>
+                <div className="text-sm font-bold text-slate-900">{intervention.type}</div>
+                <div className="mt-1 text-sm text-slate-600">{intervention.description}</div>
+              </div>
+              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${getBcStatusBadgeClass(intervention.type)}`}>
+                {intervention.date}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BcCvipHistoryPanel() {
+  const cvipRows = INITIAL_ASSETS.filter(asset => asset.operationalStatus === 'Active').slice(0, 6).map((asset, index) => ({
+    id: asset.id,
+    unit: asset.unitNumber,
+    plate: `${asset.plateNumber} (${asset.plateJurisdiction})`,
+    inspectionDate: ['10-Jan-2025', '22-Feb-2025', '18-Mar-2025', '29-Mar-2025', '04-Apr-2025', '19-Apr-2025'][index] ?? '19-Apr-2025',
+    expiryDate: asset.registrationExpiryDate,
+    status: index < 4 ? 'Current' : 'Upcoming',
+  }));
+
+  return (
+    <div className="space-y-4 border-t border-slate-100 bg-slate-50/60 p-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="text-sm text-slate-600">
+          Periodic inspection history placeholder tied to the active-fleet records currently loaded in the workspace. This section can be swapped to live CVIP records once a BC inspection feed is attached.
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-700">CVIP Vehicle Inspection History</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Unit</th>
+                <th className="px-4 py-3">Plate</th>
+                <th className="px-4 py-3">Last Inspection</th>
+                <th className="px-4 py-3">Document Expiry</th>
+                <th className="px-4 py-3 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cvipRows.map(row => (
+                <tr key={row.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-semibold text-slate-900">{row.unit}</td>
+                  <td className="px-4 py-3 font-mono text-slate-700">{row.plate}</td>
+                  <td className="px-4 py-3 font-mono text-slate-700">{row.inspectionDate}</td>
+                  <td className="px-4 py-3 font-mono text-slate-700">{row.expiryDate}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${getBcStatusBadgeClass(row.status)}`}>
+                      {row.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const getInspectionLevelDescription = (levelStr: string) => {
   const level = levelStr?.replace(/level\s*/i, '') || '1';
@@ -1843,7 +2292,7 @@ const getPeriodLabel = (period: PeriodLabel) => (
 
 // --- MAIN APP ---
 export function InspectionsPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor' | 'carrier-profile'>('overview');
+  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc'>('overview');
   const [showReport, setShowReport] = useState(false);
   const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'All'>('All');
   const smsBasicCategory = 'All';
@@ -1852,6 +2301,7 @@ export function InspectionsPage() {
   const [metricsSort, setMetricsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'total', dir: 'desc' });
   // CVOR tab chart states
   const [cvorPeriod, setCvorPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'All'>('All');
+  const [cvorThreshOpen, setCvorThreshOpen] = useState(false);
   const [cvorHoveredPull, setCvorHoveredPull] = useState<{ chart: string; idx: number } | null>(null);
   const [cvorSelectedPull, setCvorSelectedPull] = useState<string | null>(null);
   const [cvorPullFilter, setCvorPullFilter] = useState<'ALL' | 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'SELECTED'>('ALL');
@@ -2231,7 +2681,8 @@ export function InspectionsPage() {
               { id: 'overview' as const, label: 'Full Overview' },
               { id: 'sms' as const, label: 'SMS (FMCSA)' },
               { id: 'cvor' as const, label: 'CVOR (Canadian)' },
-              { id: 'carrier-profile' as const, label: 'Carrier Profile (NSC)' },
+              { id: 'carrier-profile-ab' as const, label: 'Carrier Profile (NSC Alberta)' },
+              { id: 'carrier-profile-bc' as const, label: 'Carrier Profile (NSC BC)' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -2303,7 +2754,7 @@ export function InspectionsPage() {
 
           {/* Top Row: Safety Rating & OOS and Licensing */}
           {false && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
             
             {/* Col 1: Combined Safety Rating & OOS (SMS + CVOR) */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
@@ -5292,6 +5743,22 @@ export function InspectionsPage() {
             if (cts.oosOverall > cvorOosThresholds.overall)
               critActions.push({ label:'Reduce Overall OOS Rate', desc:`Overall OOS ${cts.oosOverall}% exceeds ${cvorOosThresholds.overall}% threshold` });
 
+            const cvorStatusRows = [
+              { status: 'OK', color: '#16a34a', overall: `< ${cvorThresholds.warning}%`, desc: 'Performance within acceptable range. No MTO action required.' },
+              { status: 'Warning', color: '#b45309', overall: `${cvorThresholds.warning}% - ${(cvorThresholds.intervention - 0.1).toFixed(1)}%`, desc: 'Approaching intervention threshold. Monitor closely and implement corrective measures.' },
+              { status: 'Audit', color: '#d97706', overall: `${cvorThresholds.intervention}% - ${(cvorThresholds.showCause - 0.1).toFixed(1)}%`, desc: 'Exceeds intervention threshold. Prepare for MTO compliance audit.' },
+              { status: 'Show Cause', color: '#dc2626', overall: `${cvorThresholds.showCause}% - ${(cvorThresholds.seizure - 0.1).toFixed(1)}%`, desc: 'Critical threshold band. MTO hearing and suspension risk.' },
+              { status: 'Seizure', color: '#7f1d1d', overall: `${cvorThresholds.seizure}% and above`, desc: 'Highest enforcement band. Registration seizure risk and immediate action required.' },
+            ];
+
+            const cvorCategoryStatusRows = [
+              { status: 'OK', color: '#16a34a', col: `< ${cvorThresholds.warning}%`, con: `< ${cvorThresholds.warning}%`, ins: `< ${cvorThresholds.warning}%` },
+              { status: 'Warning', color: '#b45309', col: `${cvorThresholds.warning}% - ${(cvorThresholds.intervention - 0.1).toFixed(1)}%`, con: `${cvorThresholds.warning}% - ${(cvorThresholds.intervention - 0.1).toFixed(1)}%`, ins: `${cvorThresholds.warning}% - ${(cvorThresholds.intervention - 0.1).toFixed(1)}%` },
+              { status: 'Audit', color: '#d97706', col: `${cvorThresholds.intervention}% - ${(cvorThresholds.showCause - 0.1).toFixed(1)}%`, con: `${cvorThresholds.intervention}% - ${(cvorThresholds.showCause - 0.1).toFixed(1)}%`, ins: `${cvorThresholds.intervention}% - ${(cvorThresholds.showCause - 0.1).toFixed(1)}%` },
+              { status: 'Show Cause', color: '#dc2626', col: `${cvorThresholds.showCause}% - ${(cvorThresholds.seizure - 0.1).toFixed(1)}%`, con: `${cvorThresholds.showCause}% - ${(cvorThresholds.seizure - 0.1).toFixed(1)}%`, ins: `${cvorThresholds.showCause}% - ${(cvorThresholds.seizure - 0.1).toFixed(1)}%` },
+              { status: 'Seizure', color: '#7f1d1d', col: `${cvorThresholds.seizure}% and above`, con: `${cvorThresholds.seizure}% and above`, ins: `${cvorThresholds.seizure}% and above` },
+            ];
+
             // Level comparison data (all CVOR inspections, no date filter)
             const cvorLvls = [
               { level:'Level 1', name:'Level 1 – Full Inspection' },
@@ -5560,8 +6027,54 @@ export function InspectionsPage() {
                       &nbsp;·&nbsp;<span style={{color:'#dc2626'}}>{cvorThresholds.showCause}% Show Cause</span>
                       &nbsp;·&nbsp;<span style={{color:'#7f1d1d'}}>{cvorThresholds.seizure}% Seizure</span>
                     </span>
-                    <button className="text-[10px] text-blue-500 hover:text-blue-700 font-semibold">Threshold Info</button>
+                    <button
+                      type="button"
+                      onClick={() => setCvorThreshOpen(open => !open)}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+                    >
+                      Threshold Info {cvorThreshOpen ? '▴' : '▾'}
+                    </button>
                   </div>
+                  {cvorThreshOpen && (
+                    <div className="mt-2">
+                      <div className="rounded-t-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
+                        CVOR status is determined by the overall rating thresholds below. Category tiles also use the same warning, audit, show-cause, and seizure bands when showing how strongly
+                        <span className="font-semibold text-slate-700"> Collisions</span>, <span className="font-semibold text-slate-700"> Convictions</span>, and <span className="font-semibold text-slate-700"> Inspections</span> are affecting the carrier&apos;s CVOR profile.
+                      </div>
+                      <div className="space-y-3 rounded-b-lg border border-t-0 border-slate-200 bg-white p-3">
+                        <div className="overflow-hidden rounded-lg border border-slate-200 text-[10px]">
+                          <div className="grid grid-cols-[0.9fr_1fr_1.8fr] bg-slate-100 font-bold uppercase tracking-wider text-slate-500">
+                            <div className="px-3 py-1.5">CVOR Status</div>
+                            <div className="px-3 py-1.5">Overall Rating</div>
+                            <div className="px-3 py-1.5">Description</div>
+                          </div>
+                          {cvorStatusRows.map((row, index) => (
+                            <div key={row.status} className={`grid grid-cols-[0.9fr_1fr_1.8fr] border-t border-slate-100 ${index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}`}>
+                              <div className="px-3 py-1.5 font-bold" style={{ color: row.color }}>{row.status}</div>
+                              <div className="px-3 py-1.5 font-mono text-slate-600">{row.overall}</div>
+                              <div className="px-3 py-1.5 text-slate-500">{row.desc}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="overflow-hidden rounded-lg border border-slate-200 text-[10px]">
+                          <div className="grid grid-cols-4 bg-slate-100 font-bold uppercase tracking-wider text-slate-500">
+                            <div className="px-3 py-1.5">Status</div>
+                            <div className="px-3 py-1.5">Collisions</div>
+                            <div className="px-3 py-1.5">Convictions</div>
+                            <div className="px-3 py-1.5">Inspections</div>
+                          </div>
+                          {cvorCategoryStatusRows.map((row, index) => (
+                            <div key={row.status} className={`grid grid-cols-4 border-t border-slate-100 ${index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}`}>
+                              <div className="px-3 py-1.5 font-bold" style={{ color: row.color }}>{row.status}</div>
+                              <div className="px-3 py-1.5 font-mono text-slate-600">{row.col}</div>
+                              <div className="px-3 py-1.5 font-mono text-slate-600">{row.con}</div>
+                              <div className="px-3 py-1.5 font-mono text-slate-600">{row.ins}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   </div>
 
                   {/* ─── OUT-OF-SERVICE RATES ─────────────────────────────── */}
@@ -7715,8 +8228,8 @@ export function InspectionsPage() {
         );
       })()}
 
-      {/* ===== TAB: CARRIER PROFILE (NSC) ===== */}
-      {activeMainTab === 'carrier-profile' && (
+      {/* ===== TAB: CARRIER PROFILE (NSC ALBERTA) ===== */}
+      {activeMainTab === 'carrier-profile-ab' && (
         <div className="space-y-6">
 
           {/* Last Updated + Last Uploaded banner */}
@@ -7734,7 +8247,7 @@ export function InspectionsPage() {
           </div>
 
           {/* ── NSC Top Row: Safety Rating & OOS + Licensing ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Safety Rating & OOS */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
@@ -7844,6 +8357,10 @@ export function InspectionsPage() {
             </div>
           </div>
 
+          <NscPerformanceCard {...ALBERTA_NSC_PERFORMANCE_CARD} />
+
+          <NscAbPerformanceHistory />
+
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
               <div className="xl:col-span-4 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
                 <div className="flex items-center gap-2 mb-4">
@@ -7911,74 +8428,232 @@ export function InspectionsPage() {
                   </div>
                 </div>
                 <div className="mt-4 text-[11px] text-slate-500 leading-relaxed">
-                  This band is derived from the configured NSC threshold logic already used in the app. An official monitoring dataset is not present in the repo.
+                  This band is derived from the configured NSC threshold logic already used in the app.
                 </div>
               </div>
 
-              <div className="xl:col-span-5 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
-                <div className="mb-4">
-                  <div className="flex items-center gap-2">
-                    <Activity size={14} className="text-emerald-500" />
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider text-emerald-800">Risk Factor</h3>
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1 italic">(dynamically calculated based on profile request date)</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3 relative overflow-hidden group">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">R-Factor Score</div>
-                    <div className="mt-1.5 font-mono text-[16px] font-black text-emerald-600">0.356</div>
-                    <div className="text-[9px] text-slate-400 mt-1 opacity-80">(carrier must strive for the lowest score)</div>
-                    <div className="absolute top-0 right-0 bottom-0 w-1 bg-emerald-400 rounded-r-lg group-hover:w-1.5 transition-all"></div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet Range</div>
-                    <div className="mt-2 text-sm font-bold text-slate-900">8.0-13.9</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3 col-span-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fleet Type</div>
-                    <div className="mt-1 text-sm font-bold text-slate-900">Truck</div>
-                  </div>
-                </div>
-                <div className="space-y-3 mt-5">
-                  <div className="mb-3">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Contribution to R-Factor</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 italic">(dynamically calculated based on profile request date)</div>
-                  </div>
-                  {[
-                    { label: 'Convictions', value: '34.6%', color: 'bg-red-500', bg: 'bg-red-50', events: 5 },
-                    { label: 'Administrative Penalties', value: '0.0%', color: 'bg-slate-300', bg: 'bg-slate-50', events: 0 },
-                    { label: 'CVSA Inspections', value: '32.3%', color: 'bg-blue-500', bg: 'bg-blue-50', events: 43 },
-                    { label: 'Reportable Collisions', value: '33.1%', color: 'bg-amber-500', bg: 'bg-amber-50', events: 6 },
-                  ].map((row) => (
-                    <div key={row.label} className={`p-2 rounded-lg border border-slate-100 ${row.bg} relative group cursor-pointer overflow-hidden`}>
-                      <div className="flex items-center justify-between gap-3 mb-1.5 text-sm transition-opacity group-hover:opacity-0 delay-75">
-                        <span className="font-semibold text-slate-700">{row.label}</span>
-                        <span className="font-mono font-black text-slate-900">{row.value}</span>
+              {(() => {
+                const RF_LOW = 30, RF_MOD = 70;
+                const rfcc = (p: number) => p >= RF_MOD ? '#dc2626' : p >= RF_LOW ? '#d97706' : p > 0 ? '#16a34a' : '#94a3b8';
+                const rfcl = (p: number) => p >= RF_MOD ? 'PRIMARY' : p >= RF_LOW ? 'MODERATE' : p > 0 ? 'LOW' : 'NONE';
+                const rfcb = (p: number) => p >= RF_MOD ? 'bg-red-100 text-red-700 border-red-300' : p >= RF_LOW ? 'bg-amber-100 text-amber-700 border-amber-300' : p > 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-300';
+                const rfctile = (p: number) => p >= RF_MOD ? 'bg-red-50/70 border-red-200' : p >= RF_LOW ? 'bg-amber-50/70 border-amber-200' : p > 0 ? 'bg-emerald-50/70 border-emerald-200' : 'bg-slate-50/70 border-slate-200';
+                const RF_C_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 18%,#eab308 32%,#f97316 58%,#ef4444 80%,#991b1b 100%)';
+                const rfScore = ALBERTA_NSC_PERFORMANCE_CARD.rFactor;
+                const rfThr = ALBERTA_NSC_PERFORMANCE_CARD.stageThresholds;
+                const rfS4Low = rfThr.find(t => t.stage === 4)?.low ?? 1.105;
+                const rfRMax = rfS4Low * 1.65;
+                const rfMarkerPct = Math.min((rfScore / rfRMax) * 100, 99.5);
+                const rfTP = rfThr.map(t => ({ ...t, pct: (t.low / rfRMax) * 100 }));
+                const rfGS = (r: number) => { for (let i = rfThr.length - 1; i >= 0; i--) if (r >= rfThr[i].low) return rfThr[i].stage; return 0; };
+                const rfStage = rfGS(rfScore);
+                const rfSC = (s: number) => s === 0 ? '#16a34a' : s === 1 ? '#b45309' : s === 2 ? '#d97706' : s === 3 ? '#dc2626' : '#7f1d1d';
+                const rfScoreColor = rfSC(rfStage);
+                const RF_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 18%,#eab308 32%,#f97316 52%,#ef4444 70%,#991b1b 100%)';
+                const rfZones = [
+                  { label: 'NOT MONITORED', start: 0, end: rfTP[0]?.pct ?? 27, color: '#16a34a', desc: 'Below Stage 1 — performance acceptable.' },
+                  { label: 'STAGE 1', start: rfTP[0]?.pct ?? 27, end: rfTP[1]?.pct ?? 40, color: '#b45309', desc: 'Stage 1: corrective measures needed.' },
+                  { label: 'STAGE 2', start: rfTP[1]?.pct ?? 40, end: rfTP[2]?.pct ?? 55, color: '#d97706', desc: 'Stage 2: action plan required.' },
+                  { label: 'STAGE 3', start: rfTP[2]?.pct ?? 55, end: rfTP[3]?.pct ?? 70, color: '#dc2626', desc: 'Stage 3: compliance review required.' },
+                  { label: 'STAGE 4', start: rfTP[3]?.pct ?? 70, end: 100, color: '#7f1d1d', desc: 'Stage 4: imminent enforcement.' },
+                ];
+                const cd = [
+                  { key: 'conv', label: 'Convictions', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.convictions.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.convictions.events, desc: 'Conviction activity from drivers and vehicles contributing to R-Factor.' },
+                  { key: 'adm', label: 'Admin Penalties', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.adminPenalties.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.adminPenalties.events, desc: 'Administrative penalties and compliance notices issued against carrier.' },
+                  { key: 'cvsa', label: 'CVSA Inspections', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.cvsaInspections.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.cvsaInspections.events, desc: 'CVSA roadside inspection outcomes including OOS orders.' },
+                  { key: 'col', label: 'Reportable Collisions', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.reportableCollisions.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.reportableCollisions.events, desc: 'Reportable collisions contributing to R-Factor.' },
+                ];
+                const totalEv = cd.reduce((s, c) => s + c.events, 0);
+                return (
+                  <div className="xl:col-span-5 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2">
+                        <Activity size={14} className="text-emerald-500" />
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-800">Risk Factor</h3>
                       </div>
-                      <div className="h-2 bg-white rounded-full overflow-hidden border border-slate-200/60 shadow-inner transition-opacity group-hover:opacity-0 delay-75">
-                        <div className={`h-full rounded-full ${row.color}`} style={{ width: row.value }} />
+                      <div className="text-[11px] text-slate-400 mt-1 italic">(dynamically calculated based on profile request date)</div>
+                    </div>
+                    <div className="mb-5">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="text-[28px] leading-none font-black tracking-tight font-mono" style={{ color: rfScoreColor }}>{rfScore.toFixed(3)}</div>
+                        <div className="pt-0.5 space-y-1">
+                          <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border ${rfStage === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>{rfStage === 0 ? 'NOT MONITORED' : `STAGE ${rfStage}`}</span>
+                          <div className="text-[10px] text-slate-400">Fleet {ALBERTA_NSC_PERFORMANCE_CARD.fleetRange} · {ALBERTA_NSC_PERFORMANCE_CARD.fleetType}</div>
+                        </div>
                       </div>
-                      <div className="absolute inset-0 bg-white/95 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-center px-4 z-10 translate-y-1 group-hover:translate-y-0">
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center gap-1.5">
-                            <Info size={14} className="text-blue-500" />
-                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">{row.label} Details</span>
+                      <div className="relative" style={{ paddingTop: 22 }}>
+                        <div className="absolute z-10 flex flex-col items-center pointer-events-none" style={{ left: `${rfMarkerPct}%`, transform: 'translateX(-50%)', top: 0 }}>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md text-white whitespace-nowrap shadow-md" style={{ background: rfScoreColor }}>{rfScore.toFixed(3)}</span>
+                          <div className="w-[2px] h-2.5" style={{ background: rfScoreColor }}/>
+                        </div>
+                        <div className="relative">
+                          <div className="absolute inset-0 rounded-full translate-y-0.5 blur-sm opacity-25" style={{ background: RF_GRAD }}/>
+                          <div className="relative h-[16px] rounded-full overflow-hidden" style={{ background: RF_GRAD, boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.22)' }}>
+                            <div className="absolute top-0 left-0 right-0 h-[6px] rounded-t-full" style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
+                            {rfTP.map(t => (<div key={t.stage} className="absolute top-0 bottom-0 w-[1.5px] bg-white/50" style={{ left: `${t.pct}%` }}/>))}
+                            <div className="absolute top-0 bottom-0 w-[3px] rounded-full" style={{ left: `${rfMarkerPct}%`, transform: 'translateX(-50%)', background: '#fff', boxShadow: '0 0 6px 2px rgba(0,0,0,0.32)' }}/>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="bg-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-600">
-                              {row.events} Event{row.events !== 1 ? 's' : ''}
+                          <div className="absolute inset-0 rounded-full overflow-hidden">
+                            {rfZones.map(z => {
+                              const cur = rfStage === 0 ? z.label === 'NOT MONITORED' : z.label === `STAGE ${rfStage}`;
+                              return (<div key={z.label} className="absolute inset-y-0 group/rfz cursor-crosshair" style={{ left: `${z.start}%`, width: `${z.end - z.start}%` }}>
+                                <div className="absolute inset-0 bg-white/0 group-hover/rfz:bg-white/20 transition-colors duration-150 rounded"/>
+                                <div className="hidden group-hover/rfz:block absolute z-50 pointer-events-none" style={{ bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
+                                  <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
+                                    <div className="px-3 py-2 flex items-center justify-between" style={{ background: z.color }}>
+                                      <span className="text-white font-black text-[11px] tracking-wide">{z.label}</span>
+                                      {z.label !== 'NOT MONITORED' && <span className="text-white/80 text-[10px] font-mono font-bold">{rfThr.find(t => `STAGE ${t.stage}` === z.label)?.low.toFixed(3)}+</span>}
+                                    </div>
+                                    <div className="px-3 py-2.5 space-y-1.5">
+                                      {cur && <div className="flex items-center justify-between bg-white/5 rounded-lg px-2 py-1"><span className="text-[9px] text-slate-400 uppercase tracking-wider">Current</span><span className="text-[12px] font-black text-white">{rfScore.toFixed(3)}</span></div>}
+                                      <div className="text-[10px] text-slate-300 leading-relaxed">{z.desc}</div>
+                                      <div className="pt-1.5 border-t border-slate-700/60">
+                                        <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1">Stage Thresholds</div>
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">{rfThr.map(t => (<div key={t.stage} className="flex items-center justify-between"><span className="text-[9px]" style={{ color: rfSC(t.stage) }}>Stage {t.stage}</span><span className="text-[10px] font-bold font-mono text-white">{'≥'} {t.low.toFixed(3)}</span></div>))}</div>
+                                      </div>
+                                    </div>
+                                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
+                                  </div>
+                                </div>
+                              </div>);
+                            })}
+                          </div>
+                        </div>
+                        <div className="relative mt-1" style={{ height: 12 }}>
+                          <span className="absolute text-[8px] font-bold text-emerald-700" style={{ left: '0%' }}>SAFE</span>
+                          {rfTP.map(t => (<span key={t.stage} className="absolute text-[8px] font-bold" style={{ left: `${t.pct}%`, transform: 'translateX(-50%)', color: rfSC(t.stage) }}>S{t.stage}</span>))}
+                        </div>
+                      </div>
+                      <div className="flex items-center mt-0.5 text-[9px] text-slate-400">
+                        <span className="font-semibold text-slate-500">NSC Thresholds</span>
+                        {rfThr.map(t => (<span key={t.stage} className="ml-1.5" style={{ color: rfSC(t.stage) }}>{'·'} S{t.stage} {'≥'} {t.low.toFixed(3)}</span>))}
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      <div className="mb-2">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Contribution to R-Factor</div>
+                        <div className="text-[9px] text-slate-400 mt-0.5 italic">(dynamically calculated based on profile request date)</div>
+                      </div>
+                      {cd.map(({ key, label, pct, events, desc }) => (
+                        <div key={key} className={`relative rounded-xl border p-3 ${rfctile(pct)} group/ctile`}>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${rfcb(pct)}`}>{rfcl(pct)}</span>
+                          </div>
+                          <div className="text-[22px] leading-none font-black my-0.5 font-mono" style={{ color: rfcc(pct) }}>{pct.toFixed(1)}%</div>
+                          <div className="text-[10px] text-slate-600 mb-0.5">{events} {events === 1 ? 'event' : 'events'} · {pct.toFixed(1)}% impact</div>
+                          <div className="relative group/binfo">
+                            <div className="relative h-[6px] rounded-full overflow-hidden cursor-pointer" style={{ background: RF_C_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
+                              <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
+                              <div className="absolute top-0 bottom-0 bg-slate-900/30 rounded-r-full" style={{ left: `${Math.min(pct, 100)}%`, right: 0 }}/>
+                              <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow" style={{ left: `${Math.min(pct, 100)}%`, transform: 'translateX(-50%)' }}/>
+                              {[RF_LOW, RF_MOD].map(t => (<div key={t} className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: `${t}%` }}/>))}
                             </div>
-                            <div className={`px-2 py-0.5 rounded text-xs font-bold ${row.color.replace('bg-', 'text-').replace('-500', '-700')} ${row.bg}`}>
-                              {row.value} Impact
+                            <div className="flex justify-between text-[8px] mt-0.5 text-slate-400"><span>LOW {RF_LOW}%</span><span>MOD {RF_MOD}%</span><span>HIGH</span></div>
+                            <div className="hidden group-hover/binfo:block absolute z-50 pointer-events-none" style={{ bottom: 'calc(100% + 28px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
+                              <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
+                                <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: rfcc(pct) }}>
+                                  <span className="text-white font-black text-[11px] uppercase tracking-wide">{label}</span>
+                                  <span className="text-white/90 text-[12px] font-mono font-bold">{pct.toFixed(1)}%</span>
+                                </div>
+                                <div className="px-3.5 py-2.5 space-y-1.5">
+                                  <div className="flex justify-between text-[11px]"><span className="text-slate-400">Level</span><span className="font-bold" style={{ color: rfcc(pct) }}>{rfcl(pct)}</span></div>
+                                  <div className="flex justify-between text-[11px]"><span className="text-slate-400">Event Count</span><span className="font-bold text-white">{events}</span></div>
+                                  <div className="flex justify-between text-[11px]"><span className="text-slate-400">R-Factor Impact</span><span className="font-bold text-white">{pct.toFixed(1)}%</span></div>
+                                  <div className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-700/60">{desc}</div>
+                                  <div className="pt-1.5 border-t border-slate-700/60">
+                                    <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1">Levels</div>
+                                    <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                      {([{ n: 'None', v: 0, c: '#94a3b8' }, { n: 'Low', v: RF_LOW, c: '#16a34a' }, { n: 'Moderate', v: RF_MOD, c: '#d97706' }, { n: 'Current', v: pct, c: rfcc(pct) }] as { n: string; v: number; c: string }[]).map(th => (
+                                        <div key={th.n} className="flex items-center justify-between"><span className="text-[9px]" style={{ color: th.c }}>{th.n}</span><span className="text-[10px] font-bold font-mono text-white">{th.v.toFixed(1)}%</span></div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="px-3.5 pb-2">
+                                  <div className="relative h-[5px] rounded-full overflow-hidden" style={{ background: RF_C_GRAD }}>
+                                    <div className="absolute top-0 bottom-0 w-px bg-white/60" style={{ left: `${RF_LOW}%` }}/><div className="absolute top-0 bottom-0 w-px bg-white/60" style={{ left: `${RF_MOD}%` }}/>
+                                    <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow-md" style={{ left: `${Math.min(pct, 100)}%`, transform: 'translateX(-50%)' }}/>
+                                  </div>
+                                  <div className="flex justify-between text-[8px] mt-0.5"><span style={{ color: '#16a34a' }}>LOW {RF_LOW}%</span><span style={{ color: '#d97706' }}>MOD {RF_MOD}%</span><span style={{ color: '#dc2626' }}>HIGH</span></div>
+                                </div>
+                                <div className="px-3.5 py-2 bg-slate-800/50 border-t border-slate-700/60">
+                                  <div className="text-[10px] text-slate-400">{events} event{events !== 1 ? 's' : ''} · {pct.toFixed(1)}% impact</div>
+                                  <div className="text-[10px] font-bold mt-0.5" style={{ color: rfcc(pct) }}>{rfcl(pct)} contribution to R-Factor</div>
+                                </div>
+                                <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="hidden group-hover/ctile:block absolute z-40 pointer-events-none" style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 240 }}>
+                            <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
+                              <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: rfcc(pct) }}>
+                                <span className="text-white font-black text-[11px] uppercase tracking-wider">{label}</span>
+                                <span className="text-white font-black text-[13px]">{pct.toFixed(1)}%</span>
+                              </div>
+                              <div className="px-3.5 py-2.5 space-y-1">
+                                <div className="flex justify-between text-[11px]"><span className="text-slate-500">Level</span><span className="font-bold" style={{ color: rfcc(pct) }}>{rfcl(pct)}</span></div>
+                                <div className="flex justify-between text-[11px]"><span className="text-slate-500">Event Count</span><span className="font-bold text-slate-800">{events}</span></div>
+                                <div className="flex justify-between text-[11px]"><span className="text-slate-500">R-Factor Impact</span><span className="font-bold text-slate-800">{pct.toFixed(1)}%</span></div>
+                                <div className="text-[10px] text-slate-400 italic leading-relaxed pt-1">{desc}</div>
+                              </div>
+                              <div className="px-3.5 py-2 bg-slate-50 border-t border-slate-100">
+                                <div className="text-[10px] text-slate-500">{events} event{events !== 1 ? 's' : ''} · {pct.toFixed(1)}% impact</div>
+                                <div className="text-[10px] font-bold mt-0.5" style={{ color: rfcc(pct) }}>{rfcl(pct)} contribution to R-Factor</div>
+                              </div>
+                              <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #f8fafc' }}/>
                             </div>
                           </div>
                         </div>
+                      ))}
+                      <div className="relative rounded-xl border p-3 mt-1 bg-slate-50/70 border-slate-200 group/ttile">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Total R-Factor</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300">{totalEv} events</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <div className="text-[22px] leading-none font-black font-mono" style={{ color: rfScoreColor }}>{rfScore.toFixed(3)}</div>
+                          <span className="text-[11px] text-slate-500 font-semibold">R-Factor Score</span>
+                        </div>
+                        <div className="relative mt-2">
+                          <div className="relative h-[6px] rounded-full overflow-hidden" style={{ background: RF_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.18)' }}>
+                            {rfTP.map(t => (<div key={t.stage} className="absolute top-0 bottom-0 w-px bg-white/60" style={{ left: `${t.pct}%` }}/>))}
+                            <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow" style={{ left: `${rfMarkerPct}%`, transform: 'translateX(-50%)' }}/>
+                          </div>
+                          <div className="flex justify-between text-[8px] mt-0.5 text-slate-400">
+                            <span className="text-emerald-600">SAFE</span>
+                            {rfTP.map(t => (<span key={t.stage} style={{ color: rfSC(t.stage) }}>S{t.stage}</span>))}
+                          </div>
+                        </div>
+                        <div className="hidden group-hover/ttile:block absolute z-40 pointer-events-none" style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 260 }}>
+                          <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
+                            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: rfScoreColor }}>
+                              <span className="text-white font-black text-[12px] tracking-wide">TOTAL R-FACTOR</span>
+                              <span className="text-white font-black text-[14px] font-mono">{rfScore.toFixed(3)}</span>
+                            </div>
+                            <div className="px-4 py-3 space-y-1.5">
+                              <div className="flex justify-between text-[11px]"><span className="text-slate-400">Monitoring Stage</span><span className="font-bold text-white">{rfStage === 0 ? 'Not Monitored' : `Stage ${rfStage}`}</span></div>
+                              <div className="flex justify-between text-[11px]"><span className="text-slate-400">Total Events</span><span className="font-bold text-white">{totalEv}</span></div>
+                              <div className="flex justify-between text-[11px]"><span className="text-slate-400">Fleet Range</span><span className="font-bold text-white">{ALBERTA_NSC_PERFORMANCE_CARD.fleetRange}</span></div>
+                              <div className="pt-2 border-t border-slate-700/60">
+                                <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1.5">Breakdown</div>
+                                {cd.map(c => (<div key={c.key} className="flex items-center justify-between mb-1"><div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full" style={{ background: rfcc(c.pct) }}/><span className="text-[10px] text-slate-300">{c.label}</span></div><span className="text-[10px] font-bold font-mono text-white">{c.pct.toFixed(1)}%</span></div>))}
+                              </div>
+                            </div>
+                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #0f172a' }}/>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center pt-1.5 text-[9px] text-slate-400">
+                        <span className="font-semibold text-slate-500">Contribution Levels</span>
+                        &nbsp;&middot;&nbsp;<span style={{ color: '#16a34a' }}>Low &lt;{RF_LOW}%</span>
+                        &nbsp;&middot;&nbsp;<span style={{ color: '#d97706' }}>Moderate {RF_LOW}&ndash;{RF_MOD}%</span>
+                        &nbsp;&middot;&nbsp;<span style={{ color: '#dc2626' }}>Primary &gt;{RF_MOD}%</span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
           </div>
 
           <NscCvsaOverview />
@@ -7986,6 +8661,204 @@ export function InspectionsPage() {
           <NscAnalysis />
 
           <NscCvsaInspections />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
+                <ShieldAlert size={14} className="text-emerald-500"/> Safety Rating &amp; OOS
+              </h3>
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">NSC / CVSA</span>
+                  {(() => {
+                    const nscTotal = NSC_INSPECTIONS.length;
+                    const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
+                    const nscOosRate = nscTotal > 0 ? Math.round((nscOos / nscTotal) * 100) : 0;
+                    return (
+                      <span className="text-sm font-medium text-slate-700">
+                        OOS Rate: <span className={`font-bold px-2 py-0.5 rounded border ${nscOosRate >= 30 ? 'bg-red-100 text-red-800 border-red-200' : nscOosRate >= 20 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-green-100 text-green-800 border-green-200'}`}>{nscOosRate}%</span>
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div className="overflow-x-auto rounded border border-slate-100">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Type</th>
+                        <th className="px-3 py-2 font-semibold text-center">Count</th>
+                        <th className="px-3 py-2 font-semibold text-center">Rate</th>
+                        <th className="px-3 py-2 font-semibold text-center">Threshold</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(() => {
+                        const nscTotal = NSC_INSPECTIONS.length;
+                        const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
+                        const nscReqAttn = NSC_INSPECTIONS.filter(r => r.result === 'Requires Attention').length;
+                        const nscPassed = NSC_INSPECTIONS.filter(r => r.result === 'Passed').length;
+                        const oosRate = nscTotal > 0 ? ((nscOos / nscTotal) * 100).toFixed(1) : '0.0';
+                        const reqRate = nscTotal > 0 ? ((nscReqAttn / nscTotal) * 100).toFixed(1) : '0.0';
+                        const passRate = nscTotal > 0 ? ((nscPassed / nscTotal) * 100).toFixed(1) : '0.0';
+                        return (
+                          <>
+                            <tr>
+                              <td className="px-3 py-2 text-slate-700">Out of Service</td>
+                              <td className="px-3 py-2 text-center font-bold text-red-600">{nscOos}</td>
+                              <td className={`px-3 py-2 text-center font-bold ${parseFloat(oosRate) >= 30 ? 'text-red-600' : 'text-slate-800'}`}>{oosRate}%</td>
+                              <td className="px-3 py-2 text-center text-slate-500">&gt;30%</td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 text-slate-700">Requires Attention</td>
+                              <td className="px-3 py-2 text-center font-bold text-amber-600">{nscReqAttn}</td>
+                              <td className="px-3 py-2 text-center font-bold text-slate-800">{reqRate}%</td>
+                              <td className="px-3 py-2 text-center text-slate-500">&gt;20%</td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-2 text-slate-700">Passed</td>
+                              <td className="px-3 py-2 text-center font-bold text-emerald-600">{nscPassed}</td>
+                              <td className="px-3 py-2 text-center font-bold text-emerald-600">{passRate}%</td>
+                              <td className="px-3 py-2 text-center text-slate-500">—</td>
+                            </tr>
+                          </>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <FileSignature size={14} className="text-purple-500"/> Licensing
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Certificate Number</span>
+                  <span className="font-bold font-mono text-slate-900">002050938</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Status</span>
+                  <span className="font-bold text-slate-900">Federal <span className="text-green-600 bg-green-50 px-1.5 rounded ml-1">Active</span></span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Effective</span>
+                  <span className="font-bold font-mono text-slate-900">2021 NOV 03</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Expiry</span>
+                  <span className="font-bold font-mono text-slate-900">2024 OCT 31</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">NSC Number</span>
+                  <span className="font-bold font-mono text-slate-900">AB320-9327</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">MVID Number</span>
+                  <span className="font-bold font-mono text-slate-900">0930-15188</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                  <span className="text-slate-600">Profile Period Start</span>
+                  <span className="font-bold font-mono text-slate-900">2022 OCT 01</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Profile Period End</span>
+                  <span className="font-bold font-mono text-slate-900">2024 OCT 15</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== TAB: CARRIER PROFILE (NSC BC) ===== */}
+      {activeMainTab === 'carrier-profile-bc' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-2">
+            <div className="flex items-center gap-2 text-sm text-sky-700">
+              <Info size={14} />
+              <span className="font-semibold">BC profile snapshot:</span>
+              <span className="font-mono font-bold">31-Mar-2025</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-sky-600">
+              <Upload size={14} />
+              <span className="font-semibold">Jurisdiction:</span>
+              <span className="font-mono font-bold">British Columbia</span>
+            </div>
+          </div>
+
+          <NscPerfomate />
+
+          <NscBcPerformanceHistory />
+
+          <div className="space-y-4">
+            <BcReportAccordionItem
+              title="NSC Analysis"
+              description="Contribution review, conviction analysis, CVSA performance, monitoring history, and safety summaries."
+              meta="NSC"
+            >
+              <div className="border-t border-slate-100 bg-slate-50/60 p-4">
+                <NscAnalysis />
+              </div>
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="Profile Scores as of Mar 2025"
+              description="24 month snapshot history ending 31-Mar-2025."
+              meta="24 Months"
+            >
+              <BcProfileScoresContent />
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="Active Fleet"
+              description="Vehicles actively registered to this carrier."
+              meta="Fleet"
+            >
+              <BcActiveFleetTable />
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="Contraventions"
+              description="Driver and carrier contraventions (Guilty & Pending)."
+              meta="4 Subsections"
+            >
+              <BcContraventionsContent />
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="CVSA Inspection Results"
+              description="Inspection defect summary plus detailed BC CVSA inspection results."
+              meta="CVSA"
+            >
+              <BcCvsaPanel />
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="Accident Information"
+              description="Collision summary and event-level accident details from the loaded NSC dataset."
+              meta="Collisions"
+            >
+              <BcAccidentPanel />
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="Audit Summary"
+              description="Audit posture, intervention trigger history, and current BC safety standing."
+              meta="Audit"
+            >
+              <BcAuditSummaryPanel />
+            </BcReportAccordionItem>
+
+            <BcReportAccordionItem
+              title="CVIP Vehicle Inspection History"
+              description="Periodic inspection history placeholder tied to the loaded BC active-fleet records."
+              meta="CVIP"
+            >
+              <BcCvipHistoryPanel />
+            </BcReportAccordionItem>
+          </div>
         </div>
       )}
 
