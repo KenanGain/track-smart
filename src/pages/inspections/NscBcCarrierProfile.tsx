@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Activity } from 'lucide-react';
+import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -369,34 +370,32 @@ export function NscBcCarrierProfile({
                       <div className="absolute inset-0 bg-white/0 group-hover/zone:bg-white/20 transition-colors duration-150 rounded"/>
                       <div className="hidden group-hover/zone:block absolute z-50 pointer-events-none"
                         style={{ bottom: 'calc(100% + 14px)', left: '50%', transform: 'translateX(-50%)', width: 260 }}>
-                        <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
-                          <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: z.color }}>
-                            <span className="text-white font-black text-[13px] tracking-wide">{z.label}</span>
-                            <span className="text-white/90 text-[11px] font-mono font-bold">{z.range}</span>
-                          </div>
-                          <div className="px-4 py-3 space-y-2">
-                            {z.current && (
-                              <div className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-1.5">
-                                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Current Score</span>
-                                <span className="text-[14px] font-black text-white">{complianceReview.totalScore.toFixed(3)}</span>
-                              </div>
-                            )}
-                            <div className="pt-2 border-t border-slate-700/60">
-                              <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1.5">Stage Thresholds · BC Profile</div>
-                              <div className="text-[11px] leading-relaxed text-slate-300">{z.range}</div>
-                              <div className="hidden">
-                                {BC_STAGES.map(t => (
-                                  <div key={t.stage} className="flex items-center justify-between">
-                                    <span className="text-[10px]" style={{ color: SC(t.stage) }}>Stage {t.stage}</span>
-                                    <span className="text-[11px] font-bold font-mono text-white">{'≥'} {t.low.toFixed(3)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
-                            style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #0f172a' }}/>
-                        </div>
+                        <ScoreBandHoverCard
+                          title={z.label}
+                          range={z.range}
+                          accentColor={z.color}
+                          current={z.current ? { label: 'Current Score', value: complianceReview.totalScore.toFixed(3) } : undefined}
+                          description={
+                            z.label === 'SATISFACTORY'
+                              ? 'Profile remains within the satisfactory band for the current fleet range.'
+                              : z.label === 'CONDITIONAL'
+                                ? 'Profile has entered the conditional band and needs corrective attention.'
+                                : 'Profile is in the unsatisfactory band and requires immediate regulatory action.'
+                          }
+                          detailRows={[
+                            { label: 'Fleet', value: '30.0-44.9' },
+                            { label: 'Vehicle Type', value: 'Truck' },
+                            { label: 'Profile Date', value: complianceReview.asOfDate },
+                            { label: 'Report Run', value: demographics.reportRunDate },
+                          ]}
+                          thresholdsTitle="BC Profile Bands"
+                          thresholds={[
+                            { label: 'Satisfactory', value: '0.00 - 2.13', color: '#16a34a' },
+                            { label: 'Conditional', value: '2.14 - 3.64', color: '#d97706' },
+                            { label: 'Unsatisfactory', value: '>= 3.65', color: '#dc2626' },
+                          ]}
+                          thresholdColumns={1}
+                        />
                       </div>
                     </div>
                   );
@@ -459,7 +458,7 @@ export function NscBcCarrierProfile({
               const condPct = Math.round((lim.cond / lim.max) * 100);
 
               return (
-                <div key={s.category} className={`relative rounded-xl border p-3.5 ${bctile(st)} group/scoretile`}>
+                <div key={s.category} className={`relative rounded-xl border p-3.5 ${bctile(st)} group/card cursor-pointer transition-shadow hover:shadow-lg`}>
                   {/* Row 1: category label + status badge pill */}
                   <div className="flex items-start justify-between gap-1 mb-1">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-snug flex-1">{s.category}</span>
@@ -481,103 +480,75 @@ export function NscBcCarrierProfile({
                     {bcl(st)} contribution to Profile
                   </div>
 
-                  {/* Mini gradient bar with threshold ticks + LOW/MOD/HIGH labels */}
-                  <div className="relative h-[6px] rounded-full overflow-hidden"
-                    style={{ background: C_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.18)' }}>
-                    <div className="absolute top-0 left-0 right-0 h-[3px]"
-                      style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
-                    <div className="absolute top-0 bottom-0 bg-slate-900/25 rounded-r-full"
-                      style={{ left: `${barPct}%`, right: 0 }}/>
-                    <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow"
-                      style={{ left: `${barPct}%`, transform: 'translateX(-50%)' }}/>
-                    {[lim.sat, lim.cond].map(v => (
-                      <div key={v} className="absolute top-0 bottom-0 w-px bg-white/60"
-                        style={{ left: `${(v / lim.max) * 100}%` }}/>
-                    ))}
+                  {/* Mini gradient bar with hover tooltip — dark navy style matching Alberta/CVOR/PEI/NS */}
+                  <div className="relative">
+                    <div className="relative h-[7px] rounded-full overflow-hidden"
+                      style={{ background: C_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
+                      <div className="absolute top-0 left-0 right-0 h-[3px]"
+                        style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
+                      <div className="absolute top-0 bottom-0 bg-slate-900/30 rounded-r-full"
+                        style={{ left: `${barPct}%`, right: 0 }}/>
+                      <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow"
+                        style={{ left: `${barPct}%`, transform: 'translateX(-50%)' }}/>
+                      {[lim.sat, lim.cond].map(v => (
+                        <div key={v} className="absolute top-0 bottom-0 w-px bg-white/60"
+                          style={{ left: `${(v / lim.max) * 100}%` }}/>
+                      ))}
+                    </div>
+                    <div className="flex justify-between text-[8.5px] mt-0.5 text-slate-400">
+                      <span style={{ color: '#16a34a' }}>SAT {satPct}%</span>
+                      <span style={{ color: '#d97706' }}>COND {condPct}%</span>
+                      <span style={{ color: '#dc2626' }}>HIGH</span>
+                    </div>
+
                   </div>
-                  <div className="flex justify-between text-[8.5px] mt-0.5">
-                    <span style={{ color: '#16a34a' }}>LOW {satPct}%</span>
-                    <span style={{ color: '#d97706' }}>MOD {condPct}%</span>
-                    <span style={{ color: '#dc2626' }}>HIGH</span>
-                  </div>
 
-                  {/* ── Hover tooltip — image-1 style ── */}
-                  <div className="hidden group-hover/scoretile:block absolute z-50 pointer-events-none"
-                    style={{ bottom: 'calc(100% + 12px)', left: '50%', transform: 'translateX(-50%)', width: 248 }}>
-                    <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
-
-                      {/* Colored header */}
-                      <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: bcc(st) }}>
-                        <span className="text-white font-black text-[12px] uppercase tracking-wider leading-tight">{s.category}</span>
-                        <span className="text-white font-black text-[14px]">{barPct.toFixed(1)}%</span>
-                      </div>
-
-                      {/* Body rows */}
-                      <div className="px-4 py-3 space-y-1.5">
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">Level</span>
-                          <span className="font-bold" style={{ color: bcc(st) }}>{bcl(st)}</span>
+                  {/* Card hover tooltip — dark navy popup */}
+                  <div className="hidden group-hover/card:block absolute z-50 pointer-events-none"
+                    style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 236 }}>
+                      <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
+                        <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: bcc(st) }}>
+                          <span className="text-white font-black text-[12px] uppercase tracking-wide">{s.category}</span>
+                          <span className="text-white/90 text-[13px] font-mono font-black">{s.score.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">Profile Score</span>
-                          <span className="font-bold text-slate-800 font-mono">{s.score.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-[11px]">
-                          <span className="text-slate-500">Profile Impact</span>
-                          <span className="font-bold text-slate-800">{barPct.toFixed(1)}%</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 italic leading-relaxed pt-0.5">
-                          {lim.desc}
-                        </div>
-
-                        {/* Levels 2×2 grid */}
-                        <div className="border-t border-slate-100 pt-2">
-                          <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">LEVELS</div>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                            {([
-                              { n: 'Satisfactory',   v: '0.0%',                  c: '#16a34a' },
-                              { n: 'Conditional',    v: `${satPct}.0%`,           c: '#d97706' },
-                              { n: 'Unsatisfactory', v: `${condPct}.0%`,          c: '#dc2626' },
-                              { n: 'Current',        v: `${barPct.toFixed(1)}%`,  c: bcc(st)   },
-                            ] as { n: string; v: string; c: string }[]).map(r => (
-                              <div key={r.n} className="flex items-center justify-between">
-                                <span className="text-[10px]" style={{ color: r.c }}>{r.n}</span>
-                                <span className="text-[10px] font-bold font-mono text-slate-700">{r.v}</span>
-                              </div>
-                            ))}
+                        <div className="px-3.5 py-2.5 space-y-1.5">
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-400">Profile Score</span>
+                            <span className="font-black text-slate-800 font-mono">{s.score.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-400">Profile Impact</span>
+                            <span className="font-bold text-slate-800">{barPct.toFixed(1)}%</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-400">Events</span>
+                            <span className="font-bold text-slate-800">{s.events}</span>
+                          </div>
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-slate-400">Level</span>
+                            <span className="font-bold" style={{ color: bcc(st) }}>{bcl(st)}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 leading-relaxed pt-1 border-t border-slate-100">{lim.desc}</div>
+                          <div className="pt-1.5 border-t border-slate-100">
+                            <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Profile Levels</div>
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                              {([
+                                { n: 'Satisfactory',   v: `0.00 – ${lim.sat.toFixed(2)}`, c: '#16a34a' },
+                                { n: 'Conditional',    v: `${lim.sat.toFixed(2)} – ${lim.cond.toFixed(2)}`, c: '#d97706' },
+                                { n: 'Unsatisfactory', v: `≥ ${lim.cond.toFixed(2)}`, c: '#dc2626' },
+                                { n: 'Current',        v: s.score.toFixed(2), c: bcc(st) },
+                              ] as { n: string; v: string; c: string }[]).map(r => (
+                                <div key={r.n} className="flex items-center justify-between">
+                                  <span className="text-[9px]" style={{ color: r.c }}>{r.n}</span>
+                                  <span className="text-[10px] font-bold font-mono text-slate-700">{r.v}</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
+                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
+                          style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid white' }}/>
                       </div>
-
-                      {/* Mini gradient bar with threshold labels */}
-                      <div className="px-4 pb-2">
-                        <div className="relative h-[6px] rounded-full overflow-hidden" style={{ background: C_GRAD }}>
-                          <div className="absolute top-0 bottom-0 w-px bg-white/70" style={{ left: `${satPct}%` }}/>
-                          <div className="absolute top-0 bottom-0 w-px bg-white/70" style={{ left: `${condPct}%` }}/>
-                          <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow-md"
-                            style={{ left: `${barPct}%`, transform: 'translateX(-50%)' }}/>
-                        </div>
-                        <div className="flex justify-between text-[8.5px] mt-0.5">
-                          <span style={{ color: '#16a34a' }}>SAT {satPct}%</span>
-                          <span style={{ color: '#d97706' }}>COND {condPct}%</span>
-                          <span style={{ color: '#dc2626' }}>HIGH</span>
-                        </div>
-                      </div>
-
-                      {/* Footer summary */}
-                      <div className="px-4 py-2 bg-slate-50 border-t border-slate-100">
-                        <div className="text-[10px] text-slate-500">
-                          {s.score.toFixed(2)} score · {barPct.toFixed(1)}% impact
-                        </div>
-                        <div className="text-[10px] font-bold mt-0.5" style={{ color: bcc(st) }}>
-                          {bcl(st)} contribution to Profile
-                        </div>
-                      </div>
-
-                      {/* Caret */}
-                      <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
-                        style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #f8fafc' }}/>
-                    </div>
                   </div>
                 </div>
               );

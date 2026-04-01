@@ -34,6 +34,9 @@ import { NscBcPerformanceHistory } from './NscBcPerformanceHistory';
 import { NscAbPerformanceHistory } from './NscAbPerformanceHistory';
 import { BcAccidentPanel, BcCvsaPanel } from './BcPanels';
 import { NscMonitoringHistory } from './NscMonitoringHistory';
+import { NscPeiPerformanceCard } from './NscPeiPerformanceCard';
+import { NscNsPerformanceCard } from './NscNsPerformanceCard';
+import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 import { NSC_INSPECTIONS, DEFECT_TO_NSC, NSC_CODE_TO_SYSTEM } from './nscInspectionsData';
 import type { NscInspectionRecord } from './nscInspectionsData';
 import { NSC_VIOLATION_CATALOG, violationDetailsData, parseCcmtaCode } from './NscAnalysis';
@@ -131,7 +134,7 @@ const ALBERTA_NSC_PERFORMANCE_CARD: NscPerformanceCardProps = {
     { stage: 3, low: 0.85, high: 1.104 },
     { stage: 4, low: 1.105, high: null },
   ],
-  statusMessage: 'Not on NSC monitoring — performance is within acceptable range for fleet 30.0-44.9',
+  statusMessage: 'Not on NSC monitoring - performance is within acceptable range for fleet 30.0-44.9',
   contributions: {
     convictions: { pct: 34.6, events: 5 },
     adminPenalties: { pct: 0.0, events: 0 },
@@ -157,6 +160,42 @@ const ALBERTA_NSC_PERFORMANCE_CARD: NscPerformanceCardProps = {
     convictionPoints: 3,
   },
 };
+
+const NOVA_SCOTIA_NSC_PROFILE = {
+  carrierName:           'MAPLE LEAF FORCE LIMITED',
+  nscNumber:             'MAPLE739646000',
+  profileAsOf:           '19/08/2022',
+  safetyRating:          'SATISFACTORY - UNAUDITED',
+  safetyRatingExpires:   '08/2023',
+  contactName:           'JAGJIT SINGH JEOR',
+  contactTitle:          'DIRECTOR',
+  phone:                 '647-588-6667',
+  mailingAddress:        '99 WYSE ROAD UNIT 1100\nDARTMOUTH NS\nB3A4S5',
+  physicalAddress:       '99 WYSE ROAD UNIT 1100\nDARTMOUTH NS\nB3A4S5',
+  principalPlace:        '99 WYSE RD, DARTMOUTH',
+  currentFleetSize:      14,
+  avgDailyFleetSize:     14.79,
+  scoreLevel1:           39.7531,
+  scoreLevel2:           45.9602,
+  scoreLevel3:           60.1836,
+  convictionScore:       6.2510,
+  inspectionScore:       13.4179,
+  collisionScore:        0.0000,
+} as const;
+
+const PRINCE_EDWARD_ISLAND_NSC_PROFILE = {
+  jurisdiction: 'Prince Edward Island',
+  profileAsOf: '2021/07/14',
+  nscNumber: 'PE316583',
+  safetyRating: 'Conditional',
+  summary: {
+    collisionPoints: 0,
+    convictionPoints: 6,
+    inspectionPoints: 9,
+    currentActiveVehiclesAtLastAssessment: 19,
+    currentActiveVehicles: 19,
+  },
+} as const;
 
 const BcReportAccordionItem = ({
   title,
@@ -448,7 +487,7 @@ function BcContraventionsContent() {
                     <td className="px-4 py-3 text-slate-600">{row.offence}</td>
                     <td className="px-4 py-3 text-right">
                       <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${getBcStatusBadgeClass(row.status)}`}>
-                        {row.status}{row.points > 0 ? ` · ${row.points} pts` : ''}
+                        {row.status}{row.points > 0 ? `  ·  ${row.points} pts` : ''}
                       </span>
                     </td>
                   </tr>
@@ -626,7 +665,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
         <div className="col-span-1 pl-2 flex flex-col justify-center">
           <span className="text-sm font-bold text-slate-800">{record.date}</span>
           {record.startTime && (
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">{record.startTime}{record.endTime ? ` – ${record.endTime}` : ''}</span>
+            <span className="text-[10px] text-slate-400 font-mono mt-0.5">{record.startTime}{record.endTime ? ` - ${record.endTime}` : ''}</span>
           )}
         </div>
 
@@ -683,14 +722,14 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
         {/* Vehicle Points */}
         <div className="col-span-1 flex justify-center items-center">
           <span className={`text-[13px] font-bold ${(cvorOverride.vehPts || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
-            {cvorOverride.vehPts ?? '—'}
+            {cvorOverride.vehPts ?? '-'}
           </span>
         </div>
 
         {/* Driver Points */}
         <div className="col-span-1 flex justify-center items-center">
           <span className={`text-[13px] font-bold ${(cvorOverride.dvrPts || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
-            {cvorOverride.dvrPts ?? '—'}
+            {cvorOverride.dvrPts ?? '-'}
           </span>
         </div>
 
@@ -759,7 +798,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
         <div className="col-span-1 pl-2 flex flex-col justify-center">
           <span className="text-sm font-bold text-slate-800">{record.date}</span>
           {record.startTime && (
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">{record.startTime}{record.endTime ? ` – ${record.endTime}` : ''}</span>
+            <span className="text-[10px] text-slate-400 font-mono mt-0.5">{record.startTime}{record.endTime ? ` - ${record.endTime}` : ''}</span>
           )}
         </div>
 
@@ -816,21 +855,21 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
         {/* Vehicle Points */}
         <div className="col-span-1 flex justify-center items-center">
           <span className={`text-[13px] font-bold ${(record.smsPoints?.vehicle || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
-            {record.smsPoints?.vehicle ?? '—'}
+            {record.smsPoints?.vehicle ?? '-'}
           </span>
         </div>
 
         {/* Driver Points */}
         <div className="col-span-1 flex justify-center items-center">
           <span className={`text-[13px] font-bold ${(record.smsPoints?.driver || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
-            {record.smsPoints?.driver ?? '—'}
+            {record.smsPoints?.driver ?? '-'}
           </span>
         </div>
 
         {/* Carrier Points */}
         <div className="col-span-1 flex justify-center items-center">
           <span className={`text-[13px] font-bold ${(record.smsPoints?.carrier || 0) > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-            {record.smsPoints?.carrier ?? '—'}
+            {record.smsPoints?.carrier ?? '-'}
           </span>
         </div>
 
@@ -986,13 +1025,13 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                 </span>
               </div>
 
-              {/* Unified info bar (time, location, points, severity rate) — shown for BOTH SMS and CVOR */}
+              {/* Unified info bar (time, location, points, severity rate) - shown for BOTH SMS and CVOR */}
               {(record.startTime || record.location || record.severityRate != null) && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
                   {record.startTime && (
                     <div className="bg-white border border-slate-200 rounded-lg p-2.5 sm:p-3 text-center">
                       <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Inspection Time</div>
-                      <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{record.startTime} – {record.endTime || '—'}</div>
+                      <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{record.startTime} - {record.endTime || '-'}</div>
                     </div>
                   )}
                   {record.location && (
@@ -1192,7 +1231,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                         const rowOpen   = expandedViolIdx === idx;
                         const isOos     = !!violation.oos;
                         const pts       = violation.points ?? 0;
-                        const wt        = violation.weight ?? '—';
+                        const wt        = violation.weight ?? '-';
                         const riskVal   = violation.crashLikelihoodPercent ?? (violation.driverRiskCategory === 1 ? 85 : violation.driverRiskCategory === 2 ? 45 : 15);
                         const riskLabel = riskVal >= 70 ? 'High' : riskVal >= 40 ? 'Medium' : 'Low';
                         const riskCls   = riskLabel === 'High'   ? 'bg-red-50 text-red-700 border-red-200' :
@@ -1206,8 +1245,8 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                                           pts >= 2 ? 'bg-amber-500 text-white' :
                                                      'bg-slate-400 text-white';
                         const jur        = getJurisdiction(record.state);
-                        const plate      = primaryUnit?.license || record.vehiclePlate || '—';
-                        const driverName = record.driver?.split(',')[0] ?? '—';
+                        const plate      = primaryUnit?.license || record.vehiclePlate || '-';
+                        const driverName = record.driver?.split(',')[0] ?? '-';
                         const initials   = driverName.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase();
                         const equivalent = getEquivalentCode(violation.code);
                         // Impact analysis
@@ -1239,7 +1278,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
                                     <div className="font-mono font-semibold text-slate-800 text-[13px]">{record.id}</div>
-                                    <div className="mt-0.5 text-[10px] font-bold text-slate-500 uppercase tracking-wide">{violation.description?.slice(0,30)}{violation.description?.length > 30 ? '…' : ''}</div>
+                                    <div className="mt-0.5 text-[10px] font-bold text-slate-500 uppercase tracking-wide">{violation.description?.slice(0,30)}{violation.description?.length > 30 ? '...' : ''}</div>
                                   </div>
                                   <div className={`shrink-0 transition-transform duration-150 ${rowOpen ? 'rotate-180' : ''}`}>
                                     <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
@@ -1248,15 +1287,15 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                               </td>
                               {/* Code */}
                               <td className="px-3 py-3 text-center">
-                                <span className="font-mono font-black text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[12px]">{violation.code ?? '—'}</span>
+                                <span className="font-mono font-black text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[12px]">{violation.code ?? '-'}</span>
                               </td>
                               {/* Category */}
                               <td className="px-3 py-3">
-                                <span className="text-[12px] font-semibold text-slate-700">{violation.category ?? '—'}</span>
+                                <span className="text-[12px] font-semibold text-slate-700">{violation.category ?? '-'}</span>
                               </td>
                               {/* Description */}
                               <td className="px-3 py-3">
-                                <p className="text-[12px] text-slate-600 leading-snug">{violation.description ?? '—'}</p>
+                                <p className="text-[12px] text-slate-600 leading-snug">{violation.description ?? '-'}</p>
                                 {violation.subDescription && <p className="text-[10px] text-blue-500 mt-0.5 font-medium">{violation.subDescription}</p>}
                               </td>
                               {/* Risk Level */}
@@ -1267,7 +1306,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                               <td className="px-3 py-3 text-center">
                                 {violation.severity
                                   ? <span className={`inline-flex px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${sevCls}`}>{violation.severity}</span>
-                                  : <span className="text-slate-300">—</span>}
+                                  : <span className="text-slate-300">-</span>}
                               </td>
                               {/* Weight */}
                               <td className="px-3 py-3 text-center">
@@ -1305,7 +1344,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                               </td>
                             </tr>
 
-                            {/* ── Expandable detail panel ── */}
+                            {/* â"€â"€ Expandable detail panel â"€â"€ */}
                             {rowOpen && (
                               <tr onClick={(e) => e.stopPropagation()}>
                                 <td colSpan={13} className="p-0 border-t border-slate-200">
@@ -1335,7 +1374,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                                         </div>
                                       </div>
 
-                                      {/* Issuing Agency — only if data */}
+                                      {/* Issuing Agency - only if data */}
                                       {record.agency ? (
                                         <div className="flex flex-col gap-1.5">
                                           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1392,7 +1431,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                                           <div className="bg-slate-50 border-b border-slate-100 px-4 py-2.5 flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{jur === 'CVOR' ? 'Canadian Code' : 'FMCSA Code'}</span>
-                                              <span className="font-mono font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-sm shadow-sm">{violation.code ?? '—'}</span>
+                                              <span className="font-mono font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-sm shadow-sm">{violation.code ?? '-'}</span>
                                             </div>
                                             {isOos && <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200">OOS</span>}
                                           </div>
@@ -1412,18 +1451,18 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                                             )}
                                             <div>
                                               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Category</div>
-                                              <div className="text-[13px] font-semibold text-slate-800">{violation.category ?? '—'}</div>
+                                              <div className="text-[13px] font-semibold text-slate-800">{violation.category ?? '-'}</div>
                                             </div>
                                             <div>
                                               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Description</div>
-                                              <div className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-800 leading-snug">{violation.description ?? '—'}</div>
+                                              <div className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-800 leading-snug">{violation.description ?? '-'}</div>
                                               {violation.subDescription && (
                                                 <div className="mt-1 text-[11px] text-blue-500 font-medium">{violation.subDescription}</div>
                                               )}
                                             </div>
                                             <div className="grid grid-cols-4 gap-2">
                                               {[
-                                                { label: 'Severity', value: violation.severity ?? '—' },
+                                                { label: 'Severity', value: violation.severity ?? '-' },
                                                 { label: 'Weight',   value: wt },
                                                 { label: 'Points',   value: pts },
                                                 { label: 'OOS',      value: isOos ? 'YES' : 'NO', red: isOos },
@@ -1456,7 +1495,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                                               </div>
                                               <div className={`rounded-lg border px-3 py-3 ${iCellCls}`}>
                                                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Category</div>
-                                                <div className="text-[13px] font-bold text-slate-800 leading-tight">{violation.category ?? '—'}</div>
+                                                <div className="text-[13px] font-bold text-slate-800 leading-tight">{violation.category ?? '-'}</div>
                                               </div>
                                               <div className={`rounded-lg border px-3 py-3 ${iCellCls}`}>
                                                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">OOS Eligible</div>
@@ -1549,7 +1588,7 @@ const formatMetricValue = (value: number | string | null | undefined, decimals =
   return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
-// ── NSC Overview Row ──────────────────────────────────────────────────────────
+// â"€â"€ NSC Overview Row â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 // Renders a single NSC/CVSA inspection record in the unified overview list.
 const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -1624,7 +1663,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
 
   return (
     <div className="group bg-white hover:bg-blue-50/20 transition-colors border-b border-slate-100 last:border-0">
-      {/* Desktop row — unified 12-col layout matching SMS/CVOR InspectionRow */}
+      {/* Desktop row - unified 12-col layout matching SMS/CVOR InspectionRow */}
       <div
         className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-4 items-center cursor-pointer border-l-2 border-l-emerald-400 hover:bg-emerald-50/20 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -1632,10 +1671,10 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
         {/* Date / Time */}
         <div className="col-span-1 pl-2 flex flex-col justify-center">
           <span className="text-sm font-bold text-slate-800">{row.date}</span>
-          <span className="text-[10px] text-slate-400 font-mono mt-0.5">{row.details?.time ?? '—'}</span>
+          <span className="text-[10px] text-slate-400 font-mono mt-0.5">{row.details?.time ?? '-'}</span>
         </div>
 
-        {/* Source + Doc — emerald NSC badge */}
+        {/* Source + Doc - emerald NSC badge */}
         <div className="col-span-1 min-w-0 flex flex-col justify-center">
           <span className="text-xs font-bold text-emerald-700 block truncate leading-tight" title={row.doc}>{row.doc}</span>
           <span className="mt-0.5 inline-flex w-fit items-center gap-1 px-1.5 py-px rounded text-[10px] font-bold tracking-wider border bg-emerald-100 text-emerald-700 border-emerald-200">
@@ -1687,7 +1726,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
           {nscAssetPts > 0 ? (
             <span className={`text-[13px] font-bold ${nscAssetPts >= 5 ? 'text-red-600' : nscAssetPts >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>{nscAssetPts}</span>
           ) : (
-            <span className="text-[13px] text-slate-300">—</span>
+            <span className="text-[13px] text-slate-300">-</span>
           )}
         </div>
 
@@ -1696,7 +1735,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
           {nscDriverPts > 0 ? (
             <span className={`text-[13px] font-bold ${nscDriverPts >= 3 ? 'text-red-600' : 'text-amber-600'}`}>{nscDriverPts}</span>
           ) : (
-            <span className="text-[13px] text-slate-300">—</span>
+            <span className="text-[13px] text-slate-300">-</span>
           )}
         </div>
 
@@ -1705,7 +1744,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
           {nscCarrierPts > 0 ? (
             <span className={`text-[13px] font-bold ${nscCarrierPts >= 6 ? 'text-red-600' : nscCarrierPts >= 3 ? 'text-amber-600' : 'text-slate-700'}`}>{nscCarrierPts}</span>
           ) : (
-            <span className="text-[13px] text-slate-300">—</span>
+            <span className="text-[13px] text-slate-300">-</span>
           )}
         </div>
 
@@ -1740,7 +1779,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
               <span className={`px-1.5 py-px rounded text-[10px] font-bold tracking-wider border ${levelCls}`}>NSC L{row.level}</span>
             </div>
             <span className="text-sm text-slate-900 font-medium block mt-0.5">{row.date}</span>
-            <span className="text-xs text-slate-400">{row.jur} · {row.driverLink.driverName}</span>
+            <span className="text-xs text-slate-400">{row.jur}  ·  {row.driverLink.driverName}</span>
           </div>
           <div className="flex items-center gap-2">
             {isOos ? (
@@ -1773,7 +1812,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
       {isExpanded && row.details && (
         <div className="bg-slate-50/60 border-t border-slate-100 px-6 py-5 space-y-4">
 
-          {/* ── NSC Level banner + stat cards ── */}
+          {/* â"€â"€ NSC Level banner + stat cards â"€â"€ */}
           {(() => {
             const NSC_LEVEL_MAP: Record<number, string> = {
               1: 'North American Standard Inspection',
@@ -1786,26 +1825,26 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
               8: 'Electronic Inspection',
             };
             const NSC_LEVEL_DETAIL_MAP: Record<number, string> = {
-              1: 'Full inspection — driver, vehicle, HOS, permits, insurance, cargo, TDG, and authorities.',
-              2: 'Walk-around inspection — driver and vehicle review including licence, HOS, seat belt, trip inspection and visible mechanical condition.',
-              3: 'Driver/Credentials inspection — driver licence, hours of service, seat belt use, credentials and administrative compliance.',
-              4: 'Special inspection — focused on a specific item such as cargo securement, placards, brakes, or another identified issue.',
-              5: 'Vehicle-only inspection — no driver present, focused on mechanical condition and safety systems.',
-              6: 'Enhanced NAS inspection — comprehensive inspection with additional focus on high-risk categories.',
-              7: 'Jurisdictional mandated inspection — required by provincial/state authority for specific vehicle or carrier types.',
-              8: 'Electronic inspection — roadside review of ELD, credentials, and electronic records without physical vehicle check.',
+              1: 'Full inspection - driver, vehicle, HOS, permits, insurance, cargo, TDG, and authorities.',
+              2: 'Walk-around inspection - driver and vehicle review including licence, HOS, seat belt, trip inspection and visible mechanical condition.',
+              3: 'Driver/Credentials inspection - driver licence, hours of service, seat belt use, credentials and administrative compliance.',
+              4: 'Special inspection - focused on a specific item such as cargo securement, placards, brakes, or another identified issue.',
+              5: 'Vehicle-only inspection - no driver present, focused on mechanical condition and safety systems.',
+              6: 'Enhanced NAS inspection - comprehensive inspection with additional focus on high-risk categories.',
+              7: 'Jurisdictional mandated inspection - required by provincial/state authority for specific vehicle or carrier types.',
+              8: 'Electronic inspection - roadside review of ELD, credentials, and electronic records without physical vehicle check.',
             };
             const levelDesc = NSC_LEVEL_MAP[row.level] ?? `Level ${row.level} Inspection`;
             const levelDetail = NSC_LEVEL_DETAIL_MAP[row.level];
             const jur = row.jur?.toUpperCase() ?? '';
             const regulation =
-              jur === 'AB' ? 'Commercial Vehicle Inspection Regulation — AR 211/06, NSC Standard 11' :
-              jur === 'ON' ? 'Highway Traffic Act — O.Reg.199/07, O.Reg.555/06, NSC Standard 13' :
-              jur === 'BC' ? 'Motor Vehicle Act — Commercial Transport Regulation, NSC Standard 11' :
-              jur === 'SK' ? 'Traffic Safety Act — VSR 116/2014, NSC Standard 11' :
-              jur === 'MB' ? 'Highway Traffic Act — MR 189/2010, NSC Standard 11' :
-              jur === 'QC' ? 'Highway Safety Code — O.C. 1395-96, NSC Standard 11' :
-              'CTACMV Regulations — NSC Standard 11';
+              jur === 'AB' ? 'Commercial Vehicle Inspection Regulation - AR 211/06, NSC Standard 11' :
+              jur === 'ON' ? 'Highway Traffic Act - O.Reg.199/07, O.Reg.555/06, NSC Standard 13' :
+              jur === 'BC' ? 'Motor Vehicle Act - Commercial Transport Regulation, NSC Standard 11' :
+              jur === 'SK' ? 'Traffic Safety Act - VSR 116/2014, NSC Standard 11' :
+              jur === 'MB' ? 'Highway Traffic Act - MR 189/2010, NSC Standard 11' :
+              jur === 'QC' ? 'Highway Safety Code - O.C. 1395-96, NSC Standard 11' :
+              'CTACMV Regulations - NSC Standard 11';
             const oosCount = row.details!.oos.length;
             const reqCount = row.details!.req.length;
             const totalDefects = oosCount + reqCount;
@@ -1822,7 +1861,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                     </span>
                     <span className="text-xs text-slate-700">
                       <span className="font-semibold">{levelDesc}</span>
-                      {' — '}
+                      {' - '}
                       <span className="text-slate-500">{regulation}</span>
                     </span>
                   </div>
@@ -1833,15 +1872,15 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Time</div>
-                    <div className="text-sm font-bold text-slate-900">{row.details!.time || '—'}</div>
+                    <div className="text-sm font-bold text-slate-900">{row.details!.time || '-'}</div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Issuing Agency</div>
-                    <div className="text-sm font-bold text-slate-900 leading-snug">{row.details!.agency || '—'}</div>
+                    <div className="text-sm font-bold text-slate-900 leading-snug">{row.details!.agency || '-'}</div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Date Entered</div>
-                    <div className="text-sm font-bold text-slate-900">{row.details!.dateEntered || '—'}</div>
+                    <div className="text-sm font-bold text-slate-900">{row.details!.dateEntered || '-'}</div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Result</div>
@@ -1867,7 +1906,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
             ));
           })()}
 
-          {/* System links — driver profile + asset cards */}
+          {/* System links - driver profile + asset cards */}
           {(() => {
             const driver = MOCK_DRIVERS.find(d => d.id === row.driverLink.driverId);
             const asset  = row.primaryVehicle.assetId ? INITIAL_ASSETS.find(a => a.id === row.primaryVehicle.assetId) : null;
@@ -1920,7 +1959,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                       </div>
                       <div>
                         <span className="text-slate-400 uppercase tracking-wider font-bold">Class</span>
-                        <div className="text-slate-700 font-medium">{primaryLic?.class ?? '—'}</div>
+                        <div className="text-slate-700 font-medium">{primaryLic?.class ?? '-'}</div>
                       </div>
                     </div>
                   )}
@@ -1931,7 +1970,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                   )}
                 </div>
 
-                {/* Asset card — power unit */}
+                {/* Asset card - power unit */}
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 space-y-1.5">
                   <div className="flex items-center gap-2 mb-1">
                     <Truck size={14} className="text-indigo-600 flex-shrink-0" />
@@ -2084,7 +2123,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
           {violations.length > 0 && (
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                NSC Violations — {row.doc}
+                NSC Violations - {row.doc}
               </div>
               <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
                 <table className="w-full text-xs">
@@ -2116,7 +2155,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                           <td className="px-3 py-2 text-center font-black">
                             {pts !== null ? (
                               <span className={pts >= 3 ? 'text-red-600' : pts === 2 ? 'text-amber-600' : 'text-slate-600'}>{pts}</span>
-                            ) : <span className="text-slate-300">—</span>}
+                            ) : <span className="text-slate-300">-</span>}
                           </td>
                           <td className="px-3 py-2">
                             {sys ? (
@@ -2124,7 +2163,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                                 <div className="font-semibold text-slate-800">{sys.categoryLabel}</div>
                                 <div className="text-[10px] text-slate-400">{sys.violationGroup}</div>
                               </div>
-                            ) : <span className="text-slate-400">—</span>}
+                            ) : <span className="text-slate-400">-</span>}
                           </td>
                           <td className="px-3 py-2">
                             {sys ? (
@@ -2146,7 +2185,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
         </div>
       )}
 
-      {/* ── NSC Violation detail modal ── */}
+      {/* â"€â"€ NSC Violation detail modal â"€â"€ */}
       {selectedViolation && (() => {
         const sys = NSC_CODE_TO_SYSTEM[selectedViolation.code];
         const riskPct   = sys?.riskLevel === 'High' ? 85 : sys?.riskLevel === 'Medium' ? 45 : 15;
@@ -2194,7 +2233,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                     <div className="font-mono text-sm font-bold text-slate-800">{sys.categoryLabel}</div>
                     <div className="text-[13px] text-slate-500 mt-0.5">{sys.violationGroup}</div>
                     <div className="mt-2 space-y-1">
-                      <div className={`text-xs font-bold ${riskText}`}>{sys.riskLevel.toUpperCase()} RISK — {riskPct}%</div>
+                      <div className={`text-xs font-bold ${riskText}`}>{sys.riskLevel.toUpperCase()} RISK - {riskPct}%</div>
                       <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
                         <div className={`h-full rounded-full ${riskColor}`} style={{ width: `${riskPct}%` }} />
                       </div>
@@ -2223,7 +2262,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                         <div className="font-mono text-slate-800 font-medium">{rawRecord.vehicle}</div>
                       </div>
                     )}
-                    {rawRecord.commodity && rawRecord.commodity !== '—' && rawRecord.commodity !== '' && (
+                    {rawRecord.commodity && rawRecord.commodity !== '-' && rawRecord.commodity !== '' && (
                       <div>
                         <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Commodity</div>
                         <div className="text-slate-800">{rawRecord.commodity}</div>
@@ -2244,7 +2283,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                     <div className="text-[11px] text-slate-500 uppercase tracking-wider">Points</div>
                     <div className={`mt-1 font-bold text-lg ${
                       points >= 3 ? 'text-red-600' : points === 2 ? 'text-amber-700' : 'text-slate-700'
-                    }`}>{sys ? points : '—'}</div>
+                    }`}>{sys ? points : '-'}</div>
                   </div>
                   <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
                     <div className="text-[11px] text-slate-500 uppercase tracking-wider">OOS</div>
@@ -2254,7 +2293,7 @@ const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
                   </div>
                   <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
                     <div className="text-[11px] text-slate-500 uppercase tracking-wider">Risk Level</div>
-                    <div className={`mt-1 font-bold ${riskText}`}>{sys?.riskLevel ?? '—'}</div>
+                    <div className={`mt-1 font-bold ${riskText}`}>{sys?.riskLevel ?? '-'}</div>
                   </div>
                 </div>
               </div>
@@ -2277,9 +2316,11 @@ type PeriodLabel =
   | 'Monthly'
   | 'Quarterly'
   | 'Semi-Annual'
+  | 'Annual'
   | 'All';
 const getPeriodLabel = (period: PeriodLabel) => (
   period === 'All' ? 'All Pulls'
+  : period === 'Annual' ? 'Annual'
   : period === 'Semi-Annual' ? 'Semi-Annual'
   : period === 'Quarterly' ? 'Quarterly'
   : period === 'Monthly' ? 'Monthly'
@@ -2292,15 +2333,15 @@ const getPeriodLabel = (period: PeriodLabel) => (
 
 // --- MAIN APP ---
 export function InspectionsPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc'>('overview');
+  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc' | 'carrier-profile-pe' | 'carrier-profile-ns'>('overview');
   const [showReport, setShowReport] = useState(false);
-  const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'All'>('All');
+  const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All'>('All');
   const smsBasicCategory = 'All';
   const [smsTopViolSort, setSmsTopViolSort] = useState<'POINTS' | 'COUNT'>('POINTS');
   const [smsMetricsView, setSmsMetricsView] = useState<'INSPECTIONS' | 'VIOLATIONS' | 'POINTS'>('POINTS');
   const [metricsSort, setMetricsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'total', dir: 'desc' });
   // CVOR tab chart states
-  const [cvorPeriod, setCvorPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'All'>('All');
+  const [cvorPeriod, setCvorPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All'>('All');
   const [cvorThreshOpen, setCvorThreshOpen] = useState(false);
   const [cvorHoveredPull, setCvorHoveredPull] = useState<{ chart: string; idx: number } | null>(null);
   const [cvorSelectedPull, setCvorSelectedPull] = useState<string | null>(null);
@@ -2356,7 +2397,7 @@ export function InspectionsPage() {
   const [cvorAnalysisChartView, setCvorAnalysisChartView] = useState<Record<string, 'MEASURE' | 'INSPECTIONS'>>({});
   const [expandedCvorLevel, setExpandedCvorLevel] = useState<string | null>(null);
   // Independent period filter for CVOR Level Comparison
-  const [cvorLevelPeriod, setCvorLevelPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'All'>('All');
+  const [cvorLevelPeriod, setCvorLevelPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All'>('All');
   const [smsListPeriod, setSmsListPeriod] = useState<'7d' | '30d' | '90d' | '6mo' | '12mo' | 'custom'>('12mo');
   const [smsCustomFrom, setSmsCustomFrom] = useState('');
   const [smsCustomTo, setSmsCustomTo] = useState('');
@@ -2678,11 +2719,13 @@ export function InspectionsPage() {
         <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
           <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 gap-1">
             {[
-              { id: 'overview' as const, label: 'Full Overview' },
-              { id: 'sms' as const, label: 'SMS (FMCSA)' },
-              { id: 'cvor' as const, label: 'CVOR (Canadian)' },
-              { id: 'carrier-profile-ab' as const, label: 'Carrier Profile (NSC Alberta)' },
-              { id: 'carrier-profile-bc' as const, label: 'Carrier Profile (NSC BC)' },
+              { id: 'overview' as const, label: 'Overview' },
+              { id: 'sms' as const, label: 'FMCSA' },
+              { id: 'cvor' as const, label: 'CVOR' },
+              { id: 'carrier-profile-ab' as const, label: 'Alberta NSC' },
+              { id: 'carrier-profile-bc' as const, label: 'BC NSC' },
+              { id: 'carrier-profile-pe' as const, label: 'PEI NSC' },
+              { id: 'carrier-profile-ns' as const, label: 'Nova Scotia NSC' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -2698,7 +2741,7 @@ export function InspectionsPage() {
             ))}
           </div>
 
-          {/* Report button — only for reportable tabs */}
+          {/* Report button - only for reportable tabs */}
           {activeMainTab !== 'overview' && (
             <button
               onClick={() => setShowReport(p => !p)}
@@ -2891,7 +2934,7 @@ export function InspectionsPage() {
                                 <td className="px-3 py-2 text-slate-700">Passed</td>
                                 <td className="px-3 py-2 text-center font-bold text-emerald-600">{nscPassed}</td>
                                 <td className="px-3 py-2 text-center font-bold text-emerald-600">{passRate}%</td>
-                                <td className="px-3 py-2 text-center text-slate-500">—</td>
+                                <td className="px-3 py-2 text-center text-slate-500">-</td>
                               </tr>
                             </>
                           );
@@ -3039,7 +3082,7 @@ export function InspectionsPage() {
                           <div>Measure: <span className="font-mono font-bold text-slate-800">{status.measure}</span></div>
                           <div>Percentile: <span className="font-mono font-bold text-slate-800">{status.percentile}</span></div>
                           <div className="mt-1 text-slate-400">{status.details}</div>
-                          <div className="mt-2 text-blue-500 text-xs">Switch to SMS tab for detailed charts →</div>
+                          <div className="mt-2 text-blue-500 text-xs">Switch to SMS tab for detailed charts â†'</div>
                         </div>
                       </div>
                     )}
@@ -3203,7 +3246,7 @@ export function InspectionsPage() {
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">NSC / CVSA Analysis</h3>
                 <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">NSC</span>
-                <InfoTooltip text="National Safety Code (NSC) CVSA inspection analysis — covers Canadian cross-border inspections reported under the NSC framework." />
+                <InfoTooltip text="National Safety Code (NSC) CVSA inspection analysis - covers Canadian cross-border inspections reported under the NSC framework." />
               </div>
 
               {/* CVSA Inspection Results */}
@@ -3493,7 +3536,7 @@ export function InspectionsPage() {
             <div className="flex items-center gap-2 text-sm text-blue-700">
               <Info size={14} />
               <span className="font-semibold">Last Updated:</span>
-              <span className="font-mono font-bold">December 15, 2025 — 3:42 PM EST</span>
+              <span className="font-mono font-bold">December 15, 2025 - 3:42 PM EST</span>
             </div>
           </div>
 
@@ -3527,14 +3570,14 @@ export function InspectionsPage() {
 
             // SMS Level data
             const smsLevels = [
-              { level: 'Level 1', name: 'Level I – North American Standard', desc: 'Full inspection of the driver and vehicle – includes driver credentials (CDL, medical card, HOS), vehicle mechanical fitness, cargo securement, hazmat compliance (if applicable), and all safety systems.' },
-              { level: 'Level 2', name: 'Level II – Walk-Around', desc: 'Walk-around driver/vehicle inspection – covers driver credentials, HOS, seat belt use, DVIR, and an exterior examination of the vehicle without going underneath.' },
-              { level: 'Level 3', name: 'Level III – Driver/Credential', desc: 'Driver-only inspection – verifies CDL, medical certificate, HOS records, seat belt compliance, DVIR, and carrier credentials. No vehicle mechanical inspection.' },
-              { level: 'Level 4', name: 'Level IV – Special Inspections', desc: 'Special one-time inspection or examination – typically a single item of interest (e.g., cargo, hazmat placards, specific regulatory concern).' },
-              { level: 'Level 5', name: 'Level V – Vehicle Only', desc: 'Vehicle-only inspection – conducted without the driver present. Covers all mechanical components and safety systems.' },
-              { level: 'Level 6', name: 'Level VI – Transuranic Waste / Radioactive', desc: 'Enhanced NAS inspection for transuranic waste and highway-route-controlled radioactive material shipments – includes Level I items plus radiological requirements.' },
-              { level: 'Level 7', name: 'Level VII – Jurisdictional Mandated', desc: 'Jurisdiction-mandated commercial vehicle inspection – covers specific items required by the state or province, including credential verification.' },
-              { level: 'Level 8', name: 'Level VIII – Electronic Inspection', desc: 'Electronic inspection using wireless roadside technology – verifies driver and vehicle credentials, safety data, and compliance electronically (e.g., ELD, transponder, USDOT data).' },
+              { level: 'Level 1', name: 'Level I - North American Standard', desc: 'Full inspection of the driver and vehicle - includes driver credentials (CDL, medical card, HOS), vehicle mechanical fitness, cargo securement, hazmat compliance (if applicable), and all safety systems.' },
+              { level: 'Level 2', name: 'Level II - Walk-Around', desc: 'Walk-around driver/vehicle inspection - covers driver credentials, HOS, seat belt use, DVIR, and an exterior examination of the vehicle without going underneath.' },
+              { level: 'Level 3', name: 'Level III - Driver/Credential', desc: 'Driver-only inspection - verifies CDL, medical certificate, HOS records, seat belt compliance, DVIR, and carrier credentials. No vehicle mechanical inspection.' },
+              { level: 'Level 4', name: 'Level IV - Special Inspections', desc: 'Special one-time inspection or examination - typically a single item of interest (e.g., cargo, hazmat placards, specific regulatory concern).' },
+              { level: 'Level 5', name: 'Level V - Vehicle Only', desc: 'Vehicle-only inspection - conducted without the driver present. Covers all mechanical components and safety systems.' },
+              { level: 'Level 6', name: 'Level VI - Transuranic Waste / Radioactive', desc: 'Enhanced NAS inspection for transuranic waste and highway-route-controlled radioactive material shipments - includes Level I items plus radiological requirements.' },
+              { level: 'Level 7', name: 'Level VII - Jurisdictional Mandated', desc: 'Jurisdiction-mandated commercial vehicle inspection - covers specific items required by the state or province, including credential verification.' },
+              { level: 'Level 8', name: 'Level VIII - Electronic Inspection', desc: 'Electronic inspection using wireless roadside technology - verifies driver and vehicle credentials, safety data, and compliance electronically (e.g., ELD, transponder, USDOT data).' },
             ];
 
             const levelStats = smsLevels.map(l => {
@@ -3548,7 +3591,7 @@ export function InspectionsPage() {
             const totalInsp = levelStats.reduce((s, l) => s + l.count, 0);
             const totalOos = levelStats.reduce((s, l) => s + l.oosCount, 0);
 
-            // ── Time-trend computation for BASIC Scores ──────────────────────
+            // â"€â"€ Time-trend computation for BASIC Scores â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             const trendRef = new Date('2026-01-30');
             const computeWinMeasure = (category: string, fromM: number, toM: number) => {
               const wEnd = new Date(now); wEnd.setMonth(wEnd.getMonth() - fromM);
@@ -3575,7 +3618,7 @@ export function InspectionsPage() {
               return { ...row, sparks: [s0, s1, s2, s3], prev, curr, delta: curr - prev };
             });
 
-            // ── OOS / Top Violations ─────────────────────────────────────────
+            // â"€â"€ OOS / Top Violations â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             const totalViolations2 = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => smsBasicCategory === 'All' || v.category === smsBasicCategory).length, 0);
             const oosViolations2 = relevantInspections.reduce((sum, insp) => sum + insp.violations.filter(v => v.oos && (smsBasicCategory === 'All' || v.category === smsBasicCategory)).length, 0);
             const nonOosViolations2 = totalViolations2 - oosViolations2;
@@ -3588,7 +3631,7 @@ export function InspectionsPage() {
             const violationMap2: Record<string, { points: number; count: number }> = {};
             relevantInspections.forEach(insp => {
               insp.violations.filter((v: any) => smsBasicCategory === 'All' || v.category === smsBasicCategory).forEach((v: any) => {
-                const key = v.description.length > 36 ? v.description.substring(0, 36) + '…' : v.description;
+                const key = v.description.length > 36 ? v.description.substring(0, 36) + '...' : v.description;
                 if (!violationMap2[key]) violationMap2[key] = { points: 0, count: 0 };
                 violationMap2[key].points += v.points;
                 violationMap2[key].count += 1;
@@ -3599,7 +3642,7 @@ export function InspectionsPage() {
               .slice(0, 6);
             const maxTopVal2 = Math.max(1, ...topViol2.map(([, d]) => smsTopViolSort === 'POINTS' ? d.points : d.count));
 
-            // ── Monthly bar chart data ────────────────────────────────────────
+            // â"€â"€ Monthly bar chart data â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             const monthMap2: Record<string, { withViol: number; withoutViol: number }> = {};
             relevantInspections.forEach(insp => {
               const d = new Date(insp.date);
@@ -3619,7 +3662,7 @@ export function InspectionsPage() {
             return (
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
 
-              {/* ── Dark Header ── */}
+              {/* â"€â"€ Dark Header â"€â"€ */}
               <div className="bg-slate-800 px-5 py-3 flex items-center justify-between gap-3" id="sms-combined-period">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center flex-shrink-0">
@@ -3627,7 +3670,7 @@ export function InspectionsPage() {
                   </div>
                   <div className="[&>p:last-child]:hidden">
                     <div className="text-sm font-bold text-white">FMCSA SMS Performance</div>
-                    <div className="text-xs text-slate-400">BASIC Scores · Level Analysis · OOS Summary</div>
+                    <div className="text-xs text-slate-400">BASIC Scores  ·  Level Analysis  ·  OOS Summary</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -3655,12 +3698,12 @@ export function InspectionsPage() {
                 </div>
               </div>
 
-              {/* ── BASIC Scores Table with time sparklines ── */}
+              {/* â"€â"€ BASIC Scores Table with time sparklines â"€â"€ */}
               <div className="border-t border-slate-200">
                 <div className="px-5 py-3 flex items-center justify-between gap-3 bg-white border-b border-slate-100 [&>span:last-of-type]:hidden">
                   <span className="text-base font-bold text-slate-700">FMCSA SMS BASIC Scores</span>
-                  <div className="text-xs text-right text-slate-400 font-medium">Time-weighted · 24-month lookback</div>
-                  <span className="text-[11px] text-slate-400 font-medium">Time-weighted · 24-month lookback · Sparkline = 18-24M → 12-18M → 6-12M → 0-6M</span>
+                  <div className="text-xs text-right text-slate-400 font-medium">Time-weighted  ·  24-month lookback</div>
+                  <span className="text-[11px] text-slate-400 font-medium">Time-weighted  ·  24-month lookback  ·  Sparkline = 18-24M â†' 12-18M â†' 6-12M â†' 0-6M</span>
                 </div>
                 <table className="w-full">
                   <thead>
@@ -3676,18 +3719,18 @@ export function InspectionsPage() {
                     {basicSparkData.map((row, i) => {
                       const basicEntry = computedBasicOverview.find(b => b.category === row.category);
                       const percentile = basicEntry?.percentile ?? 'N/A';
-                      const measure = basicEntry?.measure ?? '—';
+                      const measure = basicEntry?.measure ?? '-';
                       const hasSufficientData = percentile !== 'N/A';
                       const pctNum = hasSufficientData ? parseInt(percentile) : 0;
                       const isAlert = hasSufficientData && pctNum >= row.threshold;
                       const isWarn = hasSufficientData && pctNum >= row.threshold * 0.75 && !isAlert;
                       const barColor = isAlert ? 'bg-red-500' : isWarn ? 'bg-amber-500' : 'bg-emerald-500';
-                      const deltaSign = row.delta > 0.05 ? '▲' : row.delta < -0.05 ? '▼' : '–';
+                      const deltaSign = row.delta > 0.05 ? 'â-²' : row.delta < -0.05 ? 'â-¼' : '-';
                       const deltaCls = row.delta > 0.05 ? 'text-red-500' : row.delta < -0.05 ? 'text-emerald-600' : 'text-slate-400';
                       const isExpanded = expandedBasic === row.category;
                       const chartTab = basicChartView[row.category] ?? 'MEASURE';
 
-                      // Bucket data by period — max 8 points (monthly ≤6M, bi-monthly 12M, quarterly 24M)
+                      // Bucket data by period - max 8 points (monthly <=6M, bi-monthly 12M, quarterly 24M)
                       const mnNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                       const bucketStep = periodMonths <= 6 ? 1 : periodMonths <= 12 ? 2 : 3;
                       const numBuckets = Math.round(periodMonths / bucketStep);
@@ -3705,7 +3748,7 @@ export function InspectionsPage() {
                         const mMeasure = mInsp.length > 0 ? Math.round((ws / mInsp.length) * 100) / 100 : 0;
                         const lbl = bucketStep === 1
                           ? `${mnNames[midDate.getMonth()]} ${String(midDate.getDate()).padStart(2,'0')}\n${midDate.getFullYear()}`
-                          : `${mnNames[bStart.getMonth()]}–${mnNames[bEnd.getMonth()]}\n${bEnd.getFullYear()}`;
+                          : `${mnNames[bStart.getMonth()]}-${mnNames[bEnd.getMonth()]}\n${bEnd.getFullYear()}`;
                         bubbleMonths.push({ label: lbl, date: midDate, measure: mMeasure, inspCount: mInsp.length, violCount: mViol.length });
                       }
                       const maxBubble = Math.max(1, ...bubbleMonths.map(b => b.measure));
@@ -3748,7 +3791,7 @@ export function InspectionsPage() {
                           </td>
                         </tr>
 
-                        {/* ── Expanded dropdown chart ── */}
+                        {/* â"€â"€ Expanded dropdown chart â"€â"€ */}
                         {isExpanded && (
                           <tr>
                             <td colSpan={5} className="p-0 border-b border-slate-200">
@@ -3782,7 +3825,7 @@ export function InspectionsPage() {
                                   </div>
                                   {isAlert && (
                                     <div className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
-                                      <span className="font-bold">Investigation Results</span><br/>Alert — carrier exceeds intervention threshold
+                                      <span className="font-bold">Investigation Results</span><br/>Alert - carrier exceeds intervention threshold
                                     </div>
                                   )}
                                   <div className="mt-auto">
@@ -3867,7 +3910,7 @@ export function InspectionsPage() {
                                   ) : (
                                     <>
                                       <p className="text-xs font-bold text-slate-700 text-center mb-0.5">INSPECTION RESULTS</p>
-                                      <p className="text-[11px] text-slate-400 text-center mb-3">Monthly inspection count for this BASIC category · Last {getPeriodLabel(smsPeriod)}</p>
+                                      <p className="text-[11px] text-slate-400 text-center mb-3">Monthly inspection count for this BASIC category  ·  Last {getPeriodLabel(smsPeriod)}</p>
                                       <div className="overflow-x-auto w-full">
                                         <svg width="100%" viewBox={`0 0 ${chartW + xPad + 10} ${chartH + 50}`} style={{ minWidth: 420, display: 'block' }}>
                                           {[inspBarMax, Math.round(inspBarMax / 2), 0].map((tick, ti) => {
@@ -3930,16 +3973,16 @@ export function InspectionsPage() {
                   </tbody>
                 </table>
                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 [&>p]:hidden">
-                  <div className="text-xs text-slate-400">Carrier: General · UD/CI/HOS ≥65% alert · VM/CS/HM/DF ≥80% alert · Percentile 0 = best, 100 = worst</div>
-                  <p className="text-[10px] text-slate-400">Carrier: General · UD/CI/HOS ≥65% alert · VM/CS/HM/DF ≥80% alert · Percentile 0 = best, 100 = worst · ▲ worse / ▼ improving vs prev period</p>
+                  <div className="text-xs text-slate-400">Carrier: General  ·  UD/CI/HOS {'>='}65% alert  ·  VM/CS/HM/DF {'>='}80% alert  ·  Percentile 0 = best, 100 = worst</div>
+                  <p className="text-[10px] text-slate-400">Carrier: General  ·  UD/CI/HOS {'>='}65% alert  ·  VM/CS/HM/DF {'>='}80% alert  ·  Percentile 0 = best, 100 = worst  ·  up = worse / down = improving vs prev period</p>
                 </div>
               </div>
 
-              {/* ── Bento Grid: Bar Chart | OOS Donut | Top Violations | Level Comparison ── */}
+              {/* â"€â"€ Bento Grid: Bar Chart | OOS Donut | Top Violations | Level Comparison â"€â"€ */}
               <div className="border-t border-slate-200 bg-slate-50/40 p-4">
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-                {/* Inspections Bar Chart — col-span-2 */}
+                {/* Inspections Bar Chart - col-span-2 */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col min-w-0">
                   <div className="flex items-center justify-between mb-4 gap-3">
                     <div>
@@ -4056,13 +4099,13 @@ export function InspectionsPage() {
                   </div>
                 </div>
 
-              {/* ── SMS Level Comparison — Bento 2-col card grid ── */}
+              {/* â"€â"€ SMS Level Comparison - Bento 2-col card grid â"€â"€ */}
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col min-w-0">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-sm font-bold text-slate-700">SMS Inspection Levels</p>
-                    <div className="text-xs text-slate-400">FMCSA Levels I-VIII · Last {getPeriodLabel(smsPeriod)} · Total: <span className="font-bold text-slate-600">{totalInsp}</span> · OOS: <span className="font-bold text-red-600">{totalOos}</span></div>
-                    <p className="text-[10px] text-slate-400">FMCSA Levels I–VIII · Last {getPeriodLabel(smsPeriod)} · Total: <span className="font-bold text-slate-600">{totalInsp}</span> · OOS: <span className="font-bold text-red-600">{totalOos}</span></p>
+                    <div className="text-xs text-slate-400">FMCSA Levels I-VIII  ·  Last {getPeriodLabel(smsPeriod)}  ·  Total: <span className="font-bold text-slate-600">{totalInsp}</span>  ·  OOS: <span className="font-bold text-red-600">{totalOos}</span></div>
+                    <p className="text-[10px] text-slate-400">FMCSA Levels I-VIII  ·  Last {getPeriodLabel(smsPeriod)}  ·  Total: <span className="font-bold text-slate-600">{totalInsp}</span>  ·  OOS: <span className="font-bold text-red-600">{totalOos}</span></p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 flex-1 content-start">
@@ -4178,7 +4221,7 @@ export function InspectionsPage() {
             const handleColSort = (col: string) => {
               setMetricsSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
             };
-            const sortIcon = (col: string) => metricsSort.col === col ? (metricsSort.dir === 'desc' ? ' ↓' : ' ↑') : '';
+            const sortIcon = (col: string) => metricsSort.col === col ? (metricsSort.dir === 'desc' ? ' â†"' : ' ->') : '';
 
             return (
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
@@ -4445,7 +4488,7 @@ export function InspectionsPage() {
                             <div className="w-56 flex-shrink-0 border-r border-slate-200 pr-4">
                               <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 mb-3 w-full">
                                 <div className="bg-blue-600 text-white px-3 py-2 rounded-md w-full text-center">
-                                  <div className="text-xs font-bold uppercase tracking-wider">BASIC: {status.category.length > 18 ? status.category.substring(0, 18) + '…' : status.category}</div>
+                                  <div className="text-xs font-bold uppercase tracking-wider">BASIC: {status.category.length > 18 ? status.category.substring(0, 18) + '...' : status.category}</div>
                                 </div>
                               </div>
                               <h4 className="text-sm font-bold text-slate-800 mb-2">On-Road Performance</h4>
@@ -4455,16 +4498,16 @@ export function InspectionsPage() {
                                 <div className="hidden group-hover:block absolute z-40 left-0 top-full mt-1 w-72 p-3 bg-slate-900 text-white text-xs rounded-lg shadow-xl pointer-events-none">
                                   <div className="font-bold text-blue-300 mb-1">FMCSA SMS Measure Calculation</div>
                                   <div className="leading-relaxed text-slate-200 mb-2">
-                                    <span className="font-bold">Measure = Σ(Severity × Time Weight) / Number of Inspections</span>
+                                    <span className="font-bold">Measure = Î£(Severity Ã- Time Weight) / Number of Inspections</span>
                                   </div>
                                   <div className="text-slate-300 mb-1.5 leading-relaxed">
-                                    <span className="font-bold text-blue-300">Time Weights:</span> 3× (0-6 mo), 2× (6-12 mo), 1× (12-24 mo)
+                                    <span className="font-bold text-blue-300">Time Weights:</span> 3Ã- (0-6 mo), 2Ã- (6-12 mo), 1Ã- (12-24 mo)
                                   </div>
                                   <div className="border-t border-slate-700 pt-1.5 mt-1.5 space-y-0.5">
                                     <div className="text-slate-400">This carrier breakdown:</div>
-                                    {tw3Count > 0 && <div className="text-green-400">0-6 mo: {tw3Count} violations × TW 3 = <span className="font-bold">{tw3Sev}</span></div>}
-                                    {tw2Count > 0 && <div className="text-yellow-300">6-12 mo: {tw2Count} violations × TW 2 = <span className="font-bold">{tw2Sev}</span></div>}
-                                    {tw1Count > 0 && <div className="text-orange-300">12-24 mo: {tw1Count} violations × TW 1 = <span className="font-bold">{tw1Sev}</span></div>}
+                                    {tw3Count > 0 && <div className="text-green-400">0-6 mo: {tw3Count} violations Ã- TW 3 = <span className="font-bold">{tw3Sev}</span></div>}
+                                    {tw2Count > 0 && <div className="text-yellow-300">6-12 mo: {tw2Count} violations Ã- TW 2 = <span className="font-bold">{tw2Sev}</span></div>}
+                                    {tw1Count > 0 && <div className="text-orange-300">12-24 mo: {tw1Count} violations Ã- TW 1 = <span className="font-bold">{tw1Sev}</span></div>}
                                     <div className="border-t border-slate-700 pt-1 mt-1 font-bold text-white">
                                       Total: {totalWeightedSev} / {numInsp} inspections = <span className="text-blue-300">{currentMeasure}</span>
                                     </div>
@@ -4480,7 +4523,7 @@ export function InspectionsPage() {
                               <h4 className="text-sm font-bold text-slate-800 mb-1">Investigation Results</h4>
                               <div className="text-xs text-slate-500">
                                 {numericPercentile >= csaThresholds.critical
-                                  ? 'Alert — carrier exceeds intervention threshold'
+                                  ? 'Alert - carrier exceeds intervention threshold'
                                   : 'No Acute/Critical Violations Discovered'}
                               </div>
                             </div>
@@ -4544,7 +4587,7 @@ export function InspectionsPage() {
                                                 const bottomPct = ((h.measure - minMeasure) / range) * 100;
                                                 const prev = i > 0 ? history[i - 1].measure : h.measure;
                                                 const delta = h.measure - prev;
-                                                const deltaStr = delta > 0 ? `+${delta.toFixed(2)}` : delta < 0 ? delta.toFixed(2) : '—';
+                                                const deltaStr = delta > 0 ? `+${delta.toFixed(2)}` : delta < 0 ? delta.toFixed(2) : '-';
                                                 return (
                                                   <div key={i} className="absolute group/pt" style={{ left: `${leftPct}%`, bottom: `${bottomPct}%`, transform: 'translate(-50%, 50%)' }}>
                                                     <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
@@ -4678,7 +4721,7 @@ export function InspectionsPage() {
             );
           })()}
 
-          {/* ── SMS List Time Period Filter ─────────────────────────── */}
+          {/* â"€â"€ SMS List Time Period Filter â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
           {(() => {
             const now2 = new Date('2025-12-31');
             // Compute cutoff for list
@@ -4773,7 +4816,7 @@ export function InspectionsPage() {
                       <div className="flex items-center gap-2">
                         <input type="date" value={smsCustomFrom} onChange={e => setSmsCustomFrom(e.target.value)}
                           className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:ring-2 focus:ring-blue-300 focus:outline-none"/>
-                        <span className="text-slate-400 text-xs">–</span>
+                        <span className="text-slate-400 text-xs">-</span>
                         <input type="date" value={smsCustomTo} onChange={e => setSmsCustomTo(e.target.value)}
                           className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:ring-2 focus:ring-blue-300 focus:outline-none"/>
                       </div>
@@ -4784,12 +4827,12 @@ export function InspectionsPage() {
                 {/* KPI Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   {[
-                    { key: 'ALL', label: 'Total Inspections', value: listStats.total, sub: 'all records', color: 'blue', icon: '📋' },
-                    { key: 'CLEAN', label: 'Clean', value: listStats.clean, sub: `${cleanPct}% pass rate`, color: 'emerald', icon: '✓' },
-                    { key: 'OOS', label: 'Out of Service', value: listStats.oos, sub: `${oosPct}% OOS rate`, color: 'red', icon: '⛔' },
-                    { key: 'VEHICLE', label: 'Veh. Issues', value: listStats.vehicle, sub: 'vehicle violations', color: 'orange', icon: '🚛' },
-                    { key: 'DRIVER', label: 'HOS / Driver', value: listStats.driver, sub: 'driver violations', color: 'purple', icon: '👤' },
-                    { key: 'SEVERE', label: 'Severe (7+)', value: listStats.severe, sub: 'high severity', color: 'amber', icon: '⚠' },
+                    { key: 'ALL', label: 'Total Inspections', value: listStats.total, sub: 'all records', color: 'blue', icon: 'ðŸ"‹' },
+                    { key: 'CLEAN', label: 'Clean', value: listStats.clean, sub: `${cleanPct}% pass rate`, color: 'emerald', icon: 'âœ"' },
+                    { key: 'OOS', label: 'Out of Service', value: listStats.oos, sub: `${oosPct}% OOS rate`, color: 'red', icon: 'â›"' },
+                    { key: 'VEHICLE', label: 'Veh. Issues', value: listStats.vehicle, sub: 'vehicle violations', color: 'orange', icon: 'ðŸš›' },
+                    { key: 'DRIVER', label: 'HOS / Driver', value: listStats.driver, sub: 'driver violations', color: 'purple', icon: 'ðŸ‘¤' },
+                    { key: 'SEVERE', label: 'Severe (7+)', value: listStats.severe, sub: 'high severity', color: 'amber', icon: 'âš ' },
                   ].map(kpi => {
                     const isActive = activeFilter === kpi.key;
                     const colorMap: Record<string, string> = {
@@ -4834,7 +4877,7 @@ export function InspectionsPage() {
                       />
                     </div>
                     <span className="text-xs text-slate-400 ml-auto">
-                      Showing <span className="font-bold text-slate-700">{Math.min((page - 1) * rowsPerPage + 1, listFiltered.length)}–{Math.min(page * rowsPerPage, listFiltered.length)}</span> of <span className="font-bold text-slate-700">{listFiltered.length}</span>
+                      Showing <span className="font-bold text-slate-700">{Math.min((page - 1) * rowsPerPage + 1, listFiltered.length)}-{Math.min(page * rowsPerPage, listFiltered.length)}</span> of <span className="font-bold text-slate-700">{listFiltered.length}</span>
                     </span>
                     {/* Column picker */}
                     <div className="relative">
@@ -4919,7 +4962,7 @@ export function InspectionsPage() {
                             <div className="w-28 flex-shrink-0">
                               <div className="text-xs font-bold text-slate-800">{record.vehiclePlate}</div>
                               {record.powerUnitDefects
-                                ? <div className="text-[10px] text-amber-600 truncate" title={record.powerUnitDefects}>{record.powerUnitDefects.slice(0,22)}…</div>
+                                ? <div className="text-[10px] text-amber-600 truncate" title={record.powerUnitDefects}>{record.powerUnitDefects.slice(0,22)}...</div>
                                 : <div className="text-[10px] text-emerald-600">No defects</div>}
                             </div>
                           )}
@@ -4959,7 +5002,7 @@ export function InspectionsPage() {
                       );
                     }) : (
                       <div className="py-16 text-center">
-                        <div className="text-4xl mb-3">📋</div>
+                        <div className="text-4xl mb-3">ðŸ"‹</div>
                         <p className="text-sm font-bold text-slate-700">No inspections found</p>
                         <p className="text-xs text-slate-400 mt-1">Try adjusting your filters or time period</p>
                         <button onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); setPage(1); }}
@@ -4993,7 +5036,7 @@ export function InspectionsPage() {
                           acc.push(p); return acc;
                         }, [])
                         .map((p, idx) => p === '...' ? (
-                          <span key={`ellipsis-${idx}`} className="px-1 text-slate-400 text-xs">…</span>
+                          <span key={`ellipsis-${idx}`} className="px-1 text-slate-400 text-xs">...</span>
                         ) : (
                           <button key={p} onClick={() => setPage(p as number)}
                             className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${page === p ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
@@ -5009,7 +5052,7 @@ export function InspectionsPage() {
                   </div>
                 </div>
 
-                {/* ── Inspection Detail Popup ───────────────────────────────── */}
+                {/* â"€â"€ Inspection Detail Popup â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                 {smsPopupRecord && (() => {
                   const r = smsPopupRecord;
                   const vehPtsP = (r.violations || []).filter((v: any) => !v.driverViolation).reduce((s: number, v: any) => s + (v.points || 0), 0);
@@ -5027,12 +5070,12 @@ export function InspectionsPage() {
                       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm"/>
                       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
 
-                        {/* ── Header ── */}
+                        {/* â"€â"€ Header â"€â"€ */}
                         <div className="px-6 pt-5 pb-4 border-b border-slate-100">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <h2 className="text-xl font-black text-slate-900">Inspection Detail — {r.id}</h2>
-                              <p className="text-sm text-slate-500 mt-0.5">{r.date} • Level {levelNum} • {locationStr}</p>
+                              <h2 className="text-xl font-black text-slate-900">Inspection Detail - {r.id}</h2>
+                              <p className="text-sm text-slate-500 mt-0.5">{r.date} ¢ Level {levelNum} ¢ {locationStr}</p>
                             </div>
                             <button onClick={() => setSmsPopupRecord(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -5042,7 +5085,7 @@ export function InspectionsPage() {
 
                         <div className="overflow-y-auto flex-1">
 
-                          {/* ── Info 3-col grid ── */}
+                          {/* â"€â"€ Info 3-col grid â"€â"€ */}
                           <div className="grid grid-cols-3 gap-6 px-6 py-5 border-b border-slate-100">
                             <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Driver</p>
@@ -5050,7 +5093,7 @@ export function InspectionsPage() {
                             </div>
                             <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">License</p>
-                              <p className="text-sm font-bold text-slate-900 font-mono">{r.driverLicense || '—'}</p>
+                              <p className="text-sm font-bold text-slate-900 font-mono">{r.driverLicense || '-'}</p>
                             </div>
                             <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Vehicle</p>
@@ -5063,7 +5106,7 @@ export function InspectionsPage() {
                             <div>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Time</p>
                               <p className="text-sm font-semibold text-slate-800">
-                                {r.startTime ? `${r.startTime}${r.endTime ? ` — ${r.endTime}` : ''}` : '—'}
+                                {r.startTime ? `${r.startTime}${r.endTime ? ` - ${r.endTime}` : ''}` : '-'}
                               </p>
                             </div>
                             <div>
@@ -5072,10 +5115,10 @@ export function InspectionsPage() {
                             </div>
                           </div>
 
-                          {/* ── Status badges ── */}
+                          {/* â"€â"€ Status badges â"€â"€ */}
                           <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-slate-100">
                             {!r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 text-amber-700 bg-amber-50">VIOLATIONS FOUND</span>}
-                            {r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400 text-emerald-700 bg-emerald-50">✓ CLEAN</span>}
+                            {r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400 text-emerald-700 bg-emerald-50">âœ" CLEAN</span>}
                             {r.hasOOS && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-red-400 text-red-700 bg-red-50">OOS</span>}
                             <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border ${driverPassed ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : 'border-red-300 text-red-700 bg-red-50'}`}>
                               DRIVER: {driverPassed ? 'PASSED' : 'FAILED'}
@@ -5085,7 +5128,7 @@ export function InspectionsPage() {
                             </span>
                           </div>
 
-                          {/* ── Defects Found ── */}
+                          {/* â"€â"€ Defects Found â"€â"€ */}
                           {r.powerUnitDefects && (
                             <div className="mx-6 my-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
                               <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-1.5">Defects Found</p>
@@ -5094,7 +5137,7 @@ export function InspectionsPage() {
                             </div>
                           )}
 
-                          {/* ── Units Inspected ── */}
+                          {/* â"€â"€ Units Inspected â"€â"€ */}
                           {r.units && r.units.length > 0 && (
                             <div className="px-6 pb-4">
                               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Units Inspected ({r.units.length})</p>
@@ -5110,10 +5153,10 @@ export function InspectionsPage() {
                                   <tbody className="divide-y divide-slate-100">
                                     {r.units.map((u: any, ui: number) => (
                                       <tr key={ui} className="hover:bg-slate-50/60">
-                                        <td className="px-3 py-2.5 text-xs font-semibold text-slate-700 capitalize">{u.type || '—'}</td>
-                                        <td className="px-3 py-2.5 text-xs font-bold text-blue-600">{u.make || '—'}</td>
-                                        <td className="px-3 py-2.5 text-xs font-bold text-slate-800">{u.license || '—'}</td>
-                                        <td className="px-3 py-2.5 text-[11px] font-mono text-slate-400">{u.vin || '—'}</td>
+                                        <td className="px-3 py-2.5 text-xs font-semibold text-slate-700 capitalize">{u.type || '-'}</td>
+                                        <td className="px-3 py-2.5 text-xs font-bold text-blue-600">{u.make || '-'}</td>
+                                        <td className="px-3 py-2.5 text-xs font-bold text-slate-800">{u.license || '-'}</td>
+                                        <td className="px-3 py-2.5 text-[11px] font-mono text-slate-400">{u.vin || '-'}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -5122,14 +5165,14 @@ export function InspectionsPage() {
                             </div>
                           )}
 
-                          {/* ── Violations table ── */}
+                          {/* â"€â"€ Violations table â"€â"€ */}
                           <div className="px-6 pb-4">
                             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
                               Violations ({r.violations?.length || 0})
                             </p>
                             {r.isClean || !r.violations?.length ? (
                               <div className="flex items-center gap-3 py-6 px-4 rounded-xl bg-emerald-50 border border-emerald-200">
-                                <div className="w-9 h-9 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-black text-lg">✓</div>
+                                <div className="w-9 h-9 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-black text-lg">âœ"</div>
                                 <div>
                                   <p className="font-bold text-sm text-emerald-800">No violations recorded</p>
                                   <p className="text-xs text-emerald-600 mt-0.5">This inspection passed without any defects</p>
@@ -5151,8 +5194,8 @@ export function InspectionsPage() {
                                   <tbody className="divide-y divide-slate-100">
                                     {(r.violations || []).map((v: any, vi: number) => (
                                       <tr key={vi} className={`${v.oos ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50/60'} transition-colors`}>
-                                        <td className="px-3 py-2.5 font-mono text-xs text-blue-600 font-bold whitespace-nowrap">{v.code || v.violationCode || '—'}</td>
-                                        <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{v.category || '—'}</td>
+                                        <td className="px-3 py-2.5 font-mono text-xs text-blue-600 font-bold whitespace-nowrap">{v.code || v.violationCode || '-'}</td>
+                                        <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{v.category || '-'}</td>
                                         <td className="px-3 py-2.5 text-xs text-slate-700 leading-snug">{v.description}</td>
                                         <td className="px-3 py-2.5 text-center">
                                           <span className={`text-xs font-bold ${v.severity >= 7 ? 'text-red-600' : v.severity >= 4 ? 'text-amber-500' : v.severity > 0 ? 'text-slate-600' : 'text-slate-300'}`}>
@@ -5165,7 +5208,7 @@ export function InspectionsPage() {
                                         <td className="px-3 py-2.5 text-center">
                                           {v.oos
                                             ? <span className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-600 text-white">OOS</span>
-                                            : <span className="text-slate-300 text-xs">—</span>}
+                                            : <span className="text-slate-300 text-xs">-</span>}
                                         </td>
                                       </tr>
                                     ))}
@@ -5175,7 +5218,7 @@ export function InspectionsPage() {
                             )}
                           </div>
 
-                          {/* ── SMS Points ── */}
+                          {/* â"€â"€ SMS Points â"€â"€ */}
                           <div className="mx-6 mb-4 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">SMS Points</p>
                             <div className="flex items-center gap-6 text-sm">
@@ -5185,7 +5228,7 @@ export function InspectionsPage() {
                             </div>
                           </div>
 
-                          {/* ── Attached Documents ── */}
+                          {/* â"€â"€ Attached Documents â"€â"€ */}
                           <div className="px-6 pb-6">
                             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
                               Attached Documents ({1 + oosViolations.length})
@@ -5197,8 +5240,8 @@ export function InspectionsPage() {
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-bold text-slate-800">Inspection Report — {r.id}</p>
-                                  <p className="text-[11px] text-slate-500">Level {levelNum} · {r.date} · {locationStr}</p>
+                                  <p className="text-sm font-bold text-slate-800">Inspection Report - {r.id}</p>
+                                  <p className="text-[11px] text-slate-500">Level {levelNum}  ·  {r.date}  ·  {locationStr}</p>
                                 </div>
                                 <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors flex-shrink-0">
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -5216,7 +5259,7 @@ export function InspectionsPage() {
                                       <p className="text-sm font-bold text-slate-800">Violation: {v.code || v.violationCode || `#${vi + 1}`}</p>
                                       <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white">OOS</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 truncate">{v.category} — {v.description}</p>
+                                    <p className="text-[11px] text-slate-500 truncate">{v.category} - {v.description}</p>
                                   </div>
                                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 text-xs font-bold hover:bg-red-600 hover:text-white transition-colors flex-shrink-0">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -5305,7 +5348,7 @@ export function InspectionsPage() {
           cutoff.setMonth(cutoff.getMonth() - periodMonths);
           const periodInsp = cvorInspections.filter(i => new Date(i.date) >= cutoff);
 
-          // Category-specific stats — computed dynamically from period-filtered data
+          // Category-specific stats - computed dynamically from period-filtered data
           let catInspCount = 0;
           let totalPoints = 0;
           let oosCount = 0;
@@ -5339,9 +5382,9 @@ export function InspectionsPage() {
           }
           const oosRate = catInspCount > 0 ? Math.round((oosCount / catInspCount) * 100) : 0;
 
-          // Monthly measure history — rolling window approach (same as SMS chart)
+          // Monthly measure history - rolling window approach (same as SMS chart)
           // Each snapshot computes total points / inspections over a rolling periodMonths window
-          // As older data drops off and newer data comes in, the measure changes → dynamic chart
+          // As older data drops off and newer data comes in, the measure changes â†' dynamic chart
           const measureHistory: { date: string; measure: number }[] = [];
           const histNow = new Date('2025-12-31');
           for (let i = 5; i >= 0; i--) {
@@ -5496,12 +5539,12 @@ export function InspectionsPage() {
                         <h4 className="text-sm font-bold text-slate-800 mb-1">Threshold Status</h4>
                         <div className="text-xs text-slate-500">
                           {val >= cvorThresholds.showCause
-                            ? 'Show Cause — exceeds show cause threshold'
+                            ? 'Show Cause - exceeds show cause threshold'
                             : val >= cvorThresholds.intervention
-                            ? 'Audit — carrier exceeds intervention threshold'
+                            ? 'Audit - carrier exceeds intervention threshold'
                             : val >= cvorThresholds.warning
-                            ? 'Warning — approaching intervention threshold'
-                            : 'OK — within acceptable range'}
+                            ? 'Warning - approaching intervention threshold'
+                            : 'OK - within acceptable range'}
                         </div>
                       </div>
 
@@ -5559,7 +5602,7 @@ export function InspectionsPage() {
                                     const bottomPct = ((h.measure - minMeasure) / range) * 100;
                                     const prev = i > 0 ? history[i - 1].measure : h.measure;
                                     const delta = h.measure - prev;
-                                    const deltaStr = delta > 0 ? `+${delta.toFixed(2)}` : delta < 0 ? delta.toFixed(2) : '—';
+                                    const deltaStr = delta > 0 ? `+${delta.toFixed(2)}` : delta < 0 ? delta.toFixed(2) : '-';
                                     return (
                                       <div key={i} className="absolute group/pt" style={{ left: `${leftPct}%`, bottom: `${bottomPct}%`, transform: 'translate(-50%, 50%)' }}>
                                         <div className="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
@@ -5674,18 +5717,18 @@ export function InspectionsPage() {
             <div className="flex items-center gap-2 text-sm text-rose-700">
               <Info size={14} />
               <span className="font-semibold">Last Updated:</span>
-              <span className="font-mono font-bold">December 15, 2025 — 3:42 PM EST</span>
+              <span className="font-mono font-bold">December 15, 2025 - 3:42 PM EST</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-rose-600">
               <Upload size={14} />
               <span className="font-semibold">Last Uploaded:</span>
-              <span className="font-mono font-bold">December 10, 2025 — 11:15 AM EST</span>
+              <span className="font-mono font-bold">December 10, 2025 - 11:15 AM EST</span>
             </div>
           </div>
 
-          {/* ══════════════════════════════════════════════════════════════
-               CVOR PERFORMANCE SUMMARY — top-of-tab overview card
-          ══════════════════════════════════════════════════════════════ */}
+          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+               CVOR PERFORMANCE SUMMARY - top-of-tab overview card
+          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
           {(() => {
             const col = carrierProfile.cvorAnalysis.collisions;
             const con = carrierProfile.cvorAnalysis.convictions;
@@ -5719,7 +5762,7 @@ export function InspectionsPage() {
               : v >= cvorThresholds.warning ? 'bg-yellow-50/70 border-yellow-200'
               : 'bg-emerald-50/70 border-emerald-200';
 
-            // Full-spectrum gradient (green → yellow → orange → red → deep red)
+            // Full-spectrum gradient (green â†' yellow â†' orange â†' red â†' deep red)
             const grad = 'linear-gradient(to right,#22c55e 0%,#eab308 28%,#f97316 45%,#ef4444 70%,#991b1b 100%)';
 
             // Date range from pulls
@@ -5729,17 +5772,17 @@ export function InspectionsPage() {
             // Recommended actions
             const critActions: {label: string; desc: string}[] = [];
             if (cvorRating >= cvorThresholds.showCause)
-              critActions.push({ label:'Show Cause Hearing', desc:'CVOR rating exceeds Show Cause threshold — MTO hearing required immediately' });
+              critActions.push({ label:'Show Cause Hearing', desc:'CVOR rating exceeds Show Cause threshold - MTO hearing required immediately' });
             else if (cvorRating >= cvorThresholds.intervention)
-              critActions.push({ label:'MTO Audit Scheduled', desc:'Rating exceeds intervention threshold — prepare compliance documentation for audit' });
+              critActions.push({ label:'MTO Audit Scheduled', desc:'Rating exceeds intervention threshold - prepare compliance documentation for audit' });
             if (insPct >= cvorThresholds.showCause)
-              critActions.push({ label:'Inspection Score Critical', desc:'Inspection score exceeds Show Cause threshold — review vehicle maintenance program immediately' });
+              critActions.push({ label:'Inspection Score Critical', desc:'Inspection score exceeds Show Cause threshold - review vehicle maintenance program immediately' });
             else if (insPct >= cvorThresholds.intervention)
               critActions.push({ label:'Improve Inspection Pass Rate', desc:'Increase pre-trip inspection quality and frequency to reduce OOS events' });
             if (conPct >= cvorThresholds.intervention)
               critActions.push({ label:'Address HOS & Conviction Violations', desc:'Review Hours-of-Service compliance and implement mandatory driver training' });
             if (cts.oosVehicle > cvorOosThresholds.vehicle)
-              critActions.push({ label:'Reduce Vehicle OOS Rate', desc:`Vehicle OOS ${cts.oosVehicle}% exceeds ${cvorOosThresholds.vehicle}% threshold — increase pre-trip inspections` });
+              critActions.push({ label:'Reduce Vehicle OOS Rate', desc:`Vehicle OOS ${cts.oosVehicle}% exceeds ${cvorOosThresholds.vehicle}% threshold - increase pre-trip inspections` });
             if (cts.oosOverall > cvorOosThresholds.overall)
               critActions.push({ label:'Reduce Overall OOS Rate', desc:`Overall OOS ${cts.oosOverall}% exceeds ${cvorOosThresholds.overall}% threshold` });
 
@@ -5761,11 +5804,11 @@ export function InspectionsPage() {
 
             // Level comparison data (all CVOR inspections, no date filter)
             const cvorLvls = [
-              { level:'Level 1', name:'Level 1 – Full Inspection' },
-              { level:'Level 2', name:'Level 2 – Walk-Around' },
-              { level:'Level 3', name:'Level 3 – Driver/Credentials' },
-              { level:'Level 4', name:'Level 4 – Special Inspections' },
-              { level:'Level 5', name:'Level 5 – Vehicle Only' },
+              { level:'Level 1', name:'Level 1 - Full Inspection' },
+              { level:'Level 2', name:'Level 2 - Walk-Around' },
+              { level:'Level 3', name:'Level 3 - Driver/Credentials' },
+              { level:'Level 4', name:'Level 4 - Special Inspections' },
+              { level:'Level 5', name:'Level 5 - Vehicle Only' },
             ];
             const lvlStats = cvorLvls.map(l => {
               const li = cvorInspections.filter(i => i.level === l.level);
@@ -5779,7 +5822,7 @@ export function InspectionsPage() {
             return (
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
 
-                {/* ─── HEADER ─────────────────────────────────────────────── */}
+                {/* â"€â"€â"€ HEADER â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                 <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
@@ -5787,11 +5830,11 @@ export function InspectionsPage() {
                     </div>
                     <div>
                       <div className="text-sm font-bold text-slate-900">CVOR Performance</div>
-                      <div className="text-[11px] text-slate-500">{dateRange} — {cvorPeriod === 'All' ? 'All Pulls' : cvorPeriod}</div>
+                      <div className="text-[11px] text-slate-500">{dateRange} - {cvorPeriod === 'All' ? 'All Pulls' : cvorPeriod}</div>
                     </div>
                   </div>
                   <div className="inline-flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
-                    {(['Monthly','Quarterly','Semi-Annual','All'] as const).map(p => (
+                    {(['Monthly','Quarterly','Semi-Annual','Annual','All'] as const).map(p => (
                       <button key={p} onClick={() => setCvorPeriod(p)}
                         className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all ${cvorPeriod===p ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                         {p}
@@ -5802,7 +5845,7 @@ export function InspectionsPage() {
 
                 <div className="divide-y divide-slate-100">
 
-                  {/* ─── OVERALL CVOR RATING ────────────────────────────── */}
+                  {/* â"€â"€â"€ OVERALL CVOR RATING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 pt-4 pb-4">
                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Overall CVOR Rating</div>
                     <div className="flex items-center gap-3 mb-3">
@@ -5821,13 +5864,13 @@ export function InspectionsPage() {
                       </div>
                     </div>
 
-                    {/* ── Gradient bar ── */}
+                    {/* â"€â"€ Gradient bar â"€â"€ */}
                     {(() => {
                       const hoverZones: { label: string; start: number; end: number; color: string; textColor: string; bg: string; border: string; action: string; desc: string }[] = [
-                        { label:'OK',         start:0,                          end:cvorThresholds.warning,      color:'#16a34a', textColor:'#14532d', bg:'bg-emerald-50', border:'border-emerald-300', action:'No MTO action required.', desc:`Performance within acceptable range (0–${cvorThresholds.warning}%). Continue monitoring.` },
-                        { label:'WARNING',    start:cvorThresholds.warning,     end:cvorThresholds.intervention, color:'#b45309', textColor:'#78350f', bg:'bg-yellow-50',  border:'border-yellow-300',  action:'Monitor & implement corrective measures.', desc:`Approaching intervention threshold (${cvorThresholds.warning}–${cvorThresholds.intervention}%). MTO may issue advisory letter.` },
-                        { label:'AUDIT',      start:cvorThresholds.intervention,end:cvorThresholds.showCause,    color:'#d97706', textColor:'#92400e', bg:'bg-amber-50',   border:'border-amber-300',   action:'Prepare for MTO compliance audit.', desc:`Exceeds intervention threshold (${cvorThresholds.intervention}–${cvorThresholds.showCause}%). MTO will schedule a compliance audit.` },
-                        { label:'SHOW CAUSE', start:cvorThresholds.showCause,   end:cvorThresholds.seizure,      color:'#dc2626', textColor:'#7f1d1d', bg:'bg-red-50',     border:'border-red-300',     action:'MTO hearing — CVOR suspension risk.', desc:`Exceeds Show Cause threshold (${cvorThresholds.showCause}–${cvorThresholds.seizure}%). MTO hearing required — CVOR may be suspended.` },
+                        { label:'OK',         start:0,                          end:cvorThresholds.warning,      color:'#16a34a', textColor:'#14532d', bg:'bg-emerald-50', border:'border-emerald-300', action:'No MTO action required.', desc:`Performance within acceptable range (0-${cvorThresholds.warning}%). Continue monitoring.` },
+                        { label:'WARNING',    start:cvorThresholds.warning,     end:cvorThresholds.intervention, color:'#b45309', textColor:'#78350f', bg:'bg-yellow-50',  border:'border-yellow-300',  action:'Monitor & implement corrective measures.', desc:`Approaching intervention threshold (${cvorThresholds.warning}-${cvorThresholds.intervention}%). MTO may issue advisory letter.` },
+                        { label:'AUDIT',      start:cvorThresholds.intervention,end:cvorThresholds.showCause,    color:'#d97706', textColor:'#92400e', bg:'bg-amber-50',   border:'border-amber-300',   action:'Prepare for MTO compliance audit.', desc:`Exceeds intervention threshold (${cvorThresholds.intervention}-${cvorThresholds.showCause}%). MTO will schedule a compliance audit.` },
+                        { label:'SHOW CAUSE', start:cvorThresholds.showCause,   end:cvorThresholds.seizure,      color:'#dc2626', textColor:'#7f1d1d', bg:'bg-red-50',     border:'border-red-300',     action:'MTO hearing - CVOR suspension risk.', desc:`Exceeds Show Cause threshold (${cvorThresholds.showCause}-${cvorThresholds.seizure}%). MTO hearing required - CVOR may be suspended.` },
                       ];
                       const currentZone = hoverZones.find(z => cvorRating >= z.start && cvorRating < z.end) ?? hoverZones[hoverZones.length - 1];
                       const markerPct = Math.min(cvorRating, 100);
@@ -5867,43 +5910,29 @@ export function InspectionsPage() {
                                   <div key={z.label} className="absolute inset-y-0 group/zone cursor-crosshair"
                                     style={{ left:`${z.start}%`, width:`${z.end - z.start}%` }}>
                                     <div className="absolute inset-0 bg-white/0 group-hover/zone:bg-white/20 transition-colors duration-150 rounded"/>
-                                    {/* Tooltip */}
                                     <div className="hidden group-hover/zone:block absolute z-50 pointer-events-none"
                                       style={{ bottom:'calc(100% + 14px)', left:'50%', transform:'translateX(-50%)', width:248 }}>
-                                      <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background:'#0f172a' }}>
-                                        <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: z.color }}>
-                                          <span className="text-white font-black text-[13px] tracking-wide">{z.label}</span>
-                                          <span className="text-white/80 text-[11px] font-mono font-bold">{z.start}% – {z.end}%</span>
-                                        </div>
-                                        <div className="px-4 py-3 space-y-2">
-                                          {isCurrent && (
-                                            <div className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-1.5">
-                                              <span className="text-[10px] text-slate-400 uppercase tracking-wider">Current Rating</span>
-                                              <span className="text-[14px] font-black text-white">{cvorRating.toFixed(2)}%</span>
-                                            </div>
-                                          )}
-                                          <div className="text-[11px] text-slate-300 leading-relaxed">{z.desc}</div>
-                                          <div className="pt-2 border-t border-slate-700/60">
-                                            <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Required Action</div>
-                                            <div className="text-[12px] font-semibold" style={{ color: z.color }}>{z.action}</div>
-                                          </div>
-                                          <div className="pt-2 border-t border-slate-700/60 grid grid-cols-2 gap-x-4 gap-y-1">
-                                            {[
-                                              { name:'Warning',    val:cvorThresholds.warning,      c:'#fbbf24' },
-                                              { name:'Audit',      val:cvorThresholds.intervention, c:'#f97316' },
-                                              { name:'Show Cause', val:cvorThresholds.showCause,    c:'#f87171' },
-                                              { name:'Seizure',    val:cvorThresholds.seizure,      c:'#fca5a5' },
-                                            ].map(th => (
-                                              <div key={th.name} className="flex items-center justify-between">
-                                                <span className="text-[10px]" style={{ color: th.c }}>{th.name}</span>
-                                                <span className="text-[11px] font-bold font-mono text-white">{th.val}%</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
-                                          style={{ borderLeft:'7px solid transparent', borderRight:'7px solid transparent', borderTop:'7px solid #0f172a' }}/>
-                                      </div>
+                                      <ScoreBandHoverCard
+                                        title={z.label}
+                                        range={`${z.start}% - ${z.end}%`}
+                                        accentColor={z.color}
+                                        current={isCurrent ? { label: 'Current Rating', value: `${cvorRating.toFixed(2)}%` } : undefined}
+                                        description={z.desc}
+                                        detailRows={[
+                                          { label: 'Required Action', value: z.action, valueColor: z.color },
+                                          { label: 'Current Status', value: rl(cvorRating), valueColor: rc(cvorRating) as string },
+                                          { label: 'Audit Threshold', value: `${cvorThresholds.intervention}%` },
+                                          { label: 'Show Cause', value: `${cvorThresholds.showCause}%` },
+                                        ]}
+                                        thresholdsTitle="CVOR Thresholds"
+                                        thresholds={[
+                                          { label: 'Warning', value: `${cvorThresholds.warning}%`, color: '#fbbf24' },
+                                          { label: 'Audit', value: `${cvorThresholds.intervention}%`, color: '#f97316' },
+                                          { label: 'Show Cause', value: `${cvorThresholds.showCause}%`, color: '#f87171' },
+                                          { label: 'Seizure', value: `${cvorThresholds.seizure}%`, color: '#fca5a5' },
+                                        ]}
+                                        thresholdColumns={2}
+                                      />
                                     </div>
                                   </div>
                                 );
@@ -5929,7 +5958,7 @@ export function InspectionsPage() {
                             <div className="flex items-center gap-1.5">
                               <div className="w-1.5 h-1.5 rounded-full" style={{ background: currentZone.color }}/>
                               <span className="text-[11px] font-bold" style={{ color: currentZone.textColor }}>
-                                Currently in {currentZone.label} zone ({currentZone.start}%–{currentZone.end}%)
+                                Currently in {currentZone.label} zone ({currentZone.start}%-{currentZone.end}%)
                               </span>
                             </div>
                             <span className="text-[10px] text-slate-500">{currentZone.action}</span>
@@ -5939,7 +5968,7 @@ export function InspectionsPage() {
                     })()}
                   </div>
 
-                  {/* ─── CATEGORY TILES ─────────────────────────────────── */}
+                  {/* â"€â"€â"€ CATEGORY TILES â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 py-4">
                   <div className="grid grid-cols-3 gap-3">
                     {([
@@ -5947,7 +5976,7 @@ export function InspectionsPage() {
                       { key:'con', label:'Convictions', pct:conPct, weight:con.weight, detail1:`${cts.convictions} convictions`, detail2:`${cts.convictionPoints} pts` },
                       { key:'ins', label:'Inspections', pct:insPct, weight:ins.weight, detail1:`OOS rate`, detail2:`${cts.oosOverall}%` },
                     ] as {key:string;label:string;pct:number;weight:number;detail1:string;detail2:string}[]).map(({ key, label, pct, weight, detail1, detail2 }) => (
-                      <div key={key} className={`rounded-xl border p-3 ${tileBg(pct)}`}>
+                      <div key={key} className={`relative rounded-xl border p-3 ${tileBg(pct)} group/card cursor-pointer transition-shadow hover:shadow-lg`}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${rb(pct)}`}>{rl(pct)}</span>
@@ -5955,11 +5984,10 @@ export function InspectionsPage() {
                         <div className="text-[30px] leading-none font-black my-1" style={{ color: rc(pct) }}>
                           {pct.toFixed(1)}%
                         </div>
-                        <div className="text-[11px] text-slate-600 mb-0.5">{detail1} · {detail2}</div>
-                        <div className="text-[10px] text-slate-400 mb-2">{rl(pct)} · {weight}% weight</div>
-                        {/* Mini gradient bar with hover tooltip */}
-                        <div className="relative group/tileinfo">
-                          <div className="relative h-[7px] rounded-full overflow-hidden cursor-pointer" style={{ background: grad, boxShadow:'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
+                        <div className="text-[11px] text-slate-600 mb-0.5">{detail1}  ·  {detail2}</div>
+                        <div className="text-[10px] text-slate-400 mb-2">{rl(pct)}  ·  {weight}% weight</div>
+                        <div className="relative">
+                          <div className="relative h-[7px] rounded-full overflow-hidden" style={{ background: grad, boxShadow:'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
                             <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background:'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
                             <div className="absolute top-0 bottom-0 bg-slate-900/30 rounded-r-full" style={{ left:`${Math.min(pct,100)}%`, right:0 }}/>
                             <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow" style={{ left:`${Math.min(pct,100)}%`, transform:'translateX(-50%)' }}/>
@@ -5972,10 +6000,11 @@ export function InspectionsPage() {
                             <span>AUDIT {cvorThresholds.intervention}%</span>
                             <span>SC {cvorThresholds.showCause}%</span>
                           </div>
-                          {/* Hover tooltip */}
-                          <div className="hidden group-hover/tileinfo:block absolute z-50 pointer-events-none"
-                            style={{ bottom:'calc(100% + 32px)', left:'50%', transform:'translateX(-50%)', width:230 }}>
-                            <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background:'#0f172a' }}>
+                        </div>
+                        {/* Card hover tooltip - dark navy popup */}
+                        <div className="hidden group-hover/card:block absolute z-50 pointer-events-none"
+                          style={{ bottom:'calc(100% + 8px)', left:'50%', transform:'translateX(-50%)', width:230 }}>
+                            <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
                               <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: rc(pct) }}>
                                 <span className="text-white font-black text-[12px] uppercase tracking-wide">{label}</span>
                                 <span className="text-white/90 text-[12px] font-mono font-bold">{pct.toFixed(1)}%</span>
@@ -5987,13 +6016,13 @@ export function InspectionsPage() {
                                 </div>
                                 <div className="flex justify-between text-[11px]">
                                   <span className="text-slate-400">Category Weight</span>
-                                  <span className="font-bold text-white">{weight}%</span>
+                                  <span className="font-bold text-slate-800">{weight}%</span>
                                 </div>
                                 <div className="flex justify-between text-[11px]">
                                   <span className="text-slate-400">{detail1}</span>
-                                  <span className="font-bold text-white">{detail2}</span>
+                                  <span className="font-bold text-slate-800">{detail2}</span>
                                 </div>
-                                <div className="pt-1.5 border-t border-slate-700/60">
+                                <div className="pt-1.5 border-t border-slate-100">
                                   <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Thresholds</div>
                                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                                     {([
@@ -6004,16 +6033,15 @@ export function InspectionsPage() {
                                     ] as {n:string;v:number;c:string}[]).map(th => (
                                       <div key={th.n} className="flex items-center justify-between">
                                         <span className="text-[9px]" style={{ color: th.c }}>{th.n}</span>
-                                        <span className="text-[10px] font-bold font-mono text-white">{th.v.toFixed(1)}%</span>
+                                        <span className="text-[10px] font-bold font-mono text-slate-700">{th.v.toFixed(1)}%</span>
                                       </div>
                                     ))}
                                   </div>
                                 </div>
                               </div>
                               <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
-                                style={{ borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid #0f172a' }}/>
+                                style={{ borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid white' }}/>
                             </div>
-                          </div>
                         </div>
                       </div>
                     ))}
@@ -6022,17 +6050,17 @@ export function InspectionsPage() {
                   <div className="flex items-center justify-between pt-3 text-[10px]">
                     <span className="text-slate-400">
                       <span className="font-semibold text-slate-500">CVOR Thresholds</span>
-                      &nbsp;·&nbsp;<span style={{color:'#b45309'}}>{cvorThresholds.warning}% Warning</span>
-                      &nbsp;·&nbsp;<span style={{color:'#d97706'}}>{cvorThresholds.intervention}% Audit</span>
-                      &nbsp;·&nbsp;<span style={{color:'#dc2626'}}>{cvorThresholds.showCause}% Show Cause</span>
-                      &nbsp;·&nbsp;<span style={{color:'#7f1d1d'}}>{cvorThresholds.seizure}% Seizure</span>
+                      &nbsp; · &nbsp;<span style={{color:'#b45309'}}>{cvorThresholds.warning}% Warning</span>
+                      &nbsp; · &nbsp;<span style={{color:'#d97706'}}>{cvorThresholds.intervention}% Audit</span>
+                      &nbsp; · &nbsp;<span style={{color:'#dc2626'}}>{cvorThresholds.showCause}% Show Cause</span>
+                      &nbsp; · &nbsp;<span style={{color:'#7f1d1d'}}>{cvorThresholds.seizure}% Seizure</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => setCvorThreshOpen(open => !open)}
                       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50"
                     >
-                      Threshold Info {cvorThreshOpen ? '▴' : '▾'}
+                      Threshold Info {cvorThreshOpen ? 'â-´' : 'â-¾'}
                     </button>
                   </div>
                   {cvorThreshOpen && (
@@ -6077,7 +6105,7 @@ export function InspectionsPage() {
                   )}
                   </div>
 
-                  {/* ─── OUT-OF-SERVICE RATES ─────────────────────────────── */}
+                  {/* â"€â"€â"€ OUT-OF-SERVICE RATES â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 py-4">
                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Out-of-Service Rates</div>
                     <div className="grid grid-cols-3 gap-2.5">
@@ -6145,7 +6173,7 @@ export function InspectionsPage() {
                     </div>
                   </div>
 
-                  {/* ─── RECOMMENDED ACTIONS (collapsible) ─────────────── */}
+                  {/* â"€â"€â"€ RECOMMENDED ACTIONS (collapsible) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 py-4">
                   <details open>
                     <summary className="flex items-center justify-between mb-2 cursor-pointer list-none select-none">
@@ -6157,7 +6185,7 @@ export function InspectionsPage() {
                           </span>
                         )}
                       </div>
-                      <span className="text-[11px] text-blue-500 font-semibold">View Details ▾</span>
+                      <span className="text-[11px] text-blue-500 font-semibold">View Details â-¾</span>
                     </summary>
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 divide-y divide-slate-100">
                       {critActions.map((a, i) => (
@@ -6173,7 +6201,7 @@ export function InspectionsPage() {
                   </details>
                   </div>
 
-                  {/* ─── MILEAGE SUMMARY ────────────────────────────────── */}
+                  {/* â"€â"€â"€ MILEAGE SUMMARY â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 py-4">
                     <div className="flex items-center justify-between mb-2.5">
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Mileage Summary</span>
@@ -6206,7 +6234,7 @@ export function InspectionsPage() {
                     </div>
                   </div>
 
-                  {/* ─── CVOR RATING COMPARISON ─────────────────────────── */}
+                  {/* â"€â"€â"€ CVOR RATING COMPARISON â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 py-4">
                   <div className="rounded-xl border border-slate-200">
                     <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 rounded-t-xl flex items-center justify-between">
@@ -6216,7 +6244,7 @@ export function InspectionsPage() {
                         </div>
                         <div>
                           <div className="text-[12px] font-bold text-slate-900">CVOR Rating Comparison</div>
-                          <div className="text-[10px] text-slate-500">All Pulls · Total {lvlTotal} · OOS: {lvlOos}</div>
+                          <div className="text-[10px] text-slate-500">All Pulls  ·  Total {lvlTotal}  ·  OOS: {lvlOos}</div>
                         </div>
                       </div>
                     </div>
@@ -6278,7 +6306,7 @@ export function InspectionsPage() {
             );
           })()}
 
-          {/* ===== CVOR Mileage Summary — removed (shown inside CVOR Performance card) ===== */}
+          {/* ===== CVOR Mileage Summary - removed (shown inside CVOR Performance card) ===== */}
           {false && (() => {
             const mp = carrierProfile.cvorAnalysis.counts;
             const conv = (n: number) => mileageUnit === 'km' ? Math.round(n * 1.60934) : n;
@@ -6331,14 +6359,14 @@ export function InspectionsPage() {
             );
           })()}
 
-          {/* ===== CVOR Level Comparison — removed (shown inside CVOR Performance card) ===== */}
+          {/* ===== CVOR Level Comparison - removed (shown inside CVOR Performance card) ===== */}
           {false && (() => {
             const cvorLevels = [
-              { level: 'Level 1', name: 'Level 1 – Full Inspection', desc: 'Full inspection – driver, vehicle full inspection, HOS, permits, insurance, cargo, TDG, permits and authorities' },
-              { level: 'Level 2', name: 'Level 2 – Walk-Around', desc: 'Walk around – Driver/vehicle inspection. DL, HOS, Seat belt, DVIR' },
-              { level: 'Level 3', name: 'Level 3 – Driver/Credentials', desc: 'Driver/Credentials/Administrative Inspection – DL, HOS, seat belt, DVIR, Carrier credentials' },
-              { level: 'Level 4', name: 'Level 4 – Special Inspections', desc: 'Special inspections – particular item (e.g., cargo, TDG placards, one-time issue)' },
-              { level: 'Level 5', name: 'Level 5 – Vehicle Only', desc: 'Vehicle only inspection – no driver present, mechanical condition check only' },
+              { level: 'Level 1', name: 'Level 1 - Full Inspection', desc: 'Full inspection - driver, vehicle full inspection, HOS, permits, insurance, cargo, TDG, permits and authorities' },
+              { level: 'Level 2', name: 'Level 2 - Walk-Around', desc: 'Walk around - Driver/vehicle inspection. DL, HOS, Seat belt, DVIR' },
+              { level: 'Level 3', name: 'Level 3 - Driver/Credentials', desc: 'Driver/Credentials/Administrative Inspection - DL, HOS, seat belt, DVIR, Carrier credentials' },
+              { level: 'Level 4', name: 'Level 4 - Special Inspections', desc: 'Special inspections - particular item (e.g., cargo, TDG placards, one-time issue)' },
+              { level: 'Level 5', name: 'Level 5 - Vehicle Only', desc: 'Vehicle only inspection - no driver present, mechanical condition check only' },
             ];
 
             const now = new Date('2025-12-31');
@@ -6465,12 +6493,15 @@ export function InspectionsPage() {
           })()}
 
 
-              {/* ── PERFORMANCE HISTORY CHARTS ── */}
+              {/* â"€â"€ PERFORMANCE HISTORY CHARTS â"€â"€ */}
               {(() => {
-                // ─── Cadence filter ────────────────────────────────────────
+                // â"€â"€â"€ Cadence filter â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
                 const filterByCadence = (all: typeof cvorPeriodicReports) => {
                   if (cvorPeriod === 'Monthly' || cvorPeriod === 'All') return all;
-                  const minGapDays = cvorPeriod === 'Quarterly' ? 80 : 170;
+                  const minGapDays =
+                    cvorPeriod === 'Quarterly' ? 80 :
+                    cvorPeriod === 'Semi-Annual' ? 170 :
+                    340;
                   const out: typeof all = [];
                   let lastMs = 0;
                   for (const d of all) {
@@ -6495,10 +6526,10 @@ export function InspectionsPage() {
                   const start = new Date(end);
                   start.setMonth(start.getMonth() - 24);
                   const fmt = (d: Date) => d.toLocaleDateString('en-CA', { month: 'short', year: 'numeric' });
-                  return { start, end, label: `${fmt(start)} → ${fmt(end)}` };
+                  return { start, end, label: `${fmt(start)} â†' ${fmt(end)}` };
                 };
 
-                // ─── SVG layout (all charts: VW=1200 full-width) ──────────
+                // â"€â"€â"€ SVG layout (all charts: VW=1200 full-width) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
                 const historySize =
                   viewportWidth < 640
                     ? {
@@ -6573,7 +6604,11 @@ export function InspectionsPage() {
                   pT + chartH - ((v - min) / (max - min || 1)) * chartH;
 
                 // Gap-aware path
-                const gapDays = cvorPeriod === 'Monthly' ? 60 : cvorPeriod === 'Quarterly' ? 100 : 250;
+                const gapDays =
+                  cvorPeriod === 'Monthly' ? 60 :
+                  cvorPeriod === 'Quarterly' ? 100 :
+                  cvorPeriod === 'Semi-Annual' ? 250 :
+                  380;
                 const mkPath = (
                   items: typeof histData,
                   getVal: (d: typeof histData[0]) => number,
@@ -6605,7 +6640,7 @@ export function InspectionsPage() {
 
                 const selPull = cvorSelectedPull ? cvorPeriodicReports.find(d => d.reportDate === cvorSelectedPull) ?? null : null;
 
-                // ─── Unified tooltip — single column, SVG-scaled fonts ─────
+                // â"€â"€â"€ Unified tooltip - single column, SVG-scaled fonts â"€â"€â"€â"€â"€
                 const Tip = ({
                   cx, cy, d, focusMetric, chartH: tipCH = 240
                 }: {
@@ -6618,25 +6653,25 @@ export function InspectionsPage() {
                   const rc = ratingColor(d.rating);
                   const al = alertLevel(d);
                   const alertColor = al === 'critical' ? '#dc2626' : al === 'warning' ? '#f59e0b' : '#16a34a';
-                  const alertLabel = al==='critical'?'⚠ Critical':al==='warning'?'⚡ Warning':'✓ Healthy';
-                  // All fonts scaled for VW=1200 viewBox: ×1.5 vs typical px
-                  // → fontSize=18 renders ≈12px at ~900px display width
+                  const alertLabel = al==='critical'?'âš  Critical':al==='warning'?'âš¡ Warning':'âœ" Healthy';
+                  // All fonts scaled for VW=1200 viewBox: Ã-1.5 vs typical px
+                  // â†' fontSize=18 renders â‰ˆ12px at ~900px display width
                   const rows: Array<{label:string;val:string;color:string;bold?:boolean}> = [
                     { label:'CVOR Rating',      val:`${d.rating.toFixed(2)}%`,      color:rc,        bold:focusMetric==='rating' },
                     { label:'Collisions',        val:`${d.colContrib.toFixed(2)}%`,  color:'#3b82f6', bold:focusMetric==='col' },
                     { label:'Convictions',       val:`${d.conContrib.toFixed(2)}%`,  color:'#d97706', bold:focusMetric==='con' },
                     { label:'Inspections',       val:`${d.insContrib.toFixed(2)}%`,  color:'#dc2626', bold:focusMetric==='ins' },
-                    { label:'OOS Overall',       val:d.oosOverall>0?`${d.oosOverall.toFixed(1)}%`:'—', color:d.oosOverall>20?'#ef4444':'#94a3b8', bold:focusMetric==='oosOv' },
-                    { label:'OOS Vehicle',       val:d.oosVehicle>0?`${d.oosVehicle.toFixed(1)}%`:'—', color:d.oosVehicle>20?'#ef4444':'#94a3b8', bold:focusMetric==='oosVh' },
-                    { label:'OOS Driver',        val:d.oosDriver>0?`${d.oosDriver.toFixed(1)}%`:'—',   color:d.oosDriver>5?'#f59e0b':'#10b981',   bold:focusMetric==='oosDr' },
+                    { label:'OOS Overall',       val:d.oosOverall>0?`${d.oosOverall.toFixed(1)}%`:'-', color:d.oosOverall>20?'#ef4444':'#94a3b8', bold:focusMetric==='oosOv' },
+                    { label:'OOS Vehicle',       val:d.oosVehicle>0?`${d.oosVehicle.toFixed(1)}%`:'-', color:d.oosVehicle>20?'#ef4444':'#94a3b8', bold:focusMetric==='oosVh' },
+                    { label:'OOS Driver',        val:d.oosDriver>0?`${d.oosDriver.toFixed(1)}%`:'-',   color:d.oosDriver>5?'#f59e0b':'#10b981',   bold:focusMetric==='oosDr' },
                     { label:'# Col / Conv',      val:`${d.collisionEvents} / ${d.convictionEvents}`,   color:'#94a3b8', bold:focusMetric==='events' },
                     { label:'Col Pts / Conv Pts',val:`${d.totalCollisionPoints} / ${d.convictionPoints}`, color:'#94a3b8' },
                   ];
                   const tw = viewportWidth < 640 ? 206 : viewportWidth < 1100 ? 230 : viewportWidth < 1600 ? 258 : 290;
                   const headerH = viewportWidth < 640 ? 58 : viewportWidth < 1100 ? 62 : viewportWidth < 1600 ? 68 : 74;
-                  const rowH = 22;   // 22 SVG units ≈ 15px on screen
+                  const rowH = 22;   // 22 SVG units â‰ˆ 15px on screen
                   const footerH = 20;
-                  const th = headerH + rows.length * rowH + footerH; // ≈272 SVG units
+                  const th = headerH + rows.length * rowH + footerH; // â‰ˆ272 SVG units
                   // Horizontal: place tooltip on opposite side of chart from dot
                   const onRight = cx > VW * 0.58;
                   const tx = onRight
@@ -6655,7 +6690,7 @@ export function InspectionsPage() {
                       <rect x={tx} y={ty} width={tw} height={th} rx={14} fill="none" stroke={alertColor} strokeWidth="1.6" opacity="0.9"/>
                       {/* Header colour strip */}
                       <rect x={tx+10} y={ty+10} width={tw-20} height={24} rx={8} fill={alertColor} opacity="0.12"/>
-                      {/* Period label — fontSize 18 ≈ 13px on screen */}
+                      {/* Period label - fontSize 18 â‰ˆ 13px on screen */}
                       <text x={tx+16} y={ty+27} fontSize={viewportWidth < 640 ? 13 : viewportWidth < 1100 ? 14 : viewportWidth < 1600 ? 16 : 17} fontWeight="700" fill="#0f172a" fontFamily="monospace">{d.periodLabel}</text>
                       {/* Alert badge */}
                       <rect x={tx+tw-84} y={ty+10} width={68} height={20} rx={7} fill={alertColor} opacity="0.18"/>
@@ -6685,7 +6720,7 @@ export function InspectionsPage() {
                   );
                 };
 
-                // ─── Shared x-axis ─────────────────────────────────────────
+                // â"€â"€â"€ Shared x-axis â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
                 const axisFontSize = viewportWidth < 640 ? 9 : viewportWidth < 1100 ? 11 : viewportWidth < 1600 ? 13 : 14;
                 const XAxis = ({ items, chartH, total }: { items: typeof histData; chartH: number; total?: number }) => (
                   <>
@@ -6716,7 +6751,7 @@ export function InspectionsPage() {
                   </>
                 );
 
-                // ─── Y-axis ────────────────────────────────────────────────
+                // â"€â"€â"€ Y-axis â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
                 const YGrid = ({ ticks, max, min, chartH, suffix='%' }: { ticks: number[]; max: number; min: number; chartH: number; suffix?: string }) => (
                   <>
                     {/* Y-axis border line */}
@@ -6732,7 +6767,7 @@ export function InspectionsPage() {
                   </>
                 );
 
-                // ─── Dot renderer (shared) ─────────────────────────────────
+                // â"€â"€â"€ Dot renderer (shared) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
                 const Dots = ({
                   items, getY, chartId, dotFill, focusMetric, total, chartH: dotCH, showTooltip = true
                 }: {
@@ -6805,14 +6840,14 @@ export function InspectionsPage() {
                 return (
                   <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_40px_-32px_rgba(15,23,42,0.55)]">
 
-                    {/* ── Header ── */}
+                    {/* â"€â"€ Header â"€â"€ */}
                     <div className="flex items-center justify-between gap-4 border-b border-slate-200/80 bg-slate-50/75 px-6 py-4 flex-wrap">
                       <div className="flex items-center gap-2.5 flex-wrap">
                         <Activity size={14} className="text-slate-400"/>
                         <span className="text-[17px] font-bold tracking-tight text-slate-800">CVOR Performance History</span>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-mono text-slate-500">{n} pulls</span>
                         <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[10px] font-medium text-indigo-600">
-                          {firstPull.periodLabel} → {lastPull.periodLabel} · {rangeMonths}mo
+                          {firstPull.periodLabel} â†' {lastPull.periodLabel}  ·  {rangeMonths}mo
                         </span>
                         <span className="text-[10px] italic text-slate-400">Each pull = 24-month rolling window</span>
                         {/* Alert legend */}
@@ -6832,7 +6867,7 @@ export function InspectionsPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Cadence</span>
                         <div className="inline-flex rounded-xl bg-slate-100 p-0.5 gap-px">
-                          {(['Monthly','Quarterly','Semi-Annual','All'] as const).map(p => (
+                          {(['Monthly','Quarterly','Semi-Annual','Annual','All'] as const).map(p => (
                             <button key={p} onClick={() => setCvorPeriod(p)}
                               className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[10px] font-bold transition-colors ${cvorPeriod===p?'bg-white text-blue-600 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
                               {p}
@@ -6842,7 +6877,7 @@ export function InspectionsPage() {
                       </div>
                     </div>
 
-                    {/* ── Selected pull banner ── */}
+                    {/* â"€â"€ Selected pull banner â"€â"€ */}
                     {selPull && (() => {
                       const win = windowOf(selPull.reportDate);
                       const al = alertLevel(selPull);
@@ -6854,11 +6889,11 @@ export function InspectionsPage() {
                             <span className="text-sm font-bold">Pull: {selPull.periodLabel}</span>
                             <span className="opacity-80 text-xs font-mono">Window: {win.label}</span>
                             <span className="opacity-70 text-xs">Rating: <strong>{selPull.rating.toFixed(2)}%</strong></span>
-                            {al==='critical' && <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded">⚠ Above Audit Threshold</span>}
+                            {al==='critical' && <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded">âš  Above Audit Threshold</span>}
                           </div>
                           <button onClick={() => setCvorSelectedPull(null)}
                             className="opacity-80 hover:opacity-100 text-[11px] font-bold px-2 py-0.5 rounded border border-white/40 hover:border-white transition-all">
-                            × Clear
+                            Ã- Clear
                           </button>
                         </div>
                       );
@@ -6866,7 +6901,7 @@ export function InspectionsPage() {
 
                     <div className="divide-y divide-slate-100">
 
-                      {/* ══ CHART 1: Overall CVOR Rating ══ */}
+                      {/* â•â• CHART 1: Overall CVOR Rating â•â• */}
                       {(() => {
                         const CH=historySize.overallH, VH=CH+pT+pB;
                         const rMin=0, rMax=100;
@@ -6886,7 +6921,7 @@ export function InspectionsPage() {
                                   <span className="text-[10px] font-mono" style={{color:z.labelColor}}>{z.label}</span>
                                 </div>
                               ))}
-                              <span className={`ml-auto font-semibold text-indigo-500 ${historySize.helperCls}`}>Hover any dot · click to drill into inspections</span>
+                              <span className={`ml-auto font-semibold text-indigo-500 ${historySize.helperCls}`}>Hover any dot  ·  click to drill into inspections</span>
                             </div>
                             {selPull && (
                                 <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 font-mono text-[10px] text-indigo-700">
@@ -6943,7 +6978,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* ══ CHART 2: Category Contributions ══ */}
+                      {/* â•â• CHART 2: Category Contributions â•â• */}
                       {(() => {
                         const CH2=historySize.midH, VH2=CH2+pT+pB;
                         const maxCat=Math.ceil(Math.max(...histData.map(d=>Math.max(d.colContrib,d.conContrib,d.insContrib)))+1);
@@ -7004,7 +7039,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* ══ CHART 3: OOS Rates ══ */}
+                      {/* â•â• CHART 3: OOS Rates â•â• */}
                       {(() => {
                         const oosD=histData.filter(d=>d.oosOverall>0), no=oosD.length;
                         const CH3=historySize.midH, VH3=CH3+pT+pB;
@@ -7093,7 +7128,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* ══ CHART 4: Event Counts & Points ══ */}
+                      {/* â•â• CHART 4: Event Counts & Points â•â• */}
                       {(() => {
                         const CH4=historySize.eventH, VH4=CH4+pT+pB;
                         const maxE=Math.max(...histData.map(d=>Math.max(d.collisionEvents,d.convictionEvents)))+4;
@@ -7124,7 +7159,7 @@ export function InspectionsPage() {
                                   <span className="text-[10px] text-slate-600">{l.lbl}</span>
                                 </div>
                               ))}
-                              <span className={`ml-auto italic text-slate-400 ${historySize.helperCls}`}>Hover bar · full pull details · click to inspections</span>
+                              <span className={`ml-auto italic text-slate-400 ${historySize.helperCls}`}>Hover bar  ·  full pull details  ·  click to inspections</span>
                             </div>
                             <div style={{position:'relative',width:'100%',paddingBottom:`${(VH4/VW*100).toFixed(2)}%`}}>
                               <svg viewBox={`0 0 ${VW} ${VH4}`} style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',display:'block',overflow:'visible'}}>
@@ -7137,7 +7172,7 @@ export function InspectionsPage() {
                                 {/* Points lines */}
                                 <path d={mkPts(histData.map(d=>d.totalCollisionPoints),yP)} fill="none" stroke="#6366f1" strokeWidth="2" strokeDasharray="5,3" opacity="0.8"/>
                                 <path d={mkPts(histData.map(d=>d.convictionPoints),yP)}      fill="none" stroke="#ec4899" strokeWidth="2" strokeDasharray="5,3" opacity="0.8"/>
-                                {/* Bars — pass 1: all bars (no tooltip) */}
+                                {/* Bars - pass 1: all bars (no tooltip) */}
                                 {histData.map((d,i)=>{
                                   const cx4=xAt(i);
                                   const isSel4=d.reportDate===cvorSelectedPull;
@@ -7160,7 +7195,7 @@ export function InspectionsPage() {
                                   );
                                 })}
                                 <XAxis items={histData} chartH={CH4}/>
-                                {/* Bars — pass 2: tooltip on top of everything */}
+                                {/* Bars - pass 2: tooltip on top of everything */}
                                 {cvorHoveredPull?.chart==='ev' && (() => {
                                   const d=histData[cvorHoveredPull.idx];
                                   if(!d) return null;
@@ -7172,7 +7207,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* ══ PULL-BY-PULL DATA TABLE ══ */}
+                      {/* â•â• PULL-BY-PULL DATA TABLE â•â• */}
                       <div className="px-6 py-5 pb-2">
                         {(() => {
                           const pullRows = [...histData].reverse().map((d, i) => {
@@ -7275,7 +7310,7 @@ export function InspectionsPage() {
                             currentPage * cvorPullRowsPerPage,
                           );
                           const visible = (id: string) => cvorPullColumns.find((col) => col.id === id)?.visible !== false;
-                          const sortIcon = (id: string) => cvorPullSort.col === id ? (cvorPullSort.dir === 'asc' ? '↑' : '↓') : '';
+                          const sortIcon = (id: string) => cvorPullSort.col === id ? (cvorPullSort.dir === 'asc' ? '->' : 'â†"') : '';
                           const setSort = (id: string) => {
                             setCvorPullSort((prev) => ({
                               col: id,
@@ -7304,7 +7339,7 @@ export function InspectionsPage() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[12px] font-bold uppercase tracking-[0.18em] text-slate-700">Pull-by-Pull Data</span>
                                 <span className="rounded bg-slate-100 px-2 py-0.5 text-[9.5px] font-mono text-slate-500">
-                                  {pullRows.length} pulls · newest first · click row → inspection drill-down
+                                  {pullRows.length} pulls  ·  newest first  ·  click row â†' inspection drill-down
                                 </span>
                               </div>
 
@@ -7391,17 +7426,17 @@ export function InspectionsPage() {
                                           {visible('convPts') && <td className="px-3 py-3.5 text-right font-mono text-[12.5px] text-pink-600">{row.convPts}</td>}
                                           {visible('oosOverall') && (
                                             <td className={`px-3 py-3.5 text-right font-mono text-[12.5px] ${row.oosOverall >= 20 ? 'font-bold text-red-600' : 'text-slate-600'}`}>
-                                              {row.oosOverall > 0 ? `${row.oosOverall.toFixed(1)}%` : '—'}
+                                              {row.oosOverall > 0 ? `${row.oosOverall.toFixed(1)}%` : '-'}
                                             </td>
                                           )}
                                           {visible('oosVehicle') && (
                                             <td className={`px-3 py-3.5 text-right font-mono text-[12.5px] ${row.oosVehicle >= 20 ? 'font-bold text-red-600' : 'text-slate-600'}`}>
-                                              {row.oosVehicle > 0 ? `${row.oosVehicle.toFixed(1)}%` : '—'}
+                                              {row.oosVehicle > 0 ? `${row.oosVehicle.toFixed(1)}%` : '-'}
                                             </td>
                                           )}
                                           {visible('oosDriver') && (
                                             <td className={`px-3 py-3.5 text-right font-mono text-[12.5px] ${row.oosDriver > 5 ? 'font-semibold text-amber-600' : 'text-emerald-600'}`}>
-                                              {row.oosDriver > 0 ? `${row.oosDriver.toFixed(1)}%` : '—'}
+                                              {row.oosDriver > 0 ? `${row.oosDriver.toFixed(1)}%` : '-'}
                                             </td>
                                           )}
                                           {visible('trucks') && <td className="px-3 py-3.5 text-right font-mono text-[12.5px] text-slate-600">{row.trucks}</td>}
@@ -7453,7 +7488,7 @@ export function InspectionsPage() {
                       <div className="hidden px-6 py-5 pb-2">
                         <div className="mb-4 flex items-center gap-2 flex-wrap">
                           <span className="text-[12px] font-bold uppercase tracking-[0.18em] text-slate-700">Pull-by-Pull Data</span>
-                          <span className="text-[9.5px] font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{n} pulls · newest first · click row → inspection drill-down</span>
+                          <span className="text-[9.5px] font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{n} pulls  ·  newest first  ·  click row â†' inspection drill-down</span>
                         </div>
                         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
                           <table className="w-full text-[12px] border-collapse" style={{minWidth:'1200px'}}>
@@ -7500,9 +7535,9 @@ export function InspectionsPage() {
                                     onClick={() => setCvorSelectedPull(isSel ? null : d.reportDate)}>
                                     <td className="px-3 py-2.5 whitespace-nowrap">
                                       <div className="flex items-center gap-1.5">
-                                        {isSel && <span className="text-[8px] font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded">▶ ON</span>}
+                                        {isSel && <span className="text-[8px] font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded">â-¶ ON</span>}
                                         {!isSel && isLatest && <span className="text-[8px] font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded">LATEST</span>}
-                                        {!isSel && al==='critical' && <span className="text-[8px] font-bold text-red-600">⚠</span>}
+                                        {!isSel && al==='critical' && <span className="text-[8px] font-bold text-red-600">âš </span>}
                                         <span className="font-mono font-semibold text-slate-800">{d.periodLabel}</span>
                                       </div>
                                     </td>
@@ -7520,11 +7555,11 @@ export function InspectionsPage() {
                                     <td className="px-2 py-2.5 text-right font-mono text-red-600 whitespace-nowrap">{d.insContrib.toFixed(2)}%</td>
                                     <td className="px-2 py-2.5 text-right font-mono text-slate-700 whitespace-nowrap">{d.collisionEvents}</td>
                                     <td className="px-2 py-2.5 text-right font-mono text-slate-700 whitespace-nowrap">{d.convictionEvents}</td>
-                                    <td className="px-2 py-2.5 text-right font-mono text-indigo-600 whitespace-nowrap">{d.totalCollisionPoints||'—'}</td>
+                                    <td className="px-2 py-2.5 text-right font-mono text-indigo-600 whitespace-nowrap">{d.totalCollisionPoints||'-'}</td>
                                     <td className="px-2 py-2.5 text-right font-mono text-pink-600 whitespace-nowrap">{d.convictionPoints}</td>
-                                    <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${d.oosOverall>20?'text-red-600 font-bold':'text-slate-600'}`}>{d.oosOverall>0?`${d.oosOverall.toFixed(1)}%`:'—'}</td>
-                                    <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${d.oosVehicle>20?'text-red-600 font-bold':'text-slate-600'}`}>{d.oosVehicle>0?`${d.oosVehicle.toFixed(1)}%`:'—'}</td>
-                                    <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${d.oosDriver>5?'text-amber-600 font-semibold':'text-emerald-600'}`}>{d.oosDriver>0?`${d.oosDriver.toFixed(1)}%`:'—'}</td>
+                                    <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${d.oosOverall>20?'text-red-600 font-bold':'text-slate-600'}`}>{d.oosOverall>0?`${d.oosOverall.toFixed(1)}%`:'-'}</td>
+                                    <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${d.oosVehicle>20?'text-red-600 font-bold':'text-slate-600'}`}>{d.oosVehicle>0?`${d.oosVehicle.toFixed(1)}%`:'-'}</td>
+                                    <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${d.oosDriver>5?'text-amber-600 font-semibold':'text-emerald-600'}`}>{d.oosDriver>0?`${d.oosDriver.toFixed(1)}%`:'-'}</td>
                                     <td className="px-2 py-2.5 text-right font-mono text-slate-500 whitespace-nowrap">{d.trucks}</td>
                                     <td className="px-2 py-2.5 text-right font-mono text-slate-500 whitespace-nowrap">{(d.totalMiles/1_000_000).toFixed(2)}M</td>
                                   </tr>
@@ -7535,7 +7570,7 @@ export function InspectionsPage() {
                         </div>
                       </div>
 
-                      {/* ══ INSPECTIONS DRILL-DOWN ══ */}
+                      {/* â•â• INSPECTIONS DRILL-DOWN â•â• */}
                       {cvorSelectedPull && (() => {
                         const pullObj = cvorPeriodicReports.find(d => d.reportDate === cvorSelectedPull);
                         if (!pullObj) return null;
@@ -7569,7 +7604,7 @@ export function InspectionsPage() {
                                   <div className={`mt-0.5 h-11 w-1.5 rounded-full flex-shrink-0 ${al==='critical'?'bg-red-500':al==='warning'?'bg-amber-500':'bg-indigo-500'}`}/>
                                   <div className="space-y-1">
                                     <div className="text-xl font-bold tracking-tight text-slate-900">CVOR Inspections - {pullObj.periodLabel}</div>
-                                  <div className="hidden text-sm font-bold text-slate-800">CVOR Inspections — {pullObj.periodLabel}</div>
+                                  <div className="hidden text-sm font-bold text-slate-800">CVOR Inspections - {pullObj.periodLabel}</div>
                                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                                     <span className="font-semibold text-indigo-600">Window:</span>
                                     <span className="rounded-full bg-white/85 px-2.5 py-0.5 font-mono font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-100">{detailWindowLabel}</span>
@@ -7829,7 +7864,7 @@ export function InspectionsPage() {
                                 currentPage * cvorPullDetailRowsPerPage,
                               );
                               const visible = (id: string) => cvorPullDetailColumns.find((col) => col.id === id)?.visible !== false;
-                              const sortIcon = (id: string) => cvorPullDetailSort.col === id ? (cvorPullDetailSort.dir === 'asc' ? '↑' : '↓') : '';
+                              const sortIcon = (id: string) => cvorPullDetailSort.col === id ? (cvorPullDetailSort.dir === 'asc' ? '->' : 'â†"') : '';
                               const setSort = (id: string) => {
                                 setCvorPullDetailSort((prev) => ({
                                   col: id,
@@ -8062,7 +8097,7 @@ export function InspectionsPage() {
 
                                     <div className="hidden md:grid grid-cols-12 gap-x-2 border-t border-slate-200 bg-slate-50/90 px-5 py-3 text-[11px]">
                                       <div className="col-span-6 font-bold text-slate-600">
-                                        {sortedRows.length} inspections shown • {withPtsCount} with CVOR impact • {oosCount} OOS • {cleanCount} clean
+                                        {sortedRows.length} inspections shown ¢ {withPtsCount} with CVOR impact ¢ {oosCount} OOS ¢ {cleanCount} clean
                                       </div>
                                       <div className="col-span-2" />
                                       <div className="col-span-1 text-center font-bold text-orange-700">{totalVehPts}</div>
@@ -8085,7 +8120,7 @@ export function InspectionsPage() {
                             <div className="hidden">
                             {pullInspections.length === 0 ? (
                               <div className="py-12 flex flex-col items-center gap-3 border border-dashed border-slate-200 rounded-xl text-slate-400">
-                                <div className="text-4xl">📋</div>
+                                <div className="text-4xl">ðŸ"‹</div>
                                 <div className="text-sm font-semibold">No inspections in this 24-month window</div>
                                 <div className="text-xs font-mono text-indigo-400">{win.label}</div>
                               </div>
@@ -8114,7 +8149,7 @@ export function InspectionsPage() {
                                 </div>
                                 <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-[11px]">
                                   <div className="col-span-6 font-bold text-slate-600">
-                                    {pullInspections.length} inspections · {withPtsCount} with CVOR impact · {oosCount} OOS · {cleanCount} clean
+                                    {pullInspections.length} inspections  ·  {withPtsCount} with CVOR impact  ·  {oosCount} OOS  ·  {cleanCount} clean
                                   </div>
                                   <div className="col-span-2"/>
                                   <div className="col-span-1 text-center font-bold text-orange-700">{totalVehPts}</div>
@@ -8237,16 +8272,16 @@ export function InspectionsPage() {
             <div className="flex items-center gap-2 text-sm text-emerald-700">
               <Info size={14} />
               <span className="font-semibold">Last Updated:</span>
-              <span className="font-mono font-bold">December 15, 2025 — 3:42 PM EST</span>
+              <span className="font-mono font-bold">December 15, 2025 - 3:42 PM EST</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-emerald-600">
               <Upload size={14} />
               <span className="font-semibold">Last Uploaded:</span>
-              <span className="font-mono font-bold">December 10, 2025 — 11:15 AM EST</span>
+              <span className="font-mono font-bold">December 10, 2025 - 11:15 AM EST</span>
             </div>
           </div>
 
-          {/* ── NSC Top Row: Safety Rating & OOS + Licensing ── */}
+          {/* â"€â"€ NSC Top Row: Safety Rating & OOS + Licensing â"€â"€ */}
           <div className="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Safety Rating & OOS */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
@@ -8304,7 +8339,7 @@ export function InspectionsPage() {
                               <td className="px-3 py-2 text-slate-700">Passed</td>
                               <td className="px-3 py-2 text-center font-bold text-emerald-600">{nscPassed}</td>
                               <td className="px-3 py-2 text-center font-bold text-emerald-600">{passRate}%</td>
-                              <td className="px-3 py-2 text-center text-slate-500">—</td>
+                              <td className="px-3 py-2 text-center text-slate-500">-</td>
                             </tr>
                           </>
                         );
@@ -8451,7 +8486,7 @@ export function InspectionsPage() {
                 const rfScoreColor = rfSC(rfStage);
                 const RF_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 18%,#eab308 32%,#f97316 52%,#ef4444 70%,#991b1b 100%)';
                 const rfZones = [
-                  { label: 'NOT MONITORED', start: 0, end: rfTP[0]?.pct ?? 27, color: '#16a34a', desc: 'Below Stage 1 — performance acceptable.' },
+                  { label: 'NOT MONITORED', start: 0, end: rfTP[0]?.pct ?? 27, color: '#16a34a', desc: 'Below Stage 1 - performance acceptable.' },
                   { label: 'STAGE 1', start: rfTP[0]?.pct ?? 27, end: rfTP[1]?.pct ?? 40, color: '#b45309', desc: 'Stage 1: corrective measures needed.' },
                   { label: 'STAGE 2', start: rfTP[1]?.pct ?? 40, end: rfTP[2]?.pct ?? 55, color: '#d97706', desc: 'Stage 2: action plan required.' },
                   { label: 'STAGE 3', start: rfTP[2]?.pct ?? 55, end: rfTP[3]?.pct ?? 70, color: '#dc2626', desc: 'Stage 3: compliance review required.' },
@@ -8478,7 +8513,7 @@ export function InspectionsPage() {
                         <div className="text-[28px] leading-none font-black tracking-tight font-mono" style={{ color: rfScoreColor }}>{rfScore.toFixed(3)}</div>
                         <div className="pt-0.5 space-y-1">
                           <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border ${rfStage === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>{rfStage === 0 ? 'NOT MONITORED' : `STAGE ${rfStage}`}</span>
-                          <div className="text-[10px] text-slate-400">Fleet {ALBERTA_NSC_PERFORMANCE_CARD.fleetRange} · {ALBERTA_NSC_PERFORMANCE_CARD.fleetType}</div>
+                          <div className="text-[10px] text-slate-400">Fleet {ALBERTA_NSC_PERFORMANCE_CARD.fleetRange}  ·  {ALBERTA_NSC_PERFORMANCE_CARD.fleetType}</div>
                         </div>
                       </div>
                       <div className="relative" style={{ paddingTop: 22 }}>
@@ -8509,7 +8544,7 @@ export function InspectionsPage() {
                                       <div className="text-[10px] text-slate-300 leading-relaxed">{z.desc}</div>
                                       <div className="pt-1.5 border-t border-slate-700/60">
                                         <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1">Stage Thresholds</div>
-                                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">{rfThr.map(t => (<div key={t.stage} className="flex items-center justify-between"><span className="text-[9px]" style={{ color: rfSC(t.stage) }}>Stage {t.stage}</span><span className="text-[10px] font-bold font-mono text-white">{'≥'} {t.low.toFixed(3)}</span></div>))}</div>
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">{rfThr.map(t => (<div key={t.stage} className="flex items-center justify-between"><span className="text-[9px]" style={{ color: rfSC(t.stage) }}>Stage {t.stage}</span><span className="text-[10px] font-bold font-mono text-white">{'>='} {t.low.toFixed(3)}</span></div>))}</div>
                                       </div>
                                     </div>
                                     <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
@@ -8526,7 +8561,7 @@ export function InspectionsPage() {
                       </div>
                       <div className="flex items-center mt-0.5 text-[9px] text-slate-400">
                         <span className="font-semibold text-slate-500">NSC Thresholds</span>
-                        {rfThr.map(t => (<span key={t.stage} className="ml-1.5" style={{ color: rfSC(t.stage) }}>{'·'} S{t.stage} {'≥'} {t.low.toFixed(3)}</span>))}
+                        {rfThr.map(t => (<span key={t.stage} className="ml-1.5" style={{ color: rfSC(t.stage) }}>{' · '} S{t.stage} {'>='} {t.low.toFixed(3)}</span>))}
                       </div>
                     </div>
                     <div className="space-y-2.5">
@@ -8541,7 +8576,7 @@ export function InspectionsPage() {
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${rfcb(pct)}`}>{rfcl(pct)}</span>
                           </div>
                           <div className="text-[22px] leading-none font-black my-0.5 font-mono" style={{ color: rfcc(pct) }}>{pct.toFixed(1)}%</div>
-                          <div className="text-[10px] text-slate-600 mb-0.5">{events} {events === 1 ? 'event' : 'events'} · {pct.toFixed(1)}% impact</div>
+                          <div className="text-[10px] text-slate-600 mb-0.5">{events} {events === 1 ? 'event' : 'events'}  ·  {pct.toFixed(1)}% impact</div>
                           <div className="relative group/binfo">
                             <div className="relative h-[6px] rounded-full overflow-hidden cursor-pointer" style={{ background: RF_C_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
                               <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
@@ -8578,7 +8613,7 @@ export function InspectionsPage() {
                                   <div className="flex justify-between text-[8px] mt-0.5"><span style={{ color: '#16a34a' }}>LOW {RF_LOW}%</span><span style={{ color: '#d97706' }}>MOD {RF_MOD}%</span><span style={{ color: '#dc2626' }}>HIGH</span></div>
                                 </div>
                                 <div className="px-3.5 py-2 bg-slate-800/50 border-t border-slate-700/60">
-                                  <div className="text-[10px] text-slate-400">{events} event{events !== 1 ? 's' : ''} · {pct.toFixed(1)}% impact</div>
+                                  <div className="text-[10px] text-slate-400">{events} event{events !== 1 ? 's' : ''}  ·  {pct.toFixed(1)}% impact</div>
                                   <div className="text-[10px] font-bold mt-0.5" style={{ color: rfcc(pct) }}>{rfcl(pct)} contribution to R-Factor</div>
                                 </div>
                                 <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
@@ -8598,7 +8633,7 @@ export function InspectionsPage() {
                                 <div className="text-[10px] text-slate-400 italic leading-relaxed pt-1">{desc}</div>
                               </div>
                               <div className="px-3.5 py-2 bg-slate-50 border-t border-slate-100">
-                                <div className="text-[10px] text-slate-500">{events} event{events !== 1 ? 's' : ''} · {pct.toFixed(1)}% impact</div>
+                                <div className="text-[10px] text-slate-500">{events} event{events !== 1 ? 's' : ''}  ·  {pct.toFixed(1)}% impact</div>
                                 <div className="text-[10px] font-bold mt-0.5" style={{ color: rfcc(pct) }}>{rfcl(pct)} contribution to R-Factor</div>
                               </div>
                               <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #f8fafc' }}/>
@@ -8718,7 +8753,7 @@ export function InspectionsPage() {
                               <td className="px-3 py-2 text-slate-700">Passed</td>
                               <td className="px-3 py-2 text-center font-bold text-emerald-600">{nscPassed}</td>
                               <td className="px-3 py-2 text-center font-bold text-emerald-600">{passRate}%</td>
-                              <td className="px-3 py-2 text-center text-slate-500">—</td>
+                              <td className="px-3 py-2 text-center text-slate-500">-</td>
                             </tr>
                           </>
                         );
@@ -8862,6 +8897,77 @@ export function InspectionsPage() {
         </div>
       )}
 
+      {/* ===== TAB: CARRIER PROFILE (NSC PE) ===== */}
+      {activeMainTab === 'carrier-profile-pe' && (
+        <div className="space-y-6">
+          <NscPeiPerformanceCard data={{
+            carrierName:    'BUSINESS PORTERS INC.',
+            nscNumber:      PRINCE_EDWARD_ISLAND_NSC_PROFILE.nscNumber,
+            profileAsOf:    PRINCE_EDWARD_ISLAND_NSC_PROFILE.profileAsOf,
+            jurisdiction:   PRINCE_EDWARD_ISLAND_NSC_PROFILE.jurisdiction,
+            safetyRating:   PRINCE_EDWARD_ISLAND_NSC_PROFILE.safetyRating,
+            certStatus:     'Active',
+            auditStatus:    'Unaudited',
+            phone:          '(902)932-7076',
+            contactName:    'Same As Above Same As Above',
+            collisionPoints:  PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.collisionPoints,
+            convictionPoints: PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.convictionPoints,
+            inspectionPoints: PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.inspectionPoints,
+            currentActiveVehicles:                PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.currentActiveVehicles,
+            currentActiveVehiclesAtLastAssessment: PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.currentActiveVehiclesAtLastAssessment,
+            interventions: [
+              { label: 'Conditional Rating - Issued', date: '14-Jul-2021', type: 'warning' },
+            ],
+            carrierInfo: {
+              primaryBusiness:  'General Freight',
+              extraProvincial:  true,
+              premiumCarrier:   false,
+              mailingAddress:   '149 SHERWOOD RD UNIT 4 CHARL\nBox 40025 CHARLOTTETOWN\nPrince Edward Island  C1E 0J2',
+              licensedVehicles: 19,
+              certIssueDate:    '11-Jan-2016',
+              jurisdiction:     'PE',
+              reportFrom:       '14-Jul-2019',
+              reportTo:         '14-Jul-2021',
+              reportRun:        '14-Jul-2021',
+            },
+          }}/>
+        </div>
+      )}
+
+      {/* ===== TAB: CARRIER PROFILE (NSC NS) ===== */}
+      {activeMainTab === 'carrier-profile-ns' && (
+        <div className="space-y-6">
+          <NscNsPerformanceCard data={{
+            carrierName:          NOVA_SCOTIA_NSC_PROFILE.carrierName,
+            nscNumber:            NOVA_SCOTIA_NSC_PROFILE.nscNumber,
+            profileAsOf:          NOVA_SCOTIA_NSC_PROFILE.profileAsOf,
+            safetyRating:         NOVA_SCOTIA_NSC_PROFILE.safetyRating,
+            safetyRatingExpires:  NOVA_SCOTIA_NSC_PROFILE.safetyRatingExpires,
+            contactName:          NOVA_SCOTIA_NSC_PROFILE.contactName,
+            contactTitle:         NOVA_SCOTIA_NSC_PROFILE.contactTitle,
+            phone:                NOVA_SCOTIA_NSC_PROFILE.phone,
+            mailingAddress:       NOVA_SCOTIA_NSC_PROFILE.mailingAddress,
+            physicalAddress:      NOVA_SCOTIA_NSC_PROFILE.physicalAddress,
+            principalPlace:       NOVA_SCOTIA_NSC_PROFILE.principalPlace,
+            currentFleetSize:     NOVA_SCOTIA_NSC_PROFILE.currentFleetSize,
+            avgDailyFleetSize:    NOVA_SCOTIA_NSC_PROFILE.avgDailyFleetSize,
+            scoreLevel1:          NOVA_SCOTIA_NSC_PROFILE.scoreLevel1,
+            scoreLevel2:          NOVA_SCOTIA_NSC_PROFILE.scoreLevel2,
+            scoreLevel3:          NOVA_SCOTIA_NSC_PROFILE.scoreLevel3,
+            convictionScore:      NOVA_SCOTIA_NSC_PROFILE.convictionScore,
+            inspectionScore:      NOVA_SCOTIA_NSC_PROFILE.inspectionScore,
+            collisionScore:       NOVA_SCOTIA_NSC_PROFILE.collisionScore,
+            auditHistory:         [],
+            interventions:        [],
+            carrierInfo: {
+              reportFrom: '19/08/2020',
+              reportTo:   '19/08/2022',
+              reportRun:  '19/08/2022',
+            },
+          }}/>
+        </div>
+      )}
+
       {/* ===== UPLOAD MODAL ===== */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -8928,7 +9034,7 @@ export function InspectionsPage() {
                     <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white" value={inspForm.state} onChange={e => setInspForm(p => ({ ...p, state: e.target.value }))}>
                       <option value="">Select...</option>
                       {Object.entries(inspForm.country === 'Canada' ? CA_PROVINCE_ABBREVS : US_STATE_ABBREVS).map(([abbr, name]) => (
-                        <option key={abbr} value={abbr}>{abbr} – {name}</option>
+                        <option key={abbr} value={abbr}>{abbr} - {name}</option>
                       ))}
                     </select>
                     {inspForm.state && (
@@ -8969,14 +9075,14 @@ export function InspectionsPage() {
                         </>
                       ) : (
                         <>
-                          <option value="Level 1">SMS Level I – North American Standard</option>
-                          <option value="Level 2">SMS Level II – Walk-Around</option>
-                          <option value="Level 3">SMS Level III – Driver/Credential</option>
-                          <option value="Level 4">SMS Level IV – Special Inspections</option>
-                          <option value="Level 5">SMS Level V – Vehicle-Only</option>
-                          <option value="Level 6">SMS Level VI – Transuranic/Radioactive</option>
-                          <option value="Level 7">SMS Level VII – Jurisdictional Mandated</option>
-                          <option value="Level 8">SMS Level VIII – Electronic Inspection</option>
+                          <option value="Level 1">SMS Level I - North American Standard</option>
+                          <option value="Level 2">SMS Level II - Walk-Around</option>
+                          <option value="Level 3">SMS Level III - Driver/Credential</option>
+                          <option value="Level 4">SMS Level IV - Special Inspections</option>
+                          <option value="Level 5">SMS Level V - Vehicle-Only</option>
+                          <option value="Level 6">SMS Level VI - Transuranic/Radioactive</option>
+                          <option value="Level 7">SMS Level VII - Jurisdictional Mandated</option>
+                          <option value="Level 8">SMS Level VIII - Electronic Inspection</option>
                         </>
                       )}
                     </select>
@@ -9069,7 +9175,7 @@ export function InspectionsPage() {
                         >
                           <option value="">Select Asset / Vehicle...</option>
                           {INITIAL_ASSETS.map(a => (
-                            <option key={a.id} value={a.id}>{a.unitNumber} – {a.make} {a.model} ({a.plateNumber})</option>
+                            <option key={a.id} value={a.id}>{a.unitNumber} - {a.make} {a.model} ({a.plateNumber})</option>
                           ))}
                         </select>
                       </div>

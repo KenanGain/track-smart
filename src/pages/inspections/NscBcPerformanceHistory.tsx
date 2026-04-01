@@ -738,7 +738,7 @@ function BcPullDrillDown({ r }: { r: typeof BC_PULL_DATA[0] }) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-type Cadence = 'Monthly' | 'Quarterly' | 'All';
+type Cadence = 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All';
 
 export function NscBcPerformanceHistory() {
   const [cadence,     setCadence]     = useState<Cadence>('All');
@@ -753,10 +753,14 @@ export function NscBcPerformanceHistory() {
 
   const filterByCadence = (rows: typeof all): typeof all => {
     if (cadence === 'Monthly' || cadence === 'All') return rows;
+    const minStep =
+      cadence === 'Quarterly' ? 3 :
+      cadence === 'Semi-Annual' ? 6 :
+      12;
     const out: typeof rows = [];
     let lastIdx = -99;
     rows.forEach((r, i) => {
-      if (i === 0 || i - lastIdx >= 3) { out.push(r); lastIdx = i; }
+      if (i === 0 || i - lastIdx >= minStep) { out.push(r); lastIdx = i; }
     });
     return out;
   };
@@ -926,7 +930,7 @@ export function NscBcPerformanceHistory() {
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Cadence</span>
           <div className="inline-flex rounded-xl bg-slate-100 p-0.5 gap-px">
-            {(['Monthly', 'Quarterly', 'All'] as Cadence[]).map(c => (
+            {(['Monthly', 'Quarterly', 'Semi-Annual', 'Annual', 'All'] as Cadence[]).map(c => (
               <button key={c} onClick={() => setCadence(c)}
                 className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[10px] font-bold transition-colors ${cadence === c ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 {c}

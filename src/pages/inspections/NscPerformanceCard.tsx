@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Activity } from 'lucide-react';
+import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -366,44 +367,43 @@ export function NscPerformanceCard({
               <div className="absolute inset-0 rounded-full overflow-hidden">
                 {zones.map(z => {
                   const isCurrent = stage === 0 ? z.label === 'NOT MONITORED' : z.label === `STAGE ${stage}`;
+                  const zoneRange =
+                    z.label === 'NOT MONITORED'
+                      ? `< ${(stageThresholds[0]?.low ?? 0).toFixed(3)}`
+                      : (() => {
+                          const zoneStage = stageThresholds.find(t => `STAGE ${t.stage}` === z.label);
+                          if (!zoneStage) return z.label;
+                          const upperBound = zoneStage.high ?? null;
+                          return upperBound == null
+                            ? `>= ${zoneStage.low.toFixed(3)}`
+                            : `${zoneStage.low.toFixed(3)} - ${upperBound.toFixed(3)}`;
+                        })();
                   return (
                     <div key={z.label} className="absolute inset-y-0 group/zone cursor-crosshair"
                       style={{ left: `${z.start}%`, width: `${z.end - z.start}%` }}>
                       <div className="absolute inset-0 bg-white/0 group-hover/zone:bg-white/20 transition-colors duration-150 rounded"/>
                       <div className="hidden group-hover/zone:block absolute z-50 pointer-events-none"
                         style={{ bottom: 'calc(100% + 14px)', left: '50%', transform: 'translateX(-50%)', width: 260 }}>
-                        <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
-                          <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: z.color }}>
-                            <span className="text-white font-black text-[13px] tracking-wide">{z.label}</span>
-                            {z.label !== 'NOT MONITORED' && (
-                              <span className="text-white/80 text-[11px] font-mono font-bold">
-                                {stageThresholds.find(t => `STAGE ${t.stage}` === z.label)?.low.toFixed(3)}+
-                              </span>
-                            )}
-                          </div>
-                          <div className="px-4 py-3 space-y-2">
-                            {isCurrent && (
-                              <div className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-1.5">
-                                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Current R-Factor</span>
-                                <span className="text-[14px] font-black text-white">{rFactor.toFixed(3)}</span>
-                              </div>
-                            )}
-                            <div className="text-[11px] text-slate-300 leading-relaxed">{z.desc}</div>
-                            <div className="pt-2 border-t border-slate-700/60">
-                              <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1.5">Stage Thresholds · Fleet {fleetRange}</div>
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                {stageThresholds.map(t => (
-                                  <div key={t.stage} className="flex items-center justify-between">
-                                    <span className="text-[10px]" style={{ color: SC(t.stage) }}>Stage {t.stage}</span>
-                                    <span className="text-[11px] font-bold font-mono text-white">{'\u2265'} {t.low.toFixed(3)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
-                            style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #0f172a' }}/>
-                        </div>
+                        <ScoreBandHoverCard
+                          title={z.label}
+                          range={zoneRange}
+                          accentColor={z.color}
+                          current={isCurrent ? { label: 'Current R-Factor', value: rFactor.toFixed(3) } : undefined}
+                          description={z.desc}
+                          detailRows={[
+                            { label: 'Fleet', value: fleetRange },
+                            { label: 'Type', value: fleetType },
+                            { label: 'Status', value: SL(stage), valueColor: scoreColor },
+                            { label: 'Profile Date', value: profileDate },
+                          ]}
+                          thresholdsTitle={`Stage Thresholds · Fleet ${fleetRange}`}
+                          thresholds={stageThresholds.map(t => ({
+                            label: `Stage ${t.stage}`,
+                            value: `>= ${t.low.toFixed(3)}`,
+                            color: SC(t.stage),
+                          }))}
+                          thresholdColumns={2}
+                        />
                       </div>
                     </div>
                   );
@@ -457,7 +457,7 @@ export function NscPerformanceCard({
             {contribTiles.map(({ key, label, item, desc }) => {
               const { pct, events } = item;
               return (
-                <div key={key} className={`rounded-xl border p-3 ${ctile(pct)}`}>
+                <div key={key} className={`relative rounded-xl border p-3 ${ctile(pct)} group/card cursor-pointer transition-shadow hover:shadow-lg`}>
                   {/* Row 1: label + badge */}
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
@@ -475,8 +475,8 @@ export function NscPerformanceCard({
                     {cl(pct)} contribution to R-Factor
                   </div>
                   {/* Mini gradient bar */}
-                  <div className="relative group/tileinfo">
-                    <div className="relative h-[7px] rounded-full overflow-hidden cursor-pointer"
+                  <div className="relative">
+                    <div className="relative h-[7px] rounded-full overflow-hidden"
                       style={{ background: C_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
                       <div className="absolute top-0 left-0 right-0 h-[3px]"
                         style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
@@ -493,10 +493,11 @@ export function NscPerformanceCard({
                       <span>MOD {C_MOD}%</span>
                       <span>HIGH</span>
                     </div>
-                    {/* Hover tooltip */}
-                    <div className="hidden group-hover/tileinfo:block absolute z-50 pointer-events-none"
-                      style={{ bottom: 'calc(100% + 32px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
-                      <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
+                  </div>
+                  {/* Card hover tooltip — dark navy popup */}
+                  <div className="hidden group-hover/card:block absolute z-50 pointer-events-none"
+                    style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
+                      <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
                         <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: cc(pct) }}>
                           <span className="text-white font-black text-[12px] uppercase tracking-wide">{label}</span>
                           <span className="text-white/90 text-[12px] font-mono font-bold">{pct.toFixed(1)}%</span>
@@ -508,14 +509,14 @@ export function NscPerformanceCard({
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400">Event Count</span>
-                            <span className="font-bold text-white">{events}</span>
+                            <span className="font-bold text-slate-800">{events}</span>
                           </div>
                           <div className="flex justify-between text-[11px]">
                             <span className="text-slate-400">R-Factor Impact</span>
-                            <span className="font-bold text-white">{pct.toFixed(1)}%</span>
+                            <span className="font-bold text-slate-800">{pct.toFixed(1)}%</span>
                           </div>
-                          <div className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-700/60">{desc}</div>
-                          <div className="pt-1.5 border-t border-slate-700/60">
+                          <div className="text-[10px] text-slate-500 leading-relaxed pt-1 border-t border-slate-100">{desc}</div>
+                          <div className="pt-1.5 border-t border-slate-100">
                             <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Levels</div>
                             <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                               {([
@@ -526,16 +527,15 @@ export function NscPerformanceCard({
                               ] as { n: string; v: number; c: string }[]).map(th => (
                                 <div key={th.n} className="flex items-center justify-between">
                                   <span className="text-[9px]" style={{ color: th.c }}>{th.n}</span>
-                                  <span className="text-[10px] font-bold font-mono text-white">{th.v.toFixed(1)}%</span>
+                                  <span className="text-[10px] font-bold font-mono text-slate-700">{th.v.toFixed(1)}%</span>
                                 </div>
                               ))}
                             </div>
                           </div>
                         </div>
                         <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
-                          style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
+                          style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid white' }}/>
                       </div>
-                    </div>
                   </div>
                 </div>
               );
