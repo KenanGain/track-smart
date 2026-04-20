@@ -2,6 +2,1804 @@ import React, { useState } from 'react';
 import { Activity, Search, Columns3, ChevronDown, ChevronRight } from 'lucide-react';
 import { AB_PULL_DATA } from './NscAbPullByPull';
 
+// ─── AB Conviction data (real) ───────────────────────────────────────────────
+
+interface AbConvictionGroupRow { group: string; count: number; pct: string }
+interface AbConvictionSummaryRow { seq:number; date:string; document:string; docket:string; jur:string; vehicle:string; driverName:string; offence:string; pts:number }
+interface AbConvictionDetailRow {
+  seq:number;
+  date:string; time:string; document:string; docket:string; jurisdiction:string; dateEntered:string;
+  issuingAgency:string; location:string; driver:string; vehicle:string; commodity:string;
+  actSection:string; actDesc:string; ccmtaCode:string; convVehicle:string; convDate:string; activePts:number;
+}
+
+const AB_CONV_GROUPS: AbConvictionGroupRow[] = [
+  { group:'Speeding',                                                     count:0, pct:'' },
+  { group:'Stop signs/Traffic lights',                                    count:0, pct:'' },
+  { group:'Driver Liabilities (Licence, Insurance, Seat Belts, etc.)',    count:0, pct:'' },
+  { group:'Driving (Passing, Disobey Signs, Signals, etc.)',              count:2, pct:'100.0%' },
+  { group:'Hours of Service',                                             count:0, pct:'' },
+  { group:'Trip Inspections',                                             count:0, pct:'' },
+  { group:'Brakes',                                                       count:0, pct:'' },
+  { group:'CVIP',                                                         count:0, pct:'' },
+  { group:'Mechanical Defects',                                           count:0, pct:'' },
+  { group:'Oversize/Overweight',                                          count:0, pct:'' },
+  { group:'Security of Loads',                                            count:0, pct:'' },
+  { group:'Dangerous Goods',                                              count:0, pct:'' },
+  { group:'Criminal Code',                                                count:0, pct:'' },
+  { group:'Permits',                                                      count:0, pct:'' },
+  { group:'Miscellaneous',                                                count:0, pct:'' },
+  { group:'Administrative Actions',                                       count:0, pct:'' },
+];
+const AB_CONV_TOTAL = { count: 2, pct: '100%' };
+
+const AB_CONV_SUMMARY: AbConvictionSummaryRow[] = [
+  { seq:1, date:'2022 FEB 25', document:'TVT E18718140A', docket:'E18718140A', jur:'AB', vehicle:'A24172 AB', driverName:'IOURI VAKOULENKO', offence:'FAIL TO OBEY DEVICE', pts:0 },
+  { seq:2, date:'2020 JUL 03', document:'OPC 16384493',    docket:'16384493',   jur:'ON', vehicle:'U39627 AB', driverName:'',                   offence:'DRIVING CONTRARY TO SIGN', pts:0 },
+];
+
+const AB_CONV_DETAILS: AbConvictionDetailRow[] = [
+  {
+    seq:1,
+    date:'2022 FEB 25', time:'14:50', document:'TVT E18718140A', docket:'E18718140A', jurisdiction:'AB', dateEntered:'2022 MAR 11',
+    issuingAgency:'INT. TRAF. UNIT - HIGH RIVER', location:'CALGARY',
+    driver:'IOURI VAKOULENKO V02233640610414 ON', vehicle:'A24172 AB', commodity:'1',
+    actSection:'304/0257', actDesc:'FAIL TO OBEY TRAFFIC CONTROL', ccmtaCode:'317 FAIL TO OBEY DEVICE',
+    convVehicle:'A24172 AB', convDate:'2022 FEB 28', activePts:0,
+  },
+  {
+    seq:2,
+    date:'2020 JUL 03', time:'15:04', document:'OPC 16384493', docket:'16384493', jurisdiction:'ON', dateEntered:'2021 AUG 31',
+    issuingAgency:'', location:'@ABHWY 11 - CLERGUE TWP',
+    driver:'', vehicle:'U39627 AB', commodity:'2',
+    actSection:'', actDesc:'', ccmtaCode:'330 DRIVING CONTRARY TO SIGN',
+    convVehicle:'U39627 AB', convDate:'2021 AUG 19', activePts:0,
+  },
+];
+
+const AB_CONV_PAGE = 10;
+
+export function AbConvictionAnalysisTable() {
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Number of Convictions</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Percent of Total</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Group Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {AB_CONV_GROUPS.map((row, i) => (
+              <tr key={i} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''}`}>
+                <td className={`px-4 py-2 text-center font-mono ${row.count > 0 ? 'font-bold text-slate-800' : 'text-slate-300'}`}>{row.count > 0 ? row.count : ''}</td>
+                <td className={`px-4 py-2 text-center font-mono ${row.pct ? 'font-semibold text-slate-600' : 'text-slate-300'}`}>{row.pct || ''}</td>
+                <td className={`px-4 py-2 ${row.count > 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{row.group}</td>
+              </tr>
+            ))}
+            <tr className="bg-slate-100 border-t border-slate-300 font-bold">
+              <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{AB_CONV_TOTAL.count}</td>
+              <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{AB_CONV_TOTAL.pct}</td>
+              <td className="px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-700">Total Convictions</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function AbConvictionSummaryList() {
+  const [page, setPage] = useState(1);
+  const total = AB_CONV_SUMMARY.length;
+  const pages = Math.max(1, Math.ceil(total / AB_CONV_PAGE));
+  const rows  = AB_CONV_SUMMARY.slice((page - 1) * AB_CONV_PAGE, page * AB_CONV_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Document #</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Docket #</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jur</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Vehicle</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Driver Name &middot; Offence</th>
+              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-amber-500 uppercase tracking-wider whitespace-nowrap">Active Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.seq} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.document}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.docket}</td>
+                <td className="px-4 py-2.5 text-center font-semibold text-slate-700">{r.jur}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.vehicle}</td>
+                <td className="px-4 py-2.5">
+                  <div className="font-semibold text-slate-800">{r.driverName || <span className="text-slate-400 italic font-normal">Name not on file</span>}</div>
+                  <div className="text-[10px] text-slate-500">{r.offence}</div>
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono font-black" style={{ color: r.pts >= 3 ? '#dc2626' : r.pts >= 1 ? '#d97706' : '#94a3b8' }}>
+                  {r.pts > 0 ? r.pts : <span className="text-slate-300">&mdash;</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_CONV_PAGE + 1}&ndash;{Math.min(page * AB_CONV_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbConvictionDetailsList() {
+  const [page, setPage] = useState(1);
+  const total = AB_CONV_DETAILS.length;
+  const pages = Math.max(1, Math.ceil(total / AB_CONV_PAGE));
+  const rows  = AB_CONV_DETAILS.slice((page - 1) * AB_CONV_PAGE, page * AB_CONV_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date &middot; Time</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Document &middot; Docket</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jur &middot; Entered</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Issuing Agency &middot; Location</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Driver &middot; Vehicle</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Act/Section &middot; CCMTA Code</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Conv Date</th>
+              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-amber-500 uppercase tracking-wider whitespace-nowrap">Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.seq} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-500 align-top">{r.seq}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap align-top">
+                  <div className="font-mono text-slate-800">{r.date}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{r.time}</div>
+                </td>
+                <td className="px-4 py-2.5 whitespace-nowrap align-top">
+                  <div className="font-mono text-slate-700">{r.document}</div>
+                  <div className="text-[10px] font-mono text-slate-500">Docket {r.docket}</div>
+                </td>
+                <td className="px-4 py-2.5 text-center align-top whitespace-nowrap">
+                  <div className="font-semibold text-slate-700">{r.jurisdiction}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{r.dateEntered}</div>
+                </td>
+                <td className="px-4 py-2.5 align-top">
+                  <div className="text-slate-700">{r.issuingAgency || <span className="text-slate-300">&mdash;</span>}</div>
+                  <div className="text-[10px] text-slate-500">{r.location || <span className="text-slate-300">&mdash;</span>}</div>
+                </td>
+                <td className="px-4 py-2.5 align-top">
+                  <div className="font-semibold text-slate-800">{r.driver || <span className="text-slate-400 italic font-normal">Name not on file</span>}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{r.vehicle} &middot; Commodity {r.commodity}</div>
+                </td>
+                <td className="px-4 py-2.5 align-top">
+                  <div className="font-mono text-slate-700">{r.actSection || <span className="text-slate-300">&mdash;</span>}</div>
+                  <div className="text-[10px] text-slate-500">{r.actDesc || ''}</div>
+                  <div className="text-[10px] font-mono font-bold text-slate-600 mt-0.5">{r.ccmtaCode}</div>
+                </td>
+                <td className="px-4 py-2.5 font-mono text-slate-600 whitespace-nowrap align-top">{r.convDate}</td>
+                <td className="px-4 py-2.5 text-right font-mono font-black align-top" style={{ color: r.activePts >= 3 ? '#dc2626' : r.activePts >= 1 ? '#d97706' : '#94a3b8' }}>
+                  {r.activePts > 0 ? r.activePts : <span className="text-slate-300">&mdash;</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_CONV_PAGE + 1}&ndash;{Math.min(page * AB_CONV_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AB CVSA Inspection data (Part 3) ────────────────────────────────────────
+
+interface AbCvsaDefectRow { code:string; label:string; oos?:number; req?:number; total?:number; pct?:string }
+interface AbCvsaSummaryRow { seq:number; date:string; document:string; jur:string; agency:string; plate:string; plateJur:string; level:number; result:string }
+interface AbCvsaVehicle { type:string; plate:string; jur:string; vin?:string; year?:string; make?:string; decal?:string }
+interface AbCvsaDefect { cat:string; vehicle:number; kind:'OOS' | 'REQ' }
+interface AbCvsaDetailRow {
+  seq:number;
+  date:string; time:string; document:string; jur:string; level:number; result:string; dateEntered:string;
+  agency:string; location:string; driver:string;
+  vehicles: AbCvsaVehicle[];
+  defects: AbCvsaDefect[];
+}
+
+const AB_CVSA_DEFECTS: AbCvsaDefectRow[] = [
+  { code:'1',  label:'Driver Credentials',                                oos:1, req:2, total:3, pct:'37.5%' },
+  { code:'2',  label:'Hours Of Service',                                  oos:1, req:1, total:2, pct:'25.0%' },
+  { code:'3',  label:'Brake Adjustment' },
+  { code:'4',  label:'Brake Systems',                                            req:1, total:1, pct:'12.5%' },
+  { code:'5',  label:'Coupling Devices' },
+  { code:'6',  label:'Exhaust Systems' },
+  { code:'7',  label:'Frames' },
+  { code:'8',  label:'Fuel Systems' },
+  { code:'9',  label:'Lighting Devices (Part II Section 8 OOSC only)',    oos:1,        total:1, pct:'12.5%' },
+  { code:'10', label:'Cargo Securement' },
+  { code:'11', label:'Steering Mechanisms' },
+  { code:'12', label:'Suspensions' },
+  { code:'13', label:'Tires' },
+  { code:'14', label:'Van/Open-top Trailer Bodies' },
+  { code:'15', label:'Wheels, Rims & Hubs' },
+  { code:'16', label:'Windshield Wipers' },
+  { code:'17', label:'Emergency Exits/Wiring & Electrical Systems (Buses)' },
+  { code:'18', label:'Dangerous Goods',                                          req:1, total:1, pct:'12.5%' },
+  { code:'19', label:'Driveline/Driveshaft' },
+];
+const AB_CVSA_DEFECT_TOTAL = { oos:3, req:5, total:8, pct:'100%' };
+
+const AB_CVSA_SUMMARY: AbCvsaSummaryRow[] = [
+  { seq:1, date:'2018 DEC 12', document:'OPI ONEA01273068', jur:'ON', agency:'', plate:'U04031', plateJur:'AB', level:2, result:'Out of Service' },
+  { seq:2, date:'2018 NOV 27', document:'OPI ONEA01263997', jur:'ON', agency:'', plate:'U04031', plateJur:'AB', level:2, result:'Out of Service' },
+  { seq:3, date:'2018 NOV 10', document:'OPI 8628393',      jur:'BC', agency:'', plate:'N3759S', plateJur:'ON', level:2, result:'Out of Service' },
+  { seq:4, date:'2018 OCT 17', document:'OPI ONEA01251954', jur:'ON', agency:'', plate:'E77384', plateJur:'AB', level:2, result:'Passed' },
+  { seq:5, date:'2018 SEP 25', document:'OPI ONEA01249644', jur:'ON', agency:'', plate:'E80652', plateJur:'AB', level:2, result:'Passed' },
+  { seq:6, date:'2018 AUG 16', document:'OPI ONEA01237362', jur:'ON', agency:'', plate:'E75062', plateJur:'AB', level:2, result:'Passed' },
+  { seq:7, date:'2018 JUN 13', document:'OPI ONEA01215795', jur:'ON', agency:'', plate:'E65114', plateJur:'AB', level:2, result:'Passed' },
+  { seq:8, date:'2018 JUN 05', document:'OPI ONEA01219694', jur:'ON', agency:'', plate:'E65208', plateJur:'AB', level:1, result:'Requires Attention' },
+  { seq:9, date:'2018 JUN 01', document:'OPI ONEA01211359', jur:'ON', agency:'', plate:'E65114', plateJur:'AB', level:2, result:'Requires Attention' },
+];
+
+const AB_CVSA_DETAILS: AbCvsaDetailRow[] = [
+  {
+    seq:1, date:'2018 DEC 12', time:'19:25', document:'OPI ONEA01273068', jur:'ON', level:2, result:'Out of Service', dateEntered:'2018 DEC 18',
+    agency:'', location:'HEYDEN TIS', driver:'Gursharan Singh Grewal G73663088800917 ON',
+    vehicles:[
+      { type:'P',  plate:'U04031', jur:'AB', vin:'4V4NC9EH9GN928469', year:'2016', make:'Volvo' },
+      { type:'ST', plate:'N9446R', jur:'ON', make:'CIMC' },
+    ],
+    defects:[ { cat:'9 - Lighting Devices (Part II Section 8 OOSC only)', vehicle:2, kind:'OOS' } ],
+  },
+  {
+    seq:2, date:'2018 NOV 27', time:'13:11', document:'OPI ONEA01263997', jur:'ON', level:2, result:'Out of Service', dateEntered:'2018 DEC 04',
+    agency:'', location:'HEYDEN TIS', driver:'Gursharan Singh Grewal G73663088800917 ON',
+    vehicles:[
+      { type:'P',  plate:'U04031', jur:'AB', vin:'4V4NC9EH9GN928469', year:'2016', make:'Volvo' },
+      { type:'ST', plate:'M5787W', jur:'ON', make:'VANG' },
+    ],
+    defects:[
+      { cat:'2 - Hours Of Service', vehicle:2, kind:'OOS' },
+      { cat:'1 - Driver Credentials', vehicle:1, kind:'REQ' },
+      { cat:'18 - Dangerous Goods',   vehicle:2, kind:'REQ' },
+    ],
+  },
+  {
+    seq:3, date:'2018 NOV 10', time:'13:11', document:'OPI 8628393', jur:'BC', level:2, result:'Out of Service', dateEntered:'2018 NOV 13',
+    agency:'', location:'KAMLOOPS', driver:'SIVALOGANATHAN NADESU 6550853 BC',
+    vehicles:[
+      { type:'ST', plate:'N3759S', jur:'ON', make:'UTIL' },
+      { type:'P',  plate:'E77384', jur:'AB', vin:'4V4NC9EH4GN929559', year:'2016', make:'Volvo' },
+    ],
+    defects:[ { cat:'1 - Driver Credentials', vehicle:2, kind:'OOS' } ],
+  },
+  {
+    seq:4, date:'2018 OCT 17', time:'12:40', document:'OPI ONEA01251954', jur:'ON', level:2, result:'Passed', dateEntered:'2018 OCT 23',
+    agency:'', location:'WASSI NORTH TIS', driver:'SIVALOGANATHAN NADESU 6550853 BC',
+    vehicles:[
+      { type:'P',  plate:'E77384', jur:'AB', vin:'4V4NC9EH4GN929559', year:'2016', make:'Volvo' },
+      { type:'ST', plate:'R8098J', jur:'ON', make:'UTIL' },
+    ],
+    defects:[],
+  },
+  {
+    seq:5, date:'2018 SEP 25', time:'13:56', document:'OPI ONEA01249644', jur:'ON', level:2, result:'Passed', dateEntered:'2018 OCT 02',
+    agency:'', location:'NEW LISKEARD TIS', driver:'MOHAN SINGH M61600000720815 ON',
+    vehicles:[
+      { type:'P',  plate:'E80652', jur:'AB', vin:'4V4NC9EH7EN152680', year:'2014', make:'Volvo' },
+      { type:'ST', plate:'P8978W', jur:'ON', make:'UTIL' },
+    ],
+    defects:[],
+  },
+  {
+    seq:6, date:'2018 AUG 16', time:'21:45', document:'OPI ONEA01237362', jur:'ON', level:2, result:'Passed', dateEntered:'2018 AUG 28',
+    agency:'', location:'GANANOQUE SOUTH TIS', driver:'MIAN NISAR AHMED M500620055600 QC',
+    vehicles:[
+      { type:'P',  plate:'E75062', jur:'AB', vin:'4V4NC9EH6DN133195', year:'2013', make:'Volvo' },
+      { type:'ST', plate:'P6331S', jur:'ON', make:'UTIL' },
+    ],
+    defects:[],
+  },
+  {
+    seq:7, date:'2018 JUN 13', time:'22:30', document:'OPI ONEA01215795', jur:'ON', level:2, result:'Passed', dateEntered:'2018 JUN 26',
+    agency:'', location:'WASSI SOUTH TIS', driver:'Harjinder Singh Gill 168548-543 AB',
+    vehicles:[
+      { type:'P',  plate:'E65114', jur:'AB', vin:'4V4NC9EJ7FN180094', year:'2015', make:'Volvo' },
+      { type:'ST', plate:'P3361X', jur:'ON', make:'UTIL' },
+    ],
+    defects:[],
+  },
+  {
+    seq:8, date:'2018 JUN 05', time:'08:50', document:'OPI ONEA01219694', jur:'ON', level:1, result:'Requires Attention', dateEntered:'2018 JUN 12',
+    agency:'', location:'COCHRANE TIS', driver:'AMRINDER SINGH GILL G43500408841006 ON',
+    vehicles:[
+      { type:'P',  plate:'E65208', jur:'AB', vin:'1XPXD49X1JD467897', year:'2018', make:'Peterbilt' },
+      { type:'ST', plate:'R8066J', jur:'ON', make:'UTIL' },
+    ],
+    defects:[],
+  },
+  {
+    seq:9, date:'2018 JUN 01', time:'', document:'OPI ONEA01211359', jur:'ON', level:2, result:'Requires Attention', dateEntered:'',
+    agency:'', location:'', driver:'',
+    vehicles:[
+      { type:'P',  plate:'E65114', jur:'AB' },
+    ],
+    defects:[],
+  },
+];
+
+const AB_CVSA_PAGE = 10;
+
+function cvsaResultBadgeAb(result: string) {
+  if (result === 'Out of Service')    return 'bg-red-50 text-red-700 border-red-200';
+  if (result === 'Requires Attention') return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (result === 'Passed')            return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  return 'bg-slate-100 text-slate-500 border-slate-200';
+}
+
+export function AbCvsaInspectionAnalysisTable() {
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Out of Service</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Requires Attention</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Total Defects</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Percent of Total</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Defect Category / Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {AB_CVSA_DEFECTS.map((row, i) => (
+              <tr key={i} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''}`}>
+                <td className={`px-4 py-2 text-center font-mono ${row.oos ? 'font-bold text-red-600' : 'text-slate-300'}`}>{row.oos ?? ''}</td>
+                <td className={`px-4 py-2 text-center font-mono ${row.req ? 'font-bold text-amber-600' : 'text-slate-300'}`}>{row.req ?? ''}</td>
+                <td className={`px-4 py-2 text-center font-mono ${row.total ? 'font-bold text-slate-800' : 'text-slate-300'}`}>{row.total ?? ''}</td>
+                <td className={`px-4 py-2 text-center font-mono ${row.pct ? 'font-semibold text-slate-600' : 'text-slate-300'}`}>{row.pct ?? ''}</td>
+                <td className={`px-4 py-2 ${row.total ? 'font-medium text-slate-800' : 'text-slate-500'}`}>
+                  <span className="font-mono text-slate-500 mr-2">{row.code} -</span>{row.label}
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-slate-100 border-t border-slate-300 font-bold">
+              <td className="px-4 py-2.5 text-center font-mono font-black text-red-700">{AB_CVSA_DEFECT_TOTAL.oos}</td>
+              <td className="px-4 py-2.5 text-center font-mono font-black text-amber-700">{AB_CVSA_DEFECT_TOTAL.req}</td>
+              <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{AB_CVSA_DEFECT_TOTAL.total}</td>
+              <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{AB_CVSA_DEFECT_TOTAL.pct}</td>
+              <td className="px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-700">Grand Total Defects</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function AbCvsaInspectionSummaryList() {
+  const [page, setPage] = useState(1);
+  const total = AB_CVSA_SUMMARY.length;
+  const pages = Math.max(1, Math.ceil(total / AB_CVSA_PAGE));
+  const rows  = AB_CVSA_SUMMARY.slice((page - 1) * AB_CVSA_PAGE, page * AB_CVSA_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left   text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+              <th className="px-4 py-2.5 text-left   text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">CVSA Document</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jur</th>
+              <th className="px-4 py-2.5 text-left   text-[9px] font-bold text-slate-400 uppercase tracking-wider">Agency</th>
+              <th className="px-4 py-2.5 text-left   text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Plate</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Level</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.seq} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.document}</td>
+                <td className="px-4 py-2.5 text-center font-semibold text-slate-700">{r.jur}</td>
+                <td className="px-4 py-2.5 text-slate-600">{r.agency || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.plate} <span className="text-slate-400">{r.plateJur}</span></td>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-700">{r.level}</td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${cvsaResultBadgeAb(r.result)}`}>{r.result}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_CVSA_PAGE + 1}&ndash;{Math.min(page * AB_CVSA_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbCvsaInspectionDetailsList() {
+  const [page, setPage] = useState(1);
+  const total = AB_CVSA_DETAILS.length;
+  const pages = Math.max(1, Math.ceil(total / AB_CVSA_PAGE));
+  const rows  = AB_CVSA_DETAILS.slice((page - 1) * AB_CVSA_PAGE, page * AB_CVSA_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="divide-y divide-slate-200">
+        {rows.map(rec => {
+          const oosDefects = rec.defects.filter(d => d.kind === 'OOS');
+          const reqDefects = rec.defects.filter(d => d.kind === 'REQ');
+          return (
+            <div key={rec.seq} className="p-4">
+              {/* Row 1: Date/Time/Doc/Jur/Level/Result/DateEntered */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px] border-collapse border border-slate-200 rounded">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">#</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Date</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Time</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Document</th>
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Jur</th>
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Level</th>
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Result</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500">Date Entered</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="bg-white">
+                      <td className="px-3 py-2 text-center font-mono font-bold text-slate-500 border-r border-slate-100">{rec.seq}</td>
+                      <td className="px-3 py-2 font-mono text-slate-800 border-r border-slate-100 whitespace-nowrap">{rec.date}</td>
+                      <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100">{rec.time || <span className="text-slate-300">&mdash;</span>}</td>
+                      <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100 whitespace-nowrap">{rec.document}</td>
+                      <td className="px-3 py-2 text-center font-semibold text-slate-700 border-r border-slate-100">{rec.jur}</td>
+                      <td className="px-3 py-2 text-center font-mono font-bold text-slate-700 border-r border-slate-100">{rec.level}</td>
+                      <td className="px-3 py-2 text-center border-r border-slate-100">
+                        <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${cvsaResultBadgeAb(rec.result)}`}>{rec.result}</span>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{rec.dateEntered || <span className="text-slate-300">&mdash;</span>}</td>
+                    </tr>
+                    {/* Agency / Location / Driver row */}
+                    <tr className="bg-slate-50/60 border-t border-slate-200">
+                      <th colSpan={2} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Agency</th>
+                      <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Location</th>
+                      <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">Driver</th>
+                    </tr>
+                    <tr className="bg-white">
+                      <td colSpan={2} className="px-3 py-2 text-slate-700 border-r border-slate-100">{rec.agency || <span className="text-slate-300">&mdash;</span>}</td>
+                      <td colSpan={3} className="px-3 py-2 text-slate-700 border-r border-slate-100">{rec.location || <span className="text-slate-300">&mdash;</span>}</td>
+                      <td colSpan={3} className="px-3 py-2 text-slate-700 font-mono text-[10px]">{rec.driver || <span className="text-slate-300">&mdash;</span>}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Vehicles sub-table */}
+              <div className="overflow-x-auto mt-2">
+                <table className="w-full text-[11px] border-collapse border border-slate-200 rounded">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">#</th>
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Type</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Plate</th>
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Jur</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">VIN</th>
+                      <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Year</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Make</th>
+                      <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500">CVSA Decal #</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rec.vehicles.map((v, j) => (
+                      <tr key={j} className={j % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}>
+                        <td className="px-3 py-2 text-center font-mono font-bold text-slate-500 border-r border-slate-100">{j + 1}</td>
+                        <td className="px-3 py-2 text-center font-mono font-bold text-slate-700 border-r border-slate-100">{v.type}</td>
+                        <td className="px-3 py-2 font-mono text-slate-800 border-r border-slate-100">{v.plate}</td>
+                        <td className="px-3 py-2 text-center font-semibold text-slate-700 border-r border-slate-100">{v.jur}</td>
+                        <td className="px-3 py-2 font-mono text-[10px] text-slate-600 border-r border-slate-100">{v.vin || <span className="text-slate-300">&mdash;</span>}</td>
+                        <td className="px-3 py-2 text-center font-mono text-slate-600 border-r border-slate-100">{v.year || <span className="text-slate-300">&mdash;</span>}</td>
+                        <td className="px-3 py-2 text-slate-700 border-r border-slate-100">{v.make || <span className="text-slate-300">&mdash;</span>}</td>
+                        <td className="px-3 py-2 font-mono text-slate-600">{v.decal || <span className="text-slate-300">&mdash;</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Defects summary */}
+              {(oosDefects.length > 0 || reqDefects.length > 0) && (
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {oosDefects.length > 0 && (
+                    <div className="rounded border border-red-200 overflow-hidden">
+                      <div className="px-3 py-1.5 bg-red-50 border-b border-red-200 text-[9px] font-black text-red-700 uppercase tracking-wider">Out of Service Defects (O)</div>
+                      <table className="w-full text-[11px]">
+                        <thead>
+                          <tr className="bg-white border-b border-red-100">
+                            <th className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">Defect Category / Description</th>
+                            <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500">By Vehicle</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {oosDefects.map((d, k) => (
+                            <tr key={k} className="bg-white">
+                              <td className="px-3 py-1.5 text-slate-700 text-[11px]">{d.cat}</td>
+                              <td className="px-3 py-1.5 text-center font-mono font-bold text-red-600">V{d.vehicle}: 1</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {reqDefects.length > 0 && (
+                    <div className="rounded border border-amber-200 overflow-hidden">
+                      <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 text-[9px] font-black text-amber-700 uppercase tracking-wider">Requires Attention Defects (X)</div>
+                      <table className="w-full text-[11px]">
+                        <thead>
+                          <tr className="bg-white border-b border-amber-100">
+                            <th className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">Defect Category / Description</th>
+                            <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500">By Vehicle</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reqDefects.map((d, k) => (
+                            <tr key={k} className="bg-white">
+                              <td className="px-3 py-1.5 text-slate-700 text-[11px]">{d.cat}</td>
+                              <td className="px-3 py-1.5 text-center font-mono font-bold text-amber-600">V{d.vehicle}: 1</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_CVSA_PAGE + 1}&ndash;{Math.min(page * AB_CVSA_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AB Collision Information data (Part 4) ──────────────────────────────────
+
+interface AbCollisionTotalRow { type:string; count:number; nonPrev:number; prevOrNot:number; pts:number }
+interface AbCollisionSummaryRow { seq:number; date:string; document:string; jur:string; plate:string; plateJur:string; status:string; preventable:string; severity:string; pts:number; driver:string }
+interface AbCollisionDetailRow {
+  seq:number;
+  date:string; time:string; document:string; jur:string; plate:string; plateJur:string; severity:string;
+  assessment:string; driver:string; location:string; vehicle:string; vin:string; activePts:number;
+}
+
+const AB_COLLISION_TOTALS: AbCollisionTotalRow[] = [
+  { type:'Property Damage', count:1, nonPrev:0, prevOrNot:1, pts:2 },
+  { type:'Injury',          count:0, nonPrev:0, prevOrNot:0, pts:0 },
+  { type:'Fatal',           count:0, nonPrev:0, prevOrNot:0, pts:0 },
+];
+
+const AB_COLLISION_META = {
+  nscNumber: 'AB243-8992',
+  carrierName: 'Carry Freight Ltd.',
+  periodStart: '2018 JAN 10',
+  periodEnd:   '2020 JAN 09',
+  datePrinted: '2020 JAN 09',
+  pages: '1 To 3',
+};
+
+const AB_COLLISION_SUMMARY: AbCollisionSummaryRow[] = [
+  { seq:1, date:'2019 APR 27', document:'1113033', jur:'AB', plate:'E80642', plateJur:'AB', status:'Not Evaluated', preventable:'', severity:'Damage', pts:2, driver:'HARJOT S SIDHU' },
+];
+
+const AB_COLLISION_DETAILS: AbCollisionDetailRow[] = [
+  {
+    seq:1, date:'2019 APR 27', time:'16:00', document:'1113033', jur:'AB', plate:'E80642', plateJur:'AB', severity:'Damage',
+    assessment:'Not Evaluated', driver:'HARJOT S SIDHU SIDHUH*117RP MB', location:'RURAL', vehicle:'2016 FREIGHTLINER', vin:'1FUJGLD54GLGZ6616', activePts:2,
+  },
+];
+
+const AB_COLLISION_PAGE = 10;
+
+function collSeverityBadge(sev: string) {
+  if (sev === 'Fatal')  return 'bg-red-50 text-red-700 border-red-200';
+  if (sev === 'Injury') return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (sev === 'Damage') return 'bg-slate-50 text-slate-600 border-slate-200';
+  return 'bg-slate-100 text-slate-500 border-slate-200';
+}
+
+export function AbCollisionInformationPanel() {
+  const totals = AB_COLLISION_TOTALS.reduce(
+    (a, r) => ({ count:a.count+r.count, nonPrev:a.nonPrev+r.nonPrev, prevOrNot:a.prevOrNot+r.prevOrNot, pts:a.pts+r.pts }),
+    { count:0, nonPrev:0, prevOrNot:0, pts:0 }
+  );
+  return (
+    <div className="bg-white">
+      {/* Totals table */}
+      <div className="p-4 space-y-3">
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 flex-wrap text-[10px] text-slate-500">
+            <span><strong className="text-slate-700">Profile Period:</strong> <span className="font-mono">{AB_COLLISION_META.periodStart}</span> &ndash; <span className="font-mono">{AB_COLLISION_META.periodEnd}</span></span>
+            <span className="text-slate-300">|</span>
+            <span><strong className="text-slate-700">Date Printed:</strong> <span className="font-mono">{AB_COLLISION_META.datePrinted}</span> &middot; Pages {AB_COLLISION_META.pages}</span>
+          </div>
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-2.5 text-left  font-bold">Collision Type</th>
+                <th className="px-4 py-2.5 text-center font-bold">Number of Collisions</th>
+                <th className="px-4 py-2.5 text-center font-bold">Non-Preventable</th>
+                <th className="px-4 py-2.5 text-center font-bold">Preventable or Not Evaluated</th>
+                <th className="px-4 py-2.5 text-center font-bold text-amber-500">Active Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {AB_COLLISION_TOTALS.map((row, i) => (
+                <tr key={i} className={`border-b border-slate-100 ${i % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}>
+                  <td className="px-4 py-2 font-medium text-slate-800">{row.type}</td>
+                  <td className={`px-4 py-2 text-center font-mono ${row.count > 0 ? 'font-bold text-slate-800' : 'text-slate-300'}`}>{row.count}</td>
+                  <td className={`px-4 py-2 text-center font-mono ${row.nonPrev > 0 ? 'font-bold text-emerald-600' : 'text-slate-300'}`}>{row.nonPrev}</td>
+                  <td className={`px-4 py-2 text-center font-mono ${row.prevOrNot > 0 ? 'font-bold text-amber-600' : 'text-slate-300'}`}>{row.prevOrNot}</td>
+                  <td className={`px-4 py-2 text-center font-mono ${row.pts > 0 ? 'font-black text-amber-600' : 'text-slate-300'}`}>{row.pts}</td>
+                </tr>
+              ))}
+              <tr className="bg-slate-100 border-t border-slate-300 font-bold">
+                <td className="px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-700">Totals</td>
+                <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{totals.count}</td>
+                <td className="px-4 py-2.5 text-center font-mono font-black text-emerald-700">{totals.nonPrev}</td>
+                <td className="px-4 py-2.5 text-center font-mono font-black text-amber-700">{totals.prevOrNot}</td>
+                <td className="px-4 py-2.5 text-center font-mono font-black text-amber-700">{totals.pts}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Collision Note */}
+        <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3 space-y-2">
+          <div className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Collision Note</div>
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            The information in this Part is based on collisions considered &quot;reportable&quot; by the jurisdiction in which they occurred. Collisions are displayed in the order in which they occurred with the most recent date shown first. Points will be assigned to each collision depending on the collision severity &mdash; the highest appropriate point value will be assigned.
+          </p>
+          <div className="flex flex-wrap gap-4 text-[11px]">
+            <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span><strong className="text-slate-700">Property Damage</strong> <span className="font-mono text-slate-500">2 points</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span><strong className="text-slate-700">Personal Injury</strong> <span className="font-mono text-slate-500">4 points</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-red-600"></span><strong className="text-slate-700">Fatality</strong> <span className="font-mono text-slate-500">6 points</span></span>
+          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            Conviction points, CVSA Failure Rate, Collision points (12 months), and the carrier&apos;s average fleet size (24 months) establish the R-Factor score. Where a carrier has requested a collision evaluation and it was determined to be &quot;non-preventable&quot;, the points will be removed from the Carrier Profile and the event will not be considered in determining the R-Factor score.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbCollisionSummaryList() {
+  const [page, setPage] = useState(1);
+  const total = AB_COLLISION_SUMMARY.length;
+  const pages = Math.max(1, Math.ceil(total / AB_COLLISION_PAGE));
+  const rows  = AB_COLLISION_SUMMARY.slice((page - 1) * AB_COLLISION_PAGE, page * AB_COLLISION_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Document</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jur</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Plate</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Driver</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Status</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Preventable</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Severity</th>
+              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-amber-500 uppercase tracking-wider whitespace-nowrap">Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.seq} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.document}</td>
+                <td className="px-4 py-2.5 text-center font-semibold text-slate-700">{r.jur}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.plate} <span className="text-slate-400">{r.plateJur}</span></td>
+                <td className="px-4 py-2.5 text-slate-700">{r.driver || <span className="text-slate-400 italic">Name not on file</span>}</td>
+                <td className="px-4 py-2.5 text-center text-[10px] text-slate-600">{r.status}</td>
+                <td className="px-4 py-2.5 text-center text-[10px] text-slate-600">{r.preventable || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${collSeverityBadge(r.severity)}`}>{r.severity}</span>
+                </td>
+                <td className="px-4 py-2.5 text-right font-mono font-black" style={{ color: r.pts >= 4 ? '#dc2626' : r.pts >= 2 ? '#d97706' : '#94a3b8' }}>
+                  {r.pts > 0 ? r.pts : <span className="text-slate-300">&mdash;</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_COLLISION_PAGE + 1}&ndash;{Math.min(page * AB_COLLISION_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbCollisionDetailsList() {
+  const [page, setPage] = useState(1);
+  const total = AB_COLLISION_DETAILS.length;
+  const pages = Math.max(1, Math.ceil(total / AB_COLLISION_PAGE));
+  const rows  = AB_COLLISION_DETAILS.slice((page - 1) * AB_COLLISION_PAGE, page * AB_COLLISION_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="divide-y divide-slate-200">
+        {rows.map(rec => (
+          <div key={rec.seq} className="p-4">
+            {/* Top row */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] border-collapse border border-slate-200 rounded">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">#</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Date</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Time</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Document</th>
+                    <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Jur</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Plate</th>
+                    <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Severity</th>
+                    <th className="px-3 py-1.5 text-right text-[9px] italic font-normal text-amber-500">Active Points</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-white">
+                    <td className="px-3 py-2 text-center font-mono font-bold text-slate-500 border-r border-slate-100">{rec.seq}</td>
+                    <td className="px-3 py-2 font-mono text-slate-800 border-r border-slate-100 whitespace-nowrap">{rec.date}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100">{rec.time}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100">{rec.document}</td>
+                    <td className="px-3 py-2 text-center font-semibold text-slate-700 border-r border-slate-100">{rec.jur}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100 whitespace-nowrap">{rec.plate} <span className="text-slate-400">{rec.plateJur}</span></td>
+                    <td className="px-3 py-2 text-center border-r border-slate-100">
+                      <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${collSeverityBadge(rec.severity)}`}>{rec.severity}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-black" style={{ color: rec.activePts >= 4 ? '#dc2626' : rec.activePts >= 2 ? '#d97706' : '#94a3b8' }}>
+                      {rec.activePts > 0 ? rec.activePts : <span className="text-slate-300">&mdash;</span>}
+                    </td>
+                  </tr>
+                  <tr className="bg-slate-50/60 border-t border-slate-200">
+                    <th colSpan={2} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Assessment</th>
+                    <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Driver</th>
+                    <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">Location</th>
+                  </tr>
+                  <tr className="bg-white">
+                    <td colSpan={2} className="px-3 py-2 text-slate-700 border-r border-slate-100">{rec.assessment}</td>
+                    <td colSpan={3} className="px-3 py-2 text-slate-700 font-mono text-[10px] border-r border-slate-100">{rec.driver || <span className="text-slate-300">&mdash;</span>}</td>
+                    <td colSpan={3} className="px-3 py-2 text-slate-700">{rec.location || <span className="text-slate-300">&mdash;</span>}</td>
+                  </tr>
+                  <tr className="bg-slate-50/60 border-t border-slate-200">
+                    <th colSpan={4} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Vehicle</th>
+                    <th colSpan={4} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">VIN</th>
+                  </tr>
+                  <tr className="bg-white">
+                    <td colSpan={4} className="px-3 py-2 text-slate-700 font-semibold border-r border-slate-100">{rec.vehicle}</td>
+                    <td colSpan={4} className="px-3 py-2 font-mono text-[10px] text-slate-600">{rec.vin}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_COLLISION_PAGE + 1}&ndash;{Math.min(page * AB_COLLISION_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AB Violation Information data (Part 5) ──────────────────────────────────
+
+interface AbViolGroupRow { group: string; count: number; pct: string }
+interface AbViolSummaryRow { seq:number; date:string; document:string; jur:string; plate:string; plateJur:string; driverName:string; offence:string }
+interface AbViolOffence { num:number; actSection:string; actDesc:string; ccmtaCode:string; ccmtaLabel:string; vehicle:string; text:string }
+interface AbViolDetailRow {
+  seq:number;
+  date:string; time:string; document:string; jurisdiction:string; dateEntered:string;
+  issuingAgency:string; location:string; driver:string; vehicle:string; commodity:string;
+  offences: AbViolOffence[];
+}
+
+const AB_VIOL_GROUPS: AbViolGroupRow[] = [
+  { group:'Speeding',                                                     count:0, pct:'' },
+  { group:'Stop signs/Traffic lights',                                    count:0, pct:'' },
+  { group:'Driver Liabilities (Licence, Insurance, Seat Belts, etc.)',    count:0, pct:'' },
+  { group:'Driving (Passing, Disobey Signs, Signals, etc.)',              count:0, pct:'' },
+  { group:'Hours of Service',                                             count:0, pct:'' },
+  { group:'Trip Inspections',                                             count:0, pct:'' },
+  { group:'Brakes',                                                       count:0, pct:'' },
+  { group:'CVIP',                                                         count:0, pct:'' },
+  { group:'Mechanical Defects',                                           count:0, pct:'' },
+  { group:'Oversize/Overweight',                                          count:0, pct:'' },
+  { group:'Security of Loads',                                            count:0, pct:'' },
+  { group:'Dangerous Goods',                                              count:0, pct:'' },
+  { group:'Criminal Code',                                                count:0, pct:'' },
+  { group:'Permits',                                                      count:0, pct:'' },
+  { group:'Miscellaneous',                                                count:1, pct:'100.0%' },
+  { group:'Administrative Actions',                                       count:0, pct:'' },
+];
+const AB_VIOL_TOTAL = { count: 1, pct: '100%' };
+
+const AB_VIOL_META = {
+  periodStart: '2018 JAN 10',
+  periodEnd:   '2020 JAN 09',
+  datePrinted: '2020 JAN 09',
+  pages: '1 To 4',
+  documents: 1,
+  offences: 1,
+};
+
+const AB_VIOL_SUMMARY: AbViolSummaryRow[] = [
+  { seq:1, date:'2019 AUG 21', document:'TVR 118300EI', jur:'AB', plate:'U11096', plateJur:'AB', driverName:'Jagseer singh BATTH', offence:'HINDER/MISLEAD OFFICER' },
+];
+
+const AB_VIOL_DETAILS: AbViolDetailRow[] = [
+  {
+    seq:1, date:'2019 AUG 21', time:'15:48', document:'TVR 118300EI', jurisdiction:'Alberta', dateEntered:'2019 AUG 31',
+    issuingAgency:'GOVERNMENT ALBERTA - COMM VEH ENF - DUNMORE',
+    location:'Dunmore - VIS',
+    driver:'Jagseer singh BATTH BA-TT-HJ-S114QK MB',
+    vehicle:'U11096 AB',
+    commodity:'',
+    offences:[
+      {
+        num:1,
+        actSection:'TSA140(1)',
+        actDesc:'DRIVER/CARRIER FAIL TO PRODUCE DOCUMENTS FOR INSPEC',
+        ccmtaCode:'1202',
+        ccmtaLabel:'Miscellaneous',
+        vehicle:'',
+        text:'-Photocopies of truck-tractor registration, cab card and insurance carried/produced. -Registration and cab card must be original government issued documents. -Insurance must be pink copy.',
+      },
+    ],
+  },
+];
+
+const AB_VIOL_PAGE = 10;
+
+export function AbViolationInformationPanel() {
+  return (
+    <div className="bg-white">
+      <div className="p-4 space-y-3">
+        {/* Info header */}
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 flex-wrap text-[10px] text-slate-500">
+            <span><strong className="text-slate-700">Profile Period:</strong> <span className="font-mono">{AB_VIOL_META.periodStart}</span> &ndash; <span className="font-mono">{AB_VIOL_META.periodEnd}</span></span>
+            <span className="text-slate-300">|</span>
+            <span><strong className="text-slate-700">Date Printed:</strong> <span className="font-mono">{AB_VIOL_META.datePrinted}</span> &middot; Pages {AB_VIOL_META.pages}</span>
+            <span className="ml-auto flex items-center gap-3">
+              <span><strong className="text-slate-700">Documents:</strong> <span className="font-mono font-bold text-slate-900">{AB_VIOL_META.documents}</span></span>
+              <span className="text-slate-300">|</span>
+              <span><strong className="text-slate-700">Offences:</strong> <span className="font-mono font-bold text-slate-900">{AB_VIOL_META.offences}</span></span>
+            </span>
+          </div>
+
+          {/* Group description table */}
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-2.5 text-center font-bold">Number of Violations</th>
+                <th className="px-4 py-2.5 text-center font-bold">Percent of Total</th>
+                <th className="px-4 py-2.5 text-left  font-bold">Group Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {AB_VIOL_GROUPS.map((row, i) => (
+                <tr key={i} className={`border-b border-slate-100 ${i % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}>
+                  <td className={`px-4 py-2 text-center font-mono ${row.count > 0 ? 'font-bold text-slate-800' : 'text-slate-300'}`}>{row.count > 0 ? row.count : ''}</td>
+                  <td className={`px-4 py-2 text-center font-mono ${row.pct ? 'font-semibold text-slate-600' : 'text-slate-300'}`}>{row.pct || ''}</td>
+                  <td className={`px-4 py-2 ${row.count > 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{row.group}</td>
+                </tr>
+              ))}
+              <tr className="bg-slate-100 border-t border-slate-300 font-bold">
+                <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{AB_VIOL_TOTAL.count}</td>
+                <td className="px-4 py-2.5 text-center font-mono font-black text-slate-900">{AB_VIOL_TOTAL.pct}</td>
+                <td className="px-4 py-2.5 text-[10px] uppercase tracking-wider text-slate-700">Total Violations</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Note */}
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+          <div className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Violation Note</div>
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            Violations are grouped by CCMTA offence category. No NSC points are assigned directly on violations, but repeated offences may impact the R-Factor score through related conviction points. Use the detailed record below to review the act, section, and offence text.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbViolationSummaryList() {
+  const [page, setPage] = useState(1);
+  const total = AB_VIOL_SUMMARY.length;
+  const pages = Math.max(1, Math.ceil(total / AB_VIOL_PAGE));
+  const rows  = AB_VIOL_SUMMARY.slice((page - 1) * AB_VIOL_PAGE, page * AB_VIOL_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Document</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jur</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Vehicle</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Driver Name &middot; Offence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.seq} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.document}</td>
+                <td className="px-4 py-2.5 text-center font-semibold text-slate-700">{r.jur}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.plate} <span className="text-slate-400">{r.plateJur}</span></td>
+                <td className="px-4 py-2.5">
+                  <div className="font-semibold text-slate-800">{r.driverName || <span className="text-slate-400 italic font-normal">Name not on file</span>}</div>
+                  <div className="text-[10px] text-slate-500">{r.offence}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_VIOL_PAGE + 1}&ndash;{Math.min(page * AB_VIOL_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbViolationDetailsList() {
+  const [page, setPage] = useState(1);
+  const total = AB_VIOL_DETAILS.length;
+  const pages = Math.max(1, Math.ceil(total / AB_VIOL_PAGE));
+  const rows  = AB_VIOL_DETAILS.slice((page - 1) * AB_VIOL_PAGE, page * AB_VIOL_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="divide-y divide-slate-200">
+        {rows.map(rec => (
+          <div key={rec.seq} className="p-4 space-y-2">
+            {/* Header row */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] border-collapse border border-slate-200 rounded">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-3 py-1.5 text-center text-[9px] italic font-normal text-slate-500 border-r border-slate-100">#</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Date</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Time</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Document</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Jurisdiction</th>
+                    <th className="px-3 py-1.5 text-left  text-[9px] italic font-normal text-slate-500">Date Entered</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-white">
+                    <td className="px-3 py-2 text-center font-mono font-bold text-slate-500 border-r border-slate-100">{rec.seq}</td>
+                    <td className="px-3 py-2 font-mono text-slate-800 border-r border-slate-100 whitespace-nowrap">{rec.date}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100">{rec.time}</td>
+                    <td className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100 whitespace-nowrap">{rec.document}</td>
+                    <td className="px-3 py-2 font-semibold text-slate-700 border-r border-slate-100">{rec.jurisdiction}</td>
+                    <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{rec.dateEntered}</td>
+                  </tr>
+                  <tr className="bg-slate-50/60 border-t border-slate-200">
+                    <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Issuing Agency</th>
+                    <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">Location</th>
+                  </tr>
+                  <tr className="bg-white">
+                    <td colSpan={3} className="px-3 py-2 text-slate-700 border-r border-slate-100">{rec.issuingAgency || <span className="text-slate-300">&mdash;</span>}</td>
+                    <td colSpan={3} className="px-3 py-2 text-slate-700">{rec.location || <span className="text-slate-300">&mdash;</span>}</td>
+                  </tr>
+                  <tr className="bg-slate-50/60 border-t border-slate-200">
+                    <th colSpan={3} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Driver</th>
+                    <th colSpan={2} className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500 border-r border-slate-100">Vehicle</th>
+                    <th className="px-3 py-1.5 text-left text-[9px] italic font-normal text-slate-500">Commodity</th>
+                  </tr>
+                  <tr className="bg-white">
+                    <td colSpan={3} className="px-3 py-2 font-mono text-[10px] text-slate-700 border-r border-slate-100">{rec.driver || <span className="text-slate-300">&mdash;</span>}</td>
+                    <td colSpan={2} className="px-3 py-2 font-mono text-slate-700 border-r border-slate-100">{rec.vehicle}</td>
+                    <td className="px-3 py-2 text-slate-600">{rec.commodity || <span className="text-slate-300">&mdash;</span>}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Offences */}
+            {rec.offences.map(off => (
+              <div key={off.num} className="rounded border border-indigo-200 overflow-hidden">
+                <div className="px-3 py-1.5 bg-indigo-50 border-b border-indigo-200 flex items-center gap-2">
+                  <span className="text-[9px] font-black text-indigo-700 uppercase tracking-wider">Offence #{off.num}</span>
+                  <span className="ml-auto text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">{off.ccmtaLabel}</span>
+                </div>
+                <table className="w-full text-[11px]">
+                  <tbody className="divide-y divide-slate-100">
+                    <tr className="bg-white">
+                      <td className="px-3 py-2 text-[9px] italic text-slate-500 w-36">Act/Section</td>
+                      <td className="px-3 py-2 font-mono font-bold text-slate-800">{off.actSection}</td>
+                    </tr>
+                    <tr className="bg-slate-50/40">
+                      <td className="px-3 py-2 text-[9px] italic text-slate-500">Description</td>
+                      <td className="px-3 py-2 text-slate-700">{off.actDesc}</td>
+                    </tr>
+                    <tr className="bg-white">
+                      <td className="px-3 py-2 text-[9px] italic text-slate-500">CCMTA Code</td>
+                      <td className="px-3 py-2 font-mono font-bold text-slate-700">{off.ccmtaCode} &middot; <span className="font-sans font-semibold text-slate-600">{off.ccmtaLabel}</span></td>
+                    </tr>
+                    <tr className="bg-slate-50/40">
+                      <td className="px-3 py-2 text-[9px] italic text-slate-500">Vehicle</td>
+                      <td className="px-3 py-2 font-mono text-slate-700">{off.vehicle || <span className="text-slate-300">&mdash;</span>}</td>
+                    </tr>
+                    <tr className="bg-white">
+                      <td className="px-3 py-2 text-[9px] italic text-slate-500 align-top">Text</td>
+                      <td className="px-3 py-2 text-[11px] text-slate-600 leading-relaxed">{off.text}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_VIOL_PAGE + 1}&ndash;{Math.min(page * AB_VIOL_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AB Monitoring data (Part 6) ─────────────────────────────────────────────
+
+interface AbMonSummaryRow {
+  date: string; type: string; trkPct: string; busPct: string; avg: number; cur: number;
+  score: string; convPct: string; inspPct: string; collPct: string; stage: string;
+}
+interface AbMonDetailRow {
+  date: string; avgFleet: number | '';
+  convPtsVeh: string; totalInsp: number | ''; oosDefInsp: string; totalDefInsp: string;
+  oosPct: string; oosVeh: string; failureRate: string; collPtsVeh: string;
+}
+interface AbMonThresholdRow { stage: string; range: string }
+
+const AB_MON_META = {
+  periodStart: '2018 JAN 10',
+  periodEnd:   '2020 JAN 09',
+  datePrinted: '2020 JAN 09',
+  pages: '1 To 5',
+};
+
+const AB_MON_INDUSTRY = {
+  asOf: '2019 DEC 31',
+  fleetRange: '11',
+  fleetType: 'TRK',
+  avgRFactor: '0.364',
+  avgConvPts: '0.39',
+  avgOosDef: '0.4',
+  avgTotalDef: '1.2',
+  avgOosVeh: '0.10',
+  avgFailure: '0.090',
+  avgCollPts: '0.05',
+};
+
+const AB_MON_THRESHOLDS: AbMonThresholdRow[] = [
+  { stage:'Stage 1', range:'0.976 - 1.197' },
+  { stage:'Stage 2', range:'1.198 - 1.399' },
+  { stage:'Stage 3', range:'1.400 - 1.999' },
+  { stage:'Stage 4', range:'2.000 and higher' },
+];
+
+const AB_MON_SUMMARY: AbMonSummaryRow[] = [
+  { date:'2019 DEC', type:'TRK', trkPct:'100%', busPct:'0%', avg:11, cur:14, score:'2.314', convPct:'93.8%', inspPct:'3.1%',  collPct:'3.1%', stage:'4' },
+  { date:'2019 NOV', type:'TRK', trkPct:'100%', busPct:'0%', avg:11, cur:15, score:'2.097', convPct:'92.8%', inspPct:'3.8%',  collPct:'3.4%', stage:'4' },
+  { date:'2019 OCT', type:'TRK', trkPct:'100%', busPct:'0%', avg:11, cur:16, score:'2.111', convPct:'92.1%', inspPct:'4.5%',  collPct:'3.4%', stage:'4' },
+  { date:'2019 SEP', type:'TRK', trkPct:'100%', busPct:'0%', avg:10, cur:19, score:'2.559', convPct:'91.0%', inspPct:'4.6%',  collPct:'4.4%', stage:'2' },
+  { date:'2019 AUG', type:'TRK', trkPct:'100%', busPct:'0%', avg:10, cur:16, score:'1.209', convPct:'81.5%', inspPct:'9.2%',  collPct:'9.3%', stage:'' },
+  { date:'2019 JUL', type:'TRK', trkPct:'100%', busPct:'0%', avg:9,  cur:15, score:'1.633', convPct:'85.4%', inspPct:'7.0%',  collPct:'7.6%', stage:'' },
+  { date:'2019 JUN', type:'TRK', trkPct:'100%', busPct:'0%', avg:9,  cur:14, score:'1.637', convPct:'85.1%', inspPct:'7.3%',  collPct:'7.6%', stage:'' },
+  { date:'2019 MAY', type:'TRK', trkPct:'100%', busPct:'0%', avg:9,  cur:13, score:'1.300', convPct:'91.9%', inspPct:'8.1%',  collPct:'0.0%', stage:'' },
+  { date:'2019 APR', type:'TRK', trkPct:'100%', busPct:'0%', avg:8,  cur:12, score:'1.442', convPct:'93.2%', inspPct:'6.8%',  collPct:'0.0%', stage:'' },
+  { date:'2019 MAR', type:'TRK', trkPct:'100%', busPct:'0%', avg:8,  cur:11, score:'0.997', convPct:'89.9%', inspPct:'10.1%', collPct:'0.0%', stage:'' },
+  { date:'2019 FEB', type:'TRK', trkPct:'100%', busPct:'0%', avg:8,  cur:10, score:'0.773', convPct:'87.0%', inspPct:'13.0%', collPct:'0.0%', stage:'' },
+  { date:'2019 JAN', type:'TRK', trkPct:'100%', busPct:'0%', avg:7,  cur:10, score:'0.857', convPct:'89.6%', inspPct:'10.4%', collPct:'0.0%', stage:'' },
+  { date:'2018 DEC', type:'TRK', trkPct:'100%', busPct:'0%', avg:7,  cur:10, score:'0.460', convPct:'83.5%', inspPct:'16.5%', collPct:'0.0%', stage:'' },
+  { date:'2018 NOV', type:'TRK', trkPct:'100%', busPct:'0%', avg:7,  cur:10, score:'0.046', convPct:'0.0%',  inspPct:'100.0%',collPct:'0.0%', stage:'' },
+  { date:'2018 OCT', type:'TRK', trkPct:'100%', busPct:'0%', avg:6,  cur:10, score:'0.018', convPct:'0.0%',  inspPct:'100.0%',collPct:'0.0%', stage:'' },
+  { date:'2018 SEP', type:'TRK', trkPct:'100%', busPct:'0%', avg:5,  cur:8,  score:'0.022', convPct:'0.0%',  inspPct:'100.0%',collPct:'0.0%', stage:'' },
+  { date:'2018 AUG', type:'TRK', trkPct:'100%', busPct:'0%', avg:5,  cur:8,  score:'0.027', convPct:'0.0%',  inspPct:'100.0%',collPct:'0.0%', stage:'' },
+  { date:'2018 JUL', type:'TRK', trkPct:'100%', busPct:'0%', avg:4,  cur:7,  score:'0.000', convPct:'0.0%',  inspPct:'0.0%',  collPct:'0.0%', stage:'' },
+  { date:'2018 JUN', type:'TRK', trkPct:'100%', busPct:'0%', avg:3,  cur:5,  score:'0.000', convPct:'0.0%',  inspPct:'0.0%',  collPct:'0.0%', stage:'' },
+  { date:'2018 MAY', type:'TRK', trkPct:'100%', busPct:'0%', avg:3,  cur:4,  score:'No Data', convPct:'', inspPct:'', collPct:'', stage:'' },
+  { date:'2018 APR', type:'TRK', trkPct:'100%', busPct:'0%', avg:2,  cur:2,  score:'No Data', convPct:'', inspPct:'', collPct:'', stage:'' },
+];
+
+const AB_MON_DETAILS: AbMonDetailRow[] = [
+  { date:'2019 DEC', avgFleet:11, convPtsVeh:'2.63', totalInsp:25, oosDefInsp:'0.3', totalDefInsp:'1.4', oosPct:'32%', oosVeh:'0.72', failureRate:'0.420', collPtsVeh:'0.18' },
+  { date:'2019 NOV', avgFleet:11, convPtsVeh:'2.36', totalInsp:21, oosDefInsp:'0.3', totalDefInsp:'1.5', oosPct:'38%', oosVeh:'0.72', failureRate:'0.464', collPtsVeh:'0.18' },
+  { date:'2019 OCT', avgFleet:11, convPtsVeh:'2.36', totalInsp:21, oosDefInsp:'0.4', totalDefInsp:'1.5', oosPct:'47%', oosVeh:'0.90', failureRate:'0.548', collPtsVeh:'0.18' },
+  { date:'2019 SEP', avgFleet:10, convPtsVeh:'2.60', totalInsp:19, oosDefInsp:'0.4', totalDefInsp:'1.6', oosPct:'47%', oosVeh:'0.90', failureRate:'0.539', collPtsVeh:'0.20' },
+  { date:'2019 AUG', avgFleet:10, convPtsVeh:'1.10', totalInsp:18, oosDefInsp:'0.4', totalDefInsp:'1.6', oosPct:'44%', oosVeh:'0.80', failureRate:'0.514', collPtsVeh:'0.20' },
+  { date:'2019 JUL', avgFleet:9,  convPtsVeh:'1.55', totalInsp:17, oosDefInsp:'0.4', totalDefInsp:'1.7', oosPct:'47%', oosVeh:'0.88', failureRate:'0.529', collPtsVeh:'0.22' },
+  { date:'2019 JUN', avgFleet:9,  convPtsVeh:'1.55', totalInsp:16, oosDefInsp:'0.5', totalDefInsp:'1.6', oosPct:'50%', oosVeh:'0.88', failureRate:'0.547', collPtsVeh:'0.22' },
+  { date:'2019 MAY', avgFleet:9,  convPtsVeh:'1.33', totalInsp:16, oosDefInsp:'0.4', totalDefInsp:'1.4', oosPct:'43%', oosVeh:'0.77', failureRate:'0.484', collPtsVeh:'' },
+  { date:'2019 APR', avgFleet:8,  convPtsVeh:'1.50', totalInsp:15, oosDefInsp:'0.4', totalDefInsp:'1.4', oosPct:'40%', oosVeh:'0.75', failureRate:'0.450', collPtsVeh:'' },
+  { date:'2019 MAR', avgFleet:8,  convPtsVeh:'1.00', totalInsp:14, oosDefInsp:'0.4', totalDefInsp:'1.2', oosPct:'42%', oosVeh:'0.75', failureRate:'0.464', collPtsVeh:'' },
+  { date:'2019 FEB', avgFleet:8,  convPtsVeh:'0.75', totalInsp:14, oosDefInsp:'0.4', totalDefInsp:'1.2', oosPct:'42%', oosVeh:'0.75', failureRate:'0.464', collPtsVeh:'' },
+  { date:'2019 JAN', avgFleet:7,  convPtsVeh:'0.85', totalInsp:11, oosDefInsp:'0.3', totalDefInsp:'1.1', oosPct:'36%', oosVeh:'0.57', failureRate:'0.409', collPtsVeh:'' },
+  { date:'2018 DEC', avgFleet:7,  convPtsVeh:'0.42', totalInsp:10, oosDefInsp:'0.3', totalDefInsp:'0.8', oosPct:'30%', oosVeh:'0.42', failureRate:'0.350', collPtsVeh:'' },
+  { date:'2018 NOV', avgFleet:7,  convPtsVeh:'',     totalInsp:7,  oosDefInsp:'0.1', totalDefInsp:'0.5', oosPct:'14%', oosVeh:'0.14', failureRate:'0.214', collPtsVeh:'' },
+  { date:'2018 OCT', avgFleet:6,  convPtsVeh:'',     totalInsp:6,  oosDefInsp:'0.0', totalDefInsp:'0.5', oosPct:'0%',  oosVeh:'',     failureRate:'0.083', collPtsVeh:'' },
+  { date:'2018 SEP', avgFleet:5,  convPtsVeh:'',     totalInsp:5,  oosDefInsp:'0.0', totalDefInsp:'0.6', oosPct:'0%',  oosVeh:'',     failureRate:'0.100', collPtsVeh:'' },
+  { date:'2018 AUG', avgFleet:5,  convPtsVeh:'',     totalInsp:4,  oosDefInsp:'0.0', totalDefInsp:'0.7', oosPct:'0%',  oosVeh:'',     failureRate:'0.125', collPtsVeh:'' },
+  { date:'2018 JUL', avgFleet:4,  convPtsVeh:'',     totalInsp:3,  oosDefInsp:'0.0', totalDefInsp:'1.0', oosPct:'0%',  oosVeh:'',     failureRate:'0.000', collPtsVeh:'' },
+  { date:'2018 JUN', avgFleet:3,  convPtsVeh:'',     totalInsp:3,  oosDefInsp:'0.0', totalDefInsp:'1.0', oosPct:'0%',  oosVeh:'',     failureRate:'0.000', collPtsVeh:'' },
+  { date:'2018 MAY', avgFleet:3,  convPtsVeh:'',     totalInsp:'', oosDefInsp:'',    totalDefInsp:'',    oosPct:'',    oosVeh:'',     failureRate:'',      collPtsVeh:'' },
+  { date:'2018 APR', avgFleet:2,  convPtsVeh:'',     totalInsp:'', oosDefInsp:'',    totalDefInsp:'',    oosPct:'',    oosVeh:'',     failureRate:'',      collPtsVeh:'' },
+  { date:'2018 MAR', avgFleet:1,  convPtsVeh:'',     totalInsp:'', oosDefInsp:'',    totalDefInsp:'',    oosPct:'',    oosVeh:'',     failureRate:'',      collPtsVeh:'' },
+  { date:'2018 FEB', avgFleet:0,  convPtsVeh:'',     totalInsp:'', oosDefInsp:'',    totalDefInsp:'',    oosPct:'',    oosVeh:'',     failureRate:'',      collPtsVeh:'' },
+  { date:'2018 JAN', avgFleet:0,  convPtsVeh:'',     totalInsp:'', oosDefInsp:'',    totalDefInsp:'',    oosPct:'',    oosVeh:'',     failureRate:'',      collPtsVeh:'' },
+];
+
+const AB_MON_PAGE = 10;
+
+function monStageBadge(stage: string) {
+  if (stage === '4') return 'bg-red-50 text-red-700 border-red-200';
+  if (stage === '3') return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (stage === '2') return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+  if (stage === '1') return 'bg-blue-50 text-blue-700 border-blue-200';
+  return 'bg-slate-100 text-slate-500 border-slate-200';
+}
+
+export function AbMonitoringInformationPanel() {
+  return (
+    <div className="bg-white">
+      <div className="p-4 space-y-3">
+        {/* Info header */}
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 flex-wrap text-[10px] text-slate-500">
+            <span><strong className="text-slate-700">Profile Period:</strong> <span className="font-mono">{AB_MON_META.periodStart}</span> &ndash; <span className="font-mono">{AB_MON_META.periodEnd}</span></span>
+            <span className="text-slate-300">|</span>
+            <span><strong className="text-slate-700">Date Printed:</strong> <span className="font-mono">{AB_MON_META.datePrinted}</span> &middot; Pages {AB_MON_META.pages}</span>
+          </div>
+        </div>
+
+        {/* Industry averages + Stage thresholds */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+            <div className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-2">Industry Monitoring Information</div>
+            <div className="space-y-1 text-[11px] text-slate-600">
+              <div className="flex justify-between"><span>As of</span><span className="font-mono font-bold text-slate-800">{AB_MON_INDUSTRY.asOf}</span></div>
+              <div className="flex justify-between"><span>Fleet Range</span><span className="font-mono font-bold text-slate-800">{AB_MON_INDUSTRY.fleetRange}</span></div>
+              <div className="flex justify-between"><span>Fleet Type</span><span className="font-mono font-bold text-slate-800">{AB_MON_INDUSTRY.fleetType}</span></div>
+              <div className="flex justify-between border-t border-blue-100 pt-1 mt-1"><span className="font-semibold">Industry Avg R-Factor</span><span className="font-mono font-black text-blue-700">{AB_MON_INDUSTRY.avgRFactor}</span></div>
+            </div>
+            <p className="text-[9px] text-slate-500 mt-2 italic">Industry Average is calculated for carriers with one or more NSC events.</p>
+          </div>
+          <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+            <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2">Monitoring Stage R-Factor Thresholds &middot; Fleet Range {AB_MON_INDUSTRY.fleetRange}</div>
+            <div className="space-y-1 text-[11px]">
+              {AB_MON_THRESHOLDS.map(t => (
+                <div key={t.stage} className="flex justify-between">
+                  <span className="font-semibold text-slate-700">{t.stage}</span>
+                  <span className="font-mono text-slate-700">{t.range}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbMonitoringSummaryList() {
+  const [page, setPage] = useState(1);
+  const total = AB_MON_SUMMARY.length;
+  const pages = Math.max(1, Math.ceil(total / AB_MON_PAGE));
+  const rows  = AB_MON_SUMMARY.slice((page - 1) * AB_MON_PAGE, page * AB_MON_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-3 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Month-End Date</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Type</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">TRK%</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">BUS%</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Avg</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Cur</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-blue-500 uppercase tracking-wider whitespace-nowrap">R-Factor Score</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Conv%</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Insp%</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Coll%</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-amber-500 uppercase tracking-wider whitespace-nowrap">Stage</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const isNoData = r.score === 'No Data';
+              return (
+                <tr key={r.date} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                  <td className="px-3 py-2 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-slate-700">{r.type}</td>
+                  <td className="px-3 py-2 text-center font-mono text-slate-700">{r.trkPct}</td>
+                  <td className="px-3 py-2 text-center font-mono text-slate-500">{r.busPct}</td>
+                  <td className="px-3 py-2 text-center font-mono font-bold text-slate-800">{r.avg}</td>
+                  <td className="px-3 py-2 text-center font-mono text-slate-600">{r.cur}</td>
+                  <td className={`px-3 py-2 text-right font-mono font-black ${isNoData ? 'text-slate-400 italic' : 'text-blue-700'}`}>{r.score}</td>
+                  <td className={`px-3 py-2 text-right font-mono ${r.convPct && r.convPct !== '0.0%' ? 'text-slate-700' : 'text-slate-300'}`}>{r.convPct || <span className="text-slate-300">&mdash;</span>}</td>
+                  <td className={`px-3 py-2 text-right font-mono ${r.inspPct && r.inspPct !== '0.0%' ? 'text-slate-700' : 'text-slate-300'}`}>{r.inspPct || <span className="text-slate-300">&mdash;</span>}</td>
+                  <td className={`px-3 py-2 text-right font-mono ${r.collPct && r.collPct !== '0.0%' ? 'text-slate-700' : 'text-slate-300'}`}>{r.collPct || <span className="text-slate-300">&mdash;</span>}</td>
+                  <td className="px-3 py-2 text-center">
+                    {r.stage ? (
+                      <span className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-full border ${monStageBadge(r.stage)}`}>{r.stage}</span>
+                    ) : <span className="text-slate-300">&mdash;</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_MON_PAGE + 1}&ndash;{Math.min(page * AB_MON_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbMonitoringDetailsList() {
+  const [page, setPage] = useState(1);
+  const total = AB_MON_DETAILS.length;
+  const pages = Math.max(1, Math.ceil(total / AB_MON_PAGE));
+  const rows  = AB_MON_DETAILS.slice((page - 1) * AB_MON_PAGE, page * AB_MON_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-3 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Month-End</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Avg Fleet</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Conv Pts/Veh</th>
+              <th className="px-3 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Total Insp</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">OOS Def/Insp</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Total Def/Insp</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-red-500 uppercase tracking-wider whitespace-nowrap">OOS%</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">OOS/Veh</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-amber-500 uppercase tracking-wider whitespace-nowrap">Failure Rate</th>
+              <th className="px-3 py-2.5 text-right text-[9px] font-bold text-rose-400 uppercase tracking-wider whitespace-nowrap">Coll Pts/Veh</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.date} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-3 py-2 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                <td className="px-3 py-2 text-center font-mono font-bold text-slate-700">{r.avgFleet === '' || r.avgFleet === 0 ? <span className="text-slate-300">0</span> : r.avgFleet}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.convPtsVeh ? 'text-slate-700' : 'text-slate-300'}`}>{r.convPtsVeh || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className={`px-3 py-2 text-center font-mono ${r.totalInsp !== '' ? 'text-slate-700 font-semibold' : 'text-slate-300'}`}>{r.totalInsp === '' ? <span className="text-slate-300">&mdash;</span> : r.totalInsp}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.oosDefInsp ? 'text-slate-700' : 'text-slate-300'}`}>{r.oosDefInsp || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.totalDefInsp ? 'text-slate-700' : 'text-slate-300'}`}>{r.totalDefInsp || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className={`px-3 py-2 text-right font-mono font-bold ${
+                  r.oosPct && r.oosPct !== '0%' ? (parseFloat(r.oosPct) >= 40 ? 'text-red-600' : parseFloat(r.oosPct) >= 20 ? 'text-amber-600' : 'text-slate-700') : 'text-slate-300'
+                }`}>{r.oosPct || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.oosVeh ? 'text-slate-700' : 'text-slate-300'}`}>{r.oosVeh || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.failureRate ? 'font-semibold text-slate-700' : 'text-slate-300'}`}>{r.failureRate || <span className="text-slate-300">&mdash;</span>}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.collPtsVeh ? 'text-slate-700' : 'text-slate-300'}`}>{r.collPtsVeh || <span className="text-slate-300">&mdash;</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+          {page === pages && (
+            <tfoot>
+              <tr className="bg-slate-100 border-t-2 border-slate-300">
+                <td className="px-3 py-2 text-[10px] font-black text-slate-700 uppercase tracking-wider whitespace-nowrap">Industry Avg</td>
+                <td className="px-3 py-2 text-center text-slate-300">&mdash;</td>
+                <td className="px-3 py-2 text-right font-mono font-black text-slate-800">{AB_MON_INDUSTRY.avgConvPts}</td>
+                <td className="px-3 py-2 text-center text-slate-300">&mdash;</td>
+                <td className="px-3 py-2 text-right font-mono font-black text-slate-800">{AB_MON_INDUSTRY.avgOosDef}</td>
+                <td className="px-3 py-2 text-right font-mono font-black text-slate-800">{AB_MON_INDUSTRY.avgTotalDef}</td>
+                <td className="px-3 py-2 text-center text-slate-300">&mdash;</td>
+                <td className="px-3 py-2 text-right font-mono font-black text-slate-800">{AB_MON_INDUSTRY.avgOosVeh}</td>
+                <td className="px-3 py-2 text-right font-mono font-black text-slate-800">{AB_MON_INDUSTRY.avgFailure}</td>
+                <td className="px-3 py-2 text-right font-mono font-black text-slate-800">{AB_MON_INDUSTRY.avgCollPts}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      <div className="px-5 py-2 border-t border-slate-100 bg-slate-50/40 text-[9px] text-slate-500 italic">
+        * Industry Average Information is as of {AB_MON_INDUSTRY.asOf} &middot; Fleet Range {AB_MON_INDUSTRY.fleetRange} &middot; Fleet Type {AB_MON_INDUSTRY.fleetType} &middot; calculated for carriers with one or more NSC events
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_MON_PAGE + 1}&ndash;{Math.min(page * AB_MON_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AB Facility Licence Information (Part 7) ────────────────────────────────
+
+const AB_FACILITY_META = {
+  periodStart: '2018 JAN 10',
+  periodEnd:   '2020 JAN 09',
+  datePrinted: '2020 JAN 09',
+  pages: '1 To 2',
+  total: 0,
+};
+
+interface AbFacilityLicenceRow { seq:number; date:string; document:string; jur:string; facility:string; status:string; expiry:string }
+
+const AB_FACILITY_LICENCES: AbFacilityLicenceRow[] = []; // none on record
+
+export function AbFacilityLicenceInformationPanel() {
+  return (
+    <div className="bg-white">
+      <div className="p-4 space-y-3">
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 flex-wrap text-[10px] text-slate-500">
+            <span><strong className="text-slate-700">Profile Period:</strong> <span className="font-mono">{AB_FACILITY_META.periodStart}</span> &ndash; <span className="font-mono">{AB_FACILITY_META.periodEnd}</span></span>
+            <span className="text-slate-300">|</span>
+            <span><strong className="text-slate-700">Date Printed:</strong> <span className="font-mono">{AB_FACILITY_META.datePrinted}</span> &middot; Pages {AB_FACILITY_META.pages}</span>
+            <span className="ml-auto"><strong className="text-slate-700">Inspection Facilities:</strong> <span className="font-mono font-black text-slate-900">{AB_FACILITY_META.total}</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbFacilityLicenceDetailsList() {
+  if (AB_FACILITY_LICENCES.length === 0) {
+    return (
+      <div className="bg-white px-5 py-6 flex items-center gap-3 bg-emerald-50/30 border-t border-slate-100">
+        <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[12px]">&#10003;</span>
+        <span className="text-[11px] text-slate-600 font-medium italic">No Facility Licences on Record for period selected</span>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-white">
+      {/* Table would go here when licences exist */}
+    </div>
+  );
+}
+
+// ─── AB Safety Fitness Information (Part 8) ──────────────────────────────────
+
+interface AbSafetyRatingRow { seq:number; effective:string; expiry:string; description:string; comments:string }
+interface AbOperatingStatusRow { seq:number; effective:string; inactive:string; description:string }
+
+const AB_SAFETY_FITNESS_META = {
+  periodStart: '2018 JAN 10',
+  periodEnd:   '2020 JAN 09',
+  datePrinted: '2020 JAN 09',
+  pages: '1 To 2',
+};
+
+const AB_SAFETY_RATINGS: AbSafetyRatingRow[] = [
+  { seq:1, effective:'2019 NOV 13', expiry:'',             description:'Conditional',            comments:'' },
+  { seq:2, effective:'2018 MAR 23', expiry:'2019 NOV 13',  description:'Satisfactory Unaudited', comments:'' },
+];
+
+const AB_OPERATING_STATUS: AbOperatingStatusRow[] = [
+  { seq:1, effective:'2018 MAR 20', inactive:'', description:'Federal' },
+];
+
+const AB_SAFETY_SUSPENSIONS: { seq:number; effective:string; expiry:string; description:string }[] = []; // none on record
+
+export function AbSafetyFitnessInformationPanel() {
+  return (
+    <div className="bg-white">
+      <div className="p-4 space-y-3">
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 flex-wrap text-[10px] text-slate-500">
+            <span><strong className="text-slate-700">Profile Period:</strong> <span className="font-mono">{AB_SAFETY_FITNESS_META.periodStart}</span> &ndash; <span className="font-mono">{AB_SAFETY_FITNESS_META.periodEnd}</span></span>
+            <span className="text-slate-300">|</span>
+            <span><strong className="text-slate-700">Date Printed:</strong> <span className="font-mono">{AB_SAFETY_FITNESS_META.datePrinted}</span> &middot; Pages {AB_SAFETY_FITNESS_META.pages}</span>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-lg border border-rose-100 bg-rose-50/30 p-3">
+            <div className="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-1">Safety Fitness Certificate Suspension Note</div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Certificate suspensions, if any, will be shown. Where the description is &quot;Suspended&quot;, the suspension remains in effect. Where the description is &quot;Suspension&quot;, the suspension has been lifted as of the Expiry Date.
+            </p>
+          </div>
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50/30 p-3">
+            <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1">Safety Rating Note</div>
+            <p className="text-[11px] text-slate-600 leading-relaxed mb-2">
+              The information in this part relates to one or more Safety Fitness Ratings that were issued during the period for which the Profile was requested. All carriers operating NSC vehicles are issued a certificate that shows their Safety Fitness Rating. There are 5 ratings that could be assigned:
+            </p>
+            <div className="flex flex-wrap gap-2 text-[10px]">
+              {['Excellent','Satisfactory','Satisfactory Unaudited','Conditional','Unsatisfactory'].map(r => (
+                <span key={r} className="bg-white border border-slate-200 text-slate-700 font-semibold px-2 py-0.5 rounded-full">{r}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbSafetyFitnessSummaryList() {
+  return (
+    <div className="bg-white divide-y divide-slate-100">
+      {/* Certificate Suspension */}
+      <div className="p-4">
+        <div className="text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2">Certificate Suspension</div>
+        {AB_SAFETY_SUSPENSIONS.length === 0 ? (
+          <div className="px-4 py-3 bg-emerald-50/40 rounded-lg border border-emerald-100 flex items-center gap-3">
+            <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[11px]">&#10003;</span>
+            <span className="text-[11px] text-slate-600 font-medium italic">No Certificate Suspension on Record for period selected</span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Safety Rating */}
+      <div className="p-4">
+        <div className="text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2">Safety Rating</div>
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-2 text-center font-bold whitespace-nowrap">#</th>
+                <th className="px-4 py-2 text-left  font-bold whitespace-nowrap">Effective Date</th>
+                <th className="px-4 py-2 text-left  font-bold whitespace-nowrap">Expiry Date</th>
+                <th className="px-4 py-2 text-left  font-bold">Description</th>
+                <th className="px-4 py-2 text-left  font-bold">Comments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {AB_SAFETY_RATINGS.map((r, i) => (
+                <tr key={r.seq} className={`border-b border-slate-100 ${i % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}>
+                  <td className="px-4 py-2 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                  <td className="px-4 py-2 font-mono text-slate-800 whitespace-nowrap">{r.effective}</td>
+                  <td className="px-4 py-2 font-mono text-slate-700 whitespace-nowrap">{r.expiry || <span className="text-slate-300">&mdash;</span>}</td>
+                  <td className="px-4 py-2 font-semibold text-slate-800">
+                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      r.description === 'Conditional'            ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      r.description === 'Unsatisfactory'         ? 'bg-red-50 text-red-700 border-red-200' :
+                      r.description === 'Excellent'              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                   'bg-slate-50 text-slate-700 border-slate-200'
+                    }`}>{r.description}</span>
+                  </td>
+                  <td className="px-4 py-2 text-slate-600">{r.comments || <span className="text-slate-300">&mdash;</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Operating Status */}
+      <div className="p-4">
+        <div className="text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2">Operating Status</div>
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-2 text-center font-bold whitespace-nowrap">#</th>
+                <th className="px-4 py-2 text-left  font-bold whitespace-nowrap">Effective Date</th>
+                <th className="px-4 py-2 text-left  font-bold whitespace-nowrap">Inactive Date</th>
+                <th className="px-4 py-2 text-left  font-bold">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {AB_OPERATING_STATUS.map((r, i) => (
+                <tr key={r.seq} className={`border-b border-slate-100 ${i % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}>
+                  <td className="px-4 py-2 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                  <td className="px-4 py-2 font-mono text-slate-800 whitespace-nowrap">{r.effective}</td>
+                  <td className="px-4 py-2 font-mono text-slate-700 whitespace-nowrap">{r.inactive || <span className="text-slate-300">&mdash;</span>}</td>
+                  <td className="px-4 py-2 font-semibold text-slate-700">{r.description}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AB Historical Summary (Part 10) ─────────────────────────────────────────
+
+interface AbHistoricalEventRow { seq:number; date:string; type:string; jur:string; description:string }
+
+const AB_HISTORICAL_EVENTS: AbHistoricalEventRow[] = [
+  { seq:1,  date:'2019 DEC 31', type:'MONT', jur:'AB', description:'FLEET SIZE: AVG 11, CUR 14; R-Factor: 2.314; STAGE: 4' },
+  { seq:2,  date:'2019 DEC 28', type:'CVSA', jur:'BC', description:'E65208  AB; Out of Service' },
+  { seq:3,  date:'2019 DEC 18', type:'CVSA', jur:'ON', description:'U11095  AB; Requires Attention' },
+  { seq:4,  date:'2019 DEC 12', type:'CVSA', jur:'ON', description:'U04707  AB; Passed' },
+  { seq:5,  date:'2019 DEC 05', type:'CVSA', jur:'ON', description:'E77384  AB; Requires Attention' },
+  { seq:6,  date:'2019 DEC 02', type:'CVSA', jur:'ON', description:'U17985  AB; Requires Attention' },
+  { seq:7,  date:'2019 NOV 30', type:'MONT', jur:'AB', description:'FLEET SIZE: AVG 11, CUR 15; R-Factor: 2.097; STAGE: 4' },
+  { seq:8,  date:'2019 NOV 26', type:'CVSA', jur:'ON', description:'U39627  AB; Passed' },
+  { seq:9,  date:'2019 NOV 13', type:'SAFE', jur:'AB', description:'Conditional' },
+  { seq:10, date:'2019 NOV 03', type:'CVSA', jur:'BC', description:'E77384  AB; Requires Attention' },
+  { seq:11, date:'2019 OCT 31', type:'MONT', jur:'AB', description:'FLEET SIZE: AVG 11, CUR 16; R-Factor: 2.111; STAGE: 4' },
+  { seq:12, date:'2019 OCT 24', type:'CVSA', jur:'ON', description:'U04707  AB; Passed' },
+  { seq:13, date:'2019 OCT 18', type:'CVSA', jur:'ON', description:'E65208  AB; Out of Service' },
+  { seq:14, date:'2019 OCT 17', type:'CVSA', jur:'ON', description:'U17985  AB; Requires Attention' },
+  { seq:15, date:'2019 SEP 30', type:'MONT', jur:'AB', description:'FLEET SIZE: AVG 10, CUR 19; R-Factor: 2.559; STAGE: 2' },
+  { seq:16, date:'2019 SEP 28', type:'CVSA', jur:'MB', description:'U04031  AB; Passed' },
+  { seq:17, date:'2019 SEP 19', type:'CONV', jur:'BC', description:'OPC BCAJ171045301;' },
+  { seq:18, date:'2019 SEP 12', type:'CVSA', jur:'BC', description:'U11096  AB; Out of Service' },
+  { seq:19, date:'2019 AUG 22', type:'CVSA', jur:'ON', description:'E75062  AB; Passed' },
+  { seq:20, date:'2019 AUG 21', type:'CVSA', jur:'AB', description:'U11096  AB; Out of Service' },
+  { seq:21, date:'2019 AUG 21', type:'VIOL', jur:'AB', description:'TVR 118300EI; TSA140(1)' },
+  { seq:22, date:'2019 AUG 20', type:'CVSA', jur:'BC', description:'E75062  AB; Requires Attention' },
+  { seq:23, date:'2019 AUG 16', type:'CVSA', jur:'ON', description:'U11099  AB; Passed' },
+  { seq:24, date:'2019 JUL 08', type:'CVSA', jur:'BC', description:'M1767S  ON; Requires Attention' },
+  { seq:51, date:'2018 JUN 13', type:'CVSA', jur:'ON', description:'E65114  AB; Passed' },
+  { seq:52, date:'2018 JUN 10', type:'CONV', jur:'ON', description:'OPC ON96622956;' },
+  { seq:53, date:'2018 JUN 10', type:'CONV', jur:'ON', description:'OPC ON96622957;' },
+  { seq:54, date:'2018 JUN 10', type:'CONV', jur:'ON', description:'OPC ON96622958;' },
+  { seq:55, date:'2018 JUN 10', type:'CONV', jur:'ON', description:'OPC ON96622961;' },
+  { seq:56, date:'2018 JUN 10', type:'CONV', jur:'ON', description:'OPC ON96622962;' },
+  { seq:57, date:'2018 JUN 05', type:'CONV', jur:'ON', description:'OPC ON96002105;' },
+  { seq:58, date:'2018 JUN 05', type:'CVSA', jur:'ON', description:'E65208  AB; Requires Attention' },
+  { seq:59, date:'2018 JUN 01', type:'CVSA', jur:'ON', description:'E65114  AB; Requires Attention' },
+  { seq:60, date:'2018 MAR 23', type:'SAFE', jur:'AB', description:'Satisfactory Unaudited; EXPIRY 2019 NOV 13' },
+  { seq:61, date:'2018 MAR 20', type:'OPST', jur:'AB', description:'Federal' },
+];
+
+const AB_HIST_TOTALS: { code:string; label:string; count:number; color:string }[] = [
+  { code:'MONT', label:'Monitoring',           count:4,  color:'#3b82f6' },
+  { code:'CVSA', label:'CVSA Inspections',     count:36, color:'#0ea5e9' },
+  { code:'SAFE', label:'Safety Ratings',       count:2,  color:'#10b981' },
+  { code:'CONV', label:'Conviction Documents', count:16, color:'#6366f1' },
+  { code:'VIOL', label:'Violation Documents',  count:1,  color:'#8b5cf6' },
+  { code:'COLL', label:'Collisions',           count:1,  color:'#ef4444' },
+  { code:'OPST', label:'Operating Status',     count:1,  color:'#64748b' },
+];
+
+const AB_HIST_PAGE = 10;
+
+function histTypeBadge(type: string) {
+  if (type === 'MONT') return 'bg-blue-50 text-blue-700 border-blue-200';
+  if (type === 'CVSA') return 'bg-sky-50 text-sky-700 border-sky-200';
+  if (type === 'SAFE') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (type === 'CONV') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+  if (type === 'VIOL') return 'bg-violet-50 text-violet-700 border-violet-200';
+  if (type === 'COLL') return 'bg-red-50 text-red-700 border-red-200';
+  if (type === 'OPST') return 'bg-slate-50 text-slate-700 border-slate-200';
+  return 'bg-slate-100 text-slate-500 border-slate-200';
+}
+
+export function AbHistoricalSummaryPanel() {
+  const total = AB_HIST_TOTALS.reduce((a, r) => a + r.count, 0);
+  return (
+    <div className="bg-white">
+      <div className="p-4 space-y-3">
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-4 flex-wrap text-[10px] text-slate-500">
+            <span><strong className="text-slate-700">Total Timeline Events:</strong> <span className="font-mono font-black text-slate-900">{total}</span></span>
+            <span className="ml-auto text-slate-400">breakdown by event type below</span>
+          </div>
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wider text-slate-500">
+                <th className="px-4 py-2 text-center font-bold whitespace-nowrap">Code</th>
+                <th className="px-4 py-2 text-left  font-bold">Event Type</th>
+                <th className="px-4 py-2 text-right font-bold whitespace-nowrap">Count</th>
+                <th className="px-4 py-2 text-right font-bold whitespace-nowrap">% of Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {AB_HIST_TOTALS.map((row, i) => {
+                const pct = ((row.count / total) * 100).toFixed(1);
+                return (
+                  <tr key={row.code} className={`border-b border-slate-100 ${i % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}>
+                    <td className="px-4 py-2 text-center">
+                      <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${histTypeBadge(row.code)}`}>{row.code}</span>
+                    </td>
+                    <td className="px-4 py-2 font-medium text-slate-800">{row.label}</td>
+                    <td className="px-4 py-2 text-right font-mono font-black text-slate-800">{row.count}</td>
+                    <td className="px-4 py-2 text-right font-mono text-slate-600">{pct}%</td>
+                  </tr>
+                );
+              })}
+              <tr className="bg-slate-100 border-t border-slate-300 font-bold">
+                <td className="px-4 py-2 text-center text-[9px] uppercase tracking-wider text-slate-700">&mdash;</td>
+                <td className="px-4 py-2 text-[10px] uppercase tracking-wider text-slate-700">Totals</td>
+                <td className="px-4 py-2 text-right font-mono font-black text-slate-900">{total}</td>
+                <td className="px-4 py-2 text-right font-mono font-black text-slate-900">100.0%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AbHistoricalEventsList() {
+  const [page, setPage] = useState(1);
+  const total = AB_HISTORICAL_EVENTS.length;
+  const pages = Math.max(1, Math.ceil(total / AB_HIST_PAGE));
+  const rows  = AB_HISTORICAL_EVENTS.slice((page - 1) * AB_HIST_PAGE, page * AB_HIST_PAGE);
+
+  return (
+    <div className="bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50/60">
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Date</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Type</th>
+              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jur</th>
+              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.seq} className={`border-b border-slate-50 ${i % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-500">{r.seq}</td>
+                <td className="px-4 py-2.5 font-mono text-slate-800 whitespace-nowrap">{r.date}</td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full border ${histTypeBadge(r.type)}`}>{r.type}</span>
+                </td>
+                <td className="px-4 py-2.5 text-center font-semibold text-slate-700">{r.jur}</td>
+                <td className="px-4 py-2.5 font-mono text-[10px] text-slate-700">{r.description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page - 1) * AB_HIST_PAGE + 1}&ndash;{Math.min(page * AB_HIST_PAGE, total)} of {total}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Reusable compact sub-dropdown used inside the parent Conviction section
+export function AbConvSub({ title, badge, open, onToggle, children }: {
+  title: string; badge?: string; open: boolean; onToggle: () => void; children?: React.ReactNode;
+}) {
+  return (
+    <div className="border-t border-slate-100">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-5 py-2.5 text-left hover:bg-slate-50/70 transition-colors"
+      >
+        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex-1">{title}</span>
+        {badge && <span className="text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full">{badge}</span>}
+        {open ? <ChevronDown size={13} className="text-slate-400"/> : <ChevronRight size={13} className="text-slate-400"/>}
+      </button>
+      {open && children && <div className="border-t border-slate-100">{children}</div>}
+    </div>
+  );
+}
+
 // ─── Pull-by-pull helpers ─────────────────────────────────────────────────────
 
 type AbStatus = 'Ok' | 'Warning' | 'Critical';
@@ -161,7 +1959,7 @@ function genAbMockData(r: typeof AB_PULL_DATA[0]) {
 
 // ─── NSC Analysis–style row component ────────────────────────────────────────
 
-function AbAnalysisRow({ title, subtitle, statLabel, statVal, badge, badgeCls, open, onToggle, children }: {
+export function AbAnalysisRow({ title, subtitle, statLabel, statVal, badge, badgeCls, open, onToggle, children }: {
   title: string; subtitle: string;
   statLabel?: string; statVal?: string;
   badge?: string; badgeCls?: string;
@@ -204,10 +2002,10 @@ function AbAnalysisRow({ title, subtitle, statLabel, statVal, badge, badgeCls, o
 
 // ─── AB Pull Drill-Down ───────────────────────────────────────────────────────
 
-type AbSectionKey = 'conv'|'cvsa'|'coll'|'viol'|'mon'|'fit'|'hist';
+type AbSectionKey = 'conv'|'convSummary'|'convDetails'|'cvsa'|'cvsaSummary'|'cvsaDetails'|'coll'|'collSummary'|'collDetails'|'viol'|'violSummary'|'violDetails'|'mon'|'monSummary'|'monDetails'|'fac'|'facDetail'|'fit'|'fitSummary'|'hist'|'histEvents';
 
 function AbPullDrillDown({ r }: { r: typeof AB_PULL_DATA[0] }) {
-  const [open, setOpen] = useState<Partial<Record<AbSectionKey, boolean>>>({ conv: true });
+  const [open, setOpen] = useState<Partial<Record<AbSectionKey, boolean>>>({});
   const tog = (k: AbSectionKey) => setOpen(p => ({ ...p, [k]: !p[k] }));
 
   const mock = genAbMockData(r);
@@ -227,10 +2025,10 @@ function AbPullDrillDown({ r }: { r: typeof AB_PULL_DATA[0] }) {
 
       <div className="p-4 space-y-2.5">
 
-        {/* ── Conviction Analysis ── */}
+        {/* ── Conviction Analysis (Part 2) ── */}
         <AbAnalysisRow
           title="Conviction Analysis"
-          subtitle={`${r.convictions} conviction event${r.convictions !== 1 ? 's' : ''} | offence mix and detailed conviction history`}
+          subtitle={`${AB_CONV_TOTAL.count} conviction event${AB_CONV_TOTAL.count !== 1 ? 's' : ''} | analysis, summary, and detailed conviction history`}
           statLabel="Contribution"
           statVal={`${mock.convContrib}%`}
           badge={r.status}
@@ -239,45 +2037,35 @@ function AbPullDrillDown({ r }: { r: typeof AB_PULL_DATA[0] }) {
           onToggle={() => tog('conv')}
         >
           <div>
-            <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-4">
-              <span className="text-[10px] text-slate-500">Total convictions: <strong className="text-slate-700">{r.convictions}</strong></span>
-              <span className="text-[10px] text-slate-500 ml-auto">Contribution to R-Factor: <strong style={{ color: sc }}>{mock.convContrib}%</strong></span>
-            </div>
-            {r.convictions === 0 ? (
-              <div className="px-5 py-4 flex items-center gap-3 bg-emerald-50/40">
-                <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[12px]">✓</span>
-                <span className="text-[11px] text-emerald-700 font-medium">No conviction events in this 24-month period</span>
-              </div>
-            ) : (
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="bg-slate-50/60 border-b border-slate-100">
-                    {['Act','Section','Description','Driver','Date','Points'].map(h => (
-                      <th key={h} className={`px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-wider ${h === 'Points' ? 'text-right' : 'text-left'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mock.convEvents.map((c, i) => (
-                    <tr key={i} className={`border-b border-slate-50 ${i % 2 ? 'bg-slate-50/30' : ''}`}>
-                      <td className="px-4 py-2.5 text-slate-500 text-[10px]">{c.act}</td>
-                      <td className="px-4 py-2.5 font-mono text-slate-700">{c.section}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{c.desc}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{c.driver}</td>
-                      <td className="px-4 py-2.5 font-mono text-[10px] text-slate-500">{c.date}</td>
-                      <td className="px-4 py-2.5 text-right font-bold font-mono" style={{ color: c.pts >= 5 ? '#dc2626' : c.pts >= 3 ? '#d97706' : '#64748b' }}>{c.pts}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            {/* Always-visible: Conviction Analysis group table */}
+            <AbConvictionAnalysisTable />
+
+            {/* Dropdown: Conviction Summary */}
+            <AbConvSub
+              title="Conviction Summary"
+              badge={`${AB_CONV_SUMMARY.length} RECORDS`}
+              open={!!open.convSummary}
+              onToggle={() => tog('convSummary')}
+            >
+              <AbConvictionSummaryList />
+            </AbConvSub>
+
+            {/* Dropdown: Conviction Details */}
+            <AbConvSub
+              title="Conviction Details"
+              badge={`${AB_CONV_DETAILS.length} RECORDS`}
+              open={!!open.convDetails}
+              onToggle={() => tog('convDetails')}
+            >
+              <AbConvictionDetailsList />
+            </AbConvSub>
           </div>
         </AbAnalysisRow>
 
-        {/* ── CVSA Inspection Analysis ── */}
+        {/* ── CVSA Inspection Analysis (Part 3) ── */}
         <AbAnalysisRow
           title="CVSA Inspection Analysis"
-          subtitle={`${r.cvsaInspections} inspection${r.cvsaInspections !== 1 ? 's' : ''} | ${mock.cvsaPass} pass, ${mock.cvsaFail} req. attn, ${mock.cvsaOos} OOS`}
+          subtitle={`${AB_CVSA_SUMMARY.length} inspection${AB_CVSA_SUMMARY.length !== 1 ? 's' : ''} | ${AB_CVSA_DEFECT_TOTAL.oos} OOS, ${AB_CVSA_DEFECT_TOTAL.req} req. attn | defect analysis, summary, and detailed records`}
           statLabel="Contribution"
           statVal={`${mock.cvsaContrib}%`}
           badge={r.status}
@@ -286,57 +2074,35 @@ function AbPullDrillDown({ r }: { r: typeof AB_PULL_DATA[0] }) {
           onToggle={() => tog('cvsa')}
         >
           <div>
-            <div className="px-5 py-3 bg-blue-50/40 border-b border-slate-100 flex items-center gap-6 flex-wrap">
-              {[
-                { label: 'Pass',          val: mock.cvsaPass, color: '#16a34a' },
-                { label: 'Req. Attn',     val: mock.cvsaFail, color: '#d97706' },
-                { label: 'Out of Service',val: mock.cvsaOos,  color: '#dc2626' },
-              ].map(s => (
-                <div key={s.label} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ background: s.color }}/>
-                  <span className="text-[11px] font-bold" style={{ color: s.color }}>{s.val}</span>
-                  <span className="text-[10px] text-slate-500">{s.label}</span>
-                </div>
-              ))}
-              <div className="ml-auto text-[10px] text-slate-400">OOS Rate: <strong style={{ color: mock.cvsaOos > 0 ? '#dc2626' : '#16a34a' }}>{r.cvsaInspections > 0 ? Math.round(mock.cvsaOos / r.cvsaInspections * 100) : 0}%</strong></div>
-            </div>
-            {r.cvsaInspections === 0 ? (
-              <div className="px-5 py-4 text-[11px] text-slate-400 italic">No CVSA inspections in this period</div>
-            ) : (
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="bg-slate-50/60 border-b border-slate-100">
-                    {['Date','Level','Location','Primary Violation','Result'].map(h => (
-                      <th key={h} className={`px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-wider ${h === 'Result' ? 'text-center' : 'text-left'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mock.cvsaEvents.map((c, i) => (
-                    <tr key={i} className={`border-b border-slate-50 ${i % 2 ? 'bg-slate-50/30' : ''}`}>
-                      <td className="px-4 py-2.5 font-mono text-[10px] text-slate-600">{c.date}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{c.level}</td>
-                      <td className="px-4 py-2.5 text-slate-600">{c.location}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{c.violation}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                          c.result === 'Out of Service' ? 'bg-red-50 text-red-700 border-red-200' :
-                          c.result === 'Pass'           ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                         'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>{c.result}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            {/* Always-visible: CVSA Inspection Analysis defect table */}
+            <AbCvsaInspectionAnalysisTable />
+
+            {/* Dropdown: CVSA Inspection Summary */}
+            <AbConvSub
+              title="CVSA Inspection Summary"
+              badge={`${AB_CVSA_SUMMARY.length} RECORDS`}
+              open={!!open.cvsaSummary}
+              onToggle={() => tog('cvsaSummary')}
+            >
+              <AbCvsaInspectionSummaryList />
+            </AbConvSub>
+
+            {/* Dropdown: CVSA Inspection Detail */}
+            <AbConvSub
+              title="CVSA Inspection Detail"
+              badge={`${AB_CVSA_DETAILS.length} RECORDS`}
+              open={!!open.cvsaDetails}
+              onToggle={() => tog('cvsaDetails')}
+            >
+              <AbCvsaInspectionDetailsList />
+            </AbConvSub>
           </div>
         </AbAnalysisRow>
 
-        {/* ── Collision Summary ── */}
+        {/* ── Collision Information (Part 4) ── */}
         <AbAnalysisRow
-          title="Collision Summary"
-          subtitle={`${r.reportableCollisions} event${r.reportableCollisions !== 1 ? 's' : ''} | ${mock.damageCount} damage, ${mock.injuryCount} injury`}
+          title="Collision Information"
+          subtitle={`${AB_COLLISION_SUMMARY.length} event${AB_COLLISION_SUMMARY.length !== 1 ? 's' : ''} | property damage, injury, fatal breakdown with collision summary and detailed records`}
           statLabel="Contribution"
           statVal={`${mock.collContrib}%`}
           badge={r.status}
@@ -344,245 +2110,176 @@ function AbPullDrillDown({ r }: { r: typeof AB_PULL_DATA[0] }) {
           open={!!open.coll}
           onToggle={() => tog('coll')}
         >
-          {r.reportableCollisions === 0 ? (
-            <div className="px-5 py-4 flex items-center gap-3 bg-emerald-50/40">
-              <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[12px]">✓</span>
-              <span className="text-[11px] text-emerald-700 font-medium">No reportable collisions in this 24-month period</span>
-            </div>
-          ) : (
-            <>
-              <div className="px-5 py-2.5 bg-red-50/40 border-b border-red-100 flex items-center gap-6">
-                {[
-                  { label: 'Property Damage', val: mock.damageCount, color: '#d97706' },
-                  { label: 'Injury',           val: mock.injuryCount,  color: '#dc2626' },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: s.color }}/>
-                    <span className="text-[11px] font-bold" style={{ color: s.color }}>{s.val}</span>
-                    <span className="text-[10px] text-slate-500">{s.label}</span>
-                  </div>
-                ))}
-              </div>
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="bg-slate-50/60 border-b border-slate-100">
-                    {['Date','Collision Type','Severity','At Fault','Vehicles'].map(h => (
-                      <th key={h} className={`px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-wider ${h === 'Vehicles' ? 'text-right' : 'text-left'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mock.collisions.map((c, i) => (
-                    <tr key={i} className={`border-b border-slate-50 ${i % 2 ? 'bg-slate-50/30' : ''}`}>
-                      <td className="px-4 py-2.5 font-mono text-[10px] text-slate-600">{c.date}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{c.type}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${c.severity === 'Injury' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                          {c.severity}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-600">{c.atFault}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-slate-600">{c.vehicles}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
+          <div>
+            {/* Always-visible: Collision Information totals + note */}
+            <AbCollisionInformationPanel />
+
+            {/* Dropdown: Collision Summary */}
+            <AbConvSub
+              title="Collision Summary"
+              badge={`${AB_COLLISION_SUMMARY.length} RECORD${AB_COLLISION_SUMMARY.length !== 1 ? 'S' : ''}`}
+              open={!!open.collSummary}
+              onToggle={() => tog('collSummary')}
+            >
+              <AbCollisionSummaryList />
+            </AbConvSub>
+
+            {/* Dropdown: Collision Detail */}
+            <AbConvSub
+              title="Collision Detail"
+              badge={`${AB_COLLISION_DETAILS.length} RECORD${AB_COLLISION_DETAILS.length !== 1 ? 'S' : ''}`}
+              open={!!open.collDetails}
+              onToggle={() => tog('collDetails')}
+            >
+              <AbCollisionDetailsList />
+            </AbConvSub>
+          </div>
         </AbAnalysisRow>
 
-        {/* ── Violation Analysis ── */}
+        {/* ── Violation Information (Part 5) ── */}
         <AbAnalysisRow
-          title="Violation Analysis"
-          subtitle={`${mock.totalViolOccurrences} violation occurrence${mock.totalViolOccurrences !== 1 ? 's' : ''} | grouped categories and detailed violation history`}
+          title="Violation Information"
+          subtitle={`${AB_VIOL_META.offences} offence${AB_VIOL_META.offences !== 1 ? 's' : ''} across ${AB_VIOL_META.documents} document${AB_VIOL_META.documents !== 1 ? 's' : ''} | analysis, summary, and detailed records`}
           statLabel="Grouped Total"
-          statVal={`${mock.groupedViolPct}%`}
-          badge={`${mock.totalViolOccurrences} OCCURRENCES`}
+          statVal={`${AB_VIOL_TOTAL.pct}`}
+          badge={`${AB_VIOL_TOTAL.count} OCCURRENCE${AB_VIOL_TOTAL.count !== 1 ? 'S' : ''}`}
           badgeCls="bg-indigo-50 text-indigo-600 border-indigo-200"
           open={!!open.viol}
           onToggle={() => tog('viol')}
         >
-          <div className="p-4 space-y-2 bg-slate-50/40">
-            {mock.AB_VIOL_CATS.map(cat => {
-              const pct = Math.min((cat.count / Math.max(mock.totalViolOccurrences, 1)) * 100, 100);
-              return (
-                <div key={cat.cat} className="bg-white border border-slate-200 rounded-xl px-4 py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-slate-700">{cat.cat}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold font-mono text-slate-700">{cat.count}</span>
-                      <span className="text-[9px] text-slate-400">occurrences</span>
-                    </div>
-                  </div>
-                  <div className="relative h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="absolute inset-y-0 left-0 rounded-full bg-indigo-400" style={{ width: `${pct}%` }}/>
-                  </div>
-                  <div className="flex justify-between text-[9px] mt-1 text-slate-400">
-                    <span>{pct.toFixed(1)}% of total violations</span>
-                  </div>
-                </div>
-              );
-            })}
+          <div>
+            {/* Always-visible: Violation Analysis group table + note */}
+            <AbViolationInformationPanel />
+
+            {/* Dropdown: Violation Summary */}
+            <AbConvSub
+              title="Violation Summary"
+              badge={`${AB_VIOL_SUMMARY.length} RECORD${AB_VIOL_SUMMARY.length !== 1 ? 'S' : ''}`}
+              open={!!open.violSummary}
+              onToggle={() => tog('violSummary')}
+            >
+              <AbViolationSummaryList />
+            </AbConvSub>
+
+            {/* Dropdown: Violation Detail */}
+            <AbConvSub
+              title="Violation Detail"
+              badge={`${AB_VIOL_DETAILS.length} RECORD${AB_VIOL_DETAILS.length !== 1 ? 'S' : ''}`}
+              open={!!open.violDetails}
+              onToggle={() => tog('violDetails')}
+            >
+              <AbViolationDetailsList />
+            </AbConvSub>
           </div>
         </AbAnalysisRow>
 
-        {/* ── Monitoring Summary ── */}
+        {/* ── Monitoring Information (Part 6) ── */}
         <AbAnalysisRow
-          title="Monitoring Summary"
-          subtitle="24 month-end snapshots | fleet trends, stages, and detailed inspection metrics"
-          statLabel="Latest OOS"
-          statVal={`${mock.latestOosPct}%`}
-          badge="24 MONTHS"
+          title="Monitoring Information"
+          subtitle={`${AB_MON_SUMMARY.length} month-end snapshots | fleet trends, R-Factor stages, and detailed inspection metrics`}
+          statLabel="Latest R-Factor"
+          statVal={AB_MON_SUMMARY[0]?.score ?? '—'}
+          badge={`${AB_MON_SUMMARY.length} MONTHS`}
           badgeCls="bg-blue-50 text-blue-600 border-blue-200"
           open={!!open.mon}
           onToggle={() => tog('mon')}
         >
-          <div className="p-4 bg-slate-50/40">
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              {[
-                { label: 'CVSA Inspections',       val: r.cvsaInspections,     unit: 'total (24 mo)',   color: '#3b82f6' },
-                { label: 'Latest OOS Rate',         val: `${mock.latestOosPct}%`, unit: 'out of service', color: mock.latestOosPct > 20 ? '#dc2626' : mock.latestOosPct > 10 ? '#d97706' : '#16a34a' },
-                { label: 'Avg Monthly Inspections', val: (r.cvsaInspections / 24).toFixed(1), unit: 'per month', color: '#64748b' },
-              ].map(item => (
-                <div key={item.label} className="border border-slate-200 rounded-xl p-3.5 bg-white">
-                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</div>
-                  <div className="text-[24px] font-black font-mono leading-none" style={{ color: item.color }}>{item.val}</div>
-                  <div className="text-[10px] text-slate-400 mt-1">{item.unit}</div>
-                </div>
-              ))}
-            </div>
-            {/* Mini sparkbar of monthly OOS */}
-            <div className="border border-slate-200 rounded-xl p-3.5 bg-white">
-              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">Monthly OOS % — 24 Month Trend</div>
-              <div className="flex items-end gap-0.5 h-10">
-                {mock.monitoringSnaps.map((s, i) => {
-                  const barH = Math.max(4, (s.oosPct / 50) * 40);
-                  const col  = s.oosPct > 20 ? '#dc2626' : s.oosPct > 10 ? '#d97706' : '#16a34a';
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" title={`${s.label}: ${s.oosPct}% OOS`}>
-                      <div className="w-full rounded-sm" style={{ height: barH, background: col, opacity: 0.75 }}/>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex justify-between text-[8px] text-slate-400 mt-1">
-                <span>{mock.monitoringSnaps[0].label}</span>
-                <span>{mock.monitoringSnaps[mock.monitoringSnaps.length - 1].label}</span>
-              </div>
-            </div>
+          <div>
+            {/* Always-visible: Monitoring Info panel + Industry thresholds */}
+            <AbMonitoringInformationPanel />
+
+            {/* Dropdown: Monitoring Summary */}
+            <AbConvSub
+              title="Monitoring Summary"
+              badge={`${AB_MON_SUMMARY.length} MONTHS`}
+              open={!!open.monSummary}
+              onToggle={() => tog('monSummary')}
+            >
+              <AbMonitoringSummaryList />
+            </AbConvSub>
+
+            {/* Dropdown: Monitoring Details */}
+            <AbConvSub
+              title="Monitoring Details"
+              badge={`${AB_MON_DETAILS.length} MONTHS`}
+              open={!!open.monDetails}
+              onToggle={() => tog('monDetails')}
+            >
+              <AbMonitoringDetailsList />
+            </AbConvSub>
           </div>
         </AbAnalysisRow>
 
         {/* ── Safety Fitness Information ── */}
+        {/* ── Facility Licence Information (Part 7) ── */}
+        <AbAnalysisRow
+          title="Facility Licence Information"
+          subtitle="0 inspection facilities on record for selected period"
+          statLabel="Facilities"
+          statVal={`${AB_FACILITY_META.total}`}
+          badge={`${AB_FACILITY_META.total} RECORDS`}
+          badgeCls="bg-slate-100 text-slate-500 border-slate-200"
+          open={!!open.fac}
+          onToggle={() => tog('fac')}
+        >
+          <div>
+            <AbFacilityLicenceInformationPanel />
+            <AbConvSub
+              title="Facility Licence Detail"
+              badge={`${AB_FACILITY_LICENCES.length} RECORD${AB_FACILITY_LICENCES.length !== 1 ? 'S' : ''}`}
+              open={!!open.facDetail}
+              onToggle={() => tog('facDetail')}
+            >
+              <AbFacilityLicenceDetailsList />
+            </AbConvSub>
+          </div>
+        </AbAnalysisRow>
+
+        {/* ── Safety Fitness Information (Part 8) ── */}
         <AbAnalysisRow
           title="Safety Fitness Information"
-          subtitle={`${mock.certCount} certificate${mock.certCount !== 1 ? 's' : ''} | ${mock.ratingCount} rating${mock.ratingCount !== 1 ? 's' : ''}, ${mock.condCount} condition, ${mock.opStatusCount} operating status`}
-          statLabel="Active Certs"
-          statVal={`${mock.activeCertPct}%`}
-          badge={`${mock.certCount} CERTIFICATES`}
+          subtitle={`${AB_SAFETY_RATINGS.length} safety rating${AB_SAFETY_RATINGS.length !== 1 ? 's' : ''} | ${AB_OPERATING_STATUS.length} operating status | ${AB_SAFETY_SUSPENSIONS.length} suspension${AB_SAFETY_SUSPENSIONS.length !== 1 ? 's' : ''}`}
+          statLabel="Current Rating"
+          statVal={AB_SAFETY_RATINGS[0]?.description ?? '—'}
+          badge={`${AB_SAFETY_RATINGS.length + AB_OPERATING_STATUS.length} RECORDS`}
           badgeCls="bg-emerald-50 text-emerald-700 border-emerald-200"
           open={!!open.fit}
           onToggle={() => tog('fit')}
         >
-          <div className="p-4 bg-slate-50/40">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="border border-slate-200 rounded-xl p-4 bg-white">
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-3">Certificate Breakdown</div>
-                <div className="space-y-2">
-                  {[
-                    { label: 'Total Certificates',  val: mock.certCount,      color: '#16a34a' },
-                    { label: 'Active Ratings',       val: mock.ratingCount,    color: '#3b82f6' },
-                    { label: 'Conditions on File',   val: mock.condCount,      color: mock.condCount > 0 ? '#d97706' : '#64748b' },
-                    { label: 'Operating Statuses',   val: mock.opStatusCount,  color: '#64748b' },
-                  ].map(row => (
-                    <div key={row.label} className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-500">{row.label}</span>
-                      <span className="text-[13px] font-black font-mono" style={{ color: row.color }}>{row.val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="border border-slate-200 rounded-xl p-4 bg-white">
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-3">Safety Fitness Rating</div>
-                <div className="space-y-2">
-                  {[
-                    { label: 'Current R-Factor',   val: r.rFactor.toFixed(3), color: abRfColor(r.rFactor) },
-                    { label: 'R-Factor Status',     val: r.status,             color: abStColor(r.status) },
-                    { label: 'Admin Penalties',     val: r.adminPenalties,     color: r.adminPenalties > 2 ? '#dc2626' : r.adminPenalties > 0 ? '#d97706' : '#16a34a' },
-                    { label: 'Active Cert Rate',    val: `${mock.activeCertPct}%`, color: '#64748b' },
-                  ].map(row => (
-                    <div key={row.label} className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-500">{row.label}</span>
-                      <span className="text-[11px] font-bold font-mono" style={{ color: row.color }}>{row.val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <div>
+            <AbSafetyFitnessInformationPanel />
+            <AbConvSub
+              title="Safety Fitness Summary"
+              badge={`${AB_SAFETY_RATINGS.length + AB_OPERATING_STATUS.length} RECORDS`}
+              open={!!open.fitSummary}
+              onToggle={() => tog('fitSummary')}
+            >
+              <AbSafetyFitnessSummaryList />
+            </AbConvSub>
           </div>
         </AbAnalysisRow>
 
-        {/* ── Historical Summary ── */}
+        {/* ── Historical Summary (Part 10) ── */}
         <AbAnalysisRow
           title="Historical Summary"
-          subtitle={`${mock.totalEvents} timeline event${mock.totalEvents !== 1 ? 's' : ''} | monitoring, CVSA, collisions, convictions, and safety actions`}
-          statLabel="CVSA Share"
-          statVal={`${mock.cvsaShare}%`}
-          badge={`${mock.totalEvents} EVENTS`}
+          subtitle={`${AB_HISTORICAL_EVENTS.length} timeline events | monitoring, CVSA, collisions, convictions, and safety actions`}
+          statLabel="Total Events"
+          statVal={`${AB_HIST_TOTALS.reduce((a, r) => a + r.count, 0)}`}
+          badge={`${AB_HISTORICAL_EVENTS.length} EVENTS`}
           badgeCls="bg-slate-100 text-slate-600 border-slate-200"
           open={!!open.hist}
           onToggle={() => tog('hist')}
         >
-          <div className="p-4 bg-slate-50/40">
-            <div className="grid grid-cols-5 gap-2 mb-3">
-              {[
-                { label: 'Convictions',  val: r.convictions,           color: '#6366f1' },
-                { label: 'CVSA',         val: r.cvsaInspections,       color: '#3b82f6' },
-                { label: 'Collisions',   val: r.reportableCollisions,  color: '#ef4444' },
-                { label: 'Admin Pen.',   val: r.adminPenalties,        color: '#d97706' },
-                { label: 'Other',        val: 2,                        color: '#94a3b8' },
-              ].map(item => {
-                const pct = Math.min(Math.round((item.val / Math.max(mock.totalEvents, 1)) * 100), 100);
-                return (
-                  <div key={item.label} className="border border-slate-200 rounded-xl p-3 bg-white text-center">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">{item.label}</div>
-                    <div className="text-[22px] font-black font-mono leading-none" style={{ color: item.color }}>{item.val}</div>
-                    <div className="text-[9px] text-slate-400 mt-1">{pct}% share</div>
-                    <div className="relative h-1 rounded-full bg-slate-100 overflow-hidden mt-1.5">
-                      <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: item.color }}/>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="border border-slate-200 rounded-xl p-3.5 bg-white">
-              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2">Event Composition</div>
-              <div className="flex items-center gap-1 h-3 rounded-full overflow-hidden">
-                {[
-                  { val: r.convictions,          color: '#6366f1' },
-                  { val: r.cvsaInspections,      color: '#3b82f6' },
-                  { val: r.reportableCollisions, color: '#ef4444' },
-                  { val: r.adminPenalties,       color: '#d97706' },
-                  { val: 2,                       color: '#94a3b8' },
-                ].map((s, i) => (
-                  <div key={i} style={{ flex: s.val || 0.5, background: s.color }}/>
-                ))}
-              </div>
-              <div className="flex items-center gap-4 mt-2 flex-wrap">
-                {[
-                  { label: 'Convictions', color: '#6366f1' },
-                  { label: 'CVSA',        color: '#3b82f6' },
-                  { label: 'Collisions',  color: '#ef4444' },
-                  { label: 'Admin Pen.',  color: '#d97706' },
-                  { label: 'Other',       color: '#94a3b8' },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm" style={{ background: s.color }}/>
-                    <span className="text-[10px] text-slate-500">{s.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div>
+            <AbHistoricalSummaryPanel />
+            <AbConvSub
+              title="Historical Events"
+              badge={`${AB_HISTORICAL_EVENTS.length} EVENTS`}
+              open={!!open.histEvents}
+              onToggle={() => tog('histEvents')}
+            >
+              <AbHistoricalEventsList />
+            </AbConvSub>
           </div>
         </AbAnalysisRow>
 

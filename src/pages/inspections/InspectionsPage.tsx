@@ -30,8 +30,47 @@ import { NscCvsaInspections } from './NscCvsaInspections';
 import { NscPerformanceCard, type NscPerformanceCardProps } from './NscPerformanceCard';
 import { InspectionReportPanel } from './InspectionReportPanel';
 import { NscBcCarrierProfile, INERTIA_CARRIER_BC_DATA } from './NscBcCarrierProfile';
-import { NscBcPerformanceHistory } from './NscBcPerformanceHistory';
-import { NscAbPerformanceHistory } from './NscAbPerformanceHistory';
+import {
+  NscBcPerformanceHistory,
+  AnalysisRow,
+  BcMonthHistoryTable,
+  BcActiveFleetTable as BcActiveFleetRealTable,
+  DriverContraventionsList,
+  CarrierContraventionsList,
+  PendingDriverContraventionsList,
+  PendingCarrierContraventionsList,
+  CvsaInspectionSummaries,
+  CvsaInspectionDetailsList,
+  AccidentSummaryTable,
+  AccidentDetailsList,
+  CvipInspectionList,
+} from './NscBcPerformanceHistory';
+import {
+  NscAbPerformanceHistory,
+  AbAnalysisRow,
+  AbConvSub,
+  AbConvictionAnalysisTable,
+  AbConvictionSummaryList,
+  AbConvictionDetailsList,
+  AbCvsaInspectionAnalysisTable,
+  AbCvsaInspectionSummaryList,
+  AbCvsaInspectionDetailsList,
+  AbCollisionInformationPanel,
+  AbCollisionSummaryList,
+  AbCollisionDetailsList,
+  AbViolationInformationPanel,
+  AbViolationSummaryList,
+  AbViolationDetailsList,
+  AbMonitoringInformationPanel,
+  AbMonitoringSummaryList,
+  AbMonitoringDetailsList,
+  AbFacilityLicenceInformationPanel,
+  AbFacilityLicenceDetailsList,
+  AbSafetyFitnessInformationPanel,
+  AbSafetyFitnessSummaryList,
+  AbHistoricalSummaryPanel,
+  AbHistoricalEventsList,
+} from './NscAbPerformanceHistory';
 import { BcAccidentPanel, BcCvsaPanel } from './BcPanels';
 import { NscMonitoringHistory } from './NscMonitoringHistory';
 import { NscPeiPerformanceCard } from './NscPeiPerformanceCard';
@@ -2333,7 +2372,11 @@ const getPeriodLabel = (period: PeriodLabel) => (
 
 // --- MAIN APP ---
 export function InspectionsPage() {
-  const [activeMainTab, setActiveMainTab] = useState<'overview' | 'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc' | 'carrier-profile-pe' | 'carrier-profile-ns'>('overview');
+  const [activeMainTab, setActiveMainTab] = useState<'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc' | 'carrier-profile-pe' | 'carrier-profile-ns'>('sms');
+  const [bcMainOpen, setBcMainOpen] = useState<Record<string, boolean>>({});
+  const bcMainTog = (k: string) => setBcMainOpen(p => ({ ...p, [k]: !p[k] }));
+  const [abMainOpen, setAbMainOpen] = useState<Record<string, boolean>>({});
+  const abMainTog = (k: string) => setAbMainOpen(p => ({ ...p, [k]: !p[k] }));
   const [showReport, setShowReport] = useState(false);
   const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All'>('All');
   const smsBasicCategory = 'All';
@@ -2719,7 +2762,6 @@ export function InspectionsPage() {
         <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
           <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 gap-1">
             {[
-              { id: 'overview' as const, label: 'Overview' },
               { id: 'sms' as const, label: 'FMCSA' },
               { id: 'cvor' as const, label: 'CVOR' },
               { id: 'carrier-profile-ab' as const, label: 'Alberta NSC' },
@@ -2742,23 +2784,21 @@ export function InspectionsPage() {
           </div>
 
           {/* Report button - only for reportable tabs */}
-          {activeMainTab !== 'overview' && (
-            <button
-              onClick={() => setShowReport(p => !p)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
-                showReport
-                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
-                  : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-              }`}
-            >
-              <FileText size={14} />
-              {showReport ? 'Close Report' : 'Generate Report'}
-            </button>
-          )}
+          <button
+            onClick={() => setShowReport(p => !p)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
+              showReport
+                ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+            }`}
+          >
+            <FileText size={14} />
+            {showReport ? 'Close Report' : 'Generate Report'}
+          </button>
         </div>
 
         {/* ===== REPORT PANEL ===== */}
-        {showReport && activeMainTab !== 'overview' && (
+        {showReport && (
           <InspectionReportPanel
             variant={activeMainTab === 'sms' ? 'sms' : activeMainTab === 'cvor' ? 'cvor' : 'nsc'}
             basicOverview={computedBasicOverview}
@@ -2769,760 +2809,6 @@ export function InspectionsPage() {
           />
         )}
 
-        {/* ===== TAB: FULL OVERVIEW ===== */}
-        {activeMainTab === 'overview' && (
-        <>
-
-        {/* ===== NEW SECTION: COMPANY OVERVIEW DASHBOARD ===== */}
-        <div className="space-y-4 pt-2">
-          
-          <div className="flex items-center gap-2 mb-2">
-            <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Overall Carrier Report Card</h2>
-            <InfoTooltip 
-              title="Company-Wide Scores"
-              text="These sections act as a report card for the entire company. They take all the individual events (crashes, inspections, violations) from all drivers and combine them into overall scores." 
-            />
-          </div>
-
-          {/* Intervention Warning Banner */}
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
-            <AlertOctagon className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
-            <div>
-              <h4 className="text-sm font-bold text-red-800 uppercase tracking-wide">Intervention Warning</h4>
-              <p className="text-sm text-red-700 mt-1 leading-relaxed">
-                The carrier exceeds the FMCSA Intervention Threshold relative to its safety event grouping based on roadside data. This carrier may be prioritized for an intervention action and roadside inspection. Note: No Acute/Critical Violations were discovered during investigation results.
-              </p>
-            </div>
-          </div>
-
-          {/* Top Row: Safety Rating & OOS and Licensing */}
-          {false && (
-          <div className="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* Col 1: Combined Safety Rating & OOS (SMS + CVOR) */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
-                <ShieldAlert size={14} className="text-blue-500"/> Safety Rating & OOS
-                <InfoTooltip
-                  text="SMS and CVOR safety ratings are calculated differently. This combined card keeps both in one place with clear tags."
-                />
-              </h3>
-
-              <div className="space-y-4">
-                <div className="p-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-blue-600">SMS</span>
-                    <span className="text-sm font-medium text-slate-700">
-                      Current Rating: <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{carrierProfile.rating}</span>
-                    </span>
-                  </div>
-                  <div className="overflow-x-auto rounded border border-slate-100">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">Type</th>
-                          <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
-                          <th className="px-3 py-2 font-semibold text-center">Nat Avg</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Vehicle</td>
-                          <td className="px-3 py-2 text-center font-bold text-red-600">{carrierProfile.oosRates.vehicle.carrier}</td>
-                          <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.vehicle.national}</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Driver</td>
-                          <td className="px-3 py-2 text-center font-bold text-slate-800">{carrierProfile.oosRates.driver.carrier}</td>
-                          <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.driver.national}</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Hazmat</td>
-                          <td className="px-3 py-2 text-center font-bold text-slate-400">{carrierProfile.oosRates.hazmat.carrier}</td>
-                          <td className="px-3 py-2 text-center text-slate-500">{carrierProfile.oosRates.hazmat.national}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-3 p-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-rose-600">CVOR</span>
-                    <span className="text-sm font-medium text-slate-700">
-                      Current Rating: <span className={`font-bold px-2 py-0.5 rounded border ${carrierProfile.cvorAnalysis.rating >= 70 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-green-100 text-green-800 border-green-200'}`}>{carrierProfile.cvorAnalysis.rating >= 70 ? 'CONDITIONAL' : 'OK'}</span>
-                    </span>
-                  </div>
-                  <div className="overflow-x-auto rounded border border-slate-100">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">Type</th>
-                          <th className="px-3 py-2 font-semibold text-center">Carrier %</th>
-                          <th className="px-3 py-2 font-semibold text-center">Threshold</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Overall OOS</td>
-                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosOverall > cvorOosThresholds.overall ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosOverall}%</td>
-                          <td className="px-3 py-2 text-center text-slate-500">&gt;{cvorOosThresholds.overall}%</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Vehicle OOS</td>
-                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosVehicle > cvorOosThresholds.vehicle ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosVehicle}%</td>
-                          <td className="px-3 py-2 text-center text-slate-500">&gt;{cvorOosThresholds.vehicle}%</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-2 text-slate-700">Driver OOS</td>
-                          <td className={`px-3 py-2 text-center font-bold ${carrierProfile.cvorAnalysis.counts.oosDriver > cvorOosThresholds.driver ? 'text-red-600' : 'text-slate-800'}`}>{carrierProfile.cvorAnalysis.counts.oosDriver}%</td>
-                          <td className="px-3 py-2 text-center text-slate-500">&gt;{cvorOosThresholds.driver}%</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-3 p-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">NSC / CVSA</span>
-                    {(() => {
-                      const nscTotal = NSC_INSPECTIONS.length;
-                      const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
-                      const nscOosRate = nscTotal > 0 ? Math.round((nscOos / nscTotal) * 100) : 0;
-                      return (
-                        <span className="text-sm font-medium text-slate-700">
-                          OOS Rate: <span className={`font-bold px-2 py-0.5 rounded border ${nscOosRate >= 30 ? 'bg-red-100 text-red-800 border-red-200' : nscOosRate >= 20 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-green-100 text-green-800 border-green-200'}`}>{nscOosRate}%</span>
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <div className="overflow-x-auto rounded border border-slate-100">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">Type</th>
-                          <th className="px-3 py-2 font-semibold text-center">Count</th>
-                          <th className="px-3 py-2 font-semibold text-center">Rate</th>
-                          <th className="px-3 py-2 font-semibold text-center">Threshold</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(() => {
-                          const nscTotal = NSC_INSPECTIONS.length;
-                          const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
-                          const nscReqAttn = NSC_INSPECTIONS.filter(r => r.result === 'Requires Attention').length;
-                          const nscPassed = NSC_INSPECTIONS.filter(r => r.result === 'Passed').length;
-                          const oosRate = nscTotal > 0 ? ((nscOos / nscTotal) * 100).toFixed(1) : '0.0';
-                          const reqRate = nscTotal > 0 ? ((nscReqAttn / nscTotal) * 100).toFixed(1) : '0.0';
-                          const passRate = nscTotal > 0 ? ((nscPassed / nscTotal) * 100).toFixed(1) : '0.0';
-                          return (
-                            <>
-                              <tr>
-                                <td className="px-3 py-2 text-slate-700">Out of Service</td>
-                                <td className="px-3 py-2 text-center font-bold text-red-600">{nscOos}</td>
-                                <td className={`px-3 py-2 text-center font-bold ${parseFloat(oosRate) >= 30 ? 'text-red-600' : 'text-slate-800'}`}>{oosRate}%</td>
-                                <td className="px-3 py-2 text-center text-slate-500">&gt;30%</td>
-                              </tr>
-                              <tr>
-                                <td className="px-3 py-2 text-slate-700">Requires Attention</td>
-                                <td className="px-3 py-2 text-center font-bold text-amber-600">{nscReqAttn}</td>
-                                <td className="px-3 py-2 text-center font-bold text-slate-800">{reqRate}%</td>
-                                <td className="px-3 py-2 text-center text-slate-500">&gt;20%</td>
-                              </tr>
-                              <tr>
-                                <td className="px-3 py-2 text-slate-700">Passed</td>
-                                <td className="px-3 py-2 text-center font-bold text-emerald-600">{nscPassed}</td>
-                                <td className="px-3 py-2 text-center font-bold text-emerald-600">{passRate}%</td>
-                                <td className="px-3 py-2 text-center text-slate-500">-</td>
-                              </tr>
-                            </>
-                          );
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Col 2: Licensing */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <FileSignature size={14} className="text-purple-500"/> Licensing
-                <InfoTooltip 
-                  text="Combined licensing details from SMS and CVOR views for one full company overview." 
-                />
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">CVOR Number</span>
-                  <span className="font-bold font-mono text-slate-900">{carrierProfile.cvor}</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">USDOT Number</span>
-                  <span className="font-bold font-mono text-slate-900">{carrierProfile.id}</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Property Carrier</span>
-                  <span className="font-bold text-slate-900">{carrierProfile.licensing.property.mc} <span className="text-green-600 bg-green-50 px-1 rounded ml-1">Active</span></span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Fleet Size</span>
-                  <span className="font-bold text-slate-900">{carrierProfile.cvorAnalysis.counts.trucks} Power Units</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Total Mileage</span>
-                  <span className="font-bold font-mono text-blue-600">{((mileageUnit === 'km' ? carrierProfile.cvorAnalysis.counts.totalMiles * 1.60934 : carrierProfile.cvorAnalysis.counts.totalMiles) / 1000000).toFixed(1)}M {mileageUnit === 'km' ? 'km' : 'mi'}</span>
-                </div>
-
-                {/* NSC / Federal Details */}
-                <div className="pt-2 pb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
-                    <ShieldAlert size={10}/> NSC / Federal
-                  </span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">NSC Number</span>
-                  <span className="font-bold font-mono text-slate-900">AB320-9327</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">MVID Number</span>
-                  <span className="font-bold font-mono text-slate-900">0930-15188</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Certificate Number</span>
-                  <span className="font-bold font-mono text-slate-900">002050938</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Status</span>
-                  <span className="font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded text-xs">Federal Active</span>
-                </div>
-
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Passenger</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Household</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600">Broker</span>
-                  <span className="font-medium text-slate-400">No</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-          )}
-
-          {/* Compliance Dashboard: US (CSA) | Canada (CVOR) | Canada (NSC) Side by Side */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-
-            {/* LEFT COLUMN: United States - SMS Analysis */}
-            {false && (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col">
-              <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100 flex-wrap">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <Gauge size={16} className="text-blue-600"/>
-                  </div>
-                  <h3 className="text-sm font-bold text-slate-900">SMS Analysis</h3>
-                  <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700">SMS</span>
-                  <InfoTooltip text="The carrier's overall safety percentile score based on a 2-year period, ranked against other similar companies." />
-                </div>
-              </div>
-              <div className="space-y-0 flex-1">
-                {computedBasicOverview.map((status, idx) => {
-                  const numericPercentile = parseInt(status.percentile) || 0;
-                  let alertClass = 'bg-slate-100 text-slate-600';
-                  let textClass = 'text-slate-700';
-                  let borderClass = '';
-
-                  if (status.percentile !== 'N/A') {
-                      if (numericPercentile >= csaThresholds.critical) {
-                          alertClass = 'bg-red-100 text-red-800';
-                          textClass = 'text-red-700 font-bold';
-                          borderClass = 'border-l-2 border-l-red-400 pl-3';
-                      } else if (numericPercentile >= csaThresholds.warning) {
-                          alertClass = 'bg-amber-100 text-amber-800';
-                          textClass = 'text-amber-700 font-bold';
-                          borderClass = 'border-l-2 border-l-amber-400 pl-3';
-                      }
-                  } else if (status.alert) {
-                      alertClass = 'bg-red-100 text-red-800';
-                      textClass = 'text-red-700 font-bold';
-                      borderClass = 'border-l-2 border-l-red-400 pl-3';
-                  }
-
-                  const isExp = expandedBasic === status.category;
-                  return (
-                  <div key={idx} className={`border-b border-slate-50 last:border-0 ${borderClass}`}>
-                    <div
-                      className="flex flex-col justify-center py-2.5 cursor-pointer hover:bg-slate-50/50 transition-colors"
-                      onClick={() => setExpandedBasic(isExp ? null : status.category)}
-                    >
-                      <div className="flex justify-between items-center mb-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <ChevronDown size={12} className={`text-slate-400 transition-transform ${isExp ? 'rotate-180' : ''}`} />
-                          <span className={`text-sm font-medium ${textClass}`}>{status.category}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {status.measure !== undefined && <span className="text-xs text-slate-400 font-mono">Msr: {status.measure}</span>}
-                          <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>{status.percentile}</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-slate-500 truncate pl-5" title={status.details}>{status.details}</span>
-                    </div>
-                    {isExp && (
-                      <div className="pb-3 pl-5 pr-1">
-                        <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 text-xs text-slate-500">
-                          <div className="font-bold text-slate-700 mb-1">{status.category}</div>
-                          <div>Measure: <span className="font-mono font-bold text-slate-800">{status.measure}</span></div>
-                          <div>Percentile: <span className="font-mono font-bold text-slate-800">{status.percentile}</span></div>
-                          <div className="mt-1 text-slate-400">{status.details}</div>
-                          <div className="mt-2 text-blue-500 text-xs">Switch to SMS tab for detailed charts â†'</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )})}
-              </div>
-            </div>
-            )}
-
-            {/* RIGHT COLUMN: Canada - CVOR Analysis */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col">
-              <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-slate-100">
-                <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-                  <Activity size={16} className="text-red-600"/>
-                </div>
-                <h3 className="text-sm font-bold text-slate-900">CVOR Analysis</h3>
-                <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-red-100 text-red-700">CVOR</span>
-                <InfoTooltip text="Commercial Vehicle Operator's Registration (CVOR) performance metrics for Ontario-based carriers." />
-              </div>
-
-              {/* Overall Rating Row */}
-              {(() => {
-                const rating = carrierProfile.cvorAnalysis.rating;
-                let ratingClass = 'bg-green-100 text-green-800';
-                let borderClass = '';
-                if (rating >= cvorThresholds.showCause) { ratingClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (rating >= cvorThresholds.intervention) { ratingClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-                else if (rating >= cvorThresholds.warning) { ratingClass = 'bg-yellow-100 text-yellow-800'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
-                return (
-                  <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className={`text-sm font-medium ${rating >= cvorThresholds.warning ? 'text-amber-700 font-bold' : 'text-slate-700'}`}>Overall CVOR Rating</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">{rating}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${ratingClass}`}>
-                          {rating >= cvorThresholds.showCause && 'Show Cause'}
-                          {rating >= cvorThresholds.intervention && rating < cvorThresholds.showCause && 'Audit'}
-                          {rating >= cvorThresholds.warning && rating < cvorThresholds.intervention && 'Warning'}
-                          {rating < cvorThresholds.warning && 'OK'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-500">Composite score from collisions, convictions, and inspections</span>
-                  </div>
-                );
-              })()}
-
-              {/* Collisions Row */}
-              {(() => {
-                const val = carrierProfile.cvorAnalysis.collisions.percentage;
-                let alertClass = 'bg-green-100 text-green-800';
-                let borderClass = '';
-                if (val >= cvorThresholds.intervention) { alertClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (val >= cvorThresholds.warning) { alertClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-                return (
-                  <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-sm font-medium text-slate-700">Collisions</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.collisions.weight}% | {val}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
-                          {val >= cvorThresholds.intervention && 'Audit'}
-                          {val >= cvorThresholds.warning && val < cvorThresholds.intervention && 'Warning'}
-                          {val < cvorThresholds.warning && 'OK'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-500">{carrierProfile.cvorAnalysis.counts.collisions} collisions | {carrierProfile.cvorAnalysis.counts.totalCollisionPoints} points</span>
-                  </div>
-                );
-              })()}
-
-              {/* Convictions Row */}
-              {(() => {
-                const val = carrierProfile.cvorAnalysis.convictions.percentage;
-                let alertClass = 'bg-green-100 text-green-800';
-                let borderClass = '';
-                if (val >= cvorThresholds.intervention) { alertClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (val >= cvorThresholds.warning) { alertClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-                return (
-                  <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-sm font-medium text-slate-700">Convictions</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.convictions.weight}% | {val}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
-                          {val >= cvorThresholds.intervention && 'Audit'}
-                          {val >= cvorThresholds.warning && val < cvorThresholds.intervention && 'Warning'}
-                          {val < cvorThresholds.warning && 'OK'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-500">{carrierProfile.cvorAnalysis.counts.convictions} convictions | {carrierProfile.cvorAnalysis.counts.convictionPoints} points</span>
-                  </div>
-                );
-              })()}
-
-              {/* Inspections Row */}
-              {(() => {
-                const val = carrierProfile.cvorAnalysis.inspections.percentage;
-                let alertClass = 'bg-green-100 text-green-800';
-                let borderClass = '';
-                if (val >= cvorThresholds.showCause) { alertClass = 'bg-red-100 text-red-800'; borderClass = 'border-l-2 border-l-red-400 pl-3'; }
-                else if (val >= cvorThresholds.intervention) { alertClass = 'bg-amber-100 text-amber-800'; borderClass = 'border-l-2 border-l-amber-400 pl-3'; }
-                else if (val >= cvorThresholds.warning) { alertClass = 'bg-yellow-100 text-yellow-800'; borderClass = 'border-l-2 border-l-yellow-400 pl-3'; }
-                return (
-                  <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${borderClass}`}>
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-sm font-medium text-slate-700">Inspections</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400 font-mono">Wt: {carrierProfile.cvorAnalysis.inspections.weight}% | {val}%</span>
-                        <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${alertClass}`}>
-                          {val >= cvorThresholds.showCause && 'Show Cause'}
-                          {val >= cvorThresholds.intervention && val < cvorThresholds.showCause && 'Audit'}
-                          {val >= cvorThresholds.warning && val < cvorThresholds.intervention && 'Warning'}
-                          {val < cvorThresholds.warning && 'OK'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-500">OOS: Overall {carrierProfile.cvorAnalysis.counts.oosOverall}% | Vehicle {carrierProfile.cvorAnalysis.counts.oosVehicle}% | Driver {carrierProfile.cvorAnalysis.counts.oosDriver}%</span>
-                  </div>
-                );
-              })()}
-
-              {/* Key Counts */}
-              <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100">
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Collisions</div>
-                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.collisions}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Convictions</div>
-                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.convictions}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Trucks</div>
-                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{carrierProfile.cvorAnalysis.counts.trucks}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">{mileageUnit === 'km' ? 'Kms' : 'Miles'}</div>
-                  <div className="font-mono font-bold text-blue-600 text-sm mt-0.5">{((mileageUnit === 'km' ? carrierProfile.cvorAnalysis.counts.totalMiles * 1.60934 : carrierProfile.cvorAnalysis.counts.totalMiles) / 1000000).toFixed(1)}M</div>
-                </div>
-              </div>
-
-              {/* Threshold Legend */}
-              <div className="mt-3 pt-3 border-t border-slate-100">
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                  <span className="text-slate-500"><span className="font-bold text-slate-700">{cvorThresholds.warning}%</span> Warning</span>
-                  <span className="text-slate-500"><span className="font-bold text-amber-600">{cvorThresholds.intervention}%</span> Audit</span>
-                  <span className="text-slate-500"><span className="font-bold text-red-600">{cvorThresholds.showCause}%</span> Show Cause</span>
-                  <span className="text-slate-500"><span className="font-bold text-red-800">{cvorThresholds.seizure}%</span> Seizure</span>
-                </div>
-              </div>
-            </div>
-
-            {/* THIRD COLUMN: Canada - NSC Analysis */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col">
-              <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-slate-100">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
-                  <ShieldAlert size={16} className="text-emerald-600"/>
-                </div>
-                <h3 className="text-sm font-bold text-slate-900">NSC / CVSA Analysis</h3>
-                <span className="px-1.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">NSC</span>
-                <InfoTooltip text="National Safety Code (NSC) CVSA inspection analysis - covers Canadian cross-border inspections reported under the NSC framework." />
-              </div>
-
-              {/* CVSA Inspection Results */}
-              {(() => {
-                const totalNsc = NSC_INSPECTIONS.length;
-                const oosCount = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
-                const passedCount = NSC_INSPECTIONS.filter(r => r.result === 'Passed').length;
-                const reqAttnCount = NSC_INSPECTIONS.filter(r => r.result === 'Requires Attention').length;
-                const oosRate = totalNsc > 0 ? Math.round((oosCount / totalNsc) * 100) : 0;
-                const isOosAlert = oosRate >= 30;
-                return (
-                  <>
-                    <div className={`flex flex-col justify-center py-2.5 border-b border-slate-50 ${isOosAlert ? 'border-l-2 border-l-red-400 pl-3' : ''}`}>
-                      <div className="flex justify-between items-center mb-0.5">
-                        <span className={`text-sm font-medium ${isOosAlert ? 'text-red-700 font-bold' : 'text-slate-700'}`}>CVSA Inspections</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 font-mono">{totalNsc} total</span>
-                          <span className={`text-sm font-bold px-1.5 py-0.5 rounded ${oosRate >= 30 ? 'bg-red-100 text-red-800' : oosRate >= 20 ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
-                            {oosRate}% OOS
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-slate-500">Passed: {passedCount} | OOS: {oosCount} | Req. Attn: {reqAttnCount}</span>
-                    </div>
-
-                    {/* Collisions */}
-                    <div className="flex flex-col justify-center py-2.5 border-b border-slate-50">
-                      <div className="flex justify-between items-center mb-0.5">
-                        <span className="text-sm font-medium text-slate-700">Collisions</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 font-mono">6 events</span>
-                          <span className="text-sm font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-800">OK</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-slate-500">4 Property Damage | 2 Injury | 0 Fatal</span>
-                    </div>
-
-                    {/* Convictions */}
-                    <div className="flex flex-col justify-center py-2.5 border-b border-slate-50">
-                      <div className="flex justify-between items-center mb-0.5">
-                        <span className="text-sm font-medium text-slate-700">Convictions</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 font-mono">5 events</span>
-                          <span className="text-sm font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-800">OK</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-slate-500">Trip Inspections (2) | Admin (2) | Driving (1)</span>
-                    </div>
-
-                    {/* Violations */}
-                    <div className="flex flex-col justify-center py-2.5 border-b border-slate-50">
-                      <div className="flex justify-between items-center mb-0.5">
-                        <span className="text-sm font-medium text-slate-700">Violations</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 font-mono">24 defects</span>
-                          <span className="text-sm font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">Monitor</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-slate-500">Brakes (8) | Lighting (5) | Mechanical (4) | Driver (3)</span>
-                    </div>
-                  </>
-                );
-              })()}
-
-              {/* Key Counts */}
-              <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100">
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Inspections</div>
-                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5">{NSC_INSPECTIONS.length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">OOS Rate</div>
-                  <div className="font-mono font-bold text-red-600 text-sm mt-0.5">
-                    {NSC_INSPECTIONS.length > 0 ? Math.round((NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length / NSC_INSPECTIONS.length) * 100) : 0}%
-                  </div>
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 text-center">
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Defects</div>
-                  <div className="font-mono font-bold text-amber-600 text-sm mt-0.5">
-                    {NSC_INSPECTIONS.reduce((s, r) => s + (r.details?.oos?.length ?? 0) + (r.details?.req?.length ?? 0), 0)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Threshold Legend */}
-              <div className="mt-3 pt-3 border-t border-slate-100">
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                  <span className="text-slate-500"><span className="font-bold text-green-600">&lt;20%</span> OK</span>
-                  <span className="text-slate-500"><span className="font-bold text-amber-600">20-30%</span> Monitor</span>
-                  <span className="text-slate-500"><span className="font-bold text-red-600">&gt;30%</span> Alert</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        {/* ===== KPI SUMMARY + FILTER ===== */}
-        <div className="mt-8 space-y-4">
-          {/* Summary stat cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {/* Total Inspections */}
-            <div className="bg-white border-2 border-blue-100 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-500 mb-1 flex items-center gap-1.5"><ClipboardCheck size={12} className="text-blue-500" /> Total Inspections</div>
-              <div className="text-2xl font-black text-slate-900">{stats.total}</div>
-              <div className="flex gap-2 mt-1.5 text-[10px] font-bold">
-                <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">SMS {stats.sms}</span>
-                <span className="bg-rose-50 text-rose-700 px-1.5 py-0.5 rounded">CVOR {stats.cvor}</span>
-                <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">NSC {stats.nsc}</span>
-              </div>
-            </div>
-            {/* Clean */}
-            <div className="bg-white border-2 border-emerald-100 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 mb-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> Clean</div>
-              <div className="text-2xl font-black text-emerald-600">{stats.clean}</div>
-              <div className="mt-1.5">
-                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${stats.total > 0 ? Math.round((stats.clean / stats.total) * 100) : 0}%` }} />
-                </div>
-                <div className="text-[10px] text-emerald-600 font-bold mt-1">{stats.total > 0 ? Math.round((stats.clean / stats.total) * 100) : 0}% pass rate</div>
-              </div>
-            </div>
-            {/* OOS Flags */}
-            <div className="bg-white border-2 border-red-100 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-red-500 mb-1 flex items-center gap-1.5"><ShieldAlert size={12} /> OOS Flags</div>
-              <div className="text-2xl font-black text-red-600">{stats.oos}</div>
-              <div className="mt-1.5">
-                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-red-500 rounded-full" style={{ width: `${stats.total > 0 ? Math.round((stats.oos / stats.total) * 100) : 0}%` }} />
-                </div>
-                <div className="text-[10px] text-red-600 font-bold mt-1">{stats.total > 0 ? Math.round((stats.oos / stats.total) * 100) : 0}% OOS rate</div>
-              </div>
-            </div>
-            {/* Total Violations */}
-            <div className="bg-white border-2 border-orange-100 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-orange-500 mb-1 flex items-center gap-1.5"><AlertTriangle size={12} /> Total Violations</div>
-              <div className="text-2xl font-black text-orange-600">{stats.totalViolations}</div>
-              <div className="text-[10px] text-slate-500 mt-1.5">across all inspections</div>
-            </div>
-            {/* Total Points */}
-            <div className={`bg-white border-2 rounded-xl px-4 py-3 shadow-sm hover:shadow-md transition-shadow ${(stats.totalPoints || 0) > 500 ? 'border-red-200' : (stats.totalPoints || 0) > 200 ? 'border-amber-200' : 'border-slate-200'}`}>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5"><Activity size={12} /> Total Points</div>
-              <div className={`text-2xl font-black ${(stats.totalPoints || 0) > 500 ? 'text-red-600' : (stats.totalPoints || 0) > 200 ? 'text-amber-600' : 'text-slate-900'}`}>{stats.totalPoints ?? 0}</div>
-              <div className="flex gap-2 mt-1.5 text-[10px] font-bold">
-                <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">SMS+CVOR {stats.smsCvorPoints}</span>
-                <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">NSC {stats.nscPoints}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Filter pills row */}
-          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-1">Source:</span>
-              {([['ALL', 'All Sources', 'bg-slate-100 text-slate-700', 'bg-blue-600 text-white border-blue-600'],
-                 ['SMS', 'SMS (FMCSA)', 'bg-slate-50 text-indigo-700 border border-indigo-200', 'bg-indigo-600 text-white border-indigo-600'],
-                 ['CVOR', 'CVOR', 'bg-slate-50 text-rose-700 border border-rose-200', 'bg-rose-600 text-white border-rose-600'],
-                 ['NSC', 'NSC / CVSA', 'bg-slate-50 text-emerald-700 border border-emerald-200', 'bg-emerald-600 text-white border-emerald-600'],
-              ] as [string, string, string, string][]).map(([key, label, idle, active]) => (
-                <button key={key} onClick={() => setActiveFilter(key)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeFilter === key ? active : idle}`}>
-                  {label}
-                  <span className={`ml-1.5 px-1.5 py-px rounded text-[10px] ${activeFilter === key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                    {key === 'ALL' ? stats.total : key === 'SMS' ? stats.sms : key === 'CVOR' ? stats.cvor : stats.nsc}
-                  </span>
-                </button>
-              ))}
-              <div className="w-px h-5 bg-slate-200 mx-1" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-1">Status:</span>
-              {([['CLEAN', 'Clean', stats.clean, 'text-emerald-700 border-emerald-200', 'bg-emerald-600'],
-                 ['OOS', 'OOS', stats.oos, 'text-red-700 border-red-200', 'bg-red-600'],
-                 ['VEHICLE', 'Veh. Issues', stats.vehicle, 'text-orange-700 border-orange-200', 'bg-orange-500'],
-                 ['DRIVER', 'HOS/Driver', stats.driver, 'text-purple-700 border-purple-200', 'bg-purple-600'],
-                 ['SEVERE', 'Severe (7+)', stats.severe, 'text-amber-700 border-amber-200', 'bg-amber-500'],
-              ] as [string, string, number, string, string][]).map(([key, label, count, idle, activeBg]) => (
-                <button key={key} onClick={() => setActiveFilter(key)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                    activeFilter === key
-                      ? `${activeBg} text-white border-transparent`
-                      : `bg-slate-50 ${idle}`
-                  }`}>
-                  {label} <span className={`ml-1 px-1.5 py-px rounded text-[10px] ${activeFilter === key ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{count}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ===== MAIN INSPECTION LIST ===== */}
-        <div className="mt-8">
-          <div className="flex items-center gap-2 mb-4">
-            <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Inspections</h2>
-            <InfoTooltip 
-              title="Individual Events"
-              text="These are single events. They apply to one specific driver and one specific vehicle being pulled over on a specific date and time by law enforcement." 
-            />
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mt-2">
-            
-            <DataListToolbar 
-              searchValue={searchTerm} 
-              onSearchChange={setSearchTerm} 
-              searchPlaceholder="Search by ID, Driver, or Plate..." 
-              columns={columns} 
-              onToggleColumn={(id) => setColumns(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))} 
-              totalItems={filteredData.length} 
-              currentPage={page} 
-              rowsPerPage={rowsPerPage} 
-              onPageChange={setPage} 
-              onRowsPerPageChange={setRowsPerPage} 
-            />
-
-            {/* Table Header (Hidden on Mobile) */}
-            <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <div className="col-span-1 pl-2">Date / Time</div>
-              <div className="col-span-1">Source / Doc</div>
-              <div className="col-span-1">Location</div>
-              <div className="col-span-2">Driver / Licence</div>
-              <div className="col-span-2">Unit / Vehicle</div>
-              <div className="col-span-1 text-center">Violations</div>
-              <div className="col-span-1 text-center">Veh Pts</div>
-              <div className="col-span-1 text-center">Drv Pts</div>
-              <div className="col-span-1 text-center">Carr Pts</div>
-              <div className="col-span-1">Status</div>
-            </div>
-
-            {/* List Items */}
-            <div className="divide-y divide-slate-200">
-              {pagedData.length > 0 ? (
-                pagedData.map(entry => {
-                  if (entry._source === 'NSC') {
-                    return <NscOverviewRow key={entry.record.id} row={entry.record} />;
-                  }
-                  const isCvor = entry._source === 'CVOR';
-                  const cvorOverride = isCvor
-                    ? { vehPts: entry.record.cvorPoints?.vehicle ?? null, dvrPts: entry.record.cvorPoints?.driver ?? null, cvrPts: entry.record.cvorPoints?.cvor ?? 0 }
-                    : undefined;
-                  return (
-                    <InspectionRow
-                      key={entry.record.id}
-                      record={entry.record}
-                      onEdit={openEditModal}
-                      cvorOverride={cvorOverride}
-                    />
-                  );
-                })
-              ) : (
-                <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
-                  <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
-                    <AlertCircle size={32} className="text-slate-400" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 tracking-wide">No records found</h3>
-                  <p className="text-sm text-slate-500 mt-1 mb-5 max-w-sm">No inspections match your current search or filter criteria. Try clearing filters to see all records.</p>
-                  <button 
-                    onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); }}
-                    className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors text-sm shadow-sm"
-                  >
-                    Clear all filters
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <PaginationBar 
-              totalItems={filteredData.length} 
-              currentPage={page} 
-              rowsPerPage={rowsPerPage} 
-              onPageChange={setPage} 
-              onRowsPerPageChange={setRowsPerPage} 
-            />
-
-          </div>
-        </div>
-
-        </>)}
 
       </div>
 
@@ -3703,7 +2989,7 @@ export function InspectionsPage() {
                 <div className="px-5 py-3 flex items-center justify-between gap-3 bg-white border-b border-slate-100 [&>span:last-of-type]:hidden">
                   <span className="text-base font-bold text-slate-700">FMCSA SMS BASIC Scores</span>
                   <div className="text-xs text-right text-slate-400 font-medium">Time-weighted  ·  24-month lookback</div>
-                  <span className="text-[11px] text-slate-400 font-medium">Time-weighted  ·  24-month lookback  ·  Sparkline = 18-24M â†' 12-18M â†' 6-12M â†' 0-6M</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Time-weighted  ·  24-month lookback  ·  Sparkline = 18-24M →' 12-18M →' 6-12M →' 0-6M</span>
                 </div>
                 <table className="w-full">
                   <thead>
@@ -3725,7 +3011,7 @@ export function InspectionsPage() {
                       const isAlert = hasSufficientData && pctNum >= row.threshold;
                       const isWarn = hasSufficientData && pctNum >= row.threshold * 0.75 && !isAlert;
                       const barColor = isAlert ? 'bg-red-500' : isWarn ? 'bg-amber-500' : 'bg-emerald-500';
-                      const deltaSign = row.delta > 0.05 ? 'â-²' : row.delta < -0.05 ? 'â-¼' : '-';
+                      const deltaSign = row.delta > 0.05 ? '▲' : row.delta < -0.05 ? '▼' : '-';
                       const deltaCls = row.delta > 0.05 ? 'text-red-500' : row.delta < -0.05 ? 'text-emerald-600' : 'text-slate-400';
                       const isExpanded = expandedBasic === row.category;
                       const chartTab = basicChartView[row.category] ?? 'MEASURE';
@@ -4221,7 +3507,7 @@ export function InspectionsPage() {
             const handleColSort = (col: string) => {
               setMetricsSort(prev => prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
             };
-            const sortIcon = (col: string) => metricsSort.col === col ? (metricsSort.dir === 'desc' ? ' â†"' : ' ->') : '';
+            const sortIcon = (col: string) => metricsSort.col === col ? (metricsSort.dir === 'desc' ? ' →"' : ' ->') : '';
 
             return (
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
@@ -4498,16 +3784,16 @@ export function InspectionsPage() {
                                 <div className="hidden group-hover:block absolute z-40 left-0 top-full mt-1 w-72 p-3 bg-slate-900 text-white text-xs rounded-lg shadow-xl pointer-events-none">
                                   <div className="font-bold text-blue-300 mb-1">FMCSA SMS Measure Calculation</div>
                                   <div className="leading-relaxed text-slate-200 mb-2">
-                                    <span className="font-bold">Measure = Î£(Severity Ã- Time Weight) / Number of Inspections</span>
+                                    <span className="font-bold">Measure = Σ(Severity × Time Weight) / Number of Inspections</span>
                                   </div>
                                   <div className="text-slate-300 mb-1.5 leading-relaxed">
-                                    <span className="font-bold text-blue-300">Time Weights:</span> 3Ã- (0-6 mo), 2Ã- (6-12 mo), 1Ã- (12-24 mo)
+                                    <span className="font-bold text-blue-300">Time Weights:</span> 3× (0-6 mo), 2× (6-12 mo), 1× (12-24 mo)
                                   </div>
                                   <div className="border-t border-slate-700 pt-1.5 mt-1.5 space-y-0.5">
                                     <div className="text-slate-400">This carrier breakdown:</div>
-                                    {tw3Count > 0 && <div className="text-green-400">0-6 mo: {tw3Count} violations Ã- TW 3 = <span className="font-bold">{tw3Sev}</span></div>}
-                                    {tw2Count > 0 && <div className="text-yellow-300">6-12 mo: {tw2Count} violations Ã- TW 2 = <span className="font-bold">{tw2Sev}</span></div>}
-                                    {tw1Count > 0 && <div className="text-orange-300">12-24 mo: {tw1Count} violations Ã- TW 1 = <span className="font-bold">{tw1Sev}</span></div>}
+                                    {tw3Count > 0 && <div className="text-green-400">0-6 mo: {tw3Count} violations × TW 3 = <span className="font-bold">{tw3Sev}</span></div>}
+                                    {tw2Count > 0 && <div className="text-yellow-300">6-12 mo: {tw2Count} violations × TW 2 = <span className="font-bold">{tw2Sev}</span></div>}
+                                    {tw1Count > 0 && <div className="text-orange-300">12-24 mo: {tw1Count} violations × TW 1 = <span className="font-bold">{tw1Sev}</span></div>}
                                     <div className="border-t border-slate-700 pt-1 mt-1 font-bold text-white">
                                       Total: {totalWeightedSev} / {numInsp} inspections = <span className="text-blue-300">{currentMeasure}</span>
                                     </div>
@@ -4827,12 +4113,12 @@ export function InspectionsPage() {
                 {/* KPI Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   {[
-                    { key: 'ALL', label: 'Total Inspections', value: listStats.total, sub: 'all records', color: 'blue', icon: 'ðŸ"‹' },
-                    { key: 'CLEAN', label: 'Clean', value: listStats.clean, sub: `${cleanPct}% pass rate`, color: 'emerald', icon: 'âœ"' },
-                    { key: 'OOS', label: 'Out of Service', value: listStats.oos, sub: `${oosPct}% OOS rate`, color: 'red', icon: 'â›"' },
-                    { key: 'VEHICLE', label: 'Veh. Issues', value: listStats.vehicle, sub: 'vehicle violations', color: 'orange', icon: 'ðŸš›' },
-                    { key: 'DRIVER', label: 'HOS / Driver', value: listStats.driver, sub: 'driver violations', color: 'purple', icon: 'ðŸ‘¤' },
-                    { key: 'SEVERE', label: 'Severe (7+)', value: listStats.severe, sub: 'high severity', color: 'amber', icon: 'âš ' },
+                    { key: 'ALL', label: 'Total Inspections', value: listStats.total, sub: 'all records', color: 'blue', icon: '📋' },
+                    { key: 'CLEAN', label: 'Clean', value: listStats.clean, sub: `${cleanPct}% pass rate`, color: 'emerald', icon: '✓"' },
+                    { key: 'OOS', label: 'Out of Service', value: listStats.oos, sub: `${oosPct}% OOS rate`, color: 'red', icon: '⛔"' },
+                    { key: 'VEHICLE', label: 'Veh. Issues', value: listStats.vehicle, sub: 'vehicle violations', color: 'orange', icon: '🚛' },
+                    { key: 'DRIVER', label: 'HOS / Driver', value: listStats.driver, sub: 'driver violations', color: 'purple', icon: '👤' },
+                    { key: 'SEVERE', label: 'Severe (7+)', value: listStats.severe, sub: 'high severity', color: 'amber', icon: '⚠' },
                   ].map(kpi => {
                     const isActive = activeFilter === kpi.key;
                     const colorMap: Record<string, string> = {
@@ -5002,7 +4288,7 @@ export function InspectionsPage() {
                       );
                     }) : (
                       <div className="py-16 text-center">
-                        <div className="text-4xl mb-3">ðŸ"‹</div>
+                        <div className="text-4xl mb-3">📋</div>
                         <p className="text-sm font-bold text-slate-700">No inspections found</p>
                         <p className="text-xs text-slate-400 mt-1">Try adjusting your filters or time period</p>
                         <button onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); setPage(1); }}
@@ -5075,7 +4361,7 @@ export function InspectionsPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <h2 className="text-xl font-black text-slate-900">Inspection Detail - {r.id}</h2>
-                              <p className="text-sm text-slate-500 mt-0.5">{r.date} ¢ Level {levelNum} ¢ {locationStr}</p>
+                              <p className="text-sm text-slate-500 mt-0.5">{r.date} · Level {levelNum} · {locationStr}</p>
                             </div>
                             <button onClick={() => setSmsPopupRecord(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -5118,7 +4404,7 @@ export function InspectionsPage() {
                           {/* â"€â"€ Status badges â"€â"€ */}
                           <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-slate-100">
                             {!r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-400 text-amber-700 bg-amber-50">VIOLATIONS FOUND</span>}
-                            {r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400 text-emerald-700 bg-emerald-50">âœ" CLEAN</span>}
+                            {r.isClean && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-400 text-emerald-700 bg-emerald-50">✓" CLEAN</span>}
                             {r.hasOOS && <span className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border border-red-400 text-red-700 bg-red-50">OOS</span>}
                             <span className={`inline-flex px-3 py-1.5 rounded-lg text-xs font-bold border ${driverPassed ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : 'border-red-300 text-red-700 bg-red-50'}`}>
                               DRIVER: {driverPassed ? 'PASSED' : 'FAILED'}
@@ -5172,7 +4458,7 @@ export function InspectionsPage() {
                             </p>
                             {r.isClean || !r.violations?.length ? (
                               <div className="flex items-center gap-3 py-6 px-4 rounded-xl bg-emerald-50 border border-emerald-200">
-                                <div className="w-9 h-9 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-black text-lg">âœ"</div>
+                                <div className="w-9 h-9 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-700 font-black text-lg">✓"</div>
                                 <div>
                                   <p className="font-bold text-sm text-emerald-800">No violations recorded</p>
                                   <p className="text-xs text-emerald-600 mt-0.5">This inspection passed without any defects</p>
@@ -5384,7 +4670,7 @@ export function InspectionsPage() {
 
           // Monthly measure history - rolling window approach (same as SMS chart)
           // Each snapshot computes total points / inspections over a rolling periodMonths window
-          // As older data drops off and newer data comes in, the measure changes â†' dynamic chart
+          // As older data drops off and newer data comes in, the measure changes →' dynamic chart
           const measureHistory: { date: string; measure: number }[] = [];
           const histNow = new Date('2025-12-31');
           for (let i = 5; i >= 0; i--) {
@@ -5726,9 +5012,9 @@ export function InspectionsPage() {
             </div>
           </div>
 
-          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+          {/* ══════════════════════════════════════════════════════════════
                CVOR PERFORMANCE SUMMARY - top-of-tab overview card
-          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+          ══════════════════════════════════════════════════════════════ */}
           {(() => {
             const col = carrierProfile.cvorAnalysis.collisions;
             const con = carrierProfile.cvorAnalysis.convictions;
@@ -5762,7 +5048,7 @@ export function InspectionsPage() {
               : v >= cvorThresholds.warning ? 'bg-yellow-50/70 border-yellow-200'
               : 'bg-emerald-50/70 border-emerald-200';
 
-            // Full-spectrum gradient (green â†' yellow â†' orange â†' red â†' deep red)
+            // Full-spectrum gradient (green →' yellow →' orange →' red →' deep red)
             const grad = 'linear-gradient(to right,#22c55e 0%,#eab308 28%,#f97316 45%,#ef4444 70%,#991b1b 100%)';
 
             // Date range from pulls
@@ -6060,7 +5346,7 @@ export function InspectionsPage() {
                       onClick={() => setCvorThreshOpen(open => !open)}
                       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50"
                     >
-                      Threshold Info {cvorThreshOpen ? 'â-´' : 'â-¾'}
+                      Threshold Info {cvorThreshOpen ? '▴' : '▾'}
                     </button>
                   </div>
                   {cvorThreshOpen && (
@@ -6185,7 +5471,7 @@ export function InspectionsPage() {
                           </span>
                         )}
                       </div>
-                      <span className="text-[11px] text-blue-500 font-semibold">View Details â-¾</span>
+                      <span className="text-[11px] text-blue-500 font-semibold">View Details ▾</span>
                     </summary>
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 divide-y divide-slate-100">
                       {critActions.map((a, i) => (
@@ -6526,7 +5812,7 @@ export function InspectionsPage() {
                   const start = new Date(end);
                   start.setMonth(start.getMonth() - 24);
                   const fmt = (d: Date) => d.toLocaleDateString('en-CA', { month: 'short', year: 'numeric' });
-                  return { start, end, label: `${fmt(start)} â†' ${fmt(end)}` };
+                  return { start, end, label: `${fmt(start)} →' ${fmt(end)}` };
                 };
 
                 // â"€â"€â"€ SVG layout (all charts: VW=1200 full-width) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -6653,9 +5939,9 @@ export function InspectionsPage() {
                   const rc = ratingColor(d.rating);
                   const al = alertLevel(d);
                   const alertColor = al === 'critical' ? '#dc2626' : al === 'warning' ? '#f59e0b' : '#16a34a';
-                  const alertLabel = al==='critical'?'âš  Critical':al==='warning'?'âš¡ Warning':'âœ" Healthy';
-                  // All fonts scaled for VW=1200 viewBox: Ã-1.5 vs typical px
-                  // â†' fontSize=18 renders â‰ˆ12px at ~900px display width
+                  const alertLabel = al==='critical'?'⚠ Critical':al==='warning'?'⚡ Warning':'✓" Healthy';
+                  // All fonts scaled for VW=1200 viewBox: ×1.5 vs typical px
+                  // →' fontSize=18 renders ≈12px at ~900px display width
                   const rows: Array<{label:string;val:string;color:string;bold?:boolean}> = [
                     { label:'CVOR Rating',      val:`${d.rating.toFixed(2)}%`,      color:rc,        bold:focusMetric==='rating' },
                     { label:'Collisions',        val:`${d.colContrib.toFixed(2)}%`,  color:'#3b82f6', bold:focusMetric==='col' },
@@ -6669,9 +5955,9 @@ export function InspectionsPage() {
                   ];
                   const tw = viewportWidth < 640 ? 206 : viewportWidth < 1100 ? 230 : viewportWidth < 1600 ? 258 : 290;
                   const headerH = viewportWidth < 640 ? 58 : viewportWidth < 1100 ? 62 : viewportWidth < 1600 ? 68 : 74;
-                  const rowH = 22;   // 22 SVG units â‰ˆ 15px on screen
+                  const rowH = 22;   // 22 SVG units ≈ 15px on screen
                   const footerH = 20;
-                  const th = headerH + rows.length * rowH + footerH; // â‰ˆ272 SVG units
+                  const th = headerH + rows.length * rowH + footerH; // ≈272 SVG units
                   // Horizontal: place tooltip on opposite side of chart from dot
                   const onRight = cx > VW * 0.58;
                   const tx = onRight
@@ -6690,7 +5976,7 @@ export function InspectionsPage() {
                       <rect x={tx} y={ty} width={tw} height={th} rx={14} fill="none" stroke={alertColor} strokeWidth="1.6" opacity="0.9"/>
                       {/* Header colour strip */}
                       <rect x={tx+10} y={ty+10} width={tw-20} height={24} rx={8} fill={alertColor} opacity="0.12"/>
-                      {/* Period label - fontSize 18 â‰ˆ 13px on screen */}
+                      {/* Period label - fontSize 18 ≈ 13px on screen */}
                       <text x={tx+16} y={ty+27} fontSize={viewportWidth < 640 ? 13 : viewportWidth < 1100 ? 14 : viewportWidth < 1600 ? 16 : 17} fontWeight="700" fill="#0f172a" fontFamily="monospace">{d.periodLabel}</text>
                       {/* Alert badge */}
                       <rect x={tx+tw-84} y={ty+10} width={68} height={20} rx={7} fill={alertColor} opacity="0.18"/>
@@ -6847,7 +6133,7 @@ export function InspectionsPage() {
                         <span className="text-[17px] font-bold tracking-tight text-slate-800">CVOR Performance History</span>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-mono text-slate-500">{n} pulls</span>
                         <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[10px] font-medium text-indigo-600">
-                          {firstPull.periodLabel} â†' {lastPull.periodLabel}  ·  {rangeMonths}mo
+                          {firstPull.periodLabel} →' {lastPull.periodLabel}  ·  {rangeMonths}mo
                         </span>
                         <span className="text-[10px] italic text-slate-400">Each pull = 24-month rolling window</span>
                         {/* Alert legend */}
@@ -6889,11 +6175,11 @@ export function InspectionsPage() {
                             <span className="text-sm font-bold">Pull: {selPull.periodLabel}</span>
                             <span className="opacity-80 text-xs font-mono">Window: {win.label}</span>
                             <span className="opacity-70 text-xs">Rating: <strong>{selPull.rating.toFixed(2)}%</strong></span>
-                            {al==='critical' && <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded">âš  Above Audit Threshold</span>}
+                            {al==='critical' && <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded">⚠ Above Audit Threshold</span>}
                           </div>
                           <button onClick={() => setCvorSelectedPull(null)}
                             className="opacity-80 hover:opacity-100 text-[11px] font-bold px-2 py-0.5 rounded border border-white/40 hover:border-white transition-all">
-                            Ã- Clear
+                            × Clear
                           </button>
                         </div>
                       );
@@ -6901,7 +6187,7 @@ export function InspectionsPage() {
 
                     <div className="divide-y divide-slate-100">
 
-                      {/* â•â• CHART 1: Overall CVOR Rating â•â• */}
+                      {/* ══ CHART 1: Overall CVOR Rating ══ */}
                       {(() => {
                         const CH=historySize.overallH, VH=CH+pT+pB;
                         const rMin=0, rMax=100;
@@ -6978,7 +6264,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* â•â• CHART 2: Category Contributions â•â• */}
+                      {/* ══ CHART 2: Category Contributions ══ */}
                       {(() => {
                         const CH2=historySize.midH, VH2=CH2+pT+pB;
                         const maxCat=Math.ceil(Math.max(...histData.map(d=>Math.max(d.colContrib,d.conContrib,d.insContrib)))+1);
@@ -7039,7 +6325,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* â•â• CHART 3: OOS Rates â•â• */}
+                      {/* ══ CHART 3: OOS Rates ══ */}
                       {(() => {
                         const oosD=histData.filter(d=>d.oosOverall>0), no=oosD.length;
                         const CH3=historySize.midH, VH3=CH3+pT+pB;
@@ -7128,7 +6414,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* â•â• CHART 4: Event Counts & Points â•â• */}
+                      {/* ══ CHART 4: Event Counts & Points ══ */}
                       {(() => {
                         const CH4=historySize.eventH, VH4=CH4+pT+pB;
                         const maxE=Math.max(...histData.map(d=>Math.max(d.collisionEvents,d.convictionEvents)))+4;
@@ -7207,7 +6493,7 @@ export function InspectionsPage() {
                         );
                       })()}
 
-                      {/* â•â• PULL-BY-PULL DATA TABLE â•â• */}
+                      {/* ══ PULL-BY-PULL DATA TABLE ══ */}
                       <div className="px-6 py-5 pb-2">
                         {(() => {
                           const pullRows = [...histData].reverse().map((d, i) => {
@@ -7310,7 +6596,7 @@ export function InspectionsPage() {
                             currentPage * cvorPullRowsPerPage,
                           );
                           const visible = (id: string) => cvorPullColumns.find((col) => col.id === id)?.visible !== false;
-                          const sortIcon = (id: string) => cvorPullSort.col === id ? (cvorPullSort.dir === 'asc' ? '->' : 'â†"') : '';
+                          const sortIcon = (id: string) => cvorPullSort.col === id ? (cvorPullSort.dir === 'asc' ? '->' : '→"') : '';
                           const setSort = (id: string) => {
                             setCvorPullSort((prev) => ({
                               col: id,
@@ -7339,7 +6625,7 @@ export function InspectionsPage() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[12px] font-bold uppercase tracking-[0.18em] text-slate-700">Pull-by-Pull Data</span>
                                 <span className="rounded bg-slate-100 px-2 py-0.5 text-[9.5px] font-mono text-slate-500">
-                                  {pullRows.length} pulls  ·  newest first  ·  click row â†' inspection drill-down
+                                  {pullRows.length} pulls  ·  newest first  ·  click row →' inspection drill-down
                                 </span>
                               </div>
 
@@ -7488,7 +6774,7 @@ export function InspectionsPage() {
                       <div className="hidden px-6 py-5 pb-2">
                         <div className="mb-4 flex items-center gap-2 flex-wrap">
                           <span className="text-[12px] font-bold uppercase tracking-[0.18em] text-slate-700">Pull-by-Pull Data</span>
-                          <span className="text-[9.5px] font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{n} pulls  ·  newest first  ·  click row â†' inspection drill-down</span>
+                          <span className="text-[9.5px] font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{n} pulls  ·  newest first  ·  click row →' inspection drill-down</span>
                         </div>
                         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
                           <table className="w-full text-[12px] border-collapse" style={{minWidth:'1200px'}}>
@@ -7537,7 +6823,7 @@ export function InspectionsPage() {
                                       <div className="flex items-center gap-1.5">
                                         {isSel && <span className="text-[8px] font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded">â-¶ ON</span>}
                                         {!isSel && isLatest && <span className="text-[8px] font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded">LATEST</span>}
-                                        {!isSel && al==='critical' && <span className="text-[8px] font-bold text-red-600">âš </span>}
+                                        {!isSel && al==='critical' && <span className="text-[8px] font-bold text-red-600">⚠</span>}
                                         <span className="font-mono font-semibold text-slate-800">{d.periodLabel}</span>
                                       </div>
                                     </td>
@@ -7570,7 +6856,7 @@ export function InspectionsPage() {
                         </div>
                       </div>
 
-                      {/* â•â• INSPECTIONS DRILL-DOWN â•â• */}
+                      {/* ══ INSPECTIONS DRILL-DOWN ══ */}
                       {cvorSelectedPull && (() => {
                         const pullObj = cvorPeriodicReports.find(d => d.reportDate === cvorSelectedPull);
                         if (!pullObj) return null;
@@ -7864,7 +7150,7 @@ export function InspectionsPage() {
                                 currentPage * cvorPullDetailRowsPerPage,
                               );
                               const visible = (id: string) => cvorPullDetailColumns.find((col) => col.id === id)?.visible !== false;
-                              const sortIcon = (id: string) => cvorPullDetailSort.col === id ? (cvorPullDetailSort.dir === 'asc' ? '->' : 'â†"') : '';
+                              const sortIcon = (id: string) => cvorPullDetailSort.col === id ? (cvorPullDetailSort.dir === 'asc' ? '->' : '→"') : '';
                               const setSort = (id: string) => {
                                 setCvorPullDetailSort((prev) => ({
                                   col: id,
@@ -8120,7 +7406,7 @@ export function InspectionsPage() {
                             <div className="hidden">
                             {pullInspections.length === 0 ? (
                               <div className="py-12 flex flex-col items-center gap-3 border border-dashed border-slate-200 rounded-xl text-slate-400">
-                                <div className="text-4xl">ðŸ"‹</div>
+                                <div className="text-4xl">📋</div>
                                 <div className="text-sm font-semibold">No inspections in this 24-month window</div>
                                 <div className="text-xs font-mono text-indigo-400">{win.label}</div>
                               </div>
@@ -8394,416 +7680,244 @@ export function InspectionsPage() {
 
           <NscPerformanceCard {...ALBERTA_NSC_PERFORMANCE_CARD} />
 
+          {/* ── Latest-pull data (inline, always visible) ── */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center gap-3 flex-wrap">
+              <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">NSC Performance</span>
+              <span className="bg-slate-200 text-slate-600 text-[9px] font-bold px-2 py-0.5 rounded-full">Latest pull</span>
+              <span className="ml-auto text-[10px] text-slate-400">conviction &middot; CVSA &middot; summaries &middot; details</span>
+            </div>
+            <div className="p-4 space-y-2.5">
+
+              <AbAnalysisRow
+                title="Conviction Analysis"
+                subtitle="2 conviction events | analysis, summary, and detailed conviction history"
+                statLabel="Contribution"
+                statVal="34.60%"
+                badge="OK"
+                badgeCls="bg-emerald-100 text-emerald-700 border-emerald-300"
+                open={!!abMainOpen.conv}
+                onToggle={() => abMainTog('conv')}
+              >
+                <div>
+                  <AbConvictionAnalysisTable />
+                  <AbConvSub
+                    title="Conviction Summary"
+                    badge="2 RECORDS"
+                    open={!!abMainOpen.convSummary}
+                    onToggle={() => abMainTog('convSummary')}
+                  >
+                    <AbConvictionSummaryList />
+                  </AbConvSub>
+                  <AbConvSub
+                    title="Conviction Details"
+                    badge="2 RECORDS"
+                    open={!!abMainOpen.convDetails}
+                    onToggle={() => abMainTog('convDetails')}
+                  >
+                    <AbConvictionDetailsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="CVSA Inspection Analysis"
+                subtitle="9 inspections | 3 OOS, 5 req. attn | defect analysis, summary, and detailed records"
+                statLabel="Contribution"
+                statVal="32.30%"
+                badge="OK"
+                badgeCls="bg-emerald-100 text-emerald-700 border-emerald-300"
+                open={!!abMainOpen.cvsa}
+                onToggle={() => abMainTog('cvsa')}
+              >
+                <div>
+                  <AbCvsaInspectionAnalysisTable />
+                  <AbConvSub
+                    title="CVSA Inspection Summary"
+                    badge="9 RECORDS"
+                    open={!!abMainOpen.cvsaSummary}
+                    onToggle={() => abMainTog('cvsaSummary')}
+                  >
+                    <AbCvsaInspectionSummaryList />
+                  </AbConvSub>
+                  <AbConvSub
+                    title="CVSA Inspection Detail"
+                    badge="9 RECORDS"
+                    open={!!abMainOpen.cvsaDetails}
+                    onToggle={() => abMainTog('cvsaDetails')}
+                  >
+                    <AbCvsaInspectionDetailsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="Collision Information"
+                subtitle="1 event | property damage, injury, fatal breakdown with summary and detailed records"
+                statLabel="Contribution"
+                statVal="33.10%"
+                badge="OK"
+                badgeCls="bg-emerald-100 text-emerald-700 border-emerald-300"
+                open={!!abMainOpen.coll}
+                onToggle={() => abMainTog('coll')}
+              >
+                <div>
+                  <AbCollisionInformationPanel />
+                  <AbConvSub
+                    title="Collision Summary"
+                    badge="1 RECORD"
+                    open={!!abMainOpen.collSummary}
+                    onToggle={() => abMainTog('collSummary')}
+                  >
+                    <AbCollisionSummaryList />
+                  </AbConvSub>
+                  <AbConvSub
+                    title="Collision Detail"
+                    badge="1 RECORD"
+                    open={!!abMainOpen.collDetails}
+                    onToggle={() => abMainTog('collDetails')}
+                  >
+                    <AbCollisionDetailsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="Violation Information"
+                subtitle="1 offence across 1 document | analysis, summary, and detailed records"
+                statLabel="Grouped Total"
+                statVal="100%"
+                badge="1 OCCURRENCE"
+                badgeCls="bg-indigo-50 text-indigo-600 border-indigo-200"
+                open={!!abMainOpen.viol}
+                onToggle={() => abMainTog('viol')}
+              >
+                <div>
+                  <AbViolationInformationPanel />
+                  <AbConvSub
+                    title="Violation Summary"
+                    badge="1 RECORD"
+                    open={!!abMainOpen.violSummary}
+                    onToggle={() => abMainTog('violSummary')}
+                  >
+                    <AbViolationSummaryList />
+                  </AbConvSub>
+                  <AbConvSub
+                    title="Violation Detail"
+                    badge="1 RECORD"
+                    open={!!abMainOpen.violDetails}
+                    onToggle={() => abMainTog('violDetails')}
+                  >
+                    <AbViolationDetailsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="Monitoring Information"
+                subtitle="21 month-end snapshots | fleet trends, R-Factor stages, and detailed inspection metrics"
+                statLabel="Latest R-Factor"
+                statVal="2.314"
+                badge="21 MONTHS"
+                badgeCls="bg-blue-50 text-blue-600 border-blue-200"
+                open={!!abMainOpen.mon}
+                onToggle={() => abMainTog('mon')}
+              >
+                <div>
+                  <AbMonitoringInformationPanel />
+                  <AbConvSub
+                    title="Monitoring Summary"
+                    badge="21 MONTHS"
+                    open={!!abMainOpen.monSummary}
+                    onToggle={() => abMainTog('monSummary')}
+                  >
+                    <AbMonitoringSummaryList />
+                  </AbConvSub>
+                  <AbConvSub
+                    title="Monitoring Details"
+                    badge="24 MONTHS"
+                    open={!!abMainOpen.monDetails}
+                    onToggle={() => abMainTog('monDetails')}
+                  >
+                    <AbMonitoringDetailsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="Facility Licence Information"
+                subtitle="0 inspection facilities on record for selected period"
+                statLabel="Facilities"
+                statVal="0"
+                badge="0 RECORDS"
+                badgeCls="bg-slate-100 text-slate-500 border-slate-200"
+                open={!!abMainOpen.fac}
+                onToggle={() => abMainTog('fac')}
+              >
+                <div>
+                  <AbFacilityLicenceInformationPanel />
+                  <AbConvSub
+                    title="Facility Licence Detail"
+                    badge="0 RECORDS"
+                    open={!!abMainOpen.facDetail}
+                    onToggle={() => abMainTog('facDetail')}
+                  >
+                    <AbFacilityLicenceDetailsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="Safety Fitness Information"
+                subtitle="2 safety ratings | 1 operating status | 0 suspensions"
+                statLabel="Current Rating"
+                statVal="Conditional"
+                badge="3 RECORDS"
+                badgeCls="bg-emerald-50 text-emerald-700 border-emerald-200"
+                open={!!abMainOpen.fit}
+                onToggle={() => abMainTog('fit')}
+              >
+                <div>
+                  <AbSafetyFitnessInformationPanel />
+                  <AbConvSub
+                    title="Safety Fitness Summary"
+                    badge="3 RECORDS"
+                    open={!!abMainOpen.fitSummary}
+                    onToggle={() => abMainTog('fitSummary')}
+                  >
+                    <AbSafetyFitnessSummaryList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+              <AbAnalysisRow
+                title="Historical Summary"
+                subtitle="35 timeline events | monitoring, CVSA, collisions, convictions, and safety actions"
+                statLabel="Total Events"
+                statVal="61"
+                badge="61 EVENTS"
+                badgeCls="bg-slate-100 text-slate-600 border-slate-200"
+                open={!!abMainOpen.hist}
+                onToggle={() => abMainTog('hist')}
+              >
+                <div>
+                  <AbHistoricalSummaryPanel />
+                  <AbConvSub
+                    title="Historical Events"
+                    badge="35 EVENTS"
+                    open={!!abMainOpen.histEvents}
+                    onToggle={() => abMainTog('histEvents')}
+                  >
+                    <AbHistoricalEventsList />
+                  </AbConvSub>
+                </div>
+              </AbAnalysisRow>
+
+            </div>
+          </div>
+
           <NscAbPerformanceHistory />
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-              <div className="xl:col-span-4 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
-                <div className="flex items-center gap-2 mb-4">
-                  <Truck size={14} className="text-blue-500" />
-                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Fleet Size &amp; Exposure</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Power units</div>
-                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(carrierProfile.cvorAnalysis.counts.trucks)}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Drivers</div>
-                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(carrierProfile.drivers)}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected-period miles</div>
-                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(nscAnalytics.periodMiles)}</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Points / MM miles</div>
-                    <div className="mt-1 text-base font-black text-slate-900">{formatMetricValue(nscAnalytics.pointsPerMillionMiles, 2)}</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 mt-4">
-                  <div className="rounded-lg border border-slate-100 bg-red-50/70 px-3 py-3 text-center">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-red-500">Overall OOS</div>
-                    <div className="mt-1 text-sm font-black text-red-700">{carrierProfile.cvorAnalysis.counts.oosOverall}%</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-orange-50/70 px-3 py-3 text-center">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-orange-500">Vehicle OOS</div>
-                    <div className="mt-1 text-sm font-black text-orange-700">{carrierProfile.cvorAnalysis.counts.oosVehicle}%</div>
-                  </div>
-                  <div className="rounded-lg border border-slate-100 bg-violet-50/70 px-3 py-3 text-center">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-violet-500">Driver OOS</div>
-                    <div className="mt-1 text-sm font-black text-violet-700">{carrierProfile.cvorAnalysis.counts.oosDriver}%</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="xl:col-span-3 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
-                <div className="flex items-center gap-2 mb-4">
-                  <Target size={14} className="text-indigo-500" />
-                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Monitoring / Intervention</h3>
-                </div>
-                <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-                  <span className={`px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${nscRiskBand.badge}`}>
-                    {nscRiskBand.label}
-                  </span>
-                  <span className="font-mono text-sm font-bold text-slate-900">{carrierProfile.cvorAnalysis.rating.toFixed(2)}%</span>
-                </div>
-                <p className="text-sm text-slate-600 leading-relaxed">{nscRiskBand.detail}</p>
-                <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-slate-600">Warning threshold</span>
-                    <span className="font-mono text-slate-800">{cvorThresholds.warning}%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-slate-600">Intervention threshold</span>
-                    <span className="font-mono text-slate-800">{cvorThresholds.intervention}%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-slate-600">Show-cause threshold</span>
-                    <span className="font-mono text-slate-800">{cvorThresholds.showCause}%</span>
-                  </div>
-                </div>
-                <div className="mt-4 text-[11px] text-slate-500 leading-relaxed">
-                  This band is derived from the configured NSC threshold logic already used in the app.
-                </div>
-              </div>
-
-              {(() => {
-                const RF_LOW = 30, RF_MOD = 70;
-                const rfcc = (p: number) => p >= RF_MOD ? '#dc2626' : p >= RF_LOW ? '#d97706' : p > 0 ? '#16a34a' : '#94a3b8';
-                const rfcl = (p: number) => p >= RF_MOD ? 'PRIMARY' : p >= RF_LOW ? 'MODERATE' : p > 0 ? 'LOW' : 'NONE';
-                const rfcb = (p: number) => p >= RF_MOD ? 'bg-red-100 text-red-700 border-red-300' : p >= RF_LOW ? 'bg-amber-100 text-amber-700 border-amber-300' : p > 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-300';
-                const rfctile = (p: number) => p >= RF_MOD ? 'bg-red-50/70 border-red-200' : p >= RF_LOW ? 'bg-amber-50/70 border-amber-200' : p > 0 ? 'bg-emerald-50/70 border-emerald-200' : 'bg-slate-50/70 border-slate-200';
-                const RF_C_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 18%,#eab308 32%,#f97316 58%,#ef4444 80%,#991b1b 100%)';
-                const rfScore = ALBERTA_NSC_PERFORMANCE_CARD.rFactor;
-                const rfThr = ALBERTA_NSC_PERFORMANCE_CARD.stageThresholds;
-                const rfS4Low = rfThr.find(t => t.stage === 4)?.low ?? 1.105;
-                const rfRMax = rfS4Low * 1.65;
-                const rfMarkerPct = Math.min((rfScore / rfRMax) * 100, 99.5);
-                const rfTP = rfThr.map(t => ({ ...t, pct: (t.low / rfRMax) * 100 }));
-                const rfGS = (r: number) => { for (let i = rfThr.length - 1; i >= 0; i--) if (r >= rfThr[i].low) return rfThr[i].stage; return 0; };
-                const rfStage = rfGS(rfScore);
-                const rfSC = (s: number) => s === 0 ? '#16a34a' : s === 1 ? '#b45309' : s === 2 ? '#d97706' : s === 3 ? '#dc2626' : '#7f1d1d';
-                const rfScoreColor = rfSC(rfStage);
-                const RF_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 18%,#eab308 32%,#f97316 52%,#ef4444 70%,#991b1b 100%)';
-                const rfZones = [
-                  { label: 'NOT MONITORED', start: 0, end: rfTP[0]?.pct ?? 27, color: '#16a34a', desc: 'Below Stage 1 - performance acceptable.' },
-                  { label: 'STAGE 1', start: rfTP[0]?.pct ?? 27, end: rfTP[1]?.pct ?? 40, color: '#b45309', desc: 'Stage 1: corrective measures needed.' },
-                  { label: 'STAGE 2', start: rfTP[1]?.pct ?? 40, end: rfTP[2]?.pct ?? 55, color: '#d97706', desc: 'Stage 2: action plan required.' },
-                  { label: 'STAGE 3', start: rfTP[2]?.pct ?? 55, end: rfTP[3]?.pct ?? 70, color: '#dc2626', desc: 'Stage 3: compliance review required.' },
-                  { label: 'STAGE 4', start: rfTP[3]?.pct ?? 70, end: 100, color: '#7f1d1d', desc: 'Stage 4: imminent enforcement.' },
-                ];
-                const cd = [
-                  { key: 'conv', label: 'Convictions', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.convictions.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.convictions.events, desc: 'Conviction activity from drivers and vehicles contributing to R-Factor.' },
-                  { key: 'adm', label: 'Admin Penalties', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.adminPenalties.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.adminPenalties.events, desc: 'Administrative penalties and compliance notices issued against carrier.' },
-                  { key: 'cvsa', label: 'CVSA Inspections', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.cvsaInspections.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.cvsaInspections.events, desc: 'CVSA roadside inspection outcomes including OOS orders.' },
-                  { key: 'col', label: 'Reportable Collisions', pct: ALBERTA_NSC_PERFORMANCE_CARD.contributions.reportableCollisions.pct, events: ALBERTA_NSC_PERFORMANCE_CARD.contributions.reportableCollisions.events, desc: 'Reportable collisions contributing to R-Factor.' },
-                ];
-                const totalEv = cd.reduce((s, c) => s + c.events, 0);
-                return (
-                  <div className="xl:col-span-5 bg-white border border-slate-200 rounded-xl shadow-sm p-5 h-full">
-                    <div className="mb-4">
-                      <div className="flex items-center gap-2">
-                        <Activity size={14} className="text-emerald-500" />
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-800">Risk Factor</h3>
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-1 italic">(dynamically calculated based on profile request date)</div>
-                    </div>
-                    <div className="mb-5">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="text-[28px] leading-none font-black tracking-tight font-mono" style={{ color: rfScoreColor }}>{rfScore.toFixed(3)}</div>
-                        <div className="pt-0.5 space-y-1">
-                          <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md border ${rfStage === 0 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>{rfStage === 0 ? 'NOT MONITORED' : `STAGE ${rfStage}`}</span>
-                          <div className="text-[10px] text-slate-400">Fleet {ALBERTA_NSC_PERFORMANCE_CARD.fleetRange}  ·  {ALBERTA_NSC_PERFORMANCE_CARD.fleetType}</div>
-                        </div>
-                      </div>
-                      <div className="relative" style={{ paddingTop: 22 }}>
-                        <div className="absolute z-10 flex flex-col items-center pointer-events-none" style={{ left: `${rfMarkerPct}%`, transform: 'translateX(-50%)', top: 0 }}>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md text-white whitespace-nowrap shadow-md" style={{ background: rfScoreColor }}>{rfScore.toFixed(3)}</span>
-                          <div className="w-[2px] h-2.5" style={{ background: rfScoreColor }}/>
-                        </div>
-                        <div className="relative">
-                          <div className="absolute inset-0 rounded-full translate-y-0.5 blur-sm opacity-25" style={{ background: RF_GRAD }}/>
-                          <div className="relative h-[16px] rounded-full overflow-hidden" style={{ background: RF_GRAD, boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.22)' }}>
-                            <div className="absolute top-0 left-0 right-0 h-[6px] rounded-t-full" style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
-                            {rfTP.map(t => (<div key={t.stage} className="absolute top-0 bottom-0 w-[1.5px] bg-white/50" style={{ left: `${t.pct}%` }}/>))}
-                            <div className="absolute top-0 bottom-0 w-[3px] rounded-full" style={{ left: `${rfMarkerPct}%`, transform: 'translateX(-50%)', background: '#fff', boxShadow: '0 0 6px 2px rgba(0,0,0,0.32)' }}/>
-                          </div>
-                          <div className="absolute inset-0 rounded-full overflow-hidden">
-                            {rfZones.map(z => {
-                              const cur = rfStage === 0 ? z.label === 'NOT MONITORED' : z.label === `STAGE ${rfStage}`;
-                              return (<div key={z.label} className="absolute inset-y-0 group/rfz cursor-crosshair" style={{ left: `${z.start}%`, width: `${z.end - z.start}%` }}>
-                                <div className="absolute inset-0 bg-white/0 group-hover/rfz:bg-white/20 transition-colors duration-150 rounded"/>
-                                <div className="hidden group-hover/rfz:block absolute z-50 pointer-events-none" style={{ bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
-                                  <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
-                                    <div className="px-3 py-2 flex items-center justify-between" style={{ background: z.color }}>
-                                      <span className="text-white font-black text-[11px] tracking-wide">{z.label}</span>
-                                      {z.label !== 'NOT MONITORED' && <span className="text-white/80 text-[10px] font-mono font-bold">{rfThr.find(t => `STAGE ${t.stage}` === z.label)?.low.toFixed(3)}+</span>}
-                                    </div>
-                                    <div className="px-3 py-2.5 space-y-1.5">
-                                      {cur && <div className="flex items-center justify-between bg-white/5 rounded-lg px-2 py-1"><span className="text-[9px] text-slate-400 uppercase tracking-wider">Current</span><span className="text-[12px] font-black text-white">{rfScore.toFixed(3)}</span></div>}
-                                      <div className="text-[10px] text-slate-300 leading-relaxed">{z.desc}</div>
-                                      <div className="pt-1.5 border-t border-slate-700/60">
-                                        <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1">Stage Thresholds</div>
-                                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">{rfThr.map(t => (<div key={t.stage} className="flex items-center justify-between"><span className="text-[9px]" style={{ color: rfSC(t.stage) }}>Stage {t.stage}</span><span className="text-[10px] font-bold font-mono text-white">{'>='} {t.low.toFixed(3)}</span></div>))}</div>
-                                      </div>
-                                    </div>
-                                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
-                                  </div>
-                                </div>
-                              </div>);
-                            })}
-                          </div>
-                        </div>
-                        <div className="relative mt-1" style={{ height: 12 }}>
-                          <span className="absolute text-[8px] font-bold text-emerald-700" style={{ left: '0%' }}>SAFE</span>
-                          {rfTP.map(t => (<span key={t.stage} className="absolute text-[8px] font-bold" style={{ left: `${t.pct}%`, transform: 'translateX(-50%)', color: rfSC(t.stage) }}>S{t.stage}</span>))}
-                        </div>
-                      </div>
-                      <div className="flex items-center mt-0.5 text-[9px] text-slate-400">
-                        <span className="font-semibold text-slate-500">NSC Thresholds</span>
-                        {rfThr.map(t => (<span key={t.stage} className="ml-1.5" style={{ color: rfSC(t.stage) }}>{' · '} S{t.stage} {'>='} {t.low.toFixed(3)}</span>))}
-                      </div>
-                    </div>
-                    <div className="space-y-2.5">
-                      <div className="mb-2">
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Contribution to R-Factor</div>
-                        <div className="text-[9px] text-slate-400 mt-0.5 italic">(dynamically calculated based on profile request date)</div>
-                      </div>
-                      {cd.map(({ key, label, pct, events, desc }) => (
-                        <div key={key} className={`relative rounded-xl border p-3 ${rfctile(pct)} group/ctile`}>
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${rfcb(pct)}`}>{rfcl(pct)}</span>
-                          </div>
-                          <div className="text-[22px] leading-none font-black my-0.5 font-mono" style={{ color: rfcc(pct) }}>{pct.toFixed(1)}%</div>
-                          <div className="text-[10px] text-slate-600 mb-0.5">{events} {events === 1 ? 'event' : 'events'}  ·  {pct.toFixed(1)}% impact</div>
-                          <div className="relative group/binfo">
-                            <div className="relative h-[6px] rounded-full overflow-hidden cursor-pointer" style={{ background: RF_C_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
-                              <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
-                              <div className="absolute top-0 bottom-0 bg-slate-900/30 rounded-r-full" style={{ left: `${Math.min(pct, 100)}%`, right: 0 }}/>
-                              <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow" style={{ left: `${Math.min(pct, 100)}%`, transform: 'translateX(-50%)' }}/>
-                              {[RF_LOW, RF_MOD].map(t => (<div key={t} className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: `${t}%` }}/>))}
-                            </div>
-                            <div className="flex justify-between text-[8px] mt-0.5 text-slate-400"><span>LOW {RF_LOW}%</span><span>MOD {RF_MOD}%</span><span>HIGH</span></div>
-                            <div className="hidden group-hover/binfo:block absolute z-50 pointer-events-none" style={{ bottom: 'calc(100% + 28px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
-                              <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
-                                <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: rfcc(pct) }}>
-                                  <span className="text-white font-black text-[11px] uppercase tracking-wide">{label}</span>
-                                  <span className="text-white/90 text-[12px] font-mono font-bold">{pct.toFixed(1)}%</span>
-                                </div>
-                                <div className="px-3.5 py-2.5 space-y-1.5">
-                                  <div className="flex justify-between text-[11px]"><span className="text-slate-400">Level</span><span className="font-bold" style={{ color: rfcc(pct) }}>{rfcl(pct)}</span></div>
-                                  <div className="flex justify-between text-[11px]"><span className="text-slate-400">Event Count</span><span className="font-bold text-white">{events}</span></div>
-                                  <div className="flex justify-between text-[11px]"><span className="text-slate-400">R-Factor Impact</span><span className="font-bold text-white">{pct.toFixed(1)}%</span></div>
-                                  <div className="text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-slate-700/60">{desc}</div>
-                                  <div className="pt-1.5 border-t border-slate-700/60">
-                                    <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1">Levels</div>
-                                    <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                                      {([{ n: 'None', v: 0, c: '#94a3b8' }, { n: 'Low', v: RF_LOW, c: '#16a34a' }, { n: 'Moderate', v: RF_MOD, c: '#d97706' }, { n: 'Current', v: pct, c: rfcc(pct) }] as { n: string; v: number; c: string }[]).map(th => (
-                                        <div key={th.n} className="flex items-center justify-between"><span className="text-[9px]" style={{ color: th.c }}>{th.n}</span><span className="text-[10px] font-bold font-mono text-white">{th.v.toFixed(1)}%</span></div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="px-3.5 pb-2">
-                                  <div className="relative h-[5px] rounded-full overflow-hidden" style={{ background: RF_C_GRAD }}>
-                                    <div className="absolute top-0 bottom-0 w-px bg-white/60" style={{ left: `${RF_LOW}%` }}/><div className="absolute top-0 bottom-0 w-px bg-white/60" style={{ left: `${RF_MOD}%` }}/>
-                                    <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow-md" style={{ left: `${Math.min(pct, 100)}%`, transform: 'translateX(-50%)' }}/>
-                                  </div>
-                                  <div className="flex justify-between text-[8px] mt-0.5"><span style={{ color: '#16a34a' }}>LOW {RF_LOW}%</span><span style={{ color: '#d97706' }}>MOD {RF_MOD}%</span><span style={{ color: '#dc2626' }}>HIGH</span></div>
-                                </div>
-                                <div className="px-3.5 py-2 bg-slate-800/50 border-t border-slate-700/60">
-                                  <div className="text-[10px] text-slate-400">{events} event{events !== 1 ? 's' : ''}  ·  {pct.toFixed(1)}% impact</div>
-                                  <div className="text-[10px] font-bold mt-0.5" style={{ color: rfcc(pct) }}>{rfcl(pct)} contribution to R-Factor</div>
-                                </div>
-                                <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid #0f172a' }}/>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="hidden group-hover/ctile:block absolute z-40 pointer-events-none" style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 240 }}>
-                            <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
-                              <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: rfcc(pct) }}>
-                                <span className="text-white font-black text-[11px] uppercase tracking-wider">{label}</span>
-                                <span className="text-white font-black text-[13px]">{pct.toFixed(1)}%</span>
-                              </div>
-                              <div className="px-3.5 py-2.5 space-y-1">
-                                <div className="flex justify-between text-[11px]"><span className="text-slate-500">Level</span><span className="font-bold" style={{ color: rfcc(pct) }}>{rfcl(pct)}</span></div>
-                                <div className="flex justify-between text-[11px]"><span className="text-slate-500">Event Count</span><span className="font-bold text-slate-800">{events}</span></div>
-                                <div className="flex justify-between text-[11px]"><span className="text-slate-500">R-Factor Impact</span><span className="font-bold text-slate-800">{pct.toFixed(1)}%</span></div>
-                                <div className="text-[10px] text-slate-400 italic leading-relaxed pt-1">{desc}</div>
-                              </div>
-                              <div className="px-3.5 py-2 bg-slate-50 border-t border-slate-100">
-                                <div className="text-[10px] text-slate-500">{events} event{events !== 1 ? 's' : ''}  ·  {pct.toFixed(1)}% impact</div>
-                                <div className="text-[10px] font-bold mt-0.5" style={{ color: rfcc(pct) }}>{rfcl(pct)} contribution to R-Factor</div>
-                              </div>
-                              <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #f8fafc' }}/>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="relative rounded-xl border p-3 mt-1 bg-slate-50/70 border-slate-200 group/ttile">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Total R-Factor</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300">{totalEv} events</span>
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                          <div className="text-[22px] leading-none font-black font-mono" style={{ color: rfScoreColor }}>{rfScore.toFixed(3)}</div>
-                          <span className="text-[11px] text-slate-500 font-semibold">R-Factor Score</span>
-                        </div>
-                        <div className="relative mt-2">
-                          <div className="relative h-[6px] rounded-full overflow-hidden" style={{ background: RF_GRAD, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.18)' }}>
-                            {rfTP.map(t => (<div key={t.stage} className="absolute top-0 bottom-0 w-px bg-white/60" style={{ left: `${t.pct}%` }}/>))}
-                            <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow" style={{ left: `${rfMarkerPct}%`, transform: 'translateX(-50%)' }}/>
-                          </div>
-                          <div className="flex justify-between text-[8px] mt-0.5 text-slate-400">
-                            <span className="text-emerald-600">SAFE</span>
-                            {rfTP.map(t => (<span key={t.stage} style={{ color: rfSC(t.stage) }}>S{t.stage}</span>))}
-                          </div>
-                        </div>
-                        <div className="hidden group-hover/ttile:block absolute z-40 pointer-events-none" style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 260 }}>
-                          <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
-                            <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: rfScoreColor }}>
-                              <span className="text-white font-black text-[12px] tracking-wide">TOTAL R-FACTOR</span>
-                              <span className="text-white font-black text-[14px] font-mono">{rfScore.toFixed(3)}</span>
-                            </div>
-                            <div className="px-4 py-3 space-y-1.5">
-                              <div className="flex justify-between text-[11px]"><span className="text-slate-400">Monitoring Stage</span><span className="font-bold text-white">{rfStage === 0 ? 'Not Monitored' : `Stage ${rfStage}`}</span></div>
-                              <div className="flex justify-between text-[11px]"><span className="text-slate-400">Total Events</span><span className="font-bold text-white">{totalEv}</span></div>
-                              <div className="flex justify-between text-[11px]"><span className="text-slate-400">Fleet Range</span><span className="font-bold text-white">{ALBERTA_NSC_PERFORMANCE_CARD.fleetRange}</span></div>
-                              <div className="pt-2 border-t border-slate-700/60">
-                                <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-1.5">Breakdown</div>
-                                {cd.map(c => (<div key={c.key} className="flex items-center justify-between mb-1"><div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full" style={{ background: rfcc(c.pct) }}/><span className="text-[10px] text-slate-300">{c.label}</span></div><span className="text-[10px] font-bold font-mono text-white">{c.pct.toFixed(1)}%</span></div>))}
-                              </div>
-                            </div>
-                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0" style={{ borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderTop: '7px solid #0f172a' }}/>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center pt-1.5 text-[9px] text-slate-400">
-                        <span className="font-semibold text-slate-500">Contribution Levels</span>
-                        &nbsp;&middot;&nbsp;<span style={{ color: '#16a34a' }}>Low &lt;{RF_LOW}%</span>
-                        &nbsp;&middot;&nbsp;<span style={{ color: '#d97706' }}>Moderate {RF_LOW}&ndash;{RF_MOD}%</span>
-                        &nbsp;&middot;&nbsp;<span style={{ color: '#dc2626' }}>Primary &gt;{RF_MOD}%</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-          </div>
-
-          <NscCvsaOverview />
-
-          <NscAnalysis />
-
-          <NscCvsaInspections />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-4">
-                <ShieldAlert size={14} className="text-emerald-500"/> Safety Rating &amp; OOS
-              </h3>
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">NSC / CVSA</span>
-                  {(() => {
-                    const nscTotal = NSC_INSPECTIONS.length;
-                    const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
-                    const nscOosRate = nscTotal > 0 ? Math.round((nscOos / nscTotal) * 100) : 0;
-                    return (
-                      <span className="text-sm font-medium text-slate-700">
-                        OOS Rate: <span className={`font-bold px-2 py-0.5 rounded border ${nscOosRate >= 30 ? 'bg-red-100 text-red-800 border-red-200' : nscOosRate >= 20 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-green-100 text-green-800 border-green-200'}`}>{nscOosRate}%</span>
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div className="overflow-x-auto rounded border border-slate-100">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">Type</th>
-                        <th className="px-3 py-2 font-semibold text-center">Count</th>
-                        <th className="px-3 py-2 font-semibold text-center">Rate</th>
-                        <th className="px-3 py-2 font-semibold text-center">Threshold</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {(() => {
-                        const nscTotal = NSC_INSPECTIONS.length;
-                        const nscOos = NSC_INSPECTIONS.filter(r => r.result === 'Out Of Service').length;
-                        const nscReqAttn = NSC_INSPECTIONS.filter(r => r.result === 'Requires Attention').length;
-                        const nscPassed = NSC_INSPECTIONS.filter(r => r.result === 'Passed').length;
-                        const oosRate = nscTotal > 0 ? ((nscOos / nscTotal) * 100).toFixed(1) : '0.0';
-                        const reqRate = nscTotal > 0 ? ((nscReqAttn / nscTotal) * 100).toFixed(1) : '0.0';
-                        const passRate = nscTotal > 0 ? ((nscPassed / nscTotal) * 100).toFixed(1) : '0.0';
-                        return (
-                          <>
-                            <tr>
-                              <td className="px-3 py-2 text-slate-700">Out of Service</td>
-                              <td className="px-3 py-2 text-center font-bold text-red-600">{nscOos}</td>
-                              <td className={`px-3 py-2 text-center font-bold ${parseFloat(oosRate) >= 30 ? 'text-red-600' : 'text-slate-800'}`}>{oosRate}%</td>
-                              <td className="px-3 py-2 text-center text-slate-500">&gt;30%</td>
-                            </tr>
-                            <tr>
-                              <td className="px-3 py-2 text-slate-700">Requires Attention</td>
-                              <td className="px-3 py-2 text-center font-bold text-amber-600">{nscReqAttn}</td>
-                              <td className="px-3 py-2 text-center font-bold text-slate-800">{reqRate}%</td>
-                              <td className="px-3 py-2 text-center text-slate-500">&gt;20%</td>
-                            </tr>
-                            <tr>
-                              <td className="px-3 py-2 text-slate-700">Passed</td>
-                              <td className="px-3 py-2 text-center font-bold text-emerald-600">{nscPassed}</td>
-                              <td className="px-3 py-2 text-center font-bold text-emerald-600">{passRate}%</td>
-                              <td className="px-3 py-2 text-center text-slate-500">-</td>
-                            </tr>
-                          </>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <FileSignature size={14} className="text-purple-500"/> Licensing
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Certificate Number</span>
-                  <span className="font-bold font-mono text-slate-900">002050938</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Status</span>
-                  <span className="font-bold text-slate-900">Federal <span className="text-green-600 bg-green-50 px-1.5 rounded ml-1">Active</span></span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Effective</span>
-                  <span className="font-bold font-mono text-slate-900">2021 NOV 03</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Expiry</span>
-                  <span className="font-bold font-mono text-slate-900">2024 OCT 31</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">NSC Number</span>
-                  <span className="font-bold font-mono text-slate-900">AB320-9327</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">MVID Number</span>
-                  <span className="font-bold font-mono text-slate-900">0930-15188</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-                  <span className="text-slate-600">Profile Period Start</span>
-                  <span className="font-bold font-mono text-slate-900">2022 OCT 01</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-600">Profile Period End</span>
-                  <span className="font-bold font-mono text-slate-900">2024 OCT 15</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -8825,75 +7939,139 @@ export function InspectionsPage() {
 
           <NscPerfomate />
 
-          <NscBcPerformanceHistory />
+          {/* ── Latest-pull data (Mar 2025) — shown inline on the main page ── */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center gap-3 flex-wrap">
+              <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">NSC Performance</span>
+              <span className="bg-slate-200 text-slate-600 text-[9px] font-bold px-2 py-0.5 rounded-full">Latest pull &middot; 31-Mar-2025</span>
+              <span className="ml-auto text-[10px] text-slate-400">profile scores &middot; fleet &middot; contraventions &middot; CVSA &middot; accidents &middot; audit &middot; CVIP</span>
+            </div>
+            <div className="p-4 space-y-2.5">
 
-          <div className="space-y-4">
-            <BcReportAccordionItem
-              title="NSC Analysis"
-              description="Contribution review, conviction analysis, CVSA performance, monitoring history, and safety summaries."
-              meta="NSC"
-            >
-              <div className="border-t border-slate-100 bg-slate-50/60 p-4">
-                <NscAnalysis />
-              </div>
-            </BcReportAccordionItem>
-
-            <BcReportAccordionItem
+            <AnalysisRow
               title="Profile Scores as of Mar 2025"
-              description="24 month snapshot history ending 31-Mar-2025."
-              meta="24 Months"
+              subtitle="14 monthly pulls · vehicle days, fleet size, contraventions/CVSA/accident scores"
+              statLabel="Total Score"
+              statVal={INERTIA_CARRIER_BC_DATA.complianceReview.totalScore.toFixed(2)}
+              badge="14 MONTHS"
+              badgeCls="bg-blue-50 text-blue-600 border-blue-200"
+              open={!!bcMainOpen.profileScores}
+              onToggle={() => bcMainTog('profileScores')}
             >
-              <BcProfileScoresContent />
-            </BcReportAccordionItem>
+              <BcMonthHistoryTable />
+            </AnalysisRow>
 
-            <BcReportAccordionItem
+            <AnalysisRow
               title="Active Fleet"
-              description="Vehicles actively registered to this carrier."
-              meta="Fleet"
+              subtitle="Apr 2024 → Mar 2025 · all commercial vehicles under this Safety Certificate"
+              statLabel="Avg Fleet"
+              statVal={INERTIA_CARRIER_BC_DATA.complianceReview.averageFleetSize.toFixed(2)}
+              badge="23 VEHICLES"
+              badgeCls="bg-blue-50 text-blue-600 border-blue-200"
+              open={!!bcMainOpen.activeFleet}
+              onToggle={() => bcMainTog('activeFleet')}
             >
-              <BcActiveFleetTable />
-            </BcReportAccordionItem>
+              <BcActiveFleetRealTable />
+            </AnalysisRow>
 
-            <BcReportAccordionItem
+            <AnalysisRow
               title="Contraventions"
-              description="Driver and carrier contraventions (Guilty & Pending)."
-              meta="4 Subsections"
+              subtitle="19 driver guilty · 2 carrier guilty · 15 driver pending · 3 carrier pending"
+              statLabel="Grouped Total"
+              statVal="0.30"
+              badge="4 SECTIONS"
+              badgeCls="bg-amber-50 text-amber-600 border-amber-200"
+              open={!!bcMainOpen.contraventions}
+              onToggle={() => bcMainTog('contraventions')}
             >
-              <BcContraventionsContent />
-            </BcReportAccordionItem>
+              <div className="divide-y divide-slate-100">
+                <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Section 4.1 &mdash; Driver Contraventions (Guilty)</span>
+                  <span className="ml-auto text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">19 EVENTS</span>
+                </div>
+                <DriverContraventionsList />
+                <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Section 4.2 &mdash; Carrier Contraventions (Guilty)</span>
+                  <span className="ml-auto text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">2 EVENTS</span>
+                </div>
+                <CarrierContraventionsList />
+                <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Section 4.3 &mdash; Driver Contraventions (Pending)</span>
+                  <span className="ml-auto text-[9px] font-bold bg-yellow-100 text-yellow-700 border border-yellow-200 px-2 py-0.5 rounded-full">15 PENDING</span>
+                </div>
+                <PendingDriverContraventionsList />
+                <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Section 4.4 &mdash; Carrier Contraventions (Pending)</span>
+                  <span className="ml-auto text-[9px] font-bold bg-yellow-100 text-yellow-700 border border-yellow-200 px-2 py-0.5 rounded-full">3 PENDING</span>
+                </div>
+                <PendingCarrierContraventionsList />
+              </div>
+            </AnalysisRow>
 
-            <BcReportAccordionItem
+            <AnalysisRow
               title="CVSA Inspection Results"
-              description="Inspection defect summary plus detailed BC CVSA inspection results."
-              meta="CVSA"
+              subtitle="12 inspections · inspection-type summary, defect-category summary, detailed records"
+              statLabel="CVSA Score"
+              statVal="0.31"
+              badge="12 INSPECTIONS"
+              badgeCls="bg-blue-50 text-blue-600 border-blue-200"
+              open={!!bcMainOpen.cvsa}
+              onToggle={() => bcMainTog('cvsa')}
             >
-              <BcCvsaPanel />
-            </BcReportAccordionItem>
+              <div>
+                <CvsaInspectionSummaries />
+                <CvsaInspectionDetailsList />
+              </div>
+            </AnalysisRow>
 
-            <BcReportAccordionItem
+            <AnalysisRow
               title="Accident Information"
-              description="Collision summary and event-level accident details from the loaded NSC dataset."
-              meta="Collisions"
+              subtitle="5 reportable accidents · 11 event records · at-fault, fault-unknown, not at fault"
+              statLabel="Accident Score"
+              statVal="0.00"
+              badge="11 ACCIDENTS"
+              badgeCls="bg-red-50 text-red-600 border-red-200"
+              open={!!bcMainOpen.accidents}
+              onToggle={() => bcMainTog('accidents')}
             >
-              <BcAccidentPanel />
-            </BcReportAccordionItem>
+              <div>
+                <AccidentSummaryTable />
+                <AccidentDetailsList />
+              </div>
+            </AnalysisRow>
 
-            <BcReportAccordionItem
+            <AnalysisRow
               title="Audit Summary"
-              description="Audit posture, intervention trigger history, and current BC safety standing."
-              meta="Audit"
+              subtitle="quantifiable facility audit history · compliance reviews not included"
+              statLabel="Safety Rating"
+              statVal="Satisfactory"
+              badge="UNAUDITED"
+              badgeCls="bg-slate-100 text-slate-500 border-slate-200"
+              open={!!bcMainOpen.audit}
+              onToggle={() => bcMainTog('audit')}
             >
               <BcAuditSummaryPanel />
-            </BcReportAccordionItem>
+            </AnalysisRow>
 
-            <BcReportAccordionItem
+            <AnalysisRow
               title="CVIP Vehicle Inspection History"
-              description="Periodic inspection history placeholder tied to the loaded BC active-fleet records."
-              meta="CVIP"
+              subtitle="14 records · commercial vehicle inspections and outstanding Notice & Orders"
+              statLabel="Pass Rate"
+              statVal="93%"
+              badge="14 RECORDS"
+              badgeCls="bg-slate-100 text-slate-600 border-slate-200"
+              open={!!bcMainOpen.cvip}
+              onToggle={() => bcMainTog('cvip')}
             >
-              <BcCvipHistoryPanel />
-            </BcReportAccordionItem>
+              <CvipInspectionList />
+            </AnalysisRow>
+
+            </div>
           </div>
+
+          {/* ── Pull-by-Pull Data — archive of previous pulls ── */}
+          <NscBcPerformanceHistory />
+
         </div>
       )}
 

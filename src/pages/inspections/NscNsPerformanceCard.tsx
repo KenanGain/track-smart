@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 
-// ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Types ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬
+// ---"---"---"--- Types ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 export interface NsNscData {
   carrierName:          string;
@@ -46,7 +46,7 @@ export interface NsNscData {
   };
 }
 
-// ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Zone helpers - 4 bands mapped to thresholds ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬
+// ---"---"---"--- Zone helpers - 4 bands mapped to thresholds ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 // min=0, practical max=Level3, overflow=Critical
 // Band:  0=Low (<L1)  1=Moderate (L1-L2)  2=High (L2-L3)  3=Critical (>=L3)
 
@@ -79,10 +79,10 @@ const ZBANNER = (z: NsZone) => ([
   'bg-red-50/80     border-red-200',
 ] as const)[z];
 
-// ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Tile helpers - based on % of Level 3 threshold ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬
+// ---"---"---"--- Tile helpers - based on % of Level 3 threshold ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
-const T_LOW = 25;  // % of Level 3 ÃƒÂ¢Ã¢â‚¬Â ' moderate
-const T_MOD = 55;  // % of Level 3 ÃƒÂ¢Ã¢â‚¬Â ' primary
+const T_LOW = 25;  // % of Level 3 -> moderate
+const T_MOD = 55;  // % of Level 3 -> primary
 
 const tc  = (p: number) =>
   p >= T_MOD ? '#dc2626' : p >= T_LOW ? '#d97706' : p > 0 ? '#16a34a' : '#94a3b8';
@@ -102,12 +102,12 @@ const ttile = (p: number) =>
 : p >  0     ? 'bg-emerald-50/70 border-emerald-200'
 :               'bg-slate-50/70   border-slate-200';
 
-// ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Gradients ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬
+// ---"---"---"--- Gradients ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 const GRAD   = 'linear-gradient(to right,#22c55e 0%,#84cc16 22%,#eab308 35%,#f97316 58%,#ef4444 75%,#991b1b 100%)';
 const C_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 22%,#eab308 35%,#f97316 58%,#ef4444 80%,#991b1b 100%)';
 
-// ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Component ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬
+// ---"---"---"--- Component ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
   const [actionsOpen,  setActionsOpen]  = useState(false);
@@ -118,7 +118,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
   const zColor = ZC(zone);
 
   // Scaling: Level 3 = 100% (practical max). Overflow capped at 99% visually.
-  // scaledPct shows where carrier sits on the 0ÃƒÂ¢Ã¢â‚¬Â 'Level3 scale.
+  // scaledPct shows where carrier sits on the 0---'Level3 scale.
   const scaledPct  = +(Math.min(total / data.scoreLevel3 * 100, 100)).toFixed(1);
   const markerPct  = Math.min(total / data.scoreLevel3 * 100, 99);
 
@@ -192,7 +192,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
 
-      {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ HEADER ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+      {/* HEADER */}
       <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
@@ -201,7 +201,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           <div>
             <div className="text-sm font-bold text-slate-900">NSC Performance</div>
             <div className="text-[11px] text-slate-500">
-              {data.carrierName}  Ã¯Â¿Â½  Nova Scotia  Ã¯Â¿Â½  Carrier Profile as of {data.profileAsOf}
+              {data.carrierName}  &middot;  Nova Scotia  &middot;  Carrier Profile as of {data.profileAsOf}
             </div>
           </div>
         </div>
@@ -217,7 +217,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
 
       <div className="divide-y divide-slate-100">
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ SECTION 1: Score + Spectrum ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* SECTION 1: S */}
         <div className="px-5 pt-5 pb-5">
           <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">NS NSC Indexed Demerit Score</div>
 
@@ -316,7 +316,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
                             { label: 'Safety Rating', value: safetyLabel, valueColor: '#86efac' },
                             { label: 'Profile Date', value: data.profileAsOf },
                           ]}
-                          thresholdsTitle={`NS Safety Rating Thresholds  Ã¯Â¿Â½  Fleet ${data.currentFleetSize}`}
+                          thresholdsTitle={`NS Safety Rating Thresholds  \u00B7  Fleet ${data.currentFleetSize}`}
                           thresholds={thrPcts.map(t => ({
                             label: t.label,
                             value: `>= ${t.val}`,
@@ -347,11 +347,11 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           <div className="flex items-center justify-between mt-1 text-[10px]">
             <span className="text-slate-400">
               <span className="font-semibold text-slate-500">NS Thresholds</span>
-              <span className="ml-2" style={{ color: ZC(1) }}> · Moderate {'>='} {data.scoreLevel1}</span>
-              <span className="ml-2" style={{ color: ZC(2) }}> · High {'>='} {data.scoreLevel2}</span>
-              <span className="ml-2" style={{ color: ZC(3) }}> · Critical {'>='} {data.scoreLevel3}</span>
+              <span className="ml-2" style={{ color: ZC(1) }}> &middot; Moderate {'>='} {data.scoreLevel1}</span>
+              <span className="ml-2" style={{ color: ZC(2) }}> &middot; High {'>='} {data.scoreLevel2}</span>
+              <span className="ml-2" style={{ color: ZC(3) }}> &middot; Critical {'>='} {data.scoreLevel3}</span>
             </span>
-            <span className="text-slate-400 font-mono">Score: {total.toFixed(2)} / {data.scoreLevel3.toFixed(2)} · {scaledPct}%</span>
+            <span className="text-slate-400 font-mono">Score: {total.toFixed(2)} / {data.scoreLevel3.toFixed(2)} &middot; {scaledPct}%</span>
           </div>
 
           {/* Status banner */}
@@ -369,12 +369,12 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           </div>
         </div>
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ SECTION 2: Component tiles ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* SECTION 2: C */}
         <div className="px-5 py-4">
           <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-3">
             Indexed Score Breakdown
             <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
-              ({total.toFixed(4)} total  Ã¯Â¿Â½  {scaledPct}% of Level 3 cap  Ã¯Â¿Â½  Band: {ZONE_NAME[zone]})
+              ({total.toFixed(4)} total  &middot;  {scaledPct}% of Level 3 cap  &middot;  Band: {ZONE_NAME[zone]})
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -459,18 +459,18 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           <div className="flex items-center justify-between pt-3 text-[10px]">
             <span className="text-slate-400">
               <span className="font-semibold text-slate-500">Contribution Levels</span>
-              &nbsp; Ã¯Â¿Â½ &nbsp;<span style={{ color: '#16a34a' }}>Low &lt;{T_LOW}%</span>
-              &nbsp; Ã¯Â¿Â½ &nbsp;<span style={{ color: '#d97706' }}>Moderate {T_LOW}-{T_MOD}%</span>
-              &nbsp; Ã¯Â¿Â½ &nbsp;<span style={{ color: '#dc2626' }}>Primary &gt;{T_MOD}%</span>
+              &nbsp; &middot; &nbsp;<span style={{ color: '#16a34a' }}>Low &lt;{T_LOW}%</span>
+              &nbsp; &middot; &nbsp;<span style={{ color: '#d97706' }}>Moderate {T_LOW}-{T_MOD}%</span>
+              &nbsp; &middot; &nbsp;<span style={{ color: '#dc2626' }}>Primary &gt;{T_MOD}%</span>
               <span className="ml-2 text-slate-300">(% of Level 3 threshold)</span>
             </span>
             <button type="button" onClick={() => setThreshOpen(p => !p)}
               className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50">
-              NS Rating Score Info {threshOpen ? 'ÃƒÂ¢-Ã‚Â´' : 'ÃƒÂ¢-Ã‚Â¾'}
+              NS Rating Score Info {threshOpen ? '\u25B4' : '\u25BE'}
             </button>
           </div>
 
-          {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ THRESHOLD DROPDOWN - all threshold info consolidated here ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+          {/* THRESHOLD DROPDOWN - */}
           {threshOpen && (
             <div className="mt-2 rounded-lg border border-slate-200 overflow-hidden">
               <div className="bg-slate-50 px-3 py-2.5 text-[10px] leading-relaxed text-slate-500 border-b border-slate-200">
@@ -579,7 +579,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           )}
         </div>
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ SECTION 3: Recommended Actions ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* SECTION 3: R */}
         <div className="px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -592,7 +592,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
             </div>
             <button type="button" onClick={() => setActionsOpen(p => !p)}
               className="text-[11px] font-semibold text-blue-500 transition-colors hover:text-blue-700">
-              {actionsOpen ? 'Hide Details ÃƒÂ¢-Ã‚Â´' : 'View Details ÃƒÂ¢-Ã‚Â¾'}
+              {actionsOpen ? 'Hide Details \u25B4' : 'View Details \u25BE'}
             </button>
           </div>
           {actionsOpen && (
@@ -618,7 +618,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           )}
         </div>
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ SECTION 4: Carrier Details + Safety Certificate (compact, no duplication) ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* SECTION 4: C */}
         <div className="px-5 py-5 grid grid-cols-2 gap-8">
 
           {/* Left: Carrier Details */}
@@ -707,7 +707,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           </div>
         </div>
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Audit History ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* ---"---"--- Audit History ---"---"--- */}
         <div className="px-5 py-4">
           <div className="flex items-center gap-3 mb-3">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Audit History</span>
@@ -736,7 +736,7 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           )}
         </div>
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ NSC Interventions ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* ---"---"--- NSC Interventions ---"---"--- */}
         {data.interventions && data.interventions.length > 0 && (
           <div className="px-5 py-4">
             <div className="flex items-center gap-3 mb-3">
@@ -762,20 +762,20 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           </div>
         )}
 
-        {/* ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ Carrier Information Report Bar ÃƒÂ¢"Ã¢â€šÂ¬ÃƒÂ¢"Ã¢â€šÂ¬ */}
+        {/* Carrier Info */}
         {data.carrierInfo && (
           <div className="px-5 py-4">
             <div className="flex items-center gap-3 flex-wrap text-[10px] text-slate-500">
               <span className="font-semibold text-slate-700">NS Carrier Profile Abstract</span>
-              <span className="text-slate-300"> Ã¯Â¿Â½ </span>
+              <span className="text-slate-300"> &middot; </span>
               {data.carrierInfo.reportFrom && <>
                 <span>From: <strong className="text-slate-700 font-mono">{data.carrierInfo.reportFrom}</strong></span>
-                <span className="text-slate-300">ÃƒÂ¢Ã¢â‚¬Â '</span>
+                <span className="text-slate-300">&#x2192;</span>
                 <strong className="text-slate-700 font-mono">{data.carrierInfo.reportTo}</strong>
               </>}
               <span className="ml-auto">NSC #: <strong className="font-mono">{data.nscNumber}</strong></span>
               {data.carrierInfo.reportRun && <>
-                <span className="text-slate-300"> Ã¯Â¿Â½ </span>
+                <span className="text-slate-300"> &middot; </span>
                 <span>Report Run: <strong className="font-mono">{data.carrierInfo.reportRun}</strong></span>
               </>}
             </div>

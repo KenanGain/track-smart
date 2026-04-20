@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 
-// ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Types ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ---"---"---"--- Types ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 export interface PeiNscData {
   carrierName:      string;
@@ -34,7 +34,7 @@ export interface PeiNscData {
   };
 }
 
-// ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Schedule 3 - Max Allowable Points by Fleet Size ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ---"---"---"--- Schedule 3 - Max Allowable Points by Fleet Size ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 const SCHEDULE_3 = [
   { minFleet: 1,   maxFleet: 2,        maxPts: 10  },
@@ -61,7 +61,7 @@ const Z_WARN = 0.60;   // Warning
 const Z_INTV = 0.85;   // Interview
 const Z_SANC = 1.00;   // Sanction
 
-// ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Color/label helpers matching NscPerformanceCard pattern ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ---"---"---"--- Color/label helpers matching NscPerformanceCard pattern ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 // Zone by raw pct (0-1+)
 type PeiZone = 0 | 1 | 2 | 3 | 4;  // 0=Low, 1=Adv, 2=Warn, 3=Intv, 4=Sanc
@@ -108,11 +108,11 @@ const ttile = (p: number) =>
 : p >  0     ? 'bg-emerald-50/70 border-emerald-200'
 :              'bg-slate-50/70   border-slate-200';
 
-// ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Gradients ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ---"---"---"--- Gradients ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 const GRAD   = 'linear-gradient(to right,#22c55e 0%,#84cc16 20%,#eab308 33%,#f97316 55%,#ef4444 70%,#991b1b 100%)';
 const C_GRAD = 'linear-gradient(to right,#22c55e 0%,#84cc16 20%,#eab308 33%,#f97316 58%,#ef4444 80%,#991b1b 100%)';
 
-// ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ PEI demerit point values reference ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ---"---"---"--- PEI demerit point values reference ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 const PEI_POINT_VALUES = [
   { label: 'Collision - Not At Fault',              pts: 0, color: '#16a34a' },
   { label: 'Collision - At Fault, Property Damage', pts: 2, color: '#d97706' },
@@ -125,7 +125,7 @@ const PEI_POINT_VALUES = [
   { label: 'Facility Audit - Non-Compliant',        pts: 3, color: '#dc2626' },
 ];
 
-// ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Component ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ---"---"---"--- Component ---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---"---
 
 export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
   const [actionsOpen,  setActionsOpen]  = useState(false);
@@ -195,7 +195,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
 
-      {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ HEADER ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+      {/* HEADER */}
       <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
@@ -204,7 +204,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           <div>
             <div className="text-sm font-bold text-slate-900">NSC Performance</div>
             <div className="text-[11px] text-slate-500">
-              {data.carrierName}  ÃƒÂ¯Ã‚Â¿Ã‚Â½  {data.jurisdiction}  ÃƒÂ¯Ã‚Â¿Ã‚Â½  Carrier Profile as of {data.profileAsOf}
+              {data.carrierName}  &middot;  {data.jurisdiction}  &middot;  Carrier Profile as of {data.profileAsOf}
             </div>
           </div>
         </div>
@@ -220,7 +220,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
 
       <div className="divide-y divide-slate-100">
 
-        {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ SECTION 1: Score + Spectrum ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+        {/* SECTION 1: S */}
         <div className="px-5 pt-5 pb-5">
           <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">NSC Profile Score</div>
 
@@ -313,7 +313,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
                             { label: 'Safety Rating', value: data.safetyRating, valueColor: '#fbbf24' },
                             { label: 'Profile Date', value: data.profileAsOf },
                           ]}
-                          thresholdsTitle={`Schedule 3 Thresholds  ÃƒÂ¯Ã‚Â¿Ã‚Â½  Fleet ${data.currentActiveVehicles}`}
+                          thresholdsTitle={`Schedule 3 Thresholds  \u00B7  Fleet ${data.currentActiveVehicles}`}
                           thresholds={thrPcts.map(t => ({
                             label: t.label,
                             value: `>= ${t.pts} pts`,
@@ -346,11 +346,11 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
               <span className="font-semibold text-slate-500">PEI Thresholds</span>
               {thrPcts.map(t => (
                 <span key={t.label} className="ml-2" style={{ color: ZC(t.zone) }}>
-                  · {t.label} {'>='} {t.pts}
+                  &middot; {t.label} {'>='} {t.pts}
                 </span>
               ))}
             </span>
-            <span className="text-slate-400 font-mono">Fleet {data.currentActiveVehicles} · Max {maxPts} pts</span>
+            <span className="text-slate-400 font-mono">Fleet {data.currentActiveVehicles} &middot; Max {maxPts} pts</span>
           </div>
 
           {/* Status banner */}
@@ -369,12 +369,12 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           </div>
         </div>
 
-        {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ SECTION 2: Assessment tiles ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+        {/* SECTION 2: A */}
         <div className="px-5 py-4">
           <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-3">
             Assessment Points
             <span className="ml-2 font-normal normal-case tracking-normal text-slate-400">
-              (as of {data.profileAsOf}  ÃƒÂ¯Ã‚Â¿Ã‚Â½  {total} of {maxPts} max  ÃƒÂ¯Ã‚Â¿Ã‚Â½  {scorePct}%)
+              (as of {data.profileAsOf}  &middot;  {total} of {maxPts} max  &middot;  {scorePct}%)
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -475,13 +475,13 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           <div className="flex items-center justify-between pt-3 text-[10px]">
             <span className="text-slate-400">
               <span className="font-semibold text-slate-500">Contribution Levels</span>
-              &nbsp; ÃƒÂ¯Ã‚Â¿Ã‚Â½ &nbsp;<span style={{ color: '#16a34a' }}>Low &lt;{T_LOW}%</span>
-              &nbsp; ÃƒÂ¯Ã‚Â¿Ã‚Â½ &nbsp;<span style={{ color: '#d97706' }}>Moderate {T_LOW}-{T_MOD}%</span>
-              &nbsp; ÃƒÂ¯Ã‚Â¿Ã‚Â½ &nbsp;<span style={{ color: '#dc2626' }}>High / Primary &gt;{T_MOD}%</span>
+              &nbsp; &middot; &nbsp;<span style={{ color: '#16a34a' }}>Low &lt;{T_LOW}%</span>
+              &nbsp; &middot; &nbsp;<span style={{ color: '#d97706' }}>Moderate {T_LOW}-{T_MOD}%</span>
+              &nbsp; &middot; &nbsp;<span style={{ color: '#dc2626' }}>High / Primary &gt;{T_MOD}%</span>
             </span>
             <button type="button" onClick={() => setScheduleOpen(p => !p)}
               className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 transition-colors hover:bg-blue-50">
-              PEI Schedule 3 Info {scheduleOpen ? 'ÃƒÆ’Ã‚Â¢-Ãƒâ€šÃ‚Â´' : 'ÃƒÆ’Ã‚Â¢-Ãƒâ€šÃ‚Â¾'}
+              PEI Schedule 3 Info {scheduleOpen ? '\u25B4' : '\u25BE'}
             </button>
           </div>
 
@@ -490,7 +490,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
               <div className="rounded-t-lg border border-slate-100 bg-slate-50 px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
                 PEI NSC uses a <span className="font-semibold text-slate-700">demerit point threshold system</span> based on fleet size per Schedule 3.
                 A carrier's total points are compared to the maximum allowable points for their fleet size. The score percentage is{' '}
-                <span className="font-semibold text-slate-700">totalPoints / maxPoints ÃƒÆ’Ã†â€™- 100</span>. Four alert levels apply:
+                <span className="font-semibold text-slate-700">totalPoints / maxPoints × 100</span>. Four alert levels apply:
                 <span className="font-semibold text-yellow-700"> Advisory</span> at 25%,
                 <span className="font-semibold text-orange-700"> Warning</span> at 60%,
                 <span className="font-semibold text-red-700"> Interview</span> at 85%, and
@@ -542,7 +542,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           )}
         </div>
 
-        {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ SECTION 3: Recommended Actions ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+        {/* SECTION 3: R */}
         <div className="px-5 py-4 border-t border-slate-100">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -555,7 +555,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
             </div>
             <button type="button" onClick={() => setActionsOpen(p => !p)}
               className="text-[11px] font-semibold text-blue-500 transition-colors hover:text-blue-700">
-              {actionsOpen ? 'Hide Details ÃƒÆ’Ã‚Â¢-Ãƒâ€šÃ‚Â´' : 'View Details ÃƒÆ’Ã‚Â¢-Ãƒâ€šÃ‚Â¾'}
+              {actionsOpen ? 'Hide Details \u25B4' : 'View Details \u25BE'}
             </button>
           </div>
           {actionsOpen && (
@@ -581,7 +581,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           )}
         </div>
 
-        {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ SECTION 4: Carrier Details + Safety Fitness ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+        {/* SECTION 4: C */}
         <div className="px-5 py-5 grid grid-cols-2 gap-8 border-t border-slate-100">
           <div>
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Carrier Identifiers</div>
@@ -670,7 +670,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           </div>
         </div>
 
-        {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ NSC Interventions ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+        {/* NSC Interventions */}
         {data.interventions && data.interventions.length > 0 && (
           <div className="px-5 py-4 border-t border-slate-100">
             <div className="flex items-center gap-3 mb-3">
@@ -696,14 +696,14 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
           </div>
         )}
 
-        {/* ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Carrier Information Report Bar ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢"ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ */}
+        {/* Carrier Information R */}
         {data.carrierInfo && (
           <div className="px-5 py-4 border-t border-slate-100">
             <div className="flex items-center gap-3 flex-wrap text-[10px] text-slate-500">
               <span className="font-semibold text-slate-700">National Safety Code Carrier Profile Report</span>
-              <span className="text-slate-300"> ÃƒÂ¯Ã‚Â¿Ã‚Â½ </span>
+              <span className="text-slate-300"> &middot; </span>
               <span>From: <strong className="text-slate-700 font-mono">{data.carrierInfo.reportFrom}</strong></span>
-              <span className="text-slate-300">ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â '</span>
+              <span className="text-slate-300">&#x2192;</span>
               <strong className="text-slate-700 font-mono">{data.carrierInfo.reportTo}</strong>
               <span className="ml-auto">Report Run: <strong className="font-mono">{data.carrierInfo.reportRun}</strong></span>
             </div>

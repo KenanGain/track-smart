@@ -2,6 +2,98 @@ import { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 
+// ─── Pull-by-Pull monthly history ────────────────────────────────────────────
+
+interface BcMonthRow { month:string; vd:number; ad:number; avg:number; contra:number; cvsa:number; acc:number; total:number; }
+
+const BC_MONTH_ROWS: BcMonthRow[] = [
+  { month:'2025-03', vd:28308, ad:365, avg:77.56, contra:0.30, cvsa:0.31, acc:0.00, total:0.61 },
+  { month:'2025-02', vd:28186, ad:365, avg:77.22, contra:0.30, cvsa:0.31, acc:0.05, total:0.66 },
+  { month:'2025-01', vd:28080, ad:366, avg:76.72, contra:0.20, cvsa:0.23, acc:0.05, total:0.48 },
+  { month:'2024-12', vd:27815, ad:366, avg:76.00, contra:0.17, cvsa:0.24, acc:0.05, total:0.46 },
+  { month:'2024-11', vd:27517, ad:366, avg:75.18, contra:0.17, cvsa:0.28, acc:0.05, total:0.50 },
+  { month:'2024-10', vd:27229, ad:366, avg:74.40, contra:0.16, cvsa:0.32, acc:0.05, total:0.53 },
+  { month:'2024-09', vd:26943, ad:366, avg:73.61, contra:0.22, cvsa:0.29, acc:0.05, total:0.56 },
+  { month:'2024-08', vd:26644, ad:366, avg:72.80, contra:0.34, cvsa:0.29, acc:0.05, total:0.68 },
+  { month:'2024-07', vd:26170, ad:366, avg:71.50, contra:0.39, cvsa:0.29, acc:0.06, total:0.74 },
+  { month:'2024-06', vd:25647, ad:366, avg:70.07, contra:0.37, cvsa:0.26, acc:0.06, total:0.69 },
+  { month:'2024-05', vd:25139, ad:366, avg:68.69, contra:0.39, cvsa:0.39, acc:0.06, total:0.84 },
+  { month:'2024-04', vd:24638, ad:366, avg:67.32, contra:0.45, cvsa:0.45, acc:0.06, total:0.96 },
+  { month:'2024-03', vd:24330, ad:366, avg:66.48, contra:0.45, cvsa:0.41, acc:0.12, total:0.98 },
+  { month:'2024-02', vd:24249, ad:366, avg:66.25, contra:0.63, cvsa:0.36, acc:0.09, total:1.08 },
+];
+
+const PBP_THRESH: Record<string,[number,number]> = {
+  contra:[1.76,2.98], cvsa:[0.93,1.08], acc:[0.23,0.27], total:[2.13,3.64],
+};
+function pbpColor(cat:string, v:number) {
+  const [s,c] = PBP_THRESH[cat] ?? [1,2];
+  return v >= c ? '#dc2626' : v >= s ? '#d97706' : '#16a34a';
+}
+
+const PBP_PAGE = 10;
+
+function BcMonthHistoryTable() {
+  const [page, setPage] = useState(1);
+  const n     = BC_MONTH_ROWS.length;
+  const pages = Math.max(1, Math.ceil(n / PBP_PAGE));
+  const rows  = BC_MONTH_ROWS.slice((page - 1) * PBP_PAGE, page * PBP_PAGE);
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200 overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-widest text-slate-700">Pull-by-Pull Monthly History</span>
+        <span className="bg-slate-200 text-slate-600 text-[9px] font-bold px-2 py-0.5 rounded-full">{n} months</span>
+        <span className="ml-auto text-[9px] text-slate-400">Newest first &middot; scores color-coded to BC thresholds</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-100 bg-white">
+              <th className="px-3 py-2 text-left   text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Month</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Total Active<br/>Vehicle Days</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Active<br/>Monthly Days</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Average<br/>Fleet Size</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-amber-500 uppercase tracking-wider whitespace-nowrap">Contraventions<br/>Score</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-blue-500  uppercase tracking-wider whitespace-nowrap">CVSA<br/>Score</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-rose-400  uppercase tracking-wider whitespace-nowrap">Accident<br/>Score</th>
+              <th className="px-3 py-2 text-right  text-[9px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Total<br/>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r,i) => (
+              <tr key={r.month} className={`border-b border-slate-50 ${i%2===1?'bg-slate-50/40':''} hover:bg-blue-50/20 transition-colors`}>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[12px] font-bold text-slate-800">{r.month}</span>
+                    {page===1&&i===0&&<span className="bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase">Latest</span>}
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] text-slate-600">{r.vd.toLocaleString()}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] text-slate-600">{r.ad.toLocaleString()}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] text-slate-600">{r.avg.toFixed(2)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] font-bold" style={{color:pbpColor('contra',r.contra)}}>{r.contra.toFixed(2)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] font-bold" style={{color:pbpColor('cvsa',  r.cvsa  )}}>{r.cvsa.toFixed(2)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] font-bold" style={{color:pbpColor('acc',   r.acc   )}}>{r.acc.toFixed(2)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-[11px] font-bold" style={{color:pbpColor('total', r.total )}}>{r.total.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] text-slate-500">{(page-1)*PBP_PAGE+1}&ndash;{Math.min(page*PBP_PAGE,n)} of {n}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-100 text-slate-600">&#8249;</button>
+          {Array.from({length:pages},(_,i)=>i+1).map(p=>(
+            <button key={p} onClick={()=>setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p===page?'bg-blue-600 text-white border-blue-600':'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+          ))}
+          <button onClick={()=>setPage(p=>Math.min(pages,p+1))} disabled={page===pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-100 text-slate-600">&#8250;</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface NscBcDemographics {
