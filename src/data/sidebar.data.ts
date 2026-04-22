@@ -75,7 +75,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     },
     {
         key: "inspections",
-        label: "Inspections",
+        label: "Safety and Compliance",
         icon: ClipboardCheck,
         path: "/inspections",
     },

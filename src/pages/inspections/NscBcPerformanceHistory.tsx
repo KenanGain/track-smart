@@ -1507,6 +1507,8 @@ function BcPullDrillDown({ r }: { r: typeof BC_PULL_DATA[0] }) {
   const cvipPass     = mock.cvipInspections.filter(c => c.result === 'Pass').length;
   const cvipFail     = mock.cvipInspections.filter(c => c.result === 'Fail').length;
   const cvipPassPct  = mock.cvipInspections.length > 0 ? Math.round((cvipPass / mock.cvipInspections.length) * 100) : 100;
+  void cvipFail;
+  void cvipPassPct;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">

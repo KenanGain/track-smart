@@ -618,52 +618,8 @@ export function NscNsPerformanceCard({ data }: { data: NsNscData }) {
           )}
         </div>
 
-        {/* SECTION 4: C */}
-        <div className="px-5 py-5 grid grid-cols-2 gap-8">
-
-          {/* Left: Carrier Details */}
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Carrier Details</div>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">NSC #</span>
-                <span className="text-sm font-bold font-mono text-slate-900">{data.nscNumber}</span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-xs text-slate-500 shrink-0">Company</span>
-                <span className="text-xs font-bold text-slate-900 text-right">{data.carrierName}</span>
-              </div>
-              {data.contactName && (
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-slate-500 shrink-0">Contact</span>
-                  <div className="text-right">
-                    <div className="text-xs font-semibold text-slate-700">{data.contactName}</div>
-                    {data.contactTitle && <div className="text-[10px] text-slate-500">{data.contactTitle}</div>}
-                  </div>
-                </div>
-              )}
-              {data.phone && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-slate-500">Phone</span>
-                  <span className="text-sm font-bold font-mono text-slate-800">{data.phone}</span>
-                </div>
-              )}
-              {data.mailingAddress && (
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-slate-500 shrink-0">Mailing</span>
-                  <span className="text-xs font-semibold text-slate-700 text-right leading-snug whitespace-pre-line">{data.mailingAddress}</span>
-                </div>
-              )}
-              {data.principalPlace && (
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-slate-500 shrink-0">Principal</span>
-                  <span className="text-xs font-semibold text-slate-700 text-right">{data.principalPlace}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Safety Certificate */}
+        {/* SECTION 4: Safety Certificate */}
+        <div className="px-5 py-5">
           <div>
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Safety Certificate</div>
             <div className="space-y-2.5">

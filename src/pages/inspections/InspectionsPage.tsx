@@ -13,7 +13,6 @@ import {
   User,
   CheckCircle2,
   AlertCircle,
-  AlertOctagon,
   FileSignature,
   Pencil,
   Gauge,
@@ -23,10 +22,7 @@ import {
   Building2,
   MapPin
 } from 'lucide-react';
-import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode, nscRiskBand, nscAnalytics, cvorPeriodicReports } from './inspectionsData';
-import { NscAnalysis } from './NscAnalysis';
-import { NscCvsaOverview } from './NscCvsaOverview';
-import { NscCvsaInspections } from './NscCvsaInspections';
+import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode, cvorPeriodicReports } from './inspectionsData';
 import { NscPerformanceCard, type NscPerformanceCardProps } from './NscPerformanceCard';
 import { InspectionReportPanel } from './InspectionReportPanel';
 import { NscBcCarrierProfile, INERTIA_CARRIER_BC_DATA } from './NscBcCarrierProfile';
@@ -71,10 +67,38 @@ import {
   AbHistoricalSummaryPanel,
   AbHistoricalEventsList,
 } from './NscAbPerformanceHistory';
-import { BcAccidentPanel, BcCvsaPanel } from './BcPanels';
 import { NscMonitoringHistory } from './NscMonitoringHistory';
 import { NscPeiPerformanceCard } from './NscPeiPerformanceCard';
+import { NscGenericPerformanceBlock } from './NscGenericPerformanceBlock';
+import { NscPeiPerformanceHistory } from './NscPeiPerformanceHistory';
+import { NscNsPerformanceBlock } from './NscNsPerformanceBlock';
+import { NscNsPerformanceHistory } from './NscNsPerformanceHistory';
 import { NscNsPerformanceCard } from './NscNsPerformanceCard';
+import {
+  InspectionKindSelector,
+  ReportUploadDropzone,
+  FmcsaApiFetchBlock,
+  FmcsaInspectionForm,
+  CvorInspectionForm,
+  AbNscInspectionForm,
+  BcNscInspectionForm,
+  PeiNscInspectionForm,
+  NsNscInspectionForm,
+  EMPTY_FMCSA,
+  EMPTY_CVOR,
+  EMPTY_AB,
+  EMPTY_BC,
+  EMPTY_PEI,
+  EMPTY_NS,
+  type InspectionKind,
+  type UploadedReportFile,
+  type FmcsaFormData,
+  type CvorFormData,
+  type AbNscFormData,
+  type BcNscFormData,
+  type PeiNscFormData,
+  type NsNscFormData,
+} from './AddInspectionForms';
 import { ScoreBandHoverCard } from './ScoreBandHoverCard';
 import { NSC_INSPECTIONS, DEFECT_TO_NSC, NSC_CODE_TO_SYSTEM } from './nscInspectionsData';
 import type { NscInspectionRecord } from './nscInspectionsData';
@@ -228,7 +252,7 @@ const PRINCE_EDWARD_ISLAND_NSC_PROFILE = {
   nscNumber: 'PE316583',
   safetyRating: 'Conditional',
   summary: {
-    collisionPoints: 0,
+    collisionPoints: 8,
     convictionPoints: 6,
     inspectionPoints: 9,
     currentActiveVehiclesAtLastAssessment: 19,
@@ -236,7 +260,7 @@ const PRINCE_EDWARD_ISLAND_NSC_PROFILE = {
   },
 } as const;
 
-const BcReportAccordionItem = ({
+export const BcReportAccordionItem = ({
   title,
   description,
   meta,
@@ -315,7 +339,7 @@ function NscPerfomate() {
   return <NscBcCarrierProfile {...INERTIA_CARRIER_BC_DATA} />;
 }
 
-function BcProfileScoresContent() {
+export function BcProfileScoresContent() {
   const thresholdRows = [
     {
       status: 'Satisfactory',
@@ -436,7 +460,7 @@ function BcProfileScoresContent() {
   );
 }
 
-function BcActiveFleetTable() {
+export function BcActiveFleetTable() {
   const fleetRows = INITIAL_ASSETS.filter(asset => asset.operationalStatus === 'Active').slice(0, 8);
 
   return (
@@ -498,7 +522,7 @@ function BcActiveFleetTable() {
   );
 }
 
-function BcContraventionsContent() {
+export function BcContraventionsContent() {
   return (
     <div className="space-y-5 border-t border-slate-100 bg-slate-50/60 p-4">
       {BC_CONTRAVENTION_SECTIONS.map(section => (
@@ -584,7 +608,7 @@ function BcAuditSummaryPanel() {
   );
 }
 
-function BcCvipHistoryPanel() {
+export function BcCvipHistoryPanel() {
   const cvipRows = INITIAL_ASSETS.filter(asset => asset.operationalStatus === 'Active').slice(0, 6).map((asset, index) => ({
     id: asset.id,
     unit: asset.unitNumber,
@@ -1620,7 +1644,7 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
   );
 };
 
-const formatMetricValue = (value: number | string | null | undefined, decimals = 0) => {
+export const formatMetricValue = (value: number | string | null | undefined, decimals = 0) => {
   if (value === null || value === undefined) return '-';
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return String(value);
@@ -1629,7 +1653,7 @@ const formatMetricValue = (value: number | string | null | undefined, decimals =
 
 // â"€â"€ NSC Overview Row â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 // Renders a single NSC/CVSA inspection record in the unified overview list.
-const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
+export const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedViolation, setSelectedViolation] = useState<{
     code: string; description: string; severity: 'Minor' | 'Major' | 'OOS'; isOOS: boolean;
@@ -2579,6 +2603,25 @@ export function InspectionsPage() {
   const requiredDocTypes = useMemo(() => violationDocTypes.filter(d => d.requirementLevel === 'required'), [violationDocTypes]);
   const [inspAttachedDocs, setInspAttachedDocs] = useState<Array<{ id: string; docTypeId: string; docNumber: string; issueDate: string; fileName: string }>>([]);
 
+  // Add-inspection: jurisdiction kind + per-kind latest-pull form data + uploaded report file
+  const [inspectionKind, setInspectionKind] = useState<InspectionKind>('fmcsa');
+  const [fmcsaForm,  setFmcsaForm]  = useState<FmcsaFormData>(EMPTY_FMCSA);
+  const [cvorForm,   setCvorForm]   = useState<CvorFormData>(EMPTY_CVOR);
+  const [abNscForm,  setAbNscForm]  = useState<AbNscFormData>(EMPTY_AB);
+  const [bcNscForm,  setBcNscForm]  = useState<BcNscFormData>(EMPTY_BC);
+  const [peiNscForm, setPeiNscForm] = useState<PeiNscFormData>(EMPTY_PEI);
+  const [nsNscForm,  setNsNscForm]  = useState<NsNscFormData>(EMPTY_NS);
+  const [uploadedReport, setUploadedReport] = useState<UploadedReportFile | null>(null);
+
+  const defaultKindFromTab = (tab: string): InspectionKind => {
+    if (tab === 'carrier-profile-ab') return 'ab';
+    if (tab === 'carrier-profile-bc') return 'bc';
+    if (tab === 'carrier-profile-pe') return 'pe';
+    if (tab === 'carrier-profile-ns') return 'ns';
+    if (tab === 'cvor')               return 'cvor';
+    return 'fmcsa';
+  };
+
   const openAddModal = () => {
     setInspForm(emptyForm);
     setFormViolations([]);
@@ -2586,6 +2629,14 @@ export function InspectionsPage() {
       id: `doc-${Math.random().toString(36).substr(2, 9)}`,
       docTypeId: dt.id, docNumber: '', issueDate: '', fileName: ''
     })));
+    setInspectionKind(defaultKindFromTab(activeMainTab));
+    setFmcsaForm(EMPTY_FMCSA);
+    setCvorForm(EMPTY_CVOR);
+    setAbNscForm(EMPTY_AB);
+    setBcNscForm(EMPTY_BC);
+    setPeiNscForm(EMPTY_PEI);
+    setNsNscForm(EMPTY_NS);
+    setUploadedReport(null);
     setEditingInspection(null);
     setShowAddModal(true);
   };
@@ -2672,6 +2723,7 @@ export function InspectionsPage() {
       nscPoints,
     };
   }, []);
+  void stats;
 
   // Unified inspection list: SMS/CVOR (tagged) + NSC records
   // Each entry is either a legacy record (with _source) or an NscInspectionRecord (with _source='NSC')
@@ -2731,6 +2783,7 @@ export function InspectionsPage() {
   ];
 
   const pagedData = filteredData.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  void pagedData;
 
   return (
     <div className="min-h-screen text-slate-900 p-4 md:p-6 pb-20 relative">
@@ -2739,8 +2792,8 @@ export function InspectionsPage() {
         {/* ===== TOP HEADER & ACTIONS ===== */}
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Inspections</h1>
-            <p className="text-sm text-gray-500">Track and manage roadside inspections and safety events.</p>
+            <h1 className="text-2xl font-bold text-gray-900">Safety and Compliance</h1>
+            <p className="text-sm text-gray-500">Track and manage roadside inspections, carrier profiles, and safety events.</p>
           </div>
           <div className="flex gap-3">
             <button
@@ -2753,7 +2806,7 @@ export function InspectionsPage() {
               onClick={openAddModal}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm shadow-blue-200"
             >
-              <Plus size={16} /> Add Inspection
+              <Plus size={16} /> Add Compliance
             </button>
           </div>
         </div>
@@ -8109,6 +8162,16 @@ export function InspectionsPage() {
               reportRun:        '14-Jul-2021',
             },
           }}/>
+
+          <NscGenericPerformanceBlock
+            latestPullDate="14-Jul-2021"
+            collisionPoints={PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.collisionPoints}
+            convictionPoints={PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.convictionPoints}
+            inspectionPoints={PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.inspectionPoints}
+            maxPoints={55}
+          />
+
+          <NscPeiPerformanceHistory />
         </div>
       )}
 
@@ -8143,6 +8206,10 @@ export function InspectionsPage() {
               reportRun:  '19/08/2022',
             },
           }}/>
+
+          <NscNsPerformanceBlock latestPullDate="19-Aug-2022" />
+
+          <NscNsPerformanceHistory />
         </div>
       )}
 
@@ -8176,7 +8243,7 @@ export function InspectionsPage() {
       {/* ===== ADD / EDIT INSPECTION MODAL ===== */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 flex-shrink-0">
               <div>
                 <h3 className="font-bold text-lg text-slate-900">{editingInspection ? 'Edit Inspection' : 'Add Inspection'}</h3>
@@ -8187,6 +8254,238 @@ export function InspectionsPage() {
               </button>
             </div>
             <div className="px-6 py-5 overflow-y-auto flex-1 space-y-6">
+
+              {/* Section: Inspection Type (locked to active tab) */}
+              <InspectionKindSelector value={inspectionKind} />
+
+              {/* Section: FMCSA API fetch (FMCSA only — populates the form below) */}
+              {inspectionKind === 'fmcsa' && (
+                <FmcsaApiFetchBlock
+                  onFetched={r => setFmcsaForm(p => ({
+                    ...p,
+                    reportNumber:   r.reportNumber,
+                    inspectionDate: r.inspectionDate,
+                    state:          r.state,
+                    level:          r.level,
+                    driver:         r.driver,
+                    driverLicense:  r.driverLicense,
+                    vehiclePlate:   r.vehiclePlate,
+                  }))}
+                />
+              )}
+
+              {/* Section: Attach Report (all kinds). For NSC kinds, uploading + extracting fills the form below. */}
+              <ReportUploadDropzone
+                file={uploadedReport}
+                onChange={setUploadedReport}
+                extractLabel="Extract NSC Data"
+                onExtract={
+                  inspectionKind === 'ab' ? () => setAbNscForm({
+                    carrierName:       'VM Motors Inc.',
+                    nscNumber:         'AB257-4556',
+                    mvidNumber:        '0895-41544',
+                    operatingStatus:   'Federal',
+                    fleetType:         'Truck',
+                    fleetRange:        '30.0-44.9',
+                    profileDate:       '2026 FEB 23',
+                    rFactor:           '0.062',
+                    monitoringStage:   'Not Monitored',
+                    fleetCurrent:      '40',
+                    fleetAvg:          '40.0',
+                    convictionsPct:         '34.6',
+                    convictionsEvents:      '5',
+                    adminPenaltiesPct:      '0.0',
+                    adminPenaltiesEvents:   '0',
+                    cvsaPct:                '32.3',
+                    cvsaEvents:             '43',
+                    collisionsPct:          '33.1',
+                    collisionsEvents:       '6',
+                    certNumber:        '002449387',
+                    certEffective:     '2026 JAN 07',
+                    certExpiry:        '2028 DEC 31',
+                    safetyRating:      'Satisfactory Unaudited',
+                    monitoringAsOf:        '2026 JAN 31',
+                    monitoringRFactor:     '0.185',
+                    monitoringStageLatest: 'Not on Monitoring',
+                    totalCarriersAB:       '17704',
+                    convictionDocs:    '3',
+                    convictionCount:   '3',
+                    convictionPoints:  '3',
+                    convictions: [
+                      { id: 'seed-ab-c1', date: '2025-11-18', documentNo: 'CNV-40231', docketNo: 'DKT-9912', jurisdiction: 'AB', plate: 'PLT-001', driver: 'S. Thompson', offence: 'HTA s.128(1) Speeding', points: '3' },
+                      { id: 'seed-ab-c2', date: '2025-08-03', documentNo: 'CNV-40110', docketNo: 'DKT-9807', jurisdiction: 'AB', plate: 'PLT-004', driver: 'R. Patel',    offence: 'HTA s.154(1) Improper lane use', points: '2' },
+                    ],
+                    cvsaInspections: [
+                      { id: 'seed-ab-i1', date: '2026-01-14', documentNo: 'CVSA-12931', jurisdiction: 'AB', agency: 'Alberta Sheriff', plate: 'PLT-001', level: 'Level 2', result: 'Pass' },
+                      { id: 'seed-ab-i2', date: '2025-10-22', documentNo: 'CVSA-12801', jurisdiction: 'AB', agency: 'RCMP',            plate: 'PLT-003', level: 'Level 1', result: 'Out of Service' },
+                    ],
+                    collisions: [
+                      { id: 'seed-ab-col1', date: '2025-09-07', documentNo: 'COL-8812', plate: 'PLT-002', severity: 'Property Damage', preventable: 'Preventable', points: '2', driver: 'M. Lee' },
+                    ],
+                    adminPenalties: [],
+                    historicalEvents: [
+                      { id: 'seed-ab-h1', date: '2026 JAN 31', type: 'MONT (Monitoring)', description: 'R-Factor snapshot 0.185' },
+                      { id: 'seed-ab-h2', date: '2025 OCT 22', type: 'CVSA (Inspection)', description: 'OOS — brake defect'      },
+                    ],
+                  })
+                  : inspectionKind === 'bc' ? () => setBcNscForm({
+                    carrierName:         'INERTIA CARRIER LTD.',
+                    nscNumber:           'BC123456',
+                    asOfDate:            '31-Mar-2025',
+                    averageFleetSize:    '77.56',
+                    contraventionScore:  '0.30',
+                    contraventionEvents: '39',
+                    cvsaScore:           '0.31',
+                    cvsaEvents:          '12',
+                    accidentScore:       '0.00',
+                    accidentEvents:      '11',
+                    totalScore:          '0.61',
+                    safetyRating:        'Satisfactory',
+                    certificateStatus:   'Active',
+                    profileScores: [
+                      { id: 'seed-bc-ps01', month: '2025-03', vd: '28308', ad: '365', avg: '77.56', contra: '0.30', cvsa: '0.31', acc: '0.00', total: '0.61' },
+                      { id: 'seed-bc-ps02', month: '2025-02', vd: '28186', ad: '365', avg: '77.22', contra: '0.30', cvsa: '0.31', acc: '0.05', total: '0.66' },
+                      { id: 'seed-bc-ps03', month: '2025-01', vd: '28080', ad: '366', avg: '76.72', contra: '0.20', cvsa: '0.23', acc: '0.05', total: '0.48' },
+                      { id: 'seed-bc-ps04', month: '2024-12', vd: '27815', ad: '366', avg: '76.00', contra: '0.17', cvsa: '0.24', acc: '0.05', total: '0.46' },
+                      { id: 'seed-bc-ps05', month: '2024-11', vd: '27517', ad: '366', avg: '75.18', contra: '0.17', cvsa: '0.28', acc: '0.05', total: '0.50' },
+                      { id: 'seed-bc-ps06', month: '2024-10', vd: '27229', ad: '366', avg: '74.40', contra: '0.16', cvsa: '0.32', acc: '0.05', total: '0.53' },
+                      { id: 'seed-bc-ps07', month: '2024-09', vd: '26943', ad: '366', avg: '73.61', contra: '0.22', cvsa: '0.29', acc: '0.05', total: '0.56' },
+                      { id: 'seed-bc-ps08', month: '2024-08', vd: '26644', ad: '366', avg: '72.80', contra: '0.34', cvsa: '0.29', acc: '0.05', total: '0.68' },
+                      { id: 'seed-bc-ps09', month: '2024-07', vd: '26170', ad: '366', avg: '71.50', contra: '0.39', cvsa: '0.29', acc: '0.06', total: '0.74' },
+                      { id: 'seed-bc-ps10', month: '2024-06', vd: '25647', ad: '366', avg: '70.07', contra: '0.37', cvsa: '0.26', acc: '0.06', total: '0.69' },
+                      { id: 'seed-bc-ps11', month: '2024-05', vd: '25139', ad: '366', avg: '68.69', contra: '0.39', cvsa: '0.39', acc: '0.06', total: '0.84' },
+                      { id: 'seed-bc-ps12', month: '2024-04', vd: '24638', ad: '366', avg: '67.32', contra: '0.45', cvsa: '0.45', acc: '0.06', total: '0.96' },
+                      { id: 'seed-bc-ps13', month: '2024-03', vd: '24330', ad: '366', avg: '66.48', contra: '0.45', cvsa: '0.41', acc: '0.12', total: '0.98' },
+                      { id: 'seed-bc-ps14', month: '2024-02', vd: '24249', ad: '366', avg: '66.25', contra: '0.63', cvsa: '0.36', acc: '0.09', total: '1.08' },
+                    ],
+                    activeFleet: [
+                      { id: 'seed-bc-fl1', regi: '10537552', plate: '69124P', year: '2006', make: 'FREIGHTLIN', owner: 'Inertia', gvw: '0' },
+                      { id: 'seed-bc-fl2', regi: '11081163', plate: '68012P', year: '2015', make: 'VOLVO',     owner: 'Inertia', gvw: '0' },
+                      { id: 'seed-bc-fl3', regi: '11848566', plate: '71085P', year: '2016', make: 'VOLVO',     owner: 'Inertia', gvw: '0' },
+                      { id: 'seed-bc-fl4', regi: '12584392', plate: '57354P', year: '2018', make: 'FREIGHTLIN', owner: 'Inertia', gvw: '0' },
+                      { id: 'seed-bc-fl5', regi: '12793166', plate: '60145P', year: '2018', make: 'VOLVO',     owner: 'Inertia', gvw: '0' },
+                    ],
+                    driverGuilty: [
+                      { id: 'seed-bc-dg1', driverName: 'BAJWA, MANJOT',             dl: 'B0209516098126', dlJur: 'ON', date: '2024-12-24', ticket: '1333765',    plate: '72843P', location: 'BALGONIE',      juris: 'SK', act: 'HT',  section: '6;b',    desc: 'Improper or inappropriate use of lights',         pts: '2' },
+                      { id: 'seed-bc-dg2', driverName: 'BHULLAR, GURWINDER SINGH',  dl: '179420971',      dlJur: 'AB', date: '2025-01-26', ticket: '2099880',    plate: '72843P', location: 'SHERWOOD PARK', juris: 'AB', act: '122', section: '0924(1)', desc: 'Unauthorized flashing lamp on',                 pts: '1' },
+                    ],
+                    carrierGuilty: [
+                      { id: 'seed-bc-cg1', driverName: '', dl: '', dlJur: 'BC', date: '2024-11-05', ticket: 'C-45203', plate: '', location: 'KAMLOOPS', juris: 'BC', act: 'MVA', section: '37.27(1)', desc: 'Carrier failed to maintain records', pts: '2' },
+                    ],
+                    driverPending: [
+                      { id: 'seed-bc-dp1', driverName: 'SINGH, AMRITPAL', dl: 'S4490169094', dlJur: 'ON', date: '2025-02-14', ticket: 'P-118822', plate: '68042P', location: 'VANCOUVER', juris: 'BC', act: 'MVA', section: '150.1',  desc: 'Fail to keep right (pending disposition)',    pts: '0' },
+                    ],
+                    carrierPending: [
+                      { id: 'seed-bc-cp1', driverName: '', dl: '', dlJur: 'BC', date: '2025-03-02', ticket: 'C-58440', plate: '', location: 'BURNABY',    juris: 'BC', act: 'MVA', section: '234',     desc: 'Logbook audit discrepancy (pending disposition)', pts: '0' },
+                    ],
+                    cvsaInspections: [
+                      { id: 'seed-bc-cv1', date: '2025-01-22', inspectionNo: 'EA602200100', level: 'Level 1', plate: '68042P', driver: 'Singh, A.',    defects: 'Brakes',    result: 'Out of Service' },
+                      { id: 'seed-bc-cv2', date: '2024-11-14', inspectionNo: 'EA602012990', level: 'Level 2', plate: '72843P', driver: 'Bhullar',      defects: 'Lighting',  result: 'Warning' },
+                      { id: 'seed-bc-cv3', date: '2024-09-03', inspectionNo: 'EA601899127', level: 'Level 3', plate: '57380P', driver: 'Khaira',       defects: '',          result: 'Pass' },
+                    ],
+                    accidents: [
+                      { id: 'seed-bc-acc1', date: '2023-03-03', time: '09:48', report: '6653022', location: 'PICKERING, BAYLY ST',     jur: 'ON', driverName: 'KHAIRA, EKAMPREET SINGH', plate: '76118P', vehDesc: '', type: 'Property', fault: 'At Fault',     charges: 'No', pts: '2' },
+                      { id: 'seed-bc-acc2', date: '2023-01-07', time: '23:53', report: '6636812', location: 'THUNDER BAY, 11',        jur: 'ON', driverName: 'PUREWAL, MANJEET K',      plate: '66581P', vehDesc: '', type: 'Property', fault: 'No Fault',     charges: 'No', pts: '0' },
+                      { id: 'seed-bc-acc3', date: '2022-12-12', time: '09:16', report: '6631431', location: 'BLIND RIVER, CAUSLEY',   jur: 'ON', driverName: 'HANAD, HUSSEIN',          plate: '57380P', vehDesc: '', type: 'Property', fault: 'At Fault',     charges: 'No', pts: '2' },
+                      { id: 'seed-bc-acc4', date: '2022-12-03', time: '00:00', report: '6652780', location: 'KENORA, 17',             jur: 'ON', driverName: 'HARJOT SINGH',            plate: '74162P', vehDesc: '', type: 'Injury',   fault: 'At Fault',     charges: 'No', pts: '4' },
+                      { id: 'seed-bc-acc5', date: '2022-08-18', time: '21:45', report: '6614519', location: 'MISSISSAUGA, 401',       jur: 'ON', driverName: 'HAROON, MOHAMMAD',        plate: '70365P', vehDesc: '', type: 'Property', fault: 'No Fault',     charges: 'No', pts: '0' },
+                    ],
+                    auditSummary: [],
+                    cvip: [
+                      { id: 'seed-bc-cvip1', regi: '10537552', plate: '69124P', vehicle: '2006 FREIGHTLIN', date: '2022-04-20', type: 'N&O',  facility: '',       expiry: '',           result: 'N&O 2' },
+                      { id: 'seed-bc-cvip2', regi: '11081163', plate: '68012P', vehicle: '2015 VOLVO',      date: '2022-01-05', type: 'CVIP', facility: 'S6903',  expiry: '2022-07-31', result: 'Pass (Repair Same Day)' },
+                      { id: 'seed-bc-cvip3', regi: '11081163', plate: '68012P', vehicle: '2015 VOLVO',      date: '2021-06-01', type: 'CVIP', facility: 'S2225',  expiry: '2021-12-31', result: 'Pass' },
+                      { id: 'seed-bc-cvip4', regi: '11848566', plate: '71085P', vehicle: '2016 VOLVO',      date: '2021-12-27', type: 'CVIP', facility: 'S15780', expiry: '2022-06-30', result: 'Pass' },
+                    ],
+                  })
+                  : inspectionKind === 'pe' ? () => setPeiNscForm({
+                    carrierName:       'BUSINESS PORTERS INC.',
+                    nscNumber:         'PE316583',
+                    profileAsOf:       '2021/07/14',
+                    collisionPoints:   '8',
+                    convictionPoints:  '6',
+                    inspectionPoints:  '9',
+                    currentActiveVehicles:                '19',
+                    currentActiveVehiclesAtLastAssessment: '19',
+                    safetyRating:      'Conditional',
+                    certStatus:        'Active',
+                    auditStatus:       'Unaudited',
+                    collisions: [
+                      { id: 'seed-pe-col1', date: '2021-05-12', severity: 'Property Damage', caseNum: 'BC2021-0583', fault: 'At Fault',      vehicles: '2', killed: '0', injured: '0', pts: '2' },
+                      { id: 'seed-pe-col2', date: '2021-02-18', severity: 'Injury',          caseNum: 'AB2021-1147', fault: 'At Fault',      vehicles: '2', killed: '0', injured: '1', pts: '4' },
+                      { id: 'seed-pe-col3', date: '2020-11-03', severity: 'Property Damage', caseNum: 'ON2020-8822', fault: 'Not at Fault',  vehicles: '1', killed: '0', injured: '0', pts: '0' },
+                      { id: 'seed-pe-col4', date: '2020-08-27', severity: 'Property Damage', caseNum: 'QC2020-5519', fault: 'Fault Unknown', vehicles: '2', killed: '0', injured: '0', pts: '2' },
+                    ],
+                    convictions: [
+                      { id: 'seed-pe-con1', date: '2021-03-04', loc: 'QC', charge: 'SIGNALISATION NON RESPECTÉE',   natCode: '317', pts: '3' },
+                      { id: 'seed-pe-con2', date: '2021-01-14', loc: 'BC', charge: 'DISOBEY TRAFFIC CONTROL DEVICE', natCode: '317', pts: '3' },
+                    ],
+                    inspections: [
+                      { id: 'seed-pe-ins1',  date: '2022-11-22', cvsaLevel: '3', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'SINGH',            status: 'P' },
+                      { id: 'seed-pe-ins2',  date: '2022-10-07', cvsaLevel: '3', log: 'Warning', tdg: 'Passed', loadSecurity: 'Passed', driverName: 'NAVJOT SINGH',     status: 'W' },
+                      { id: 'seed-pe-ins3',  date: '2021-06-21', cvsaLevel: '2', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'PANESAR',          status: 'P' },
+                      { id: 'seed-pe-ins4',  date: '2021-06-11', cvsaLevel: '3', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'BOWLAN J',         status: 'P' },
+                      { id: 'seed-pe-ins5',  date: '2021-06-10', cvsaLevel: '1', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'RATTEA SINGH',     status: 'P' },
+                      { id: 'seed-pe-ins6',  date: '2021-05-19', cvsaLevel: '3', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'SIDHU S',          status: 'W' },
+                      { id: 'seed-pe-ins7',  date: '2021-05-18', cvsaLevel: '1', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'SAINI S',          status: 'W' },
+                      { id: 'seed-pe-ins8',  date: '2021-04-06', cvsaLevel: '2', log: 'Warning', tdg: 'Passed', loadSecurity: 'Passed', driverName: 'SINGH',            status: 'W' },
+                      { id: 'seed-pe-ins9',  date: '2021-03-23', cvsaLevel: '1', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'SINGH',            status: 'O' },
+                      { id: 'seed-pe-ins10', date: '2021-03-17', cvsaLevel: '2', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'SINGH',            status: 'O' },
+                      { id: 'seed-pe-ins11', date: '2020-07-29', cvsaLevel: '1', log: 'Passed',  tdg: 'Passed', loadSecurity: 'Passed', driverName: 'INDERJEET',        status: 'O' },
+                    ],
+                    audits: [
+                      { id: 'seed-pe-aud1', date: '2021-01-13', result: 'NON-COMPLIANT', auditType: 'Compliance' },
+                    ],
+                  })
+                  : inspectionKind === 'ns' ? () => setNsNscForm({
+                    carrierName:           'MAPLE LEAF FORCE LIMITED',
+                    nscNumber:             'MAPLE739646000',
+                    profileAsOf:           '19-Aug-2022',
+                    currentFleetSize:      '14',
+                    avgDailyFleetSize:     '14.79',
+                    convictionScore:       '6.2510',
+                    inspectionScore:       '13.4179',
+                    collisionScore:        '0.0000',
+                    scoreLevel1:           '39.7531',
+                    scoreLevel2:           '45.9602',
+                    scoreLevel3:           '60.1836',
+                    safetyRating:          'Satisfactory - Unaudited',
+                    safetyRatingExpires:   '',
+                    cvsaInspections: [
+                      { id: 'seed-ns-cv01', date: '2022-11-29', cvsaNumber: '445131-1',     jur: 'NB', plates: 'PR45273 / MB',            driverMaster: 'D4391-00009-90407 / ON',  result: 'Passed',         demeritPts: '0' },
+                      { id: 'seed-ns-cv02', date: '2022-12-11', cvsaNumber: '449597',       jur: 'NB', plates: 'PR49497 / ON',            driverMaster: '3225823 / NB',             result: 'Passed',         demeritPts: '0' },
+                      { id: 'seed-ns-cv03', date: '2023-01-17', cvsaNumber: 'ONEA01539682', jur: 'ON', plates: 'PR48472 / NS',            driverMaster: '175546217 / AB',           result: 'Passed',         demeritPts: '0' },
+                      { id: 'seed-ns-cv04', date: '2023-03-16', cvsaNumber: '666079',       jur: 'NS', plates: 'PR49343 / NS',            driverMaster: 'J64570000940315 / ON',     result: 'Defect Noted',   demeritPts: '0' },
+                      { id: 'seed-ns-cv05', date: '2023-04-25', cvsaNumber: '667415',       jur: 'NS', plates: 'TC1771 / MB',             driverMaster: 'SINGH210898005 / NS',      result: 'Out-of-Service', demeritPts: '3' },
+                    ],
+                    auditHistory: [
+                      { id: 'seed-ns-a1', date: '2023-04-28', auditNum: '34843', sequence: '1', result: 'Compliant' },
+                    ],
+                    convictions: [
+                      { id: 'seed-ns-k1', offenceDate: '2020-11-19', convDate: '2021-01-19', ticket: '5488801', offence: 'OPER VEH NOT CONFORMING WITH SPECIAL PERMIT', driverMaster: 'CZIPP141270003', sectionActReg: '11 9 WDVR', pts: '3' },
+                    ],
+                    collisions: [
+                      { id: 'seed-ns-col1', date: '2020-09-04', severity: 'PROPERTY DAMAGE', location: 'MONTREAL / QC', driverMaster: '', driverJur: 'ON', plate: 'PR42409', plateJur: 'NS', pts: '0' },
+                    ],
+                    trafficOffences: [
+                      { id: 'seed-ns-t1', offenceDate: '2023-09-05', plate: 'PR45273', driverMaster: 'SINGH120992005',  statute: 'CVDH 7 1 A', description: 'FAILING TO TAKE 8 CONSECUTIVE OFF-DUTY HOURS AFTER 13 HOURS OF DRIVING TIME' },
+                      { id: 'seed-ns-t2', offenceDate: '2024-06-20', plate: 'PR45276', driverMaster: 'S04036398930615', statute: 'MVA 20 2',   description: 'LICENSE PLATE NOT CLEARLY LEGIBLE (NUMBERS WEARING OFF)' },
+                    ],
+                  })
+                  : undefined
+                }
+              />
+
+              {/* Section: Jurisdiction-specific forms */}
+              {inspectionKind === 'fmcsa' && <FmcsaInspectionForm value={fmcsaForm} onChange={setFmcsaForm} />}
+              {inspectionKind === 'cvor'  && <CvorInspectionForm  value={cvorForm}  onChange={setCvorForm}  />}
+              {inspectionKind === 'ab'    && <AbNscInspectionForm  value={abNscForm}  onChange={setAbNscForm}  />}
+              {inspectionKind === 'bc'    && <BcNscInspectionForm  value={bcNscForm}  onChange={setBcNscForm}  />}
+              {inspectionKind === 'pe'    && <PeiNscInspectionForm value={peiNscForm} onChange={setPeiNscForm} />}
+              {inspectionKind === 'ns'    && <NsNscInspectionForm  value={nsNscForm}  onChange={setNsNscForm}  />}
+
+              {/* Legacy kitchen-sink form — now disabled (replaced by per-kind focused forms) */}
+              {false && (<>
 
               {/* Section: Basic Info */}
               <div>
@@ -8716,6 +9015,8 @@ export function InspectionsPage() {
                   ))}
                 </div>
               </div>
+
+              </>)}
 
             </div>
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2 flex-shrink-0">

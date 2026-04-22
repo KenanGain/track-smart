@@ -33,7 +33,7 @@ function pbpColor(cat:string, v:number) {
 
 const PBP_PAGE = 10;
 
-function BcMonthHistoryTable() {
+export function BcMonthHistoryTable() {
   const [page, setPage] = useState(1);
   const n     = BC_MONTH_ROWS.length;
   const pages = Math.max(1, Math.ceil(n / PBP_PAGE));

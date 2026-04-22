@@ -582,55 +582,7 @@ export function NscPeiPerformanceCard({ data }: { data: PeiNscData }) {
         </div>
 
         {/* SECTION 4: C */}
-        <div className="px-5 py-5 grid grid-cols-2 gap-8 border-t border-slate-100">
-          <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Carrier Identifiers</div>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">NSC #</span>
-                <span className="text-sm font-bold font-mono text-slate-900">{data.nscNumber}</span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-xs text-slate-500 shrink-0">Company</span>
-                <span className="text-xs font-bold text-slate-900 text-right">{data.carrierName}</span>
-              </div>
-              {data.contactName && (
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-slate-500 shrink-0">Name</span>
-                  <span className="text-xs font-semibold text-slate-700 text-right">{data.contactName}</span>
-                </div>
-              )}
-              {data.carrierInfo && (
-                <div className="flex items-start justify-between gap-3">
-                  <span className="text-xs text-slate-500 shrink-0">Address</span>
-                  <span className="text-xs font-semibold text-slate-700 text-right leading-snug">{data.carrierInfo.mailingAddress}</span>
-                </div>
-              )}
-              {data.phone && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-slate-500">Phone</span>
-                  <span className="text-sm font-bold font-mono text-slate-800">{data.phone}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500">Jurisdiction</span>
-                <span className="text-sm font-bold font-mono text-slate-900">{data.jurisdiction}</span>
-              </div>
-              {data.carrierInfo && (
-                <>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-slate-500">Primary Business</span>
-                    <span className="text-sm font-bold text-slate-800">{data.carrierInfo.primaryBusiness}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-slate-500">Extra-Provincial</span>
-                    <span className="text-sm font-bold text-slate-800">{data.carrierInfo.extraProvincial ? 'Yes' : 'No'}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
+        <div className="px-5 py-5 border-t border-slate-100">
           <div>
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Safety Fitness Certificate</div>
             <div className="space-y-2.5">
