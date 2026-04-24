@@ -22,6 +22,7 @@ import {
     MOCK_DRIVER_DETAILED_TEMPLATE,
     type Driver,
 } from '@/pages/profile/carrier-profile.data';
+import { getDriversForAccount, getAssetsForAccount, getFleetCountsForAccount } from './carrier-fleet.data';
 
 // ─── Compact seed types ──────────────────────────────────────────────────────
 
@@ -121,6 +122,24 @@ interface CarrierSeed {
 // original INITIAL_VIEW_DATA / UI_DATA / MOCK_DRIVERS defaults.
 
 export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
+    'acct-001': {
+        identity: { legalName: 'Acme Trucking Inc.', dbaName: 'Acme Logistics', dotNumber: '1234567', cvorNumber: '', nscNumber: '', rinNumber: '', businessType: 'Corporation', stateOfInc: 'Delaware', extraProvincial: 'No' },
+        legalAddress: { country: 'United States', street: '1200 North Dupont Hwy', apt: '', city: 'Wilmington', state: 'DE' as any, zip: '19801' },
+        mailingAddress: { streetOrPo: 'PO Box 8890', city: 'Wilmington', state: 'DE' as any, zip: '19899', country: 'United States' },
+        fleet: { powerUnits: 18, drivers: 22, nonCmv: 0 },
+        operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
+        directors: [
+            { name: 'Johnathan Doe', role: 'Director of Operations', isPrimary: true, stockClass: 'Class A Common Stock', ownershipPct: 65, email: 'j.doe@acmetrucking.com', phone: '+1 (555) 123-4567', since: 'Jan 2019', dateAppointed: '2019-01-15' },
+            { name: 'Sarah Smith', role: 'VP of Operations', isPrimary: false, stockClass: 'Class B Common Stock', ownershipPct: 35, email: 's.smith@acmetrucking.com', phone: '+1 (555) 987-6543', since: 'Mar 2020', dateAppointed: '2020-03-10' },
+        ],
+        offices: [
+            { label: 'Corporate HQ - Wilmington', address: '1200 North Dupont Hwy, Wilmington, DE 19801', contact: 'Head Office', phone: '+1 (555) 123-4567' },
+            { label: 'Denver Regional Office', address: '101 Broadway, Denver, CO 80203', contact: 'Regional Manager', phone: '+1 (303) 555-0199' },
+        ],
+        drivers: [],
+        assets: [],
+    },
+
     'acct-002': {
         identity: { legalName: 'Cascade Freight Systems LLC', dbaName: 'Cascade Freight', dotNumber: '2891034', cvorNumber: '', nscNumber: '', rinNumber: '', businessType: 'LLC', stateOfInc: 'California', extraProvincial: 'No' },
         legalAddress: { country: 'United States', street: '4200 SE Powell Blvd', apt: '', city: 'Portland', state: 'OR' as any, zip: '97206' },
@@ -358,6 +377,88 @@ export const CARRIER_SEEDS: Record<string, CarrierSeed> = {
 
 // ─── Generic seed factory for carriers where the individual flavor is less
 // important. Keeps the dataset file readable without 30× repetition.
+const FIRST_NAMES = ['Alex','Jordan','Sam','Casey','Taylor','Morgan','Jamie','Riley','Quinn','Avery','Cameron','Drew','Parker','Reese','Skyler','Emerson','Hayden','Logan','Peyton','Rowan','Sage','Blake','Jesse','Kai','Micah','Noel','Phoenix','River','Shay','Tatum','Blair','Harley','Lane','Marley','Oakley'];
+const LAST_NAMES = ['Morgan','Rivera','Patel','Nguyen','Brooks','Hughes','Sanchez','Wright','Cooper','Reed','Bailey','Murphy','Foster','Howard','Ward','Watson','Powell','Long','Cole','Perry','Butler','Simmons','Henderson','Coleman','Jenkins','Price','Webb','Ross','Stone','Harrison','Morrison','Burke','Cross','Dean','Fisher'];
+
+function seededPick<T>(arr: T[], n: number, offset: number): T {
+    return arr[(n + offset) % arr.length];
+}
+
+// Reusable driver seed generator (shared by genericSeed + buildProfileBundle padding).
+export function generateDriverSeeds(
+    count: number,
+    context: {
+        city: string;
+        state: string;
+        country: 'USA' | 'Canada';
+        zip: string;
+        areaCode: string;
+        legalName: string;
+        domain: string;
+        startIndex?: number;
+    }
+): DriverSeed[] {
+    const out: DriverSeed[] = [];
+    const start = context.startIndex ?? 0;
+    for (let k = 0; k < count; k++) {
+        const i = start + k;
+        const first = seededPick(FIRST_NAMES, i, context.legalName.length);
+        const last = seededPick(LAST_NAMES, i * 3 + 1, context.areaCode.length);
+        const types: DriverSeed['driverType'][] = ['Long Haul Driver', 'Local Driver', 'Owner Operator'];
+        const status: DriverSeed['status'] =
+            i % 17 === 0 ? 'On Leave' :
+            i % 23 === 0 ? 'Inactive' :
+            'Active';
+        out.push({
+            firstName: first,
+            lastName: last,
+            status,
+            phone: `(${context.areaCode}) 555-${String(1000 + i).slice(-4)}`,
+            email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@${context.domain}`,
+            hiredDate: `${2018 + (i % 7)}-${String(1 + (i % 12)).padStart(2, '0')}-${String(1 + (i % 27)).padStart(2, '0')}`,
+            terminal: `${context.city}, ${context.state}`,
+            driverType: types[i % types.length],
+            licenseNumber: `${last.slice(0, 3).toUpperCase()}${context.areaCode}${String(10 + i).slice(-4)}`,
+            licenseState: context.state,
+            licenseExpiry: `${2026 + (i % 4)}-${String(1 + (i % 12)).padStart(2, '0')}-${String(1 + (i % 27)).padStart(2, '0')}`,
+            city: context.city,
+            state: context.state,
+            zip: context.zip,
+            country: context.country,
+        });
+    }
+    return out;
+}
+
+// Reusable asset seed generator, split into trucks / trailers / vans by ratio.
+export function generateAssetSeeds(
+    count: number,
+    context: { state: string; prefix: string; startIndex?: number }
+): AssetSeed[] {
+    if (count <= 0) return [];
+    const start = context.startIndex ?? 0;
+    const trucks = Math.max(0, Math.round(count * 0.65));
+    const trailers = Math.max(0, Math.round(count * 0.30));
+    const vans = Math.max(0, count - trucks - trailers);
+    const truckMakes = [['Freightliner','Cascadia'],['Kenworth','T680'],['Peterbilt','579'],['Volvo','VNL 760'],['Mack','Anthem'],['International','LT625']];
+    const trailerMakes = [['Utility','3000R'],['Great Dane','Everest'],['Wabash','DuraPlate'],['Hyundai','Translead']];
+    const vanMakes = [['Ford','Transit'],['Mercedes','Sprinter'],['Ram','ProMaster']];
+    const out: AssetSeed[] = [];
+    for (let i = 0; i < trucks; i++) {
+        const [mk, mdl] = truckMakes[i % truckMakes.length];
+        out.push({ unitNumber: `${context.prefix}-T${String(100 + start + i).padStart(3, '0')}`, assetType: 'Truck', year: 2018 + ((i + start) % 7), make: mk, model: mdl, plateNumber: `${context.state}-${context.prefix}T${start + i + 1}`, plateJurisdiction: context.state, status: (i % 11 === 0 ? 'Maintenance' : 'Active') });
+    }
+    for (let i = 0; i < trailers; i++) {
+        const [mk, mdl] = trailerMakes[i % trailerMakes.length];
+        out.push({ unitNumber: `${context.prefix}-TR${String(100 + start + i).padStart(3, '0')}`, assetType: 'Trailer', year: 2017 + ((i + 2) % 7), make: mk, model: mdl, plateNumber: `${context.state}-${context.prefix}TR${start + i + 1}`, plateJurisdiction: context.state, status: 'Active' });
+    }
+    for (let i = 0; i < vans; i++) {
+        const [mk, mdl] = vanMakes[i % vanMakes.length];
+        out.push({ unitNumber: `${context.prefix}-V${String(10 + start + i).padStart(2, '0')}`, assetType: 'Van', year: 2019 + ((i + 1) % 6), make: mk, model: mdl, plateNumber: `${context.state}-${context.prefix}V${start + i + 1}`, plateJurisdiction: context.state, status: 'Active' });
+    }
+    return out;
+}
+
 function genericSeed(
     legalName: string,
     dbaName: string,
@@ -375,6 +476,18 @@ function genericSeed(
 ): CarrierSeed {
     const domain = dbaName.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
     const cvorNumber = state === 'ON' ? `CVOR-${areaCode}${legalName.length}0` : '';
+    const zipUS = `${(parseInt(areaCode) * 100 + 1) % 99999}`.padStart(5, '0');
+    const zip = country === 'Canada' ? 'A1A 1A1' : zipUS;
+
+    // Driver / asset arrays now live in carrier-fleet.data.ts. Keep these
+    // empty on the seed so CarrierSeed only holds identity / directors /
+    // offices / operations. `trucks` / `vans` are kept for the fleet stub
+    // below but the authoritative counts come from getFleetCountsForAccount().
+    const drivers: DriverSeed[] = [];
+    const assets: AssetSeed[] = [];
+    const trucks = Math.max(1, Math.round(assetsCount * 0.60));
+    const vans = Math.max(0, assetsCount - trucks - Math.round(assetsCount * 0.35));
+
     return {
         identity: {
             legalName,
@@ -387,26 +500,58 @@ function genericSeed(
             stateOfInc: country === 'Canada' ? 'California' : 'Delaware',
             extraProvincial: country === 'Canada' ? 'Yes' : 'No',
         },
-        legalAddress: { country, street: `${100 + legalName.length * 7} Main St`, apt: '', city, state, zip: country === 'Canada' ? 'A1A 1A1' : '00000' },
-        mailingAddress: { streetOrPo: `PO Box ${1000 + legalName.length}`, city, state, zip: country === 'Canada' ? 'A1A 1A1' : '00000', country },
-        fleet: { powerUnits: Math.max(1, Math.round(assetsCount * 0.7)), drivers: driversCount, nonCmv: Math.max(0, Math.round(assetsCount * 0.05)) },
+        legalAddress: { country, street: `${100 + legalName.length * 7} Main St`, apt: '', city, state, zip },
+        mailingAddress: { streetOrPo: `PO Box ${1000 + legalName.length}`, city, state, zip, country },
+        fleet: { powerUnits: trucks, drivers: driversCount, nonCmv: vans },
         operations: { operationClassification: 'Authorized for Hire', carrierOperation: 'Interstate', fmcsaAuthorityType: 'Motor Carrier of Property' },
         directors: [
             { name: primaryDirector, role: 'President / CEO', isPrimary: true, stockClass: 'Class A Common', ownershipPct: 60, email: `${primaryDirector.split(' ')[0].toLowerCase()}@${domain}`, phone, since: '2018', dateAppointed: '2018-01-01' },
             { name: secondaryDirector, role: 'VP Operations', isPrimary: false, stockClass: 'Class B Common', ownershipPct: 40, email: `${secondaryDirector.split(' ')[0].toLowerCase()}@${domain}`, phone: phone.slice(0, -1) + '2', since: '2019', dateAppointed: '2019-01-01' },
         ],
         offices: [{ label: `${city} HQ`, address: `100 Main St, ${city}, ${state}`, contact: primaryDirector, phone }],
-        drivers: driversCount === 0 ? [] : [
-            { firstName: 'Alex', lastName: 'Morgan', status: 'Active', phone: `(${areaCode}) 555-0011`, email: `alex.morgan@${domain}`, hiredDate: '2020-04-01', terminal: `${city}, ${state}`, driverType: 'Long Haul Driver', licenseNumber: `MOR${areaCode}11`, licenseState: state, licenseExpiry: '2027-04-01', city, state, zip: country === 'Canada' ? 'A1A 1A1' : '00000', country: country === 'Canada' ? 'Canada' : 'USA' },
-            { firstName: 'Jordan', lastName: 'Rivera', status: 'Active', phone: `(${areaCode}) 555-0012`, email: `jordan.rivera@${domain}`, hiredDate: '2021-07-15', terminal: `${city}, ${state}`, driverType: 'Local Driver', licenseNumber: `RIV${areaCode}12`, licenseState: state, licenseExpiry: '2027-07-14', city, state, zip: country === 'Canada' ? 'A1A 1A1' : '00000', country: country === 'Canada' ? 'Canada' : 'USA' },
-            { firstName: 'Sam', lastName: 'Patel', status: 'Active', phone: `(${areaCode}) 555-0013`, email: `sam.patel@${domain}`, hiredDate: '2019-11-02', terminal: `${city}, ${state}`, driverType: 'Long Haul Driver', licenseNumber: `PAT${areaCode}13`, licenseState: state, licenseExpiry: '2026-11-01', city, state, zip: country === 'Canada' ? 'A1A 1A1' : '00000', country: country === 'Canada' ? 'Canada' : 'USA' },
-        ],
-        assets: assetsCount === 0 ? [] : [
-            { unitNumber: `${dbaName.slice(0, 2).toUpperCase()}-001`, assetType: 'Truck', year: 2022, make: 'Freightliner', model: 'Cascadia', plateNumber: `${state}-${dbaName.slice(0, 2).toUpperCase()}001`, plateJurisdiction: state, status: 'Active' },
-            { unitNumber: `${dbaName.slice(0, 2).toUpperCase()}-002`, assetType: 'Truck', year: 2021, make: 'Kenworth', model: 'T680', plateNumber: `${state}-${dbaName.slice(0, 2).toUpperCase()}002`, plateJurisdiction: state, status: 'Active' },
-        ],
+        drivers,
+        assets,
     };
 }
+
+// ─── Per-carrier cargo (commodities hauled) ──────────────────────────────────
+// Keyed by account id. Values match UI_DATA.cargoEditor friendly labels.
+// Carriers without an entry fall back to DEFAULT_CARGO.
+
+const DEFAULT_CARGO = ['General Freight', 'Household Goods', 'Paper Products'];
+
+export const CARRIER_CARGO: Record<string, string[]> = {
+    'acct-001': ['General Freight', 'Household Goods', 'Building Materials', 'Fresh Produce', 'Refrigerated Food', 'Beverages'], // Acme — mixed
+    'acct-002': ['General Freight', 'Fresh Produce', 'Beverages', 'Paper Products'], // Cascade — Pacific NW freight + produce
+    'acct-003': ['General Freight', 'Auto Parts', 'Household Goods', 'Electronics', 'Building Materials'], // Northern Lights — mixed Canadian
+    'acct-004': ['Building Materials', 'Construction', 'Machinery, Large Objects'], // Sunbelt — desert construction
+    'acct-005': ['General Freight', 'Steel', 'Machinery, Large Objects', 'Auto Parts', 'Paper Products', 'Metal: sheets, coils, rolls'], // Great Lakes — industrial midwest
+    'acct-006': ['General Freight', 'Grocery Items'], // Evergreen — small/new
+    'acct-007': ['Logs, Poles, Beams, Lumber', 'Building Materials', 'Grain, Feed, Hay'], // Maple Ridge — Alberta lumber/ag
+    'acct-008': ['General Freight', 'Oilfield Equipment', 'Liquids, Gases', 'Chemicals'], // Lone Star — Texas oilfield
+    'acct-009': ['General Freight'], // Rocky Mountain — inactive
+    'acct-010': ['Refrigerated Food', 'Fresh Produce', 'Beverages', 'Sea Food'], // Atlantic Coastal — FL reefer
+    'acct-011': ['Grain, Feed, Hay', 'Farm Supplies', 'Livestock'], // Prairie Express — grain belt
+    'acct-012': ['General Freight', 'Grocery Items', 'Meat'], // Heartland
+    'acct-013': ['Electronics', 'General Freight', 'Intermodal Containers'], // Bay Area — tech/port
+    'acct-014': ['Building Materials', 'Chemicals', 'Machinery, Large Objects'], // Summit Peak
+    'acct-015': ['General Freight', 'Paper Products', 'Beverages'], // St. Lawrence
+    'acct-016': ['Furniture', 'Household Goods', 'Appliances', 'General Freight'], // Blue Ridge — NC furniture
+    'acct-017': ['Chemicals', 'Liquids, Gases', 'Building Materials'], // Desert Wind
+    'acct-018': ['Intermodal Containers', 'General Freight', 'Logs, Poles, Beams, Lumber'], // Pacific Crown
+    'acct-019': ['Pharmaceutical Products', 'General Freight', 'Paper Products'], // Liberty Bell — Philly pharma
+    'acct-020': ['Auto Parts', 'General Freight', 'Appliances'], // Midwest Anchor
+    'acct-021': ['General Freight'], // Greenfield — new
+    'acct-022': ['Grain, Feed, Hay', 'Logs, Poles, Beams, Lumber'], // Silver Creek — Idaho
+    'acct-023': ['General Freight', 'Beverages', 'Paper Products'], // Gateway
+    'acct-024': ['Sea Food', 'Refrigerated Food', 'General Freight'], // Harborline
+    'acct-025': ['Logs, Poles, Beams, Lumber'], // Thunder Bay — inactive
+    'acct-026': ['Grain, Feed, Hay', 'General Freight', 'Livestock'], // Iron Horse
+    'acct-027': ['Paper Products', 'Intermodal Containers', 'General Freight'], // Coastal Edge — Savannah port
+    'acct-028': ['Sea Food', 'Chemicals', 'Refrigerated Food'], // Crescent City
+    'acct-029': ['Oilfield Equipment', 'Chemicals', 'Liquids, Gases'], // Polar Star
+    'acct-030': ['Fresh Produce', 'Beverages', 'General Freight'], // Redwood
+};
 
 // ─── Builders that expand seeds to the exact shapes the profile expects ──────
 
@@ -476,11 +621,12 @@ export interface CarrierProfileBundle {
     directors: typeof DIRECTOR_UI.directors;
     officeLocations: typeof OFFICE_LOCATIONS;
     drivers: Driver[];
+    assets: import('@/pages/assets/assets.data').Asset[];
     assetSummary: { total: number; active: number; maintenance: number; deactivated: number };
 }
 
 export function buildProfileBundle(accountId: string | undefined | null): CarrierProfileBundle | null {
-    if (!accountId || accountId === 'acct-001') return null;
+    if (!accountId) return null;
     const account = ACCOUNTS_DB.find(a => a.id === accountId) as AccountRecord | undefined;
     const seed = CARRIER_SEEDS[accountId];
     if (!account || !seed) return null;
@@ -500,13 +646,26 @@ export function buildProfileBundle(accountId: string | undefined | null): Carrie
         actionLabel: 'View More',
     }));
 
+    // Fleet counts are derived from the refined fleet database
+    // (carrier-fleet.data.ts), which owns all drivers and assets for this
+    // carrier with region-aware naming, proper VINs, plates, etc.
+    const fleetCounts = getFleetCountsForAccount(accountId);
+    const derivedPowerUnits = fleetCounts.powerUnits;
+    const derivedNonCmv = fleetCounts.nonCmv;
+    const derivedDrivers = fleetCounts.drivers;
+
     // uiData override — patch the .values blocks that feed the visible fields.
     const uiData: typeof UI_DATA = JSON.parse(JSON.stringify(UI_DATA));
     (uiData.editModals.corporateIdentity.values as any) = { ...seed.identity };
     (uiData.editModals.legalMainAddress.values as any) = { ...seed.legalAddress };
     (uiData.editModals.mailingAddress.values as any) = { ...seed.mailingAddress };
-    (uiData.editModals.fleetDriverOverview.values as any) = { ...seed.fleet };
+    (uiData.editModals.fleetDriverOverview.values as any) = {
+        powerUnits: derivedPowerUnits,
+        drivers: derivedDrivers,
+        nonCmv: derivedNonCmv,
+    };
     (uiData.editModals.operationsAuthority.values as any) = { ...seed.operations };
+    (uiData.cargoEditor.values as any) = { selected: [...(CARRIER_CARGO[accountId] ?? DEFAULT_CARGO)] };
 
     // Directors dictionary keyed by name
     const directors: typeof DIRECTOR_UI.directors = {} as any;
@@ -542,16 +701,17 @@ export function buildProfileBundle(accountId: string | undefined | null): Carrie
         ],
     }));
 
-    // Drivers expanded from seeds
-    const drivers = seed.drivers.map((s, i) => buildDriverFromSeed(accountId, i, s));
+    // Drivers come directly from the refined fleet database
+    const drivers = getDriversForAccount(accountId);
 
-    // Asset summary (used for fleet overview override)
+    // Asset summary derived from the same database (operationalStatus-aware)
+    const carrierAssets = getAssetsForAccount(accountId);
     const assetSummary = {
-        total: seed.assets.length,
-        active: seed.assets.filter(a => a.status === 'Active').length,
-        maintenance: seed.assets.filter(a => a.status === 'Maintenance').length,
-        deactivated: seed.assets.filter(a => a.status === 'Deactivated').length,
+        total: carrierAssets.length,
+        active: carrierAssets.filter(a => a.operationalStatus === 'Active').length,
+        maintenance: carrierAssets.filter(a => a.operationalStatus === 'Maintenance').length,
+        deactivated: carrierAssets.filter(a => a.operationalStatus === 'Deactivated').length,
     };
 
-    return { viewData, uiData, directors, officeLocations, drivers, assetSummary };
+    return { viewData, uiData, directors, officeLocations, drivers, assets: carrierAssets, assetSummary };
 }

@@ -1269,7 +1269,7 @@ export function CarrierProfilePage({ accountId }: { accountId?: string } = {}) {
 
                 {activeTab === 'assets' && (
                     <div className="w-full">
-                        <AssetDirectoryPage isEmbedded={true} />
+                        <AssetDirectoryPage isEmbedded={true} assets={profileBundle?.assets} />
                     </div>
                 )}
 

@@ -109,8 +109,8 @@ const TD = ({ children, className, align = 'left' }: { children?: React.ReactNod
 );
 
 // --- Main Page Component ---
-export function AssetDirectoryPage({ isEmbedded = false }: { isEmbedded?: boolean }) {
-    const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
+export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: { isEmbedded?: boolean; assets?: Asset[] }) {
+    const [assets, setAssets] = useState<Asset[]>(assetsProp ?? INITIAL_ASSETS);
     const [activeTab, setActiveTab] = useState('all');
     const [search, setSearch] = useState("");
     const [activeStatusFilter, setActiveStatusFilter] = useState('all');
