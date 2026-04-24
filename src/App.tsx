@@ -8,6 +8,7 @@ import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
 import { LocationsPage } from '@/pages/account/LocationsPage'
 import { AccountsListPage } from '@/pages/accounts/AccountsListPage'
+import { AddAccountPage } from '@/pages/accounts/AddAccountPage'
 import type { AccountRecord } from '@/pages/accounts/accounts.data'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
@@ -77,6 +78,9 @@ function App() {
         }
         if (path === "/accounts") {
             return <AccountsListPage onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} />
+        }
+        if (path === "/accounts/new") {
+            return <AddAccountPage onNavigate={handleNavigate} />
         }
         if (path === "/settings/general") {
             return <GeneralSettingsPage />

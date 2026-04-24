@@ -1,5 +1,5 @@
-import { useState, Fragment } from 'react';
-import { Activity, Search, Columns3, ChevronDown, ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState, Fragment } from 'react';
+import { Activity, Search, Columns, ChevronDown, ChevronRight, Calendar } from 'lucide-react';
 import { NscNsPerformanceBlock } from './NscNsPerformanceBlock';
 
 // ─── NS Thresholds (matches NscNsPerformanceCard) ────────────────────────────
@@ -258,101 +258,236 @@ function NsFleetActivityChart({ data }: { data: NsPullRow[] }) {
 
 // ─── Pull-by-Pull Data table with drill-down ─────────────────────────────────
 
+const ALL_NS_COLS = ['pullDate','windowLabel','status','fleet','avgFleet','convictionScore','inspectionScore','collisionScore','totalScore','pctOfLevel3'] as const;
+type NsColKey = typeof ALL_NS_COLS[number];
+
 function NsPullByPullTable({ data }: { data: NsPullRow[] }) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'All' | NsStatus>('All');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo]     = useState('');
+  const [activeDropdown, setActiveDropdown] = useState<null | 'status' | 'columns'>(null);
+  const [colVis, setColVis] = useState<Record<NsColKey, boolean>>({
+    pullDate: true, windowLabel: true, status: true, fleet: true, avgFleet: true,
+    convictionScore: true, inspectionScore: true, collisionScore: true, totalScore: true, pctOfLevel3: true,
+  });
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setActiveDropdown(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
   const PAGE = 10;
+
+  const resetFilters = () => {
+    setSearch(''); setStatusFilter('All'); setDateFrom(''); setDateTo(''); setPage(1);
+  };
+
+  const pullDateToIso = (s: string) => {
+    const m = s.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+    if (!m) return '';
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const mm = (months.indexOf(m[2]) + 1).toString().padStart(2, '0');
+    return `${m[3]}-${mm}-${m[1]}`;
+  };
 
   const filtered = data.filter(r => {
     const q = search.toLowerCase();
-    return !q
-      || r.pullDate.toLowerCase().includes(q)
+    if (q && !(
+      r.pullDate.toLowerCase().includes(q)
       || r.windowLabel.toLowerCase().includes(q)
-      || nsStatus(r.totalScore).toLowerCase().includes(q);
+      || nsStatus(r.totalScore).toLowerCase().includes(q)
+    )) return false;
+    if (statusFilter !== 'All' && nsStatus(r.totalScore) !== statusFilter) return false;
+    const iso = pullDateToIso(r.pullDate);
+    if (dateFrom && iso < dateFrom) return false;
+    if (dateTo && iso > dateTo) return false;
+    return true;
   });
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const rows  = filtered.slice((page - 1) * PAGE, page * PAGE);
 
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
-        <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Pull-by-Pull Data</span>
-        <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{data.length} pulls</span>
-        <span className="text-[10px] text-slate-400">newest first &middot; click row &rarr; individual NSC performance</span>
-      </div>
+  const colLabel: Record<NsColKey, string> = {
+    pullDate: 'Pull Date', windowLabel: '12-Month Window', status: 'Status',
+    fleet: 'Fleet', avgFleet: 'Avg Fleet',
+    convictionScore: 'Conviction', inspectionScore: 'Inspection', collisionScore: 'Collision',
+    totalScore: 'Total', pctOfLevel3: '% of L3',
+  };
+  const visible = (k: NsColKey) => colVis[k];
 
-      <div className="px-5 py-2.5 border-b border-slate-100 flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search date, window, or status…"
-            className="w-full pl-8 pr-3 py-1.5 text-[11px] border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-400"
-          />
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm" ref={dropdownRef}>
+      {/* Filters & Search Toolbar */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-4 border-b border-gray-200 bg-white">
+        <div className="flex flex-wrap items-center gap-3">
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Calendar size={16} className="text-gray-400" />
+              </div>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+              />
+            </div>
+            <span className="text-gray-400">-</span>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Calendar size={16} className="text-gray-400" />
+              </div>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+              />
+            </div>
+          </div>
+
+          <div className="relative z-50">
+            <button
+              onClick={() => setActiveDropdown(activeDropdown === 'status' ? null : 'status')}
+              className={`flex items-center gap-2 px-3 py-2 bg-white border rounded-lg text-sm font-medium text-gray-500 hover:border-blue-600 focus:outline-none transition-all shadow-sm ${activeDropdown === 'status' ? 'border-blue-600 ring-2 ring-blue-600/20' : 'border-gray-200'}`}
+            >
+              <span>Status</span>
+              <span className="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-gray-100 rounded text-gray-700 min-w-[36px] text-center">
+                {statusFilter}
+              </span>
+              <ChevronDown size={18} className="text-gray-400" />
+            </button>
+            {activeDropdown === 'status' && (
+              <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl py-1 max-h-60 overflow-y-auto">
+                {(['All','Low','Moderate','High','Critical'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => { setStatusFilter(s); setActiveDropdown(null); setPage(1); }}
+                    className={`block w-full text-left px-4 py-2 text-sm hover:bg-blue-50 hover:text-blue-600 ${statusFilter === s ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'}`}
+                  >{s}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setActiveDropdown(activeDropdown === 'columns' ? null : 'columns')}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-500 hover:border-blue-600 focus:outline-none transition-all shadow-sm"
+            >
+              <Columns size={18} />
+              <span>Columns</span>
+              <ChevronDown size={18} className="text-gray-400" />
+            </button>
+            {activeDropdown === 'columns' && (
+              <div className="absolute right-0 mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl py-2 z-20 max-h-60 overflow-y-auto">
+                {ALL_NS_COLS.map(col => (
+                  <label key={col} className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={colVis[col]}
+                      onChange={e => setColVis(prev => ({ ...prev, [col]: e.target.checked }))}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-3 h-4 w-4"
+                    />
+                    <span className="text-sm text-gray-700">{colLabel[col]}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="h-6 w-px bg-gray-300 mx-1 hidden sm:block"></div>
+
+          <button
+            onClick={resetFilters}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium hover:underline"
+          >Reset filters</button>
         </div>
-        <span className="text-[10px] text-slate-500 whitespace-nowrap ml-auto">{rows.length} of {total}</span>
-        <button className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-600 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50">
-          <Columns3 size={12}/>Columns
-        </button>
+
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative w-full md:w-72">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search size={18} className="text-gray-400" />
+            </div>
+            <input
+              className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg leading-5 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 sm:text-sm transition-colors shadow-sm"
+              placeholder="Search pulls, windows, or status..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+            />
+          </div>
+          <div className="text-sm text-gray-500 whitespace-nowrap hidden lg:block border-l border-gray-200 pl-4">
+            <span className="font-semibold text-gray-900">{total}</span> Records Found
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-[11px]">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/60">
-              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Pull Date &darr;</th>
-              <th className="px-4 py-2.5 text-left  text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">12-Month Window</th>
-              <th className="px-4 py-2.5 text-center text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Status</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Fleet</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Avg Fleet</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-amber-500  uppercase tracking-wider whitespace-nowrap">Conviction</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-blue-500   uppercase tracking-wider whitespace-nowrap">Inspection</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-rose-400   uppercase tracking-wider whitespace-nowrap">Collision</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-slate-500  uppercase tracking-wider whitespace-nowrap">Total</th>
-              <th className="px-4 py-2.5 text-right text-[9px] font-bold text-slate-500  uppercase tracking-wider whitespace-nowrap">% of L3</th>
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              {visible('pullDate')        && <th className="px-6 py-3 text-left   text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Pull Date &darr;</th>}
+              {visible('windowLabel')     && <th className="px-6 py-3 text-left   text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">12-Month Window</th>}
+              {visible('status')          && <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Status</th>}
+              {visible('fleet')           && <th className="px-6 py-3 text-right  text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Fleet</th>}
+              {visible('avgFleet')        && <th className="px-6 py-3 text-right  text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Avg Fleet</th>}
+              {visible('convictionScore') && <th className="px-6 py-3 text-right  text-xs font-semibold text-amber-500 uppercase tracking-wider whitespace-nowrap">Conviction</th>}
+              {visible('inspectionScore') && <th className="px-6 py-3 text-right  text-xs font-semibold text-blue-500  uppercase tracking-wider whitespace-nowrap">Inspection</th>}
+              {visible('collisionScore')  && <th className="px-6 py-3 text-right  text-xs font-semibold text-rose-400  uppercase tracking-wider whitespace-nowrap">Collision</th>}
+              {visible('totalScore')      && <th className="px-6 py-3 text-right  text-xs font-semibold text-gray-700  uppercase tracking-wider whitespace-nowrap">Total</th>}
+              {visible('pctOfLevel3')     && <th className="px-6 py-3 text-right  text-xs font-semibold text-gray-500  uppercase tracking-wider whitespace-nowrap">% of L3</th>}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="bg-white divide-y divide-gray-100">
             {rows.map((r, idx) => {
               const st = nsStatus(r.totalScore);
-              const isLatest    = page === 1 && idx === 0 && !search;
+              const isLatest    = page === 1 && idx === 0 && !search && statusFilter === 'All' && !dateFrom && !dateTo;
               const isExpanded  = expanded === r.id;
               return (
                 <Fragment key={r.id}>
                   <tr
                     onClick={() => setExpanded(isExpanded ? null : r.id)}
-                    className={`border-b border-slate-50 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/30' : 'hover:bg-slate-50/60'}`}
+                    className={`cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}
                   >
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        {isLatest && (
-                          <span className="bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Latest</span>
-                        )}
-                        <span className="font-semibold text-slate-800">{r.pullDate}</span>
-                        {isExpanded ? <ChevronDown size={12} className="text-slate-400"/> : <ChevronRight size={12} className="text-slate-400"/>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="text-slate-700">{r.windowLabel}</div>
-                      <div className="text-[10px] text-slate-400">{r.inspections} inspection{r.inspections !== 1 ? 's' : ''}</div>
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${nsStBadgeCls(st)}`}>{st}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-slate-700">{r.fleet}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-slate-600">{r.avgFleet.toFixed(2)}</td>
-                    <td className={`px-4 py-2.5 text-right font-mono font-bold ${r.convictionScore > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{r.convictionScore.toFixed(2)}</td>
-                    <td className={`px-4 py-2.5 text-right font-mono font-bold ${r.inspectionScore > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{r.inspectionScore.toFixed(2)}</td>
-                    <td className={`px-4 py-2.5 text-right font-mono font-bold ${r.collisionScore > 0 ? 'text-red-600' : 'text-slate-300'}`}>{r.collisionScore.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono font-black" style={{ color: nsStColor(st) }}>{r.totalScore.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-slate-600">{r.pctOfLevel3.toFixed(1)}%</td>
+                    {visible('pullDate') && (
+                      <td className="px-6 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {isLatest && (
+                            <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Latest</span>
+                          )}
+                          <span className="text-sm font-semibold text-gray-900">{r.pullDate}</span>
+                          {isExpanded ? <ChevronDown size={14} className="text-gray-400"/> : <ChevronRight size={14} className="text-gray-400"/>}
+                        </div>
+                      </td>
+                    )}
+                    {visible('windowLabel') && (
+                      <td className="px-6 py-3">
+                        <div className="text-sm text-gray-700">{r.windowLabel}</div>
+                        <div className="text-xs text-gray-400">{r.inspections} inspection{r.inspections !== 1 ? 's' : ''}</div>
+                      </td>
+                    )}
+                    {visible('status') && (
+                      <td className="px-6 py-3 text-center">
+                        <span className={`inline-block text-[11px] font-bold px-2.5 py-1 rounded-full border ${nsStBadgeCls(st)}`}>{st}</span>
+                      </td>
+                    )}
+                    {visible('fleet')           && <td className="px-6 py-3 text-right text-sm font-mono text-gray-700 whitespace-nowrap">{r.fleet}</td>}
+                    {visible('avgFleet')        && <td className="px-6 py-3 text-right text-sm font-mono text-gray-600 whitespace-nowrap">{r.avgFleet.toFixed(2)}</td>}
+                    {visible('convictionScore') && <td className={`px-6 py-3 text-right text-sm font-mono font-bold whitespace-nowrap ${r.convictionScore > 0 ? 'text-amber-600' : 'text-gray-300'}`}>{r.convictionScore.toFixed(2)}</td>}
+                    {visible('inspectionScore') && <td className={`px-6 py-3 text-right text-sm font-mono font-bold whitespace-nowrap ${r.inspectionScore > 0 ? 'text-blue-600' : 'text-gray-300'}`}>{r.inspectionScore.toFixed(2)}</td>}
+                    {visible('collisionScore')  && <td className={`px-6 py-3 text-right text-sm font-mono font-bold whitespace-nowrap ${r.collisionScore > 0 ? 'text-red-600' : 'text-gray-300'}`}>{r.collisionScore.toFixed(2)}</td>}
+                    {visible('totalScore')      && <td className="px-6 py-3 text-right text-sm font-mono font-black whitespace-nowrap" style={{ color: nsStColor(st) }}>{r.totalScore.toFixed(2)}</td>}
+                    {visible('pctOfLevel3')     && <td className="px-6 py-3 text-right text-sm font-mono text-gray-600 whitespace-nowrap">{r.pctOfLevel3.toFixed(1)}%</td>}
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-4 bg-slate-50/40 border-b border-slate-100">
+                      <td colSpan={ALL_NS_COLS.filter(visible).length} className="px-6 py-4 bg-slate-50/40 border-b border-gray-100">
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-3">
                           Individual NSC Performance &middot; {r.pullDate}
                         </div>
@@ -363,20 +498,27 @@ function NsPullByPullTable({ data }: { data: NsPullRow[] }) {
                 </Fragment>
               );
             })}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={ALL_NS_COLS.filter(visible).length} className="px-6 py-8 text-center text-sm text-gray-400 italic">
+                  No pulls match your filters
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      <div className="px-5 py-2.5 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
-        <span className="text-[10px] text-slate-500">
-          {total === 0 ? 0 : (page - 1) * PAGE + 1}&ndash;{Math.min(page * PAGE, total)} of {total}
+      <div className="px-6 py-3 border-t border-gray-200 bg-white flex items-center justify-between flex-wrap gap-3">
+        <span className="text-sm text-gray-500">
+          Showing <span className="font-semibold text-gray-900">{total === 0 ? 0 : (page - 1) * PAGE + 1}</span>&ndash;<span className="font-semibold text-gray-900">{Math.min(page * PAGE, total)}</span> of <span className="font-semibold text-gray-900">{total}</span>
         </span>
         <div className="flex items-center gap-1">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8249;</button>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 text-gray-600 shadow-sm">&#8249;</button>
           {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => setPage(p)} className={`px-2.5 py-1 text-[10px] border rounded font-semibold ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>{p}</button>
+            <button key={p} onClick={() => setPage(p)} className={`px-3 py-1.5 text-sm border rounded-lg font-semibold shadow-sm ${p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}>{p}</button>
           ))}
-          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-2.5 py-1 text-[10px] border border-slate-200 rounded disabled:opacity-40 hover:bg-slate-50 text-slate-600">&#8250;</button>
+          <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50 text-gray-600 shadow-sm">&#8250;</button>
         </div>
       </div>
     </div>
