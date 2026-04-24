@@ -49,6 +49,8 @@ import { LocationEditorModal } from '../../components/locations/LocationEditorMo
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { LocationViewModal } from '../../components/locations/LocationViewModal';
 import { DIRECTOR_UI, UI_DATA, INITIAL_VIEW_DATA, OFFICE_LOCATIONS, MOCK_DRIVERS, MOCK_DRIVER_DETAILED_TEMPLATE } from './carrier-profile.data';
+import { buildProfileBundle } from '@/pages/accounts/carrier-datasets.data';
+import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
@@ -125,11 +127,15 @@ const Toast = ({ message, visible, onClose }: { message: string; visible: boolea
 const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: any) => {
     const [formData, setFormData] = useState(initialValues || {});
     const [errors, setErrors] = useState<Record<string, boolean>>({});
+    const [dotLookupState, setDotLookupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [dotLookupMsg, setDotLookupMsg] = useState<string>('');
 
     useEffect(() => {
         if (isOpen) {
             setFormData(initialValues || {});
             setErrors({});
+            setDotLookupState('idle');
+            setDotLookupMsg('');
         }
     }, [isOpen, initialValues]);
 
@@ -138,6 +144,29 @@ const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: an
     const handleChange = (key: string, value: any) => {
         setFormData((prev: any) => ({ ...prev, [key]: value }));
         if (errors[key]) setErrors((prev) => ({ ...prev, [key]: false }));
+        if (key === 'dotNumber') { setDotLookupState('idle'); setDotLookupMsg(''); }
+    };
+
+    const handleDotLookup = async (dot: string) => {
+        if (!dot || !/^\d{4,10}$/.test(String(dot).trim())) {
+            setDotLookupState('error');
+            setDotLookupMsg('Enter a valid DOT number (4-10 digits)');
+            return;
+        }
+        setDotLookupState('loading');
+        setDotLookupMsg('Contacting SAFER / FMCSA public database…');
+        // Simulated API call — in production this would hit the carrier's FMCSA SAFER endpoint
+        await new Promise(r => setTimeout(r, 1200));
+        // Mock response — in real usage replace with fetch(`/api/safer/${dot}`)
+        const mock: Record<string, any> = {
+            legalName: 'Acme Trucking Inc.',
+            dbaName: 'Acme Logistics',
+            businessType: 'Corporation',
+            stateOfInc: 'Delaware',
+        };
+        setFormData((prev: any) => ({ ...prev, ...mock, dotNumber: dot }));
+        setDotLookupState('success');
+        setDotLookupMsg(`DOT ${dot} verified — carrier record pre-filled from FMCSA SAFER`);
     };
 
     const handleSave = () => {
@@ -184,6 +213,57 @@ const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: an
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">{field.label}{field.required && <span className="text-red-500 ml-1">*</span>}</label>
                                             {field.type === 'text' || field.type === 'number' || field.type === 'date' ? (
                                                 <input type={field.type} className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow ${errors[fieldKey] ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`} placeholder={field.placeholder} value={formData[fieldKey] || ''} onChange={(e) => handleChange(fieldKey, field.type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)} />
+                                            ) : field.type === 'dotLookup' ? (
+                                                <div>
+                                                    <div className="flex items-stretch gap-2">
+                                                        <input
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            className={`flex-1 border rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow ${errors[fieldKey] ? 'border-red-300 focus:ring-red-200' : 'border-slate-300'}`}
+                                                            placeholder={field.placeholder || 'Enter DOT #'}
+                                                            value={formData[fieldKey] || ''}
+                                                            onChange={(e) => handleChange(fieldKey, e.target.value.replace(/[^\d]/g, ''))}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDotLookup(formData[fieldKey])}
+                                                            disabled={dotLookupState === 'loading' || !formData[fieldKey]}
+                                                            className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 whitespace-nowrap transition-colors ${
+                                                                dotLookupState === 'loading'
+                                                                    ? 'bg-slate-100 text-slate-500 cursor-wait'
+                                                                    : 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed'
+                                                            }`}
+                                                        >
+                                                            {dotLookupState === 'loading' ? (
+                                                                <>
+                                                                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                        <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+                                                                        <path d="M21 12a9 9 0 0 0-9-9" strokeLinecap="round" />
+                                                                    </svg>
+                                                                    Looking up…
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Globe className="w-4 h-4" />
+                                                                    Lookup
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                    {field.helperText && dotLookupState === 'idle' && (
+                                                        <p className="text-xs text-slate-500 mt-1">{field.helperText}</p>
+                                                    )}
+                                                    {dotLookupMsg && (
+                                                        <p className={`text-xs mt-1 flex items-center gap-1.5 ${
+                                                            dotLookupState === 'success' ? 'text-emerald-600' :
+                                                            dotLookupState === 'error'   ? 'text-red-600' :
+                                                            'text-slate-500'
+                                                        }`}>
+                                                            {dotLookupState === 'success' && <BadgeCheck className="w-3.5 h-3.5" />}
+                                                            {dotLookupMsg}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             ) : field.type === 'select' ? (
                                                 <div className="relative">
                                                     <select className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none bg-white ${errors[fieldKey] ? 'border-red-300' : 'border-slate-300'}`} value={formData[fieldKey] || ''} onChange={(e) => handleChange(fieldKey, e.target.value)}>
@@ -331,12 +411,31 @@ const DirectorViewModal = ({ director, isOpen, onClose, onEdit }: any) => {
 const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
     const config = DIRECTOR_UI.editModal;
     const [formData, setFormData] = useState<any>({});
+    const [errors, setErrors] = useState<Record<string, string>>({});
 
-    useEffect(() => { if (isOpen && director) { setFormData({ ...director }); } }, [isOpen, director]);
+    useEffect(() => { if (isOpen && director) { setFormData({ ...director }); setErrors({}); } }, [isOpen, director]);
     if (!isOpen || !director) return null;
 
-    const handleChange = (key: string, value: any) => { setFormData((prev: any) => ({ ...prev, [key]: value })); };
-    const handleSubmit = () => { onSave(formData); };
+    const handleChange = (key: string, value: any) => {
+        setFormData((prev: any) => ({ ...prev, [key]: value }));
+        if (errors[key]) setErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
+    };
+    const handleSubmit = () => {
+        const nextErrors: Record<string, string> = {};
+        config.fields.forEach((field: any) => {
+            if (!field.required) return;
+            const raw = formData[field.key];
+            const value = typeof raw === 'string' ? raw.trim() : raw;
+            if (value === undefined || value === null || value === '') {
+                nextErrors[field.key] = `${field.label} is required.`;
+            }
+        });
+        if (Object.keys(nextErrors).length > 0) {
+            setErrors(nextErrors);
+            return;
+        }
+        onSave(formData);
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -352,10 +451,34 @@ const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
                                 {row.map((fieldKey: string) => {
                                     const field = config.fields.find((f: any) => f.key === fieldKey);
                                     if (!field) return null;
+                                    const hasError = !!errors[fieldKey];
+                                    const commonCls = `w-full border rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none ${hasError ? 'border-rose-400 focus:ring-rose-300' : 'border-slate-300'}`;
                                     return (
                                         <div key={fieldKey}>
-                                            <label className="block text-sm font-bold text-slate-700 mb-2">{field.label}</label>
-                                            <input type={field.type} className="w-full border rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none border-slate-300" value={formData[fieldKey] || ''} onChange={(e) => handleChange(fieldKey, e.target.value)} />
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">
+                                                {field.label}
+                                                {field.required && <span className="text-rose-500 ml-1">*</span>}
+                                            </label>
+                                            {field.type === 'textarea' ? (
+                                                <textarea
+                                                    className={commonCls + ' resize-y min-h-[96px]'}
+                                                    rows={(field as any).rows ?? 4}
+                                                    placeholder={(field as any).placeholder}
+                                                    value={formData[fieldKey] || ''}
+                                                    onChange={(e) => handleChange(fieldKey, e.target.value)}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type={field.type}
+                                                    className={commonCls}
+                                                    placeholder={(field as any).placeholder}
+                                                    value={formData[fieldKey] || ''}
+                                                    onChange={(e) => handleChange(fieldKey, e.target.value)}
+                                                />
+                                            )}
+                                            {hasError && (
+                                                <p className="mt-1.5 text-xs font-medium text-rose-600">{errors[fieldKey]}</p>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -374,9 +497,10 @@ const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
 
 // Key Number Add/Edit Modal
 
-export function CarrierProfilePage() {
-    const [viewData] = useState(INITIAL_VIEW_DATA);
-    const [formConfig, setFormConfig] = useState(UI_DATA);
+export function CarrierProfilePage({ accountId }: { accountId?: string } = {}) {
+    const profileBundle = useMemo(() => buildProfileBundle(accountId), [accountId]);
+    const [viewData] = useState(profileBundle?.viewData ?? INITIAL_VIEW_DATA);
+    const [formConfig, setFormConfig] = useState(profileBundle?.uiData ?? UI_DATA);
     const [activeModal, setActiveModal] = useState<any>(null);
     const [toast, setToast] = useState({ visible: false, message: "" });
     const [activeTab, setActiveTab] = useState("fleet");
@@ -388,12 +512,12 @@ export function CarrierProfilePage() {
     const [complianceFilter, setComplianceFilter] = useState('all');
     const [documentFilter, setDocumentFilter] = useState('all');
 
-    const [officeLocations, setOfficeLocations] = useState(OFFICE_LOCATIONS);
+    const [officeLocations, setOfficeLocations] = useState(profileBundle?.officeLocations ?? OFFICE_LOCATIONS);
 
     const [keyNumberGroupsCollapsed, setKeyNumberGroupsCollapsed] = useState<Record<string, boolean>>({ carrier: false, bond: false, other: false, regulatory: false, tax: false });
     const [selectedDirectorName, setSelectedDirectorName] = useState<string | null>(null);
     const [directorModalMode, setDirectorModalMode] = useState<string | null>(null);
-    const [directorData, setDirectorData] = useState(DIRECTOR_UI.directors);
+    const [directorData, setDirectorData] = useState(profileBundle?.directors ?? DIRECTOR_UI.directors);
     const [keyNumberModalMode, setKeyNumberModalMode] = useState<'add' | 'edit' | null>(null);
     const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
     const [editingDocument, setEditingDocument] = useState<typeof carrierDocuments[0] | null>(null);
@@ -668,14 +792,25 @@ export function CarrierProfilePage() {
 
     const corporateData = formConfig.editModals.corporateIdentity.values;
     const legalAddressData = formConfig.editModals.legalMainAddress.values;
-    const fleetData = formConfig.editModals.fleetDriverOverview.values;
+    // Fleet overview is derived (read-only) from the authoritative Asset Directory + Driver list.
+    const fleetOverview = useMemo(() => {
+        if (profileBundle) {
+            const fleet = (profileBundle.uiData as any).editModals.fleetDriverOverview.values;
+            return { powerUnits: fleet.powerUnits, drivers: fleet.drivers, nonCmv: fleet.nonCmv };
+        }
+        const activeAssets = INITIAL_ASSETS.filter(a => a.operationalStatus === 'Active');
+        const powerUnits = activeAssets.filter(a => a.assetType === 'Truck').length;
+        const nonCmv    = activeAssets.filter(a => a.assetCategory === 'Non-CMV').length;
+        const driverCount = MOCK_DRIVERS.length;
+        return { powerUnits, drivers: driverCount, nonCmv };
+    }, [profileBundle]);
     const mailingAddressData = formConfig.editModals.mailingAddress.values;
     const opsData = formConfig.editModals.operationsAuthority.values;
     const cargoData = formConfig.cargoEditor.values;
     const activeDirector = (directorModalMode === 'edit' || directorModalMode === 'view') && selectedDirectorName ? directorData[selectedDirectorName as keyof typeof directorData] : null;
 
     // --- DRIVER LIST LOGIC ---
-    const [drivers, setDrivers] = useState(MOCK_DRIVERS);
+    const [drivers, setDrivers] = useState(profileBundle?.drivers ?? MOCK_DRIVERS);
 
     const filteredDrivers = useMemo(() => {
         return drivers.filter(driver => {
@@ -691,17 +826,17 @@ export function CarrierProfilePage() {
 
     const driverStats = useMemo(() => {
         return {
-            total: MOCK_DRIVERS.length,
+            total: drivers.length,
             active: drivers.filter(d => d.status === 'Active').length,
             inactive: drivers.filter(d => d.status === 'Inactive').length,
             terminated: drivers.filter(d => d.status === 'Terminated').length,
             onLeave: drivers.filter(d => d.status === 'On Leave').length
         };
-    }, []);
+    }, [drivers]);
 
     const handleDriverClick = (driverId: string) => {
         setViewingDriverId(driverId);
-        const driver = MOCK_DRIVERS.find(d => d.id === driverId);
+        const driver = drivers.find(d => d.id === driverId);
         if (driver) {
             setSelectedDriverData(driver);
         }
@@ -826,19 +961,24 @@ export function CarrierProfilePage() {
                                         <div>
                                             <h2 className="text-2xl font-bold text-slate-900 mb-2">General Information</h2>
                                             <h1 className="text-3xl font-bold text-slate-800 mb-3">{viewData.page.carrierHeader.name}</h1>
-                                            <div className="flex flex-wrap items-center gap-6 mb-4">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-slate-500">ActiveDOT:</span>
-                                                    <Badge text="Active" tone="success" className="text-sm px-3 py-1" />
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-slate-500">CVOR/RIN/NSC:</span>
-                                                    <Badge text="Valid" tone="success" className="text-sm px-3 py-1" />
-                                                </div>
-                                                <div className="flex items-center gap-1 text-slate-600 font-medium px-2 border-l border-slate-200 pl-4">
-                                                    <MapPin className="w-4 h-4" /> Wilmington, DE
-                                                </div>
-                                            </div>
+                                            {(() => {
+                                                const combinedCvorNscRin = [corporateData.cvorNumber, corporateData.nscNumber, corporateData.rinNumber]
+                                                    .map((v: string | undefined) => (v ?? '').trim())
+                                                    .filter((v: string) => v.length > 0)
+                                                    .join(' / ');
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-6 mb-4">
+                                                        <div className="flex items-center gap-2" title="US Federal Motor Carrier Safety Administration USDOT Number">
+                                                            <span className="text-sm font-bold text-slate-500">DOT:</span>
+                                                            <span className="text-sm font-bold font-mono text-slate-900">{corporateData.dotNumber || <span className="text-slate-400 italic font-normal">—</span>}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2" title="Ontario CVOR · Canadian NSC · Registered Importer Number">
+                                                            <span className="text-sm font-bold text-slate-500">CVOR/NSC/RIN:</span>
+                                                            <span className="text-sm font-bold font-mono text-slate-900">{combinedCvorNscRin || <span className="text-slate-400 italic font-normal">—</span>}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                         <button onClick={() => setActiveModal('editCorporateIdentity')} className="text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-slate-50 transition-colors">
                                             <Edit3 className="w-5 h-5" />
@@ -846,7 +986,7 @@ export function CarrierProfilePage() {
                                     </div>
 
                                     {/* Corporate Identity Grid */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6 border-t border-slate-100">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-6 pt-6 border-t border-slate-100">
                                         <div>
                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Legal Name</div>
                                             <div className="font-semibold text-slate-900 text-sm">{corporateData.legalName}</div>
@@ -862,6 +1002,18 @@ export function CarrierProfilePage() {
                                         <div>
                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">State of Inc.</div>
                                             <div className="font-semibold text-slate-900 text-sm">{corporateData.stateOfInc}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Extra-Provincial</div>
+                                            <div className="font-semibold text-sm">
+                                                {corporateData.extraProvincial === 'Yes' ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">Yes</span>
+                                                ) : corporateData.extraProvincial === 'No' ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold">No</span>
+                                                ) : (
+                                                    <span className="text-slate-400 italic font-normal">—</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
@@ -941,19 +1093,25 @@ export function CarrierProfilePage() {
                             </Card>
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <Card title="Fleet & Driver Overview" icon={formConfig.editModals.fleetDriverOverview.icon} editable className="h-full" onEdit={() => setActiveModal('editFleetDriverOverview')}>
+                            <Card
+                                title="Fleet & Driver Overview"
+                                icon={formConfig.editModals.fleetDriverOverview.icon}
+                                editable={false}
+                                className="h-full"
+                                rightAction={<span className="text-[10px] font-semibold text-slate-400 italic">Auto-synced from Asset Directory &middot; Drivers</span>}
+                            >
                                 <div className="grid grid-cols-3 gap-4 h-full items-center">
                                     <div className="bg-slate-50 rounded-lg p-6 text-center border border-slate-100 flex flex-col justify-center h-24">
                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Power Units</div>
-                                        <div className="text-2xl font-bold text-slate-900">{fleetData.powerUnits}</div>
+                                        <div className="text-2xl font-bold text-slate-900">{fleetOverview.powerUnits}</div>
                                     </div>
                                     <div className="bg-slate-50 rounded-lg p-6 text-center border border-slate-100 flex flex-col justify-center h-24">
                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Drivers</div>
-                                        <div className="text-2xl font-bold text-slate-900">{fleetData.drivers}</div>
+                                        <div className="text-2xl font-bold text-slate-900">{fleetOverview.drivers}</div>
                                     </div>
                                     <div className="bg-slate-50 rounded-lg p-6 text-center border border-slate-100 flex flex-col justify-center h-24">
                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Non-CMV</div>
-                                        <div className="text-2xl font-bold text-slate-900">{fleetData.nonCmv}</div>
+                                        <div className="text-2xl font-bold text-slate-900">{fleetOverview.nonCmv}</div>
                                     </div>
                                 </div>
                             </Card>
@@ -1304,7 +1462,7 @@ export function CarrierProfilePage() {
                             </div>
                             <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
                                 <div className="text-xs text-slate-500">
-                                    Showing <span className="font-medium text-slate-900">{filteredDrivers.length}</span> of <span className="font-medium text-slate-900">{MOCK_DRIVERS.length}</span> drivers
+                                    Showing <span className="font-medium text-slate-900">{filteredDrivers.length}</span> of <span className="font-medium text-slate-900">{drivers.length}</span> drivers
                                 </div>
                                 <div className="flex gap-2">
                                     <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Previous</button>

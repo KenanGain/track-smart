@@ -1,6 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { INITIAL_ASSETS } from '../../pages/assets/assets.data';
-import { X, Map, Grid, DoorClosed, Camera, UserCircle, Lock, UploadCloud, Truck, Plus } from 'lucide-react';
+import { X, Map, Grid, DoorClosed, Camera, UserCircle, Lock, Truck, Search, Check } from 'lucide-react';
+
+// ── Timezone list (common IANA zones + major UTC offsets, grouped) ───────────
+const TIMEZONE_GROUPS: { label: string; zones: string[] }[] = [
+    {
+        label: 'North America',
+        zones: [
+            'America/St_Johns (UTC-3:30)',
+            'America/Halifax (UTC-4)',
+            'America/New_York (UTC-5)',
+            'America/Toronto (UTC-5)',
+            'America/Chicago (UTC-6)',
+            'America/Winnipeg (UTC-6)',
+            'America/Mexico_City (UTC-6)',
+            'America/Denver (UTC-7)',
+            'America/Edmonton (UTC-7)',
+            'America/Phoenix (UTC-7, no DST)',
+            'America/Los_Angeles (UTC-8)',
+            'America/Vancouver (UTC-8)',
+            'America/Anchorage (UTC-9)',
+            'Pacific/Honolulu (UTC-10)',
+        ],
+    },
+    {
+        label: 'South America',
+        zones: [
+            'America/Bogota (UTC-5)',
+            'America/Lima (UTC-5)',
+            'America/Caracas (UTC-4)',
+            'America/Santiago (UTC-4)',
+            'America/Buenos_Aires (UTC-3)',
+            'America/Sao_Paulo (UTC-3)',
+        ],
+    },
+    {
+        label: 'Europe',
+        zones: [
+            'Atlantic/Azores (UTC-1)',
+            'Europe/London (UTC+0)',
+            'Europe/Dublin (UTC+0)',
+            'Europe/Lisbon (UTC+0)',
+            'Europe/Paris (UTC+1)',
+            'Europe/Berlin (UTC+1)',
+            'Europe/Madrid (UTC+1)',
+            'Europe/Rome (UTC+1)',
+            'Europe/Amsterdam (UTC+1)',
+            'Europe/Warsaw (UTC+1)',
+            'Europe/Athens (UTC+2)',
+            'Europe/Helsinki (UTC+2)',
+            'Europe/Kiev (UTC+2)',
+            'Europe/Moscow (UTC+3)',
+        ],
+    },
+    {
+        label: 'Africa',
+        zones: [
+            'Africa/Casablanca (UTC+0)',
+            'Africa/Lagos (UTC+1)',
+            'Africa/Cairo (UTC+2)',
+            'Africa/Johannesburg (UTC+2)',
+            'Africa/Nairobi (UTC+3)',
+        ],
+    },
+    {
+        label: 'Middle East',
+        zones: [
+            'Asia/Jerusalem (UTC+2)',
+            'Asia/Riyadh (UTC+3)',
+            'Asia/Dubai (UTC+4)',
+            'Asia/Tehran (UTC+3:30)',
+        ],
+    },
+    {
+        label: 'Asia',
+        zones: [
+            'Asia/Karachi (UTC+5)',
+            'Asia/Kolkata (UTC+5:30)',
+            'Asia/Kathmandu (UTC+5:45)',
+            'Asia/Dhaka (UTC+6)',
+            'Asia/Yangon (UTC+6:30)',
+            'Asia/Bangkok (UTC+7)',
+            'Asia/Jakarta (UTC+7)',
+            'Asia/Singapore (UTC+8)',
+            'Asia/Hong_Kong (UTC+8)',
+            'Asia/Shanghai (UTC+8)',
+            'Asia/Taipei (UTC+8)',
+            'Asia/Manila (UTC+8)',
+            'Asia/Seoul (UTC+9)',
+            'Asia/Tokyo (UTC+9)',
+        ],
+    },
+    {
+        label: 'Oceania',
+        zones: [
+            'Australia/Perth (UTC+8)',
+            'Australia/Adelaide (UTC+9:30)',
+            'Australia/Brisbane (UTC+10)',
+            'Australia/Sydney (UTC+10)',
+            'Pacific/Auckland (UTC+12)',
+            'Pacific/Fiji (UTC+12)',
+        ],
+    },
+    {
+        label: 'UTC',
+        zones: ['UTC (UTC+0)'],
+    },
+];
 
 // Reuse Badge component for consistency
 const Badge = ({ text, tone, className = "" }: { text: string; tone: string; className?: string }) => {
@@ -49,6 +155,22 @@ export const LocationEditorModal: React.FC<LocationEditorModalProps> = ({ type, 
     };
 
     const [formData, setFormData] = useState<any>(type === 'yard' ? defaultYardData : defaultOfficeData);
+    const [assetSearch, setAssetSearch] = useState('');
+
+    const cmvAssets = useMemo(() => INITIAL_ASSETS.filter(a => a.assetCategory === 'CMV'), []);
+    const filteredCmvAssets = useMemo(() => {
+        const q = assetSearch.trim().toLowerCase();
+        if (!q) return cmvAssets;
+        return cmvAssets.filter(a =>
+            a.unitNumber.toLowerCase().includes(q) ||
+            (a.make ?? '').toLowerCase().includes(q) ||
+            (a.model ?? '').toLowerCase().includes(q) ||
+            String(a.year ?? '').includes(q) ||
+            (a.vin ?? '').toLowerCase().includes(q) ||
+            (a.plateNumber ?? '').toLowerCase().includes(q) ||
+            (a.assetType ?? '').toLowerCase().includes(q)
+        );
+    }, [cmvAssets, assetSearch]);
 
     useEffect(() => {
         if (isOpen) {
@@ -90,7 +212,14 @@ export const LocationEditorModal: React.FC<LocationEditorModalProps> = ({ type, 
     }, [isOpen, initialData, type]);
 
     const handleInputChange = (key: string, val: any) => {
-        setFormData((prev: any) => ({ ...prev, [key]: val }));
+        setFormData((prev: any) => {
+            const next = { ...prev, [key]: val };
+            // Deactivating a yard auto-unassigns every asset currently at that yard.
+            if (type === 'yard' && key === 'initialStatus' && val === 'Deactivated') {
+                next.assignedAssets = [];
+            }
+            return next;
+        });
     };
 
     const handleToggle = (key: string) => {
@@ -262,14 +391,24 @@ export const LocationEditorModal: React.FC<LocationEditorModalProps> = ({ type, 
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-1">Timezone</label>
                                     <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none bg-white" value={formData.timezone} onChange={e => handleInputChange('timezone', e.target.value)}>
-                                        <option>EST (UTC-5)</option><option>CST (UTC-6)</option><option>MST (UTC-7)</option><option>PST (UTC-8)</option>
+                                        {TIMEZONE_GROUPS.map(group => (
+                                            <optgroup key={group.label} label={group.label}>
+                                                {group.zones.map(z => <option key={z} value={z}>{z}</option>)}
+                                            </optgroup>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-1">Initial Status</label>
                                     <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none bg-white" value={formData.initialStatus} onChange={e => handleInputChange('initialStatus', e.target.value)}>
-                                        <option>Active</option><option>Maintenance</option>
+                                        <option value="Active">Active</option>
+                                        <option value="Deactivated">Deactivated</option>
                                     </select>
+                                    {formData.initialStatus === 'Deactivated' && (
+                                        <p className="mt-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+                                            Deactivating unassigns every asset currently at this yard.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             <div className="space-y-3">
@@ -313,56 +452,23 @@ export const LocationEditorModal: React.FC<LocationEditorModalProps> = ({ type, 
                                     <div className="flex justify-between text-slate-600"><span>Access Control</span><span className={`font-bold ${formData.fenced || formData.gated ? 'text-slate-900' : 'text-slate-300'}`}>+{formData.fenced && formData.gated ? 17 : (formData.fenced || formData.gated ? 8 : 0)} pts</span></div>
                                 </div>
                             </div>
-                            <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors bg-white">
-                                <div className="bg-blue-50 p-3 rounded-full mb-3"><UploadCloud className="w-6 h-6 text-blue-600" /></div>
-                                <p className="text-sm font-semibold text-slate-700">Click to upload</p>
-                                <p className="text-xs text-slate-400">PDF, PNG, JPG up to 10MB</p>
-                            </div>
                         </div>
                     </div>
 
                     {/* Assigned Assets Section */}
-                    {/* Assigned Assets Section */}
                     <div className="mt-8 pt-8 border-t border-slate-200">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <Truck className="w-4 h-4" /> Assigned Assets (CMV)
-                        </h4>
-                        <div className="bg-white rounded-xl border border-slate-200 p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <Truck className="w-4 h-4" /> Assigned Assets (CMV)
+                            </h4>
+                            <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                {(formData.assignedAssets || []).length} / {cmvAssets.length} selected
+                            </span>
+                        </div>
 
-                            {/* Add Asset Dropdown */}
-                            <div className="mb-4">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Add Asset to Yard</label>
-                                <div className="relative">
-                                    <select
-                                        className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-10 py-2.5 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 transition-shadow cursor-pointer hover:bg-slate-100"
-                                        value=""
-                                        onChange={(e) => {
-                                            if (e.target.value) {
-                                                toggleAsset(e.target.value);
-                                                e.target.value = ""; // Reset select
-                                            }
-                                        }}
-                                    >
-                                        <option value="" disabled>Select a truck to assign...</option>
-                                        {INITIAL_ASSETS
-                                            .filter(a => a.assetCategory === 'CMV' && !(formData.assignedAssets || []).includes(a.id))
-                                            .map(asset => (
-                                                <option key={asset.id} value={asset.id}>
-                                                    {asset.unitNumber} - {asset.make} {asset.model} ({asset.year})
-                                                </option>
-                                            ))
-                                        }
-                                        {INITIAL_ASSETS.filter(a => a.assetCategory === 'CMV' && !(formData.assignedAssets || []).includes(a.id)).length === 0 && (
-                                            <option value="" disabled>All available assets assigned</option>
-                                        )}
-                                    </select>
-                                    <div className="absolute right-3 top-2.5 pointer-events-none text-slate-400">
-                                        <Plus className="w-4 h-4" />
-                                    </div>
-                                </div>
-                            </div>
+                        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
 
-                            {/* Selected Assets List */}
+                            {/* Selected bubbles */}
                             {(formData.assignedAssets || []).length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
                                     {(formData.assignedAssets || []).map((assetId: string) => {
@@ -371,12 +477,15 @@ export const LocationEditorModal: React.FC<LocationEditorModalProps> = ({ type, 
                                         return (
                                             <div
                                                 key={assetId}
-                                                className="group flex items-center gap-2 pl-3 pr-2 py-1.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-full text-xs font-bold shadow-sm"
+                                                className="group flex items-center gap-2 pl-3 pr-1.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-full text-xs font-bold shadow-sm"
+                                                title={`${asset.make} ${asset.model} ${asset.year}`}
                                             >
                                                 <span>{asset.unitNumber}</span>
                                                 <button
+                                                    type="button"
                                                     onClick={() => toggleAsset(assetId)}
                                                     className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-blue-100 text-blue-400 hover:text-blue-600 transition-colors"
+                                                    title="Remove"
                                                 >
                                                     <X className="w-3.5 h-3.5" />
                                                 </button>
@@ -385,12 +494,116 @@ export const LocationEditorModal: React.FC<LocationEditorModalProps> = ({ type, 
                                     })}
                                 </div>
                             ) : (
-                                <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-lg bg-slate-50/50">
-                                    <p className="text-xs text-slate-400 font-medium">No assets assigned yet.</p>
+                                <div className="text-center py-4 border-2 border-dashed border-slate-100 rounded-lg bg-slate-50/50">
+                                    <p className="text-xs text-slate-400 font-medium">No assets assigned yet. Use the list below to select.</p>
                                 </div>
                             )}
 
-                            <p className="text-[10px] text-slate-400 mt-4 font-medium flex items-center gap-1">
+                            {/* Search */}
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    className="w-full pl-9 pr-9 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Search unit #, make, model, VIN, plate..."
+                                    value={assetSearch}
+                                    onChange={e => setAssetSearch(e.target.value)}
+                                />
+                                {assetSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setAssetSearch('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-100"
+                                        title="Clear search"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Bulk select controls */}
+                            <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-slate-500">
+                                    Showing <span className="font-bold text-slate-700">{filteredCmvAssets.length}</span>
+                                    {assetSearch && <> of {cmvAssets.length}</>} CMV asset{filteredCmvAssets.length !== 1 ? 's' : ''}
+                                </span>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const current: string[] = formData.assignedAssets || [];
+                                            const next = Array.from(new Set([...current, ...filteredCmvAssets.map(a => a.id)]));
+                                            setFormData((prev: any) => ({ ...prev, assignedAssets: next }));
+                                        }}
+                                        className="font-semibold text-blue-600 hover:text-blue-800"
+                                    >
+                                        Select all{assetSearch ? ' (filtered)' : ''}
+                                    </button>
+                                    <span className="text-slate-300">|</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const filteredIds = new Set(filteredCmvAssets.map(a => a.id));
+                                            const next = (formData.assignedAssets || []).filter((id: string) => !filteredIds.has(id));
+                                            setFormData((prev: any) => ({ ...prev, assignedAssets: next }));
+                                        }}
+                                        className="font-semibold text-slate-500 hover:text-slate-800"
+                                    >
+                                        Clear{assetSearch ? ' (filtered)' : ''}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Checkbox list — exactly 10 visible rows, scroll for the rest */}
+                            <div
+                                className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-y-auto bg-white"
+                                style={{ maxHeight: '460px' }}   /* ~10 rows × ~46px */
+                            >
+                                {filteredCmvAssets.length === 0 ? (
+                                    <div className="text-center py-8 text-[12px] text-slate-400">
+                                        No CMV assets match "{assetSearch}".
+                                    </div>
+                                ) : (
+                                    filteredCmvAssets.map(asset => {
+                                        const isChecked = (formData.assignedAssets || []).includes(asset.id);
+                                        return (
+                                            <label
+                                                key={asset.id}
+                                                className={`flex items-center gap-3 px-3 cursor-pointer transition-colors ${isChecked ? 'bg-blue-50/60' : 'hover:bg-slate-50'}`}
+                                                style={{ minHeight: '46px' }}
+                                            >
+                                                <div className={`w-5 h-5 flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300'}`}>
+                                                    {isChecked && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    className="hidden"
+                                                    checked={isChecked}
+                                                    onChange={() => toggleAsset(asset.id)}
+                                                />
+                                                <div className="flex-1 min-w-0 grid grid-cols-[auto_1fr_auto] gap-3 items-center">
+                                                    <span className="font-bold font-mono text-sm text-slate-800 truncate">{asset.unitNumber}</span>
+                                                    <span className="text-xs text-slate-600 truncate">
+                                                        {asset.year} {asset.make} {asset.model}
+                                                        {asset.assetType && <span className="text-slate-400"> &middot; {asset.assetType}</span>}
+                                                    </span>
+                                                    <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
+                                                        {asset.plateNumber || asset.vin?.slice(-6) || ''}
+                                                    </span>
+                                                </div>
+                                            </label>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            {filteredCmvAssets.length > 10 && (
+                                <p className="text-[10px] text-slate-400 font-medium text-right">
+                                    Showing first 10 &middot; scroll for {filteredCmvAssets.length - 10} more
+                                </p>
+                            )}
+
+                            <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"></span>
                                 Selected assets will be registered to this location.
                             </p>

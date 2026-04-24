@@ -18,6 +18,8 @@ import {
     Fuel,
     TrendingUp,
     ShieldCheck,
+    Sliders,
+    Users,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -34,6 +36,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Account",
         icon: Building2,
         path: "/account/profile",
+    },
+    {
+        key: "accounts",
+        label: "Accounts",
+        icon: Users,
+        path: "/accounts",
     },
 
     {
@@ -109,6 +117,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: Settings,
         defaultOpen: true,
         children: [
+            { key: "general-settings", label: "General Settings", icon: Sliders, path: "/settings/general" },
             { key: "key-numbers", label: "Key Numbers", icon: KeyRound, path: "/settings/key-numbers" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },

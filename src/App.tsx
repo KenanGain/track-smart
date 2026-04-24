@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
+import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
 import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
 import { LocationsPage } from '@/pages/account/LocationsPage'
+import { AccountsListPage } from '@/pages/accounts/AccountsListPage'
+import type { AccountRecord } from '@/pages/accounts/accounts.data'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
 import { ExpenseTypesPage } from '@/pages/settings/ExpenseTypesPage'
@@ -31,10 +34,16 @@ function App() {
     // or the user might want to test without it initially.
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
     const [path, setPath] = useState("/dashboard")
+    const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
 
     const handleNavigate = (newPath: string) => {
         setPath(newPath)
         console.log("Navigated to:", newPath)
+    }
+
+    const handleSelectAccount = (account: AccountRecord) => {
+        setSelectedAccount(account)
+        console.log("Selected account:", account.id, account.legalName)
     }
 
     // Render the appropriate page based on currentPath
@@ -61,10 +70,16 @@ function App() {
             return <ComplianceDocumentsPage />
         }
         if (path === "/account/profile") {
-            return <CarrierProfilePage />
+            return <CarrierProfilePage key={selectedAccount?.id ?? 'default'} accountId={selectedAccount?.id} />
         }
         if (path === "/account/locations") {
             return <LocationsPage />
+        }
+        if (path === "/accounts") {
+            return <AccountsListPage onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} />
+        }
+        if (path === "/settings/general") {
+            return <GeneralSettingsPage />
         }
         if (path === "/settings/key-numbers") {
             return <KeyNumbersPage />

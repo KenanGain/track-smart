@@ -31,21 +31,19 @@ export const DIRECTOR_UI = {
         saveLabel: "Save Changes",
         fields: [
             { key: "name", label: "Full Name", type: "text", required: true },
-            { key: "role", label: "Role Title", type: "text", required: true },
+            { key: "role", label: "Role Title", type: "text", required: false },
             { key: "email", label: "Email Address", type: "email", required: true },
             { key: "phone", label: "Phone Number", type: "tel", required: true },
-            { key: "stockClass", label: "Stock Class", type: "text", required: true },
+            { key: "stockClass", label: "Stock Class", type: "text", required: false },
             { key: "ownershipPct", label: "Ownership %", type: "number", required: true },
-            { key: "office", label: "Office Location", type: "text", required: true },
-            { key: "dateAppointed", label: "Date of Appointment", type: "date", required: true },
+            { key: "dateAppointed", label: "Date of Appointment", type: "date", required: false },
             { key: "dateResigned", label: "Date of Resignation", type: "date", required: false },
-            { key: "responsibility", label: "Primary Responsibility", type: "select", options: ["Operations", "Finance", "Legal", "Compliance"], required: true }
+            { key: "responsibility", label: "Primary Responsibility", type: "textarea", required: false, placeholder: "Describe this director's primary areas of responsibility and oversight...", rows: 4 }
         ],
         layout: [
             ["name", "role"],
             ["email", "phone"],
             ["stockClass", "ownershipPct"],
-            ["office"],
             ["dateAppointed", "dateResigned"],
             ["responsibility"]
         ]
@@ -93,13 +91,18 @@ export const UI_DATA = {
             icon: "Building2",
             saveLabel: "Save Changes",
             fields: [
-                { key: "legalName", label: "Legal Name", type: "text", required: true, placeholder: "Acme Trucking Inc." },
-                { key: "dbaName", label: "DBA Name", type: "text", required: false, placeholder: "Acme Logistics" },
-                { key: "businessType", label: "Business Type", type: "select", required: true, options: ["Corporation", "LLC", "Sole Proprietor", "Partnership"] },
-                { key: "stateOfInc", label: "State of Inc.", type: "select", required: true, options: ["Delaware", "California", "Texas", "Florida", "New York"] }
+                { key: "dotNumber",  label: "DOT Number",  type: "dotLookup", required: false, placeholder: "1234567",   helperText: "US Federal Motor Carrier Safety Administration (FMCSA) USDOT #. Click Lookup to pull SAFER record." },
+                { key: "cvorNumber", label: "CVOR Number", type: "text",      required: false, placeholder: "CVOR-00123", helperText: "Ontario Commercial Vehicle Operator's Registration number." },
+                { key: "nscNumber",  label: "NSC Number",  type: "text",      required: false, placeholder: "AB-12345",   helperText: "Canadian National Safety Code carrier identifier issued by the home province." },
+                { key: "rinNumber",  label: "RIN",         type: "text",      required: false, placeholder: "RIN-0099",   helperText: "Registered Importer / Registration Identification Number." },
+                { key: "legalName",  label: "Legal Name",  type: "text",      required: true,  placeholder: "Acme Trucking Inc." },
+                { key: "dbaName",    label: "DBA Name",    type: "text",      required: false, placeholder: "Acme Logistics" },
+                { key: "businessType",    label: "Business Type",    type: "select", required: true,  options: ["Corporation", "LLC", "Sole Proprietor", "Partnership"] },
+                { key: "stateOfInc",      label: "State of Inc.",    type: "select", required: true,  options: ["Delaware", "California", "Texas", "Florida", "New York"] },
+                { key: "extraProvincial", label: "Extra-Provincial", type: "select", required: false, options: ["Yes", "No"], helperText: "Operates commercial vehicles across provincial or federal borders." }
             ],
-            layout: [["legalName"], ["dbaName"], ["businessType", "stateOfInc"]],
-            values: { legalName: "Acme Trucking Inc.", dbaName: "Acme Logistics", businessType: "Corporation", stateOfInc: "Delaware" }
+            layout: [["dotNumber", "cvorNumber"], ["nscNumber", "rinNumber"], ["legalName", "dbaName"], ["businessType", "stateOfInc"], ["extraProvincial"]],
+            values: { dotNumber: "3421765", cvorNumber: "CVOR-00123", nscNumber: "AB-12345", rinNumber: "RIN-0099", legalName: "Acme Trucking Inc.", dbaName: "Acme Logistics", businessType: "Corporation", stateOfInc: "Delaware", extraProvincial: "Yes" }
         },
         legalMainAddress: {
             id: "editLegalMainAddress",
@@ -185,9 +188,96 @@ export const UI_DATA = {
         clearAllLabel: "Clear All",
         commonTypes: ["General Freight", "Building Materials", "Fresh Produce", "Refrigerated Food", "Beverages", "Paper Products"],
         sections: [
-            { key: "generalFreight", label: "GENERAL FREIGHT & HOUSEHOLD", items: ["General Freight", "Household Goods", "Furniture", "Paper Products", "Utility"] },
-            { key: "foodTemp", label: "FOOD & TEMPERATURE CONTROLLED", items: ["Fresh Produce", "Meat", "Refrigerated Food", "Beverages"] },
-            { key: "constructionIndustrial", label: "CONSTRUCTION & INDUSTRIAL", items: ["Building Materials", "Metal: sheets, coils, rolls", "Logs, Poles, Beams, Lumber", "Garbage/Refuse", "Construction"] }
+            {
+                key: "generalFreight",
+                label: "GENERAL FREIGHT & HOUSEHOLD",
+                items: [
+                    "General Freight",
+                    "Household Goods",
+                    "Furniture",
+                    "Paper Products",
+                    "Utility",
+                    "U.S. Mail",
+                    "Mobile Homes",
+                    "Motor Vehicles",
+                    "Passengers",
+                    "Electronics",
+                    "Pharmaceutical Products",
+                    "Garments",
+                    "Office Supplies",
+                    "Grocery Items",
+                    "Plastic Products",
+                    "Auto Parts",
+                    "Appliances"
+                ]
+            },
+            {
+                key: "foodTemp",
+                label: "FOOD & TEMPERATURE CONTROLLED",
+                items: [
+                    "Fresh Produce",
+                    "Meat",
+                    "Refrigerated Food",
+                    "Beverages",
+                    "Livestock",
+                    "Grain, Feed, Hay",
+                    "Farm Supplies",
+                    "Beer",
+                    "Liquor",
+                    "Sea Food",
+                    "Packaged Meat",
+                    "Frozen Food/Cooled Produce",
+                    "Milk Products",
+                    "Bakery Products"
+                ]
+            },
+            {
+                key: "constructionIndustrial",
+                label: "CONSTRUCTION & INDUSTRIAL",
+                items: [
+                    // Building / raw materials
+                    "Building Materials",
+                    "Construction",
+                    "Logs, Poles, Beams, Lumber",
+
+                    // Metals
+                    "Metal: sheets, coils, rolls",
+                    "Steel",
+                    "Copper",
+                    "Aluminum",
+
+                    // Machinery
+                    "Machinery, Large Objects",
+                    "Machinery (NO VEHICLES/AUTOS)",
+                    "Oilfield Equipment",
+
+                    // Chemicals / liquids / gases
+                    "Chemicals",
+                    "Household Use Chemicals",
+                    "Glue",
+                    "Liquids, Gases",
+
+                    // Bulk
+                    "Commodities Dry Bulk",
+                    "Coal, Coke",
+
+                    // Containers / misc
+                    "Intermodal Containers",
+                    "Water Well",
+                    "Garbage/Refuse"
+                ]
+            },
+            {
+                key: "other",
+                label: "OTHER",
+                items: [
+                    "Driveway, Towaway",
+                    "Paint",
+                    "Batteries",
+                    "Air Bags",
+                    "Other"
+                ]
+            }
         ],
         hazmat: { label: "HAZARDOUS MATERIALS", items: ["Explosives", "Gases", "Flammable Liquids", "Radioactive", "Corrosives"] },
         values: { selected: ["General Freight", "Household Goods", "Building Materials", "Fresh Produce", "Refrigerated Food", "Beverages"] }
@@ -207,6 +297,98 @@ export const UI_DATA = {
         ]
     }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cargo Family Mapping
+//
+// The Edit Cargo Carried modal surfaces friendly commodity names (General
+// Freight, Paint, Beer, Copper, etc.) grouped into 4 UI categories. Each
+// friendly label resolves to a canonical cargo-family tag for backend
+// storage / API submission via this lookup. The 6 FMCSA-style families are
+// Dry Van, Reefer, Flatbed, Tank, Hopper, Other.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CargoFamilyMapEntry {
+    family: "Dry Van Cargo Family" | "Reefer Cargo Family" | "Flatbed Cargo Family"
+          | "Tank Cargo Family"   | "Hopper Cargo Family" | "Other Cargo Family";
+    value:  string;
+}
+
+export const CARGO_FAMILY_MAPPING: Record<string, CargoFamilyMapEntry> = {
+    // ─── GENERAL FREIGHT & HOUSEHOLD ─────────────────────────────────────────
+    "General Freight":          { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Household Goods":          { family: "Dry Van Cargo Family", value: "Dry Van - Household Goods"  },
+    "Furniture":                { family: "Dry Van Cargo Family", value: "Dry Van - Household Goods"  },
+    "Paper Products":           { family: "Dry Van Cargo Family", value: "Dry Van - Paper Products"   },
+    "Utility":                  { family: "Other Cargo Family",   value: "Other - Utility"            },
+    "U.S. Mail":                { family: "Dry Van Cargo Family", value: "Dry Van - U.S. Mail"        },
+    "Mobile Homes":             { family: "Other Cargo Family",   value: "Other - Mobile Homes"       },
+    "Motor Vehicles":           { family: "Other Cargo Family",   value: "Other - Motor Vehicles"     },
+    "Passengers":               { family: "Other Cargo Family",   value: "Other - Passengers"         },
+    "Electronics":              { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Pharmaceutical Products":  { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Garments":                 { family: "Dry Van Cargo Family", value: "Dry Van - Household Goods"  },
+    "Office Supplies":          { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Grocery Items":            { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Plastic Products":         { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Auto Parts":               { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+    "Appliances":               { family: "Dry Van Cargo Family", value: "Dry Van - Household Goods"  },
+
+    // ─── FOOD & TEMPERATURE CONTROLLED ───────────────────────────────────────
+    "Fresh Produce":            { family: "Reefer Cargo Family",  value: "Reefer - Fresh Produce"     },
+    "Meat":                     { family: "Reefer Cargo Family",  value: "Reefer - Meat"              },
+    "Refrigerated Food":        { family: "Reefer Cargo Family",  value: "Reefer - Refrigerated Food" },
+    "Beverages":                { family: "Dry Van Cargo Family", value: "Dry Van - Beverages"        },
+    "Livestock":                { family: "Other Cargo Family",   value: "Other - Livestock"          },
+    "Grain, Feed, Hay":         { family: "Hopper Cargo Family",  value: "Hopper - Grain, Feed, Hay"  },
+    "Farm Supplies":            { family: "Other Cargo Family",   value: "Other - Farm Supplies"      },
+    "Beer":                     { family: "Dry Van Cargo Family", value: "Dry Van - Beverages"        },
+    "Liquor":                   { family: "Dry Van Cargo Family", value: "Dry Van - Beverages"        },
+    "Sea Food":                 { family: "Reefer Cargo Family",  value: "Reefer - Refrigerated Food" },
+    "Packaged Meat":            { family: "Reefer Cargo Family",  value: "Reefer - Meat"              },
+    "Frozen Food/Cooled Produce":{ family: "Reefer Cargo Family", value: "Reefer - Refrigerated Food" },
+    "Milk Products":            { family: "Reefer Cargo Family",  value: "Reefer - Refrigerated Food" },
+    "Bakery Products":          { family: "Dry Van Cargo Family", value: "Dry Van - General Freight"  },
+
+    // ─── CONSTRUCTION & INDUSTRIAL ───────────────────────────────────────────
+    "Building Materials":           { family: "Flatbed Cargo Family", value: "Flatbed - Building Materials"        },
+    "Metal: sheets, coils, rolls":  { family: "Flatbed Cargo Family", value: "Flatbed - Metal (Sheet, Coils, Rolls)" },
+    "Logs, Poles, Beams, Lumber":   { family: "Flatbed Cargo Family", value: "Flatbed - Logs, Poles, Beams, Lumber" },
+    "Machinery, Large Objects":     { family: "Flatbed Cargo Family", value: "Flatbed - Machinery, Large Objects"   },
+    "Machinery (NO VEHICLES/AUTOS)":{ family: "Flatbed Cargo Family", value: "Flatbed - Machinery, Large Objects"   },
+    "Oilfield Equipment":           { family: "Flatbed Cargo Family", value: "Flatbed - Oilfield Equipment"         },
+    "Chemicals":                    { family: "Tank Cargo Family",    value: "Tank - Chemicals"                     },
+    "Household Use Chemicals":      { family: "Tank Cargo Family",    value: "Tank - Chemicals"                     },
+    "Commodities Dry Bulk":         { family: "Tank Cargo Family",    value: "Tank - Commodities Dry Bulk"          },
+    "Liquids, Gases":               { family: "Tank Cargo Family",    value: "Tank - Liquids, Gases"                },
+    "Coal, Coke":                   { family: "Hopper Cargo Family",  value: "Hopper - Coal, Coke"                  },
+    "Intermodal Containers":        { family: "Other Cargo Family",   value: "Other - Intermodal Containers"        },
+    "Water Well":                   { family: "Other Cargo Family",   value: "Other - Water Well"                   },
+    "Construction":                 { family: "Other Cargo Family",   value: "Other - Construction"                 },
+    "Garbage/Refuse":               { family: "Other Cargo Family",   value: "Other - Garbage, Refuse, Trash"       },
+    "Copper":                       { family: "Flatbed Cargo Family", value: "Flatbed - Metal (Sheet, Coils, Rolls)" },
+    "Aluminum":                     { family: "Flatbed Cargo Family", value: "Flatbed - Metal (Sheet, Coils, Rolls)" },
+    "Steel":                        { family: "Flatbed Cargo Family", value: "Flatbed - Metal (Sheet, Coils, Rolls)" },
+    "Glue":                         { family: "Tank Cargo Family",    value: "Tank - Chemicals"                     },
+
+    // ─── OTHER ───────────────────────────────────────────────────────────────
+    "Driveway, Towaway":            { family: "Other Cargo Family",   value: "Other - Driveway, Towaway"            },
+    "Paint":                        { family: "Other Cargo Family",   value: "Other - Other"                        },
+    "Batteries":                    { family: "Other Cargo Family",   value: "Other - Other"                        },
+    "Air Bags":                     { family: "Other Cargo Family",   value: "Other - Other"                        },
+    "Other":                        { family: "Other Cargo Family",   value: "Other - Other"                        }
+};
+
+/**
+ * Resolve a list of friendly commodity labels to their canonical
+ * { family, value } pairs — the shape the backend / API expects.
+ * Unknown labels fall back to `Other Cargo Family / Other - Other`.
+ */
+export function resolveCargoFamilies(selected: string[]): CargoFamilyMapEntry[] {
+    return selected.map(label =>
+        CARGO_FAMILY_MAPPING[label] ?? { family: "Other Cargo Family", value: "Other - Other" }
+    );
+}
 
 export const INITIAL_VIEW_DATA = {
     app: {
