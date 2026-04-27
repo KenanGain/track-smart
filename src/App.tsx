@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AppSidebar } from '@/components/layout/AppSidebar'
+import { TopNavbar, type UserRole } from '@/components/layout/TopNavbar'
 import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
@@ -9,6 +10,10 @@ import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
 import { LocationsPage } from '@/pages/account/LocationsPage'
 import { AccountsListPage } from '@/pages/accounts/AccountsListPage'
 import { AddAccountPage } from '@/pages/accounts/AddAccountPage'
+import { InventoryListPage } from '@/pages/inventory/InventoryListPage'
+import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
+import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
+import { AddInventoryItemPage } from '@/pages/inventory/AddInventoryItemPage'
 import type { AccountRecord } from '@/pages/accounts/accounts.data'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
@@ -36,6 +41,15 @@ function App() {
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
     const [path, setPath] = useState("/dashboard")
     const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
+    const [role, setRole] = useState<UserRole>("user")
+
+    const handleRoleChange = (next: UserRole) => {
+        setRole(next)
+        const isAdmin = next === "admin" || next === "super-admin"
+        if (!isAdmin && (path === "/accounts" || path.startsWith("/accounts/") || path.startsWith("/admin"))) {
+            setPath("/dashboard")
+        }
+    }
 
     const handleNavigate = (newPath: string) => {
         setPath(newPath)
@@ -81,6 +95,18 @@ function App() {
         }
         if (path === "/accounts/new") {
             return <AddAccountPage onNavigate={handleNavigate} />
+        }
+        if (path === "/inventory") {
+            return <InventoryListPage onNavigate={handleNavigate} />
+        }
+        if (path === "/inventory/items/new") {
+            return <AddInventoryItemPage onNavigate={handleNavigate} />
+        }
+        if (path === "/inventory/vendors") {
+            return <VendorsListPage onNavigate={handleNavigate} />
+        }
+        if (path === "/inventory/vendors/new") {
+            return <AddVendorPage onNavigate={handleNavigate} />
         }
         if (path === "/settings/general") {
             return <GeneralSettingsPage />
@@ -180,10 +206,14 @@ function App() {
             <AppSidebar
                 currentPath={path}
                 onNavigate={handleNavigate}
+                role={role}
             />
-            <main className="flex-1 overflow-auto">
-                {renderPage()}
-            </main>
+            <div className="flex-1 flex flex-col min-w-0">
+                <TopNavbar currentPath={path} role={role} onRoleChange={handleRoleChange} />
+                <main className="flex-1 overflow-auto">
+                    {renderPage()}
+                </main>
+            </div>
         </div>
     )
 }

@@ -24,6 +24,8 @@ import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { INCIDENTS } from '@/pages/incidents/incidents.data';
 import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
+import { getInventoryByAssetId, getVendorById, VENDOR_TYPE_LABELS } from '@/pages/inventory/inventory.data';
+import { Boxes } from 'lucide-react';
 
 // --- Types for Rich Data (extending base Asset) ---
 export interface DetailedAsset extends Asset {
@@ -223,6 +225,8 @@ interface AssetDetailViewProps {
 export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps) {
   const [activeTab, setActiveTab] = useState('Compliance Monitoring');
   
+  const inventoryRecords = useMemo(() => getInventoryByAssetId(asset.id), [asset.id]);
+
   const tabs = [
     { name: 'Compliance Monitoring', count: 0 },
     { name: 'Notifications', count: 3, alert: true },
@@ -230,6 +234,7 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
     { name: 'Accidents', count: 0 },
     { name: 'Inspections', count: 0 },
     { name: 'Maintenance', count: 0 },
+    { name: 'Inventory', count: inventoryRecords.length },
     { name: 'Expenses', count: 0 },
     { name: 'Documents', count: 0 },
   ];
@@ -882,6 +887,11 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
             {tabs.map((tab) => (
               <button key={tab.name} onClick={() => setActiveTab(tab.name)} className={`relative py-4 px-4 text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === tab.name ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-t-lg'}`}>
                 {tab.name}
+                {tab.count > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold ${activeTab === tab.name ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {tab.count}
+                  </span>
+                )}
                 {tab.alert && <span className="h-1.5 w-1.5 bg-rose-500 rounded-full"></span>}
                 {activeTab === tab.name && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full"></span>}
               </button>
@@ -2040,6 +2050,76 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                         </div>
                     </Card>
                 </div>
+              </div>
+            )}
+
+            {/* Inventory Content */}
+            {activeTab === 'Inventory' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">Inventory Records</h3>
+                    <p className="text-xs font-medium text-slate-500">Vendor inventory items assigned to this asset.</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                    <Boxes size={12} /> {inventoryRecords.length} record{inventoryRecords.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+
+                {inventoryRecords.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+                    <div className="mx-auto h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
+                      <Boxes className="text-slate-400" size={20} />
+                    </div>
+                    <h4 className="text-sm font-semibold text-slate-700">No inventory assigned</h4>
+                    <p className="text-xs text-slate-500 mt-1">This asset has no fuel cards, transponders, ELDs, GPS, or dashcams on file.</p>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Vendor</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Serial #</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN #</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Issue Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Expiry Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {inventoryRecords.map((it) => {
+                          const vendor = getVendorById(it.vendorId);
+                          const statusClass =
+                            it.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            it.status === 'Expiring Soon' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-red-50 text-red-700 border-red-200';
+                          const dotClass =
+                            it.status === 'Active' ? 'bg-emerald-500' :
+                            it.status === 'Expiring Soon' ? 'bg-amber-500' :
+                            'bg-red-500';
+                          return (
+                            <tr key={it.id} className="hover:bg-slate-50/60">
+                              <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
+                              <td className="px-4 py-3 text-slate-600">{vendor ? VENDOR_TYPE_LABELS[vendor.type] : '—'}</td>
+                              <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
+                              <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
+                              <td className="px-4 py-3 text-slate-600">{it.issueDate}</td>
+                              <td className="px-4 py-3 text-slate-600">{it.expiryDate}</td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
+                                  <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                                  {it.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 

@@ -17,6 +17,8 @@ import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
+import { Boxes } from 'lucide-react';
+import { getInventoryByDriverId, getVendorById, VENDOR_TYPE_LABELS } from '@/pages/inventory/inventory.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -1354,6 +1356,8 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   }, [driverData.employmentHistory]);
 
 
+    const inventoryRecords = React.useMemo(() => getInventoryByDriverId(driverData.id), [driverData.id]);
+
     const tabs = [
         { id: 'Overview', label: 'Overview', icon: LayoutDashboard },
         { id: 'Profile', label: 'Profile', icon: User },
@@ -1366,6 +1370,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Accidents', label: 'Accidents', icon: Car },
         { id: 'Inspections', label: 'Inspections', icon: FileCheck },
         { id: 'Violations', label: 'Violations', icon: AlertTriangle },
+        { id: 'Inventory', label: 'Inventory', icon: Boxes, count: inventoryRecords.length },
         { id: 'Paystubs', label: 'Paystubs', icon: DollarSign },
         { id: 'HoursOfService', label: 'Hours of Service', icon: Clock },
         { id: 'MileageReport', label: 'Mileage Report', icon: Map }
@@ -1543,13 +1548,18 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative px-3 pb-3 pt-1 text-sm font-medium whitespace-nowrap transition-all
+                className={`relative px-3 pb-3 pt-1 text-sm font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5
                   ${activeTab === tab.id
                     ? 'text-blue-600 border-b-2 border-blue-600'
                     : 'text-slate-400 hover:text-slate-600 border-b-2 border-transparent'
                   }`}
               >
                 {tab.label}
+                {(tab as any).count > 0 && (
+                  <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold ${activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {(tab as any).count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -1913,10 +1923,79 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 </div>
             )}
             
+            {activeTab === 'Inventory' && (
+                <div className="space-y-4 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-base">Inventory Records</h3>
+                            <p className="text-xs font-medium text-slate-500">Vendor inventory items assigned to this driver.</p>
+                        </div>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                            <Boxes size={12} /> {inventoryRecords.length} record{inventoryRecords.length === 1 ? '' : 's'}
+                        </span>
+                    </div>
+
+                    {inventoryRecords.length === 0 ? (
+                        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+                            <div className="mx-auto h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
+                                <Boxes className="text-slate-400" size={20} />
+                            </div>
+                            <h4 className="text-sm font-semibold text-slate-700">No inventory assigned</h4>
+                            <p className="text-xs text-slate-500 mt-1">This driver has no fuel cards, transponders, ELDs, GPS, or dashcams on file.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Vendor</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Serial #</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN #</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Issue Date</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Expiry Date</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {inventoryRecords.map((it) => {
+                                        const vendor = getVendorById(it.vendorId);
+                                        const statusClass =
+                                            it.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                            it.status === 'Expiring Soon' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                            'bg-red-50 text-red-700 border-red-200';
+                                        const dotClass =
+                                            it.status === 'Active' ? 'bg-emerald-500' :
+                                            it.status === 'Expiring Soon' ? 'bg-amber-500' :
+                                            'bg-red-500';
+                                        return (
+                                            <tr key={it.id} className="hover:bg-slate-50/60">
+                                                <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
+                                                <td className="px-4 py-3 text-slate-600">{vendor ? VENDOR_TYPE_LABELS[vendor.type] : '—'}</td>
+                                                <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
+                                                <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
+                                                <td className="px-4 py-3 text-slate-600">{it.issueDate}</td>
+                                                <td className="px-4 py-3 text-slate-600">{it.expiryDate}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
+                                                        <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                                                        {it.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {activeTab === 'Paystubs' && (
                 <div className="animate-in fade-in">
-                    <PaystubsPage 
-                        driverId={driverData.id} 
+                    <PaystubsPage
+                        driverId={driverData.id}
                         onPaystubChange={() => {
                             const fresh = MOCK_DRIVERS.find(d => d.id === driverData.id);
                             if (fresh) setDriverData({...fresh});

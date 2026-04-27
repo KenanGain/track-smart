@@ -1,0 +1,17 @@
+{
+  "promptDelete": false,
+  "alwaysUpdateLinks": true,
+  "newFileLocation": "folder",
+  "newFileFolderPath": "07 - Daily Notes",
+  "attachmentFolderPath": "99 - Attachments",
+  "useMarkdownLinks": false,
+  "showLineNumber": true,
+  "showFrontmatter": true,
+  "foldHeading": true,
+  "foldIndent": true,
+  "readableLineLength": true,
+  "strictLineBreaks": false,
+  "tabSize": 2,
+  "spellcheck": true,
+  "showInlineTitle": true
+}

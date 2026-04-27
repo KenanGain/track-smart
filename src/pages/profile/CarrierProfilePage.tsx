@@ -45,6 +45,7 @@ import {
     UserX,
     Download
 } from 'lucide-react';
+import { StatusSelect } from '@/pages/accounts/AddAccountPage';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { LocationViewModal } from '../../components/locations/LocationViewModal';
@@ -199,7 +200,15 @@ const GenericEditModal = ({ config, isOpen, onClose, onSave, initialValues }: an
                             {config.subtitle && <p className="text-sm text-slate-500 mt-0.5">{config.subtitle}</p>}
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1"><X className="w-6 h-6" /></button>
+                    <div className="flex items-center gap-3">
+                        {config.fields.some((f: any) => f.key === 'status') && (
+                            <StatusSelect
+                                value={formData.status ?? 'Active'}
+                                onChange={(v) => handleChange('status', v)}
+                            />
+                        )}
+                        <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1"><X className="w-6 h-6" /></button>
+                    </div>
                 </div>
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
                     <div className="space-y-6">
@@ -980,9 +989,32 @@ export function CarrierProfilePage({ accountId }: { accountId?: string } = {}) {
                                                 );
                                             })()}
                                         </div>
-                                        <button onClick={() => setActiveModal('editCorporateIdentity')} className="text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-slate-50 transition-colors">
-                                            <Edit3 className="w-5 h-5" />
-                                        </button>
+                                        <div className="flex items-center gap-3">
+                                            {(() => {
+                                                const status = (corporateData as any).status || 'Active';
+                                                const tone =
+                                                    status === 'Active'    ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                                    status === 'Inactive'  ? 'bg-slate-100 border-slate-200 text-slate-600' :
+                                                    status === 'Suspended' ? 'bg-rose-50 border-rose-200 text-rose-700' :
+                                                    status === 'Pending'   ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                             'bg-slate-100 border-slate-200 text-slate-600';
+                                                const dotTone =
+                                                    status === 'Active'    ? 'bg-emerald-500' :
+                                                    status === 'Inactive'  ? 'bg-slate-400'   :
+                                                    status === 'Suspended' ? 'bg-rose-500'    :
+                                                    status === 'Pending'   ? 'bg-amber-500'   :
+                                                                             'bg-slate-400';
+                                                return (
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-bold ${tone}`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${dotTone}`} />
+                                                        {status}
+                                                    </span>
+                                                );
+                                            })()}
+                                            <button onClick={() => setActiveModal('editCorporateIdentity')} className="text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-slate-50 transition-colors">
+                                                <Edit3 className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Corporate Identity Grid */}

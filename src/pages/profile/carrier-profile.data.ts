@@ -99,10 +99,11 @@ export const UI_DATA = {
                 { key: "dbaName",    label: "DBA Name",    type: "text",      required: false, placeholder: "Acme Logistics" },
                 { key: "businessType",    label: "Business Type",    type: "select", required: true,  options: ["Corporation", "LLC", "Sole Proprietor", "Partnership"] },
                 { key: "stateOfInc",      label: "State of Inc.",    type: "select", required: true,  options: ["Delaware", "California", "Texas", "Florida", "New York"] },
-                { key: "extraProvincial", label: "Extra-Provincial", type: "select", required: false, options: ["Yes", "No"], helperText: "Operates commercial vehicles across provincial or federal borders." }
+                { key: "extraProvincial", label: "Extra-Provincial", type: "select", required: false, options: ["Yes", "No"], helperText: "Operates commercial vehicles across provincial or federal borders." },
+                { key: "status", label: "Status", type: "select", required: true, options: ["Active", "Inactive", "Suspended", "Pending"], helperText: "Current operating status of the carrier record." }
             ],
             layout: [["dotNumber", "cvorNumber"], ["nscNumber", "rinNumber"], ["legalName", "dbaName"], ["businessType", "stateOfInc"], ["extraProvincial"]],
-            values: { dotNumber: "3421765", cvorNumber: "CVOR-00123", nscNumber: "AB-12345", rinNumber: "RIN-0099", legalName: "Acme Trucking Inc.", dbaName: "Acme Logistics", businessType: "Corporation", stateOfInc: "Delaware", extraProvincial: "Yes" }
+            values: { dotNumber: "3421765", cvorNumber: "CVOR-00123", nscNumber: "AB-12345", rinNumber: "RIN-0099", legalName: "Acme Trucking Inc.", dbaName: "Acme Logistics", businessType: "Corporation", stateOfInc: "Delaware", extraProvincial: "Yes", status: "Active" }
         },
         legalMainAddress: {
             id: "editLegalMainAddress",

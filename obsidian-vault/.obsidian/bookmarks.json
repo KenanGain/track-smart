@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "type": "file", "path": "00 - Home/Home.md", "title": "Home" },
+    { "type": "file", "path": "01 - Project Overview/Project Summary.md", "title": "Project Summary" },
+    { "type": "file", "path": "02 - Pages/Pages Index.md", "title": "Pages Index" },
+    { "type": "file", "path": "06 - Tasks/Active Tasks.md", "title": "Active Tasks" }
+  ]
+}

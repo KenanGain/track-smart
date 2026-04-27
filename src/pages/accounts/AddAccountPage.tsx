@@ -56,6 +56,54 @@ interface AddAccountPageProps {
     onNavigate?: (path: string) => void;
 }
 
+// ── Status pill dropdown (top-right of section / modal header) ─────────────
+
+const STATUS_OPTIONS = ['Active', 'Inactive', 'Suspended', 'Pending'] as const;
+
+const statusTone = (s: string) =>
+    s === 'Active'    ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+    s === 'Inactive'  ? 'bg-slate-100 border-slate-200 text-slate-600'      :
+    s === 'Suspended' ? 'bg-rose-50 border-rose-200 text-rose-700'          :
+    s === 'Pending'   ? 'bg-amber-50 border-amber-200 text-amber-700'       :
+                        'bg-slate-100 border-slate-200 text-slate-600';
+
+const statusDot = (s: string) =>
+    s === 'Active'    ? 'bg-emerald-500' :
+    s === 'Inactive'  ? 'bg-slate-400'   :
+    s === 'Suspended' ? 'bg-rose-500'    :
+    s === 'Pending'   ? 'bg-amber-500'   :
+                        'bg-slate-400';
+
+export const StatusSelect = ({
+    value,
+    onChange,
+}: {
+    value: string;
+    onChange: (v: string) => void;
+}) => (
+    <div className="relative">
+        <span
+            className={cn(
+                'absolute left-2.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full pointer-events-none',
+                statusDot(value)
+            )}
+        />
+        <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className={cn(
+                'appearance-none border rounded-md pl-6 pr-7 py-1.5 text-xs font-bold cursor-pointer focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors',
+                statusTone(value)
+            )}
+        >
+            {STATUS_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+            ))}
+        </select>
+        <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-60 pointer-events-none" />
+    </div>
+);
+
 // ── Section header (used inside each section card) ──────────────────────────
 
 const SectionHeader = ({
@@ -306,7 +354,7 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
     const officeCfg = UI_DATA.editModals.addOfficeLocation;
     const directorCfg = DIRECTOR_UI.editModal;
 
-    const [corpVals, setCorpVals] = useState<Record<string, any>>({});
+    const [corpVals, setCorpVals] = useState<Record<string, any>>({ status: 'Active' });
     const [opsVals, setOpsVals] = useState<Record<string, any>>({});
     const [legalVals, setLegalVals] = useState<Record<string, any>>({});
     const [mailVals, setMailVals] = useState<Record<string, any>>({});
@@ -441,7 +489,7 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
             cvorNumber: corpVals.cvorNumber || '',
             nscNumber: corpVals.nscNumber || '',
             rinNumber: corpVals.rinNumber || '',
-            status: 'Pending' as AccountStatus,
+            status: ((corpVals.status as AccountStatus) || 'Pending'),
             city: legalVals.city || '',
             state: legalVals.state || '',
             country,
@@ -580,6 +628,14 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
                                 icon={Building2}
                                 title="General Information"
                                 subtitle="Legal identity and registration numbers (DOT, CVOR, NSC, RIN)."
+                                right={
+                                    <StatusSelect
+                                        value={corpVals.status ?? 'Active'}
+                                        onChange={(v) =>
+                                            setCorpVals((prev) => ({ ...prev, status: v }))
+                                        }
+                                    />
+                                }
                             />
                             <SectionGrid
                                 fields={corpCfg.fields}

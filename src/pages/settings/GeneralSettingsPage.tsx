@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Edit2, Trash2, Lock, Package, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { PaginationBar } from '@/components/ui/DataListToolbar';
 import { UI_DATA } from '@/pages/profile/carrier-profile.data';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +106,8 @@ const CargoCarrierSection = () => {
     );
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
+    const [page, setPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(25);
     const [savedToast, setSavedToast] = useState(false);
 
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -133,6 +136,22 @@ const CargoCarrierSection = () => {
     }, [catalog, search, categoryFilter]);
 
     const totalItems = useMemo(() => catalog.reduce((sum, s) => sum + s.items.length, 0), [catalog]);
+
+    const paged = useMemo(() => {
+        const start = (page - 1) * rowsPerPage;
+        return rows.slice(start, start + rowsPerPage);
+    }, [rows, page, rowsPerPage]);
+
+    // Reset to page 1 when the filtered set changes
+    useEffect(() => {
+        setPage(1);
+    }, [search, categoryFilter, rowsPerPage]);
+
+    // If catalog mutates and current page becomes empty, step back
+    useEffect(() => {
+        const totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+        if (page > totalPages) setPage(totalPages);
+    }, [rows.length, rowsPerPage, page]);
 
     const openAdd = () => {
         setDialogMode('add');
@@ -287,35 +306,38 @@ const CargoCarrierSection = () => {
                 </Button>
             </div>
 
-            <div className="text-xs text-slate-500">
-                Showing <span className="font-semibold text-slate-700">{rows.length}</span> of{' '}
-                <span className="font-semibold text-slate-700">{totalItems}</span> commodities.
-            </div>
-
-            {/* Table */}
-            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+            {/* Table card with pagination bar */}
+            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/60 text-xs text-slate-500">
+                    Showing{' '}
+                    <span className="font-semibold text-slate-700">
+                        {rows.length === 0 ? 0 : Math.min(rowsPerPage, paged.length)}
+                    </span>{' '}
+                    of <span className="font-semibold text-slate-700">{rows.length}</span> filtered
+                    {' · '}<span className="font-semibold text-slate-700">{totalItems}</span> total commodities
+                </div>
                 <table className="w-full text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                 Label
                             </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                 Category
                             </th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase tracking-wider w-32">
+                            <th className="px-6 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">
                                 Actions
                             </th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200">
+                    <tbody className="divide-y divide-slate-100">
                         {rows.length === 0 ? (
                             <tr>
-                                <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
+                                <td colSpan={3} className="px-6 py-12 text-center text-slate-400 text-sm">
                                     No cargo types match your filters.
                                 </td>
                             </tr>
-                        ) : rows.map(row => (
+                        ) : paged.map(row => (
                             <tr key={`${row.categoryKey}:${row.label}`} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-3.5 align-middle">
                                     <div className="flex items-center gap-2">
@@ -361,6 +383,13 @@ const CargoCarrierSection = () => {
                         ))}
                     </tbody>
                 </table>
+                <PaginationBar
+                    totalItems={rows.length}
+                    currentPage={page}
+                    rowsPerPage={rowsPerPage}
+                    onPageChange={setPage}
+                    onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
+                />
             </div>
 
             <p className="text-[11px] text-slate-400 flex items-center gap-2">

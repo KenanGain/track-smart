@@ -9,13 +9,23 @@ import { isGroup, type SidebarNode } from "@/types/sidebar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+type UserRole = "user" | "admin" | "super-admin";
+
+const ADMIN_ONLY_KEYS = new Set(["accounts", "admin"]);
+
 type AppSidebarProps = {
     currentPath: string;
     onNavigate: (path: string) => void;
+    role: UserRole;
     className?: string;
 };
 
-export function AppSidebar({ currentPath, onNavigate, className }: AppSidebarProps) {
+export function AppSidebar({ currentPath, onNavigate, role, className }: AppSidebarProps) {
+    const visibleNodes = React.useMemo(() => {
+        const isAdmin = role === "admin" || role === "super-admin";
+        return SIDEBAR_NODES.filter((n) => (ADMIN_ONLY_KEYS.has(n.key) ? isAdmin : true));
+    }, [role]);
+
     const [isCollapsed, setIsCollapsed] = React.useState(() => {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem('sidebar_collapsed');
@@ -74,7 +84,7 @@ export function AppSidebar({ currentPath, onNavigate, className }: AppSidebarPro
             <ScrollArea className="flex-1">
                 <div className={cn("py-4", isCollapsed ? "px-2" : "px-3")}>
                     <nav className="space-y-1">
-                        {SIDEBAR_NODES.map((node) => (
+                        {visibleNodes.map((node) => (
                             <SidebarNodeView
                                 key={node.key}
                                 node={node}

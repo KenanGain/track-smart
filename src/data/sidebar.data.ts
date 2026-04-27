@@ -20,6 +20,14 @@ import {
     ShieldCheck,
     Sliders,
     Users,
+    Boxes,
+    UserCog,
+    List,
+    Store,
+    ShieldAlert,
+    Lock,
+    History,
+    UserPlus,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -42,6 +50,15 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Accounts",
         icon: Users,
         path: "/accounts",
+    },
+    {
+        key: "inventory",
+        label: "Inventory",
+        icon: Boxes,
+        children: [
+            { key: "inventory-list", label: "List", icon: List, path: "/inventory" },
+            { key: "inventory-vendors", label: "Vendors", icon: Store, path: "/inventory/vendors" },
+        ],
     },
 
     {
@@ -130,6 +147,18 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
             { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" }
+        ],
+    },
+    {
+        key: "admin",
+        label: "Admin",
+        icon: UserCog,
+        children: [
+            { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
+            { key: "admin-add-user", label: "Add User", icon: UserPlus, path: "/admin/users/new" },
+            { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },
+            { key: "admin-permissions", label: "Permissions", icon: Lock, path: "/admin/permissions" },
+            { key: "admin-audit-log", label: "Audit Log", icon: History, path: "/admin/audit-log" },
         ],
     },
 ];
