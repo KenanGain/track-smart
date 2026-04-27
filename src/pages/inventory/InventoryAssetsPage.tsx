@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Building2,
     ChevronDown,
     Search,
     Users,
@@ -10,7 +9,7 @@ import {
 import { ACCOUNTS_DB, type AccountRecord } from '@/pages/accounts/accounts.data';
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
-import type { Asset } from '@/data/mock-app-data';
+import type { Asset } from '@/pages/assets/assets.data';
 
 const cn = (...x: (string | boolean | null | undefined)[]) =>
     x.filter(Boolean).join(' ');

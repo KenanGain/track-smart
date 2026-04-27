@@ -28,13 +28,6 @@ import {
     type SafetyRating,
     type AccountCountry,
 } from './accounts.data';
-import {
-    getCarrierCompliance,
-    COMPLIANCE_LEVEL_BADGE,
-    COMPLIANCE_LEVEL_DOT,
-    type ComplianceLevel,
-} from './compliance.utils';
-import { Truck as TruckIcon, FileText as FileTextIcon, KeyRound as KeyRoundIcon, Users as UsersIcon } from 'lucide-react';
 
 // ── UI Utility ──────────────────────────────────────────────────────────────
 

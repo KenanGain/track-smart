@@ -4,7 +4,8 @@
 import { CARRIER_ASSETS } from './carrier-assets.data';
 import { CARRIER_DRIVERS } from './carrier-drivers.data';
 import { hash, mulberry32 } from './carrier-fleet-shared.data';
-import type { Asset, Driver } from '@/data/mock-app-data';
+import type { Driver } from '@/data/mock-app-data';
+import type { Asset } from '@/pages/assets/assets.data';
 
 export type ComplianceLevel = 'Compliant' | 'At Risk' | 'Non-Compliant';
 
