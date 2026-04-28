@@ -13,6 +13,7 @@ import {
 import { CarrierViewModal } from './CarrierViewModal';
 import { CarrierEditModal } from './CarrierEditModal';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
+import { type AppUser } from '@/data/users.data';
 import { cn } from '@/lib/utils';
 
 // ── Status badge styling ───────────────────────────────────────────────────
@@ -61,6 +62,8 @@ interface AccountsListPageProps {
     onSelectAccount?: (account: AccountRecord) => void;
     /** Hide the internal page title + Add button when rendered inside the AccountsTabsPage. */
     embedded?: boolean;
+    /** Logged-in user — drives row-level visibility (admins only see what they manage/created). */
+    currentUser?: AppUser | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -86,7 +89,7 @@ const TD = ({ children, className, onClick }: { children?: React.ReactNode; clas
 
 // ── Page ───────────────────────────────────────────────────────────────────
 
-export function AccountsListPage({ onNavigate, onSelectAccount, embedded }: AccountsListPageProps) {
+export function AccountsListPage({ onNavigate, onSelectAccount, embedded, currentUser }: AccountsListPageProps) {
     const [search, setSearch] = useState('');
     const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
     const [page, setPage] = useState(1);
@@ -96,6 +99,23 @@ export function AccountsListPage({ onNavigate, onSelectAccount, embedded }: Acco
     const [accounts, setAccounts] = useState<AccountRecord[]>(ACCOUNTS_DB);
     const [viewing, setViewing] = useState<AccountRecord | null>(null);
     const [editing, setEditing] = useState<AccountRecord | null>(null);
+
+    // Role-aware visibility:
+    //   - Super admin → all carriers
+    //   - Admin → carriers they manage OR created OR under their service profile
+    //   - User → carriers they're assigned to (managedAccountIds or accountId)
+    const accountsScoped = useMemo(() => {
+        if (!currentUser || currentUser.role === 'super-admin') return accounts;
+        const managed = currentUser.managedAccountIds && currentUser.managedAccountIds.length > 0
+            ? currentUser.managedAccountIds
+            : currentUser.accountId ? [currentUser.accountId] : [];
+        const sp = currentUser.serviceProfileId;
+        return accounts.filter((a) =>
+            managed.includes(a.id) ||
+            (a.createdByUserId && a.createdByUserId === currentUser.id) ||
+            (!!sp && a.serviceProfileId === sp)
+        );
+    }, [accounts, currentUser]);
 
     const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
     const toggleColumn = (id: string) =>
@@ -109,22 +129,22 @@ export function AccountsListPage({ onNavigate, onSelectAccount, embedded }: Acco
         });
     };
 
-    // KPI stats
+    // KPI stats — based on the scoped list, not the full DB
     const stats = useMemo(() => ({
-        total: accounts.length,
-        active: accounts.filter((a) => a.status === 'Active').length,
-        pending: accounts.filter((a) => a.status === 'Pending').length,
-        suspended: accounts.filter((a) => a.status === 'Suspended').length,
-        inactive: accounts.filter((a) => a.status === 'Inactive').length,
-        drivers: accounts.reduce((s, a) => s + a.drivers, 0),
-    }), [accounts]);
+        total: accountsScoped.length,
+        active: accountsScoped.filter((a) => a.status === 'Active').length,
+        pending: accountsScoped.filter((a) => a.status === 'Pending').length,
+        suspended: accountsScoped.filter((a) => a.status === 'Suspended').length,
+        inactive: accountsScoped.filter((a) => a.status === 'Inactive').length,
+        drivers: accountsScoped.reduce((s, a) => s + a.drivers, 0),
+    }), [accountsScoped]);
 
     const setKpi = (status: AccountStatus | 'all') => { setStatusFilter(status); setPage(1); };
 
     // Filter
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return accounts.filter((a) => {
+        return accountsScoped.filter((a) => {
             if (statusFilter !== 'all' && a.status !== statusFilter) return false;
             if (!q) return true;
             return (
@@ -136,7 +156,7 @@ export function AccountsListPage({ onNavigate, onSelectAccount, embedded }: Acco
                 a.state.toLowerCase().includes(q)
             );
         });
-    }, [accounts, search, statusFilter]);
+    }, [accountsScoped, search, statusFilter]);
 
     // Sort
     const sorted = useMemo(() => {
@@ -187,7 +207,7 @@ export function AccountsListPage({ onNavigate, onSelectAccount, embedded }: Acco
                     <div className="mb-5">
                         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Accounts</h1>
                         <p className="mt-1 text-xs text-slate-500">
-                            {accounts.length.toLocaleString()} carriers · click a row to open the carrier
+                            {accountsScoped.length.toLocaleString()} carrier{accountsScoped.length === 1 ? '' : 's'} · click a row to open the carrier
                         </p>
                     </div>
                 )}

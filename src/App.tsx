@@ -6,6 +6,8 @@ import { MyProfilePage } from '@/pages/profile/MyProfilePage'
 import { UsersListPage } from '@/pages/admin/UsersListPage'
 import { AddUserPage } from '@/pages/admin/AddUserPage'
 import { findUserById, type AppUser } from '@/data/users.data'
+import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data'
+import { EmptyCarrierProfile } from '@/pages/account/EmptyCarrierProfile'
 import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
@@ -53,6 +55,17 @@ function App() {
         return id ? findUserById(id) ?? null : null
     })
 
+    // On first mount, if a user is restored from localStorage but no carrier
+    // is selected yet, pick one for them (so /account/profile shows their
+    // own carrier rather than defaulting to Acme).
+    useEffect(() => {
+        if (currentUser && !selectedAccount) {
+            const next = getDefaultCarrierForUser(currentUser)
+            if (next) setSelectedAccount(next)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
     useEffect(() => {
         if (currentUser) {
             localStorage.setItem('app_current_user_id', currentUser.id)
@@ -61,8 +74,39 @@ function App() {
         }
     }, [currentUser])
 
+    /**
+     * Pick the most appropriate carrier for the given user:
+     *   1. Their primary accountId
+     *   2. First entry in their managedAccountIds
+     *   3. Any carrier under their service profile
+     *   4. Super admins → default to Acme Trucking (acct-001) so they always
+     *      land on a real carrier; they can switch via the carrier dropdown.
+     *   5. Otherwise → null (admin/user with no scope → empty-state page)
+     */
+    const getDefaultCarrierForUser = (user: AppUser): AccountRecord | null => {
+        if (user.accountId) {
+            const a = ACCOUNTS_DB.find((x) => x.id === user.accountId)
+            if (a) return a
+        }
+        if (user.managedAccountIds && user.managedAccountIds.length > 0) {
+            const a = ACCOUNTS_DB.find((x) => x.id === user.managedAccountIds![0])
+            if (a) return a
+        }
+        if (user.serviceProfileId) {
+            const a = ACCOUNTS_DB.find((x) => x.serviceProfileId === user.serviceProfileId)
+            if (a) return a
+        }
+        if (user.role === "super-admin") {
+            return ACCOUNTS_DB.find((x) => x.id === "acct-001")
+                ?? ACCOUNTS_DB[0]
+                ?? null
+        }
+        return null
+    }
+
     const handleSignIn = (user: AppUser) => {
         setCurrentUser(user)
+        setSelectedAccount(getDefaultCarrierForUser(user))
         setPath("/dashboard")
     }
 
@@ -115,10 +159,18 @@ function App() {
             return <ComplianceDocumentsPage />
         }
         if (path === "/account/profile") {
+            // Fall back to the user's default carrier if none has been picked yet
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            // No carrier in this user's scope → empty state instead of falling
+            // through to Acme as the global default.
+            if (currentUser && !account) {
+                return <EmptyCarrierProfile user={currentUser} onNavigate={handleNavigate} />
+            }
             return (
                 <CarrierProfilePage
-                    key={selectedAccount?.id ?? 'default'}
-                    accountId={selectedAccount?.id}
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
                     currentUser={currentUser ?? undefined}
                     onSelectAccount={handleSelectAccount}
                 />

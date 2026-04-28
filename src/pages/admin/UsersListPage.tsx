@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Building2, Mail, Shield, Users as UsersIcon, Filter, Eye, Edit2 } from "lucide-react";
+import { Plus, Building2, Mail, Shield, Users as UsersIcon, Filter, Eye, Edit2, Link2 } from "lucide-react";
 import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
 import {
     APP_USERS,
@@ -12,6 +12,7 @@ import {
 import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
 import { UserViewModal } from "./UserViewModal";
 import { UserEditModal } from "./UserEditModal";
+import { AssignCarriersModal } from "./AssignCarriersModal";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -47,6 +48,7 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
     const [users, setUsers] = useState<AppUser[]>(APP_USERS);
     const [viewingUser, setViewingUser] = useState<AppUser | null>(null);
     const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+    const [assigningUser, setAssigningUser] = useState<AppUser | null>(null);
 
     const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
     const toggleColumn = (id: string) =>
@@ -293,6 +295,15 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    onClick={() => setAssigningUser(u)}
+                                                    className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                                    title="Assign carriers"
+                                                    aria-label="Assign carriers"
+                                                >
+                                                    <Link2 size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     onClick={() => setEditingUser(u)}
                                                     className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                                                     title="Edit user"
@@ -328,6 +339,12 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
                 user={editingUser}
                 currentUser={currentUser}
                 onClose={() => setEditingUser(null)}
+                onSave={handleSaveUser}
+            />
+            <AssignCarriersModal
+                user={assigningUser}
+                currentUser={currentUser}
+                onClose={() => setAssigningUser(null)}
                 onSave={handleSaveUser}
             />
         </div>

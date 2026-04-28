@@ -13,10 +13,13 @@ import {
 } from "./service-profiles.data";
 import { ServiceProfileViewModal } from "./ServiceProfileViewModal";
 import { ServiceProfileEditModal } from "./ServiceProfileEditModal";
+import { type AppUser } from "@/data/users.data";
 import { cn } from "@/lib/utils";
 
 type Props = {
     onNavigate?: (path: string) => void;
+    /** Logged-in user — drives row-level visibility. */
+    currentUser?: AppUser | null;
 };
 
 const ALL_COLUMNS: ColumnDef[] = [
@@ -46,13 +49,23 @@ const STATUS_DOT: Record<ServiceProfileStatus, string> = {
 type SortKey = "legalName" | "stateOfInc" | "businessType" | "accountsCreated" | "createdAt" | "status";
 type SortDir = "asc" | "desc";
 
-export function ServiceProfilesListPage(_: Props = {}) {
+export function ServiceProfilesListPage({ currentUser }: Props = {}) {
     const [search, setSearch] = useState("");
     const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(25);
     const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>({ key: "legalName", dir: "asc" });
     const [profiles, setProfiles] = useState<ServiceProfile[]>(SERVICE_PROFILES_DB);
+
+    // Role-aware visibility:
+    //   - Super admin → all profiles
+    //   - Admin → only the service profile they belong to
+    //   - User → only the service profile they belong to (rare)
+    const profilesScoped = useMemo(() => {
+        if (!currentUser || currentUser.role === "super-admin") return profiles;
+        if (!currentUser.serviceProfileId) return [];
+        return profiles.filter((p) => p.id === currentUser.serviceProfileId);
+    }, [profiles, currentUser]);
     const [viewing, setViewing] = useState<ServiceProfile | null>(null);
     const [editing, setEditing] = useState<ServiceProfile | null>(null);
 
@@ -70,7 +83,7 @@ export function ServiceProfilesListPage(_: Props = {}) {
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return profiles.filter((p) => {
+        return profilesScoped.filter((p) => {
             if (!q) return true;
             return (
                 p.legalName.toLowerCase().includes(q) ||
@@ -80,7 +93,7 @@ export function ServiceProfilesListPage(_: Props = {}) {
                 (p.contactEmail ?? "").toLowerCase().includes(q)
             );
         });
-    }, [profiles, search]);
+    }, [profilesScoped, search]);
 
     const sorted = useMemo(() => {
         if (!sort) return filtered;

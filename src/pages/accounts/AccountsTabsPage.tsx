@@ -9,6 +9,7 @@ import {
     getServiceProfileById,
     isUnlimitedLimit,
 } from "./service-profiles.data";
+import { useMemo } from "react";
 import {
     canCreateAnotherAccount,
     getRemainingAccountSlotsForUser,
@@ -32,6 +33,25 @@ const TABS: SubTab<TabId>[] = [
 export function AccountsTabsPage({ onNavigate, onSelectAccount, currentUser }: Props) {
     const [activeTab, setActiveTab] = useState<TabId>("carriers");
 
+    // Role-aware visible counts for the page subtitle
+    const visibleCarrierCount = useMemo(() => {
+        if (!currentUser || currentUser.role === "super-admin") return ACCOUNTS_DB.length;
+        const managed = currentUser.managedAccountIds && currentUser.managedAccountIds.length > 0
+            ? currentUser.managedAccountIds
+            : currentUser.accountId ? [currentUser.accountId] : [];
+        const sp = currentUser.serviceProfileId;
+        return ACCOUNTS_DB.filter((a) =>
+            managed.includes(a.id) ||
+            (a.createdByUserId && a.createdByUserId === currentUser.id) ||
+            (!!sp && a.serviceProfileId === sp)
+        ).length;
+    }, [currentUser]);
+
+    const visibleServiceCount = useMemo(() => {
+        if (!currentUser || currentUser.role === "super-admin") return SERVICE_PROFILES_DB.length;
+        return currentUser.serviceProfileId ? 1 : 0;
+    }, [currentUser]);
+
     // Service-profile based limit logic
     const userServiceProfile = currentUser ? getServiceProfileById(currentUser.serviceProfileId) : undefined;
     const remaining = currentUser
@@ -52,8 +72,8 @@ export function AccountsTabsPage({ onNavigate, onSelectAccount, currentUser }: P
                         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Accounts</h1>
                         <p className="mt-1 text-xs text-slate-500">
                             {activeTab === "carriers"
-                                ? `${ACCOUNTS_DB.length.toLocaleString()} carrier profiles · click a row to open the carrier`
-                                : `${SERVICE_PROFILES_DB.length.toLocaleString()} service profiles · parent organizations that manage carriers`}
+                                ? `${visibleCarrierCount.toLocaleString()} carrier profile${visibleCarrierCount === 1 ? "" : "s"} visible · click a row to open the carrier`
+                                : `${visibleServiceCount.toLocaleString()} service profile${visibleServiceCount === 1 ? "" : "s"} visible · parent organizations that manage carriers`}
                         </p>
 
                         {/* Service-profile usage badge for admins */}
@@ -138,10 +158,15 @@ export function AccountsTabsPage({ onNavigate, onSelectAccount, currentUser }: P
             {/* Content */}
             <div>
                 {activeTab === "carriers" ? (
-                    <AccountsListPage onNavigate={onNavigate} onSelectAccount={onSelectAccount} embedded />
+                    <AccountsListPage
+                        onNavigate={onNavigate}
+                        onSelectAccount={onSelectAccount}
+                        embedded
+                        currentUser={currentUser}
+                    />
                 ) : (
                     <div className="px-6 py-6">
-                        <ServiceProfilesListPage onNavigate={onNavigate} />
+                        <ServiceProfilesListPage onNavigate={onNavigate} currentUser={currentUser} />
                     </div>
                 )}
             </div>

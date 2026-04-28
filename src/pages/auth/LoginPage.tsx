@@ -8,6 +8,7 @@ import {
     findUserByEmail,
     type AppUser,
 } from "@/data/users.data";
+import { SERVICE_PROFILES_DB } from "@/pages/accounts/service-profiles.data";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -21,16 +22,40 @@ export function LoginPage({ onSignIn }: Props) {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Group users for the quick-login dropdown
+    // Group users for the quick-login dropdown — dynamically by service profile
     const grouped = useMemo(() => {
+        const groups: { label: string; users: AppUser[] }[] = [];
+
+        // 1. Super admins (platform-wide)
         const superAdmins = APP_USERS.filter((u) => u.role === "super-admin");
-        const acme = APP_USERS.filter((u) => u.accountId === "acct-001");
-        const cascade = APP_USERS.filter((u) => u.accountId === "acct-002");
-        return [
-            { label: "Super Admins (platform-wide)", users: superAdmins },
-            { label: "Acme Trucking Inc.", users: acme },
-            { label: "Cascade Freight Systems LLC", users: cascade },
-        ];
+        if (superAdmins.length > 0) {
+            groups.push({ label: "Super Admins (platform-wide)", users: superAdmins });
+        }
+
+        // 2. One group per service profile
+        for (const sp of SERVICE_PROFILES_DB) {
+            const users = APP_USERS.filter((u) => u.serviceProfileId === sp.id);
+            if (users.length === 0) continue;
+            // Sort: admins first, then users by name
+            users.sort((a, b) => {
+                if (a.role !== b.role) return a.role === "admin" ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+            groups.push({
+                label: `${sp.legalName}${sp.dbaName ? ` (${sp.dbaName})` : ""}`,
+                users,
+            });
+        }
+
+        // 3. Orphans — users not tied to any service profile (and not super admin)
+        const orphans = APP_USERS.filter(
+            (u) => u.role !== "super-admin" && !u.serviceProfileId
+        );
+        if (orphans.length > 0) {
+            groups.push({ label: "Other Users", users: orphans });
+        }
+
+        return groups;
     }, []);
 
     const selectedUser = useMemo(
