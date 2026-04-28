@@ -713,9 +713,9 @@ export function AccountsListPage({ onNavigate, onSelectAccount }: AccountsListPa
     };
 
     return (
-        <div className="min-h-full bg-[#F8FAFC] text-slate-900">
+        <div className="min-h-full bg-slate-50 text-slate-900">
             {/* HEADER SECTION */}
-            <div className="px-6 pt-6 pb-6 bg-white border-b border-slate-200/60 shadow-sm">
+            <div className="px-6 pt-6 pb-6 bg-white border-b border-slate-200 shadow-sm">
                 <div className="flex flex-col gap-6">
                     <div className="flex justify-between items-center">
                         <div>
@@ -855,11 +855,12 @@ export function AccountsListPage({ onNavigate, onSelectAccount }: AccountsListPa
                 </div>
             </div>
 
-            {/* MAIN LIST VIEW — inline with page, no card wrapper */}
-            <div className="px-6 pb-6">
-                <div className="overflow-x-auto">
+            {/* MAIN LIST VIEW — wrapped in card to match other list pages */}
+            <div className="px-6 py-6">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse min-w-[1300px]">
-                            <thead className="bg-slate-50/80 border-b border-slate-200">
+                            <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     {visible('carrier') && (
                                         <SortHeaderCell label="Carrier" sortKey="legalName" currentSort={sort} onSort={handleSort} className="pl-6 min-w-[260px]">
@@ -1028,37 +1029,40 @@ export function AccountsListPage({ onNavigate, onSelectAccount }: AccountsListPa
                         </table>
                     </div>
 
-                    {/* PAGINATION FOOTER */}
-                    <div className="shrink-0 border-t border-slate-200 bg-slate-50/50 px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span>Rows per page:</span>
-                            <select
-                                className="h-7 px-2 border border-slate-200 rounded-lg bg-white text-xs focus:outline-none focus:border-blue-400"
-                                value={perPage}
-                                onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }}
-                            >
-                                {PAGE_SIZE_OPTIONS.map(n => (
-                                    <option key={n} value={n}>{n}</option>
-                                ))}
-                            </select>
-                            <span className="ml-3 text-slate-400">
-                                Showing {sorted.length === 0 ? 0 : (safePage - 1) * perPage + 1}
+                    {/* PAGINATION FOOTER (inside the card) */}
+                    <div className="border-t border-slate-100 px-4 py-3 flex items-center justify-between gap-3 flex-wrap bg-white">
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                            <div className="inline-flex items-center gap-1.5">
+                                <span>Rows:</span>
+                                <select
+                                    className="h-8 px-2 border border-slate-200 rounded-md bg-white text-xs font-medium text-slate-700 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                                    value={perPage}
+                                    onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }}
+                                >
+                                    {PAGE_SIZE_OPTIONS.map(n => (
+                                        <option key={n} value={n}>{n}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <span className="font-medium">
+                                {sorted.length === 0 ? 0 : (safePage - 1) * perPage + 1}
                                 –{Math.min(safePage * perPage, sorted.length)} of {sorted.length.toLocaleString()}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-slate-500 font-medium">
                                 Page {safePage} of {totalPages}
                             </span>
-                            <Button variant="outline" size="icon" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="h-8 w-8">
+                            <Button variant="outline" size="icon" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="h-8 w-8 rounded-md">
                                 <ChevronLeft className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="outline" size="icon" disabled={safePage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="h-8 w-8">
+                            <Button variant="outline" size="icon" disabled={safePage >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} className="h-8 w-8 rounded-md">
                                 <ChevronRight className="w-3.5 h-3.5" />
                             </Button>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
         );
 }

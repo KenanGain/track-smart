@@ -59,6 +59,9 @@ import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
 import { DriverForm } from './DriverForm';
+import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
+import { getManagedAccountIds, ROLE_LABELS } from '@/data/users.data';
+import { CarrierSwitcher } from '@/components/layout/CarrierSwitcher';
 
 
 
@@ -506,7 +509,11 @@ const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
 
 // Key Number Add/Edit Modal
 
-export function CarrierProfilePage({ accountId }: { accountId?: string } = {}) {
+export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: {
+    accountId?: string;
+    currentUser?: import('@/data/users.data').AppUser;
+    onSelectAccount?: (account: import('@/pages/accounts/accounts.data').AccountRecord) => void;
+} = {}) {
     const profileBundle = useMemo(() => buildProfileBundle(accountId), [accountId]);
     const [viewData] = useState(profileBundle?.viewData ?? INITIAL_VIEW_DATA);
     const [formConfig, setFormConfig] = useState(profileBundle?.uiData ?? UI_DATA);
@@ -923,16 +930,47 @@ export function CarrierProfilePage({ accountId }: { accountId?: string } = {}) {
         { id: 'drivers', label: 'Drivers' }
     ];
 
+    // Carriers visible to the current user (super admin → all; admin → managed; user → just their own)
+    const availableCarriers = (() => {
+        if (!currentUser) return [] as typeof ACCOUNTS_DB;
+        const managed = getManagedAccountIds(currentUser);
+        if (managed === undefined) return ACCOUNTS_DB; // super admin
+        return ACCOUNTS_DB.filter((a) => managed.includes(a.id));
+    })();
+
+    const activeAccountId = accountId ?? availableCarriers[0]?.id;
+
     return (
         <div className="flex-1 p-4 lg:p-6 overflow-x-hidden bg-slate-50 min-h-screen">
             {/* Header Area */}
-            <div className="mb-6">
-                <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
+            <div className="mb-6 flex items-center justify-between gap-4 flex-wrap min-h-[36px]">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
                     <Building2 className="w-4 h-4" />
                     <span>{viewData.page.breadcrumb[0]}</span>
                     <span className="text-slate-300">/</span>
                     <span className="font-semibold text-slate-900">{viewData.page.breadcrumb[1]}</span>
                 </div>
+
+                {currentUser && availableCarriers.length > 0 && (
+                    <CarrierSwitcher
+                        selectedAccountId={activeAccountId}
+                        accounts={availableCarriers.map((a) => ({
+                            id: a.id,
+                            legalName: a.legalName,
+                            dbaName: a.dbaName,
+                            dotNumber: a.dotNumber,
+                        }))}
+                        onSelect={(id) => {
+                            const acct = ACCOUNTS_DB.find((a) => a.id === id);
+                            if (acct) onSelectAccount?.(acct);
+                        }}
+                        scopeLabel={
+                            currentUser.role === "super-admin"
+                                ? `${ROLE_LABELS[currentUser.role]} · All carriers`
+                                : `${ROLE_LABELS[currentUser.role]} · ${availableCarriers.length} carrier${availableCarriers.length === 1 ? "" : "s"}`
+                        }
+                    />
+                )}
             </div>
 
             {/* Tab Navigation (Moved Up) */}

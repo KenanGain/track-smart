@@ -34,6 +34,7 @@ import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS, type Asset, type Driver } from '@/pages/assets/assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
+import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { AssetModal } from '@/pages/assets/AssetModal';
@@ -739,7 +740,7 @@ export const ComplianceDocumentsPage = () => {
     };
 
     const tabs = [ { id: 'compliance', label: 'Compliance' }, { id: 'documents', label: 'Documents' } ];
-    const entityTabs = [
+    const entityTabs: SubTab<'Carrier' | 'Asset' | 'Driver'>[] = [
         { id: 'Carrier', label: 'Carrier', icon: LayoutGrid },
         { id: 'Asset', label: 'Asset', icon: Truck },
         { id: 'Driver', label: 'Driver', icon: User }
@@ -782,27 +783,12 @@ export const ComplianceDocumentsPage = () => {
                 </div>
 
             {/* Entity Filter Sub-Tabs (Always Visible to allow switching) */}
-            <div className="flex items-center gap-8 border-b border-slate-200 mb-6">
-                {entityTabs.map((tab) => {
-                    const Icon = tab.icon;
-                    const isActive = activeEntityFilter === tab.id;
-                    return (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveEntityFilter(tab.id as any)}
-                            className={`
-                                flex items-center gap-2 pb-4 border-b-2 font-medium transition-colors
-                                ${isActive
-                                    ? 'border-blue-600 text-blue-600'
-                                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-                            `}
-                        >
-                            <Icon className="w-5 h-5" />
-                            <span>{tab.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
+            <SubTabs
+                tabs={entityTabs}
+                activeId={activeEntityFilter}
+                onChange={(id) => setActiveEntityFilter(id)}
+                className="mb-6"
+            />
 
             {/* Sub-Category Toggle (Driver Only - Asset moved to Toolbar) */}
 

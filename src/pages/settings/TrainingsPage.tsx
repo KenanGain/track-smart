@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { TRAINING_TYPES, TRAINING_CATEGORIES } from "@/data/training.data";
 import type { TrainingType } from "@/types/training.types";
 import { TrainingEditModal } from "./TrainingEditModal";
-import { cn } from "@/lib/utils";
+import { SubTabs } from "@/components/ui/SubTabs";
 
 // Helper Components
 const StatusBadge = ({ status }: { status: 'active' | 'inactive' }) => {
@@ -228,36 +228,14 @@ const TrainingsPage = () => {
 
                 {/* Tabs & Search Bar */}
                 <div className="flex flex-col space-y-4 mb-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200">
-                        {/* Tabs */}
-                        <div className="flex items-center gap-4 overflow-x-auto no-scrollbar -mb-px">
-                            <button
-                                onClick={() => setActiveTab("all")}
-                                className={cn(
-                                    "pb-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-1",
-                                    activeTab === "all"
-                                        ? "border-blue-600 text-blue-600"
-                                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                                )}
-                            >
-                                All Training Types
-                            </button>
-                            {TRAINING_CATEGORIES.map(category => (
-                                <button
-                                    key={category}
-                                    onClick={() => setActiveTab(category)}
-                                    className={cn(
-                                        "pb-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-1",
-                                        activeTab === category
-                                            ? "border-blue-600 text-blue-600"
-                                            : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                                    )}
-                                >
-                                    {category}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    <SubTabs
+                        tabs={[
+                            { id: "all", label: "All Training Types" },
+                            ...TRAINING_CATEGORIES.map((c) => ({ id: c, label: c })),
+                        ]}
+                        activeId={activeTab}
+                        onChange={(id) => setActiveTab(id)}
+                    />
 
                     {/* Toolbar */}
                     <div className="flex items-center justify-between gap-4">

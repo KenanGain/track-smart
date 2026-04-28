@@ -27,7 +27,6 @@ import {
     ShieldAlert,
     Lock,
     History,
-    UserPlus,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -155,7 +154,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: UserCog,
         children: [
             { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
-            { key: "admin-add-user", label: "Add User", icon: UserPlus, path: "/admin/users/new" },
             { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },
             { key: "admin-permissions", label: "Permissions", icon: Lock, path: "/admin/permissions" },
             { key: "admin-audit-log", label: "Audit Log", icon: History, path: "/admin/audit-log" },

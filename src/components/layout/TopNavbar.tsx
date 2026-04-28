@@ -1,21 +1,15 @@
 import * as React from "react";
-import { Search, Bell, HelpCircle, ChevronDown, Check, UserCog } from "lucide-react";
+import { Search, Bell, HelpCircle, ChevronDown, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-
-export type UserRole = "user" | "admin" | "super-admin";
+import { ROLE_BADGE, ROLE_LABELS, type AppUser } from "@/data/users.data";
 
 type TopNavbarProps = {
     currentPath: string;
-    role: UserRole;
-    onRoleChange: (role: UserRole) => void;
+    user: AppUser;
+    onSignOut: () => void;
+    onNavigate?: (path: string) => void;
     className?: string;
-};
-
-const ROLE_LABELS: Record<UserRole, string> = {
-    "user": "User",
-    "admin": "Admin",
-    "super-admin": "Super Admin",
 };
 
 const PATH_TITLES: Record<string, string> = {
@@ -24,8 +18,10 @@ const PATH_TITLES: Record<string, string> = {
     "/account/locations": "Locations",
     "/accounts": "Accounts",
     "/accounts/new": "Add Account",
-    "/inventory/assets": "Assets",
-    "/inventory/drivers": "Drivers",
+    "/inventory": "Inventory",
+    "/inventory/vendors": "Vendors",
+    "/inventory/vendors/new": "Add Vendor",
+    "/inventory/items/new": "Add Inventory",
     "/compliance": "Compliance & Documents",
     "/maintenance": "Maintenance",
     "/paystubs": "Paystubs",
@@ -37,6 +33,9 @@ const PATH_TITLES: Record<string, string> = {
     "/safety-events": "Safety Events",
     "/safety-analysis": "Safety Analysis",
     "/tickets": "Tickets",
+    "/profile/me": "My Profile",
+    "/admin/users": "Users",
+    "/admin/users/new": "Add User",
 };
 
 function getPageTitle(path: string): string {
@@ -46,9 +45,8 @@ function getPageTitle(path: string): string {
     return "TrackSmart";
 }
 
-export function TopNavbar({ currentPath, role, onRoleChange, className }: TopNavbarProps) {
+export function TopNavbar({ currentPath, user, onSignOut, onNavigate, className }: TopNavbarProps) {
     const [menuOpen, setMenuOpen] = React.useState(false);
-    const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
     const menuRef = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
@@ -56,18 +54,11 @@ export function TopNavbar({ currentPath, role, onRoleChange, className }: TopNav
         const handleClick = (e: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setMenuOpen(false);
-                setRoleMenuOpen(false);
             }
         };
         document.addEventListener("mousedown", handleClick);
         return () => document.removeEventListener("mousedown", handleClick);
     }, [menuOpen]);
-
-    const handleSelectRole = (next: UserRole) => {
-        onRoleChange(next);
-        setRoleMenuOpen(false);
-        setMenuOpen(false);
-    };
 
     return (
         <header
@@ -116,76 +107,62 @@ export function TopNavbar({ currentPath, role, onRoleChange, className }: TopNav
                 <div ref={menuRef} className="relative">
                     <button
                         type="button"
-                        onClick={() => {
-                            setMenuOpen((o) => !o);
-                            setRoleMenuOpen(false);
-                        }}
+                        onClick={() => setMenuOpen((o) => !o)}
                         className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-blue-100"
                     >
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-sm font-semibold">
-                            JD
+                        <div className={cn(
+                            "h-8 w-8 rounded-full bg-gradient-to-br flex items-center justify-center text-white text-sm font-semibold",
+                            user.avatarGradient
+                        )}>
+                            {user.initials}
                         </div>
                         <div className="hidden sm:flex flex-col items-start leading-tight">
-                            <span className="text-sm font-semibold text-slate-900">John Doe</span>
-                            <span className="text-xs text-slate-500">{ROLE_LABELS[role]}</span>
+                            <span className="text-sm font-semibold text-slate-900">{user.name}</span>
+                            <span className="text-xs text-slate-500">{ROLE_LABELS[user.role]}</span>
                         </div>
                         <ChevronDown size={14} className={cn("text-slate-400 transition-transform", menuOpen && "rotate-180")} />
                     </button>
 
                     {menuOpen && (
-                        <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-50">
-                            <div className="px-3 py-2 border-b border-slate-100">
-                                <p className="text-sm font-semibold text-slate-900">John Doe</p>
-                                <p className="text-xs text-slate-500 truncate">john.doe@tracksmart.com</p>
-                            </div>
-
-                            <div className="px-3 py-2 border-b border-slate-100">
-                                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                                    Current Account
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={() => setRoleMenuOpen((o) => !o)}
-                                    className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-blue-100"
-                                >
-                                    <span className="flex items-center gap-2 text-sm text-slate-700">
-                                        <UserCog size={14} className="text-slate-400" />
-                                        {ROLE_LABELS[role]}
-                                    </span>
-                                    <ChevronDown size={14} className={cn("text-slate-400 transition-transform", roleMenuOpen && "rotate-180")} />
-                                </button>
-
-                                {roleMenuOpen && (
-                                    <div className="mt-1 border border-slate-200 rounded-md bg-white shadow-sm overflow-hidden">
-                                        {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
-                                            <button
-                                                key={r}
-                                                type="button"
-                                                onClick={() => handleSelectRole(r)}
-                                                className={cn(
-                                                    "w-full flex items-center justify-between px-3 py-2 text-sm transition-colors",
-                                                    role === r
-                                                        ? "bg-blue-50 text-blue-700 font-semibold"
-                                                        : "text-slate-700 hover:bg-slate-50"
-                                                )}
-                                            >
-                                                <span>{ROLE_LABELS[r]}</span>
-                                                {role === r && <Check size={14} className="text-blue-600" />}
-                                            </button>
-                                        ))}
+                        <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-50">
+                            <div className="px-3 py-3 border-b border-slate-100">
+                                <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                        "h-10 w-10 rounded-full bg-gradient-to-br flex items-center justify-center text-white text-sm font-semibold shrink-0",
+                                        user.avatarGradient
+                                    )}>
+                                        {user.initials}
                                     </div>
-                                )}
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-900 truncate">{user.name}</p>
+                                        <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                                    </div>
+                                </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <span className={cn(
+                                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                                        ROLE_BADGE[user.role]
+                                    )}>
+                                        {ROLE_LABELS[user.role]}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 truncate">
+                                        {user.accountName ?? "Platform-wide access"}
+                                    </span>
+                                </div>
                             </div>
 
-                            <button className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                                My Profile
-                            </button>
-                            <button className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                                Account Settings
+                            <button
+                                onClick={() => { setMenuOpen(false); onNavigate?.("/profile/me"); }}
+                                className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
+                            >
+                                <User size={14} className="text-slate-400" /> My Profile
                             </button>
                             <div className="border-t border-slate-100 my-1" />
-                            <button className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
-                                Sign Out
+                            <button
+                                onClick={() => { setMenuOpen(false); onSignOut(); }}
+                                className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors inline-flex items-center gap-2"
+                            >
+                                <LogOut size={14} /> Sign Out
                             </button>
                         </div>
                     )}

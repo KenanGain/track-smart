@@ -1,6 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppSidebar } from '@/components/layout/AppSidebar'
-import { TopNavbar, type UserRole } from '@/components/layout/TopNavbar'
+import { TopNavbar } from '@/components/layout/TopNavbar'
+import { LoginPage } from '@/pages/auth/LoginPage'
+import { MyProfilePage } from '@/pages/profile/MyProfilePage'
+import { UsersListPage } from '@/pages/admin/UsersListPage'
+import { AddUserPage } from '@/pages/admin/AddUserPage'
+import { findUserById, type AppUser } from '@/data/users.data'
 import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
@@ -41,14 +46,29 @@ function App() {
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
     const [path, setPath] = useState("/dashboard")
     const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
-    const [role, setRole] = useState<UserRole>("user")
+    const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
+        if (typeof window === 'undefined') return null
+        const id = localStorage.getItem('app_current_user_id')
+        return id ? findUserById(id) ?? null : null
+    })
 
-    const handleRoleChange = (next: UserRole) => {
-        setRole(next)
-        const isAdmin = next === "admin" || next === "super-admin"
-        if (!isAdmin && (path === "/accounts" || path.startsWith("/accounts/") || path.startsWith("/admin"))) {
-            setPath("/dashboard")
+    useEffect(() => {
+        if (currentUser) {
+            localStorage.setItem('app_current_user_id', currentUser.id)
+        } else {
+            localStorage.removeItem('app_current_user_id')
         }
+    }, [currentUser])
+
+    const handleSignIn = (user: AppUser) => {
+        setCurrentUser(user)
+        setPath("/dashboard")
+    }
+
+    const handleSignOut = () => {
+        setCurrentUser(null)
+        setPath("/dashboard")
+        setSelectedAccount(null)
     }
 
     const handleNavigate = (newPath: string) => {
@@ -63,6 +83,15 @@ function App() {
 
     // Render the appropriate page based on currentPath
     const renderPage = () => {
+        if (path === "/profile/me" && currentUser) {
+            return <MyProfilePage user={currentUser} />
+        }
+        if (path === "/admin/users" && currentUser) {
+            return <UsersListPage currentUser={currentUser} onNavigate={handleNavigate} />
+        }
+        if (path === "/admin/users/new" && currentUser) {
+            return <AddUserPage currentUser={currentUser} onNavigate={handleNavigate} />
+        }
         if (path === "/dashboard") {
             // Dashboard placeholder - empty for now
             return (
@@ -85,7 +114,14 @@ function App() {
             return <ComplianceDocumentsPage />
         }
         if (path === "/account/profile") {
-            return <CarrierProfilePage key={selectedAccount?.id ?? 'default'} accountId={selectedAccount?.id} />
+            return (
+                <CarrierProfilePage
+                    key={selectedAccount?.id ?? 'default'}
+                    accountId={selectedAccount?.id}
+                    currentUser={currentUser ?? undefined}
+                    onSelectAccount={handleSelectAccount}
+                />
+            )
         }
         if (path === "/account/locations") {
             return <LocationsPage />
@@ -201,15 +237,19 @@ function App() {
         )
     }
 
+    if (!currentUser) {
+        return <LoginPage onSignIn={handleSignIn} />
+    }
+
     return (
         <div className="flex h-screen w-full bg-slate-50">
             <AppSidebar
                 currentPath={path}
                 onNavigate={handleNavigate}
-                role={role}
+                role={currentUser.role}
             />
             <div className="flex-1 flex flex-col min-w-0">
-                <TopNavbar currentPath={path} role={role} onRoleChange={handleRoleChange} />
+                <TopNavbar currentPath={path} user={currentUser} onSignOut={handleSignOut} onNavigate={handleNavigate} />
                 <main className="flex-1 overflow-auto">
                     {renderPage()}
                 </main>

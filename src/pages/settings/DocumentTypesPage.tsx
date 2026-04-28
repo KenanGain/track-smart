@@ -13,6 +13,7 @@ import {
 } from '@/data/mock-app-data';
 import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { DocumentTagsManager } from './tags/DocumentTagsManager';
+import { SubTabs } from '@/components/ui/SubTabs';
 import { CreateSectionModal } from './tags/TagComponents';
 
 // StatusBadge kept as it might be used in list view
@@ -164,20 +165,12 @@ const DocumentTypesPage: React.FC = () => {
                 {/* Sub-Tabs for Types only */}
                 {pageMode === 'types' && (
                     <div className="px-6 border-t border-slate-100 bg-white">
-                        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                            {tabs.map((tab) => (
-                                <button
-                                    key={tab}
-                                    onClick={() => setActiveTab(tab)}
-                                    className={`${activeTab === tab
-                                        ? 'border-blue-500 text-blue-600'
-                                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                                        } whitespace-nowrap border-b-2 py-3 px-1 text-sm font-medium transition-colors`}
-                                >
-                                    {tab}
-                                </button>
-                            ))}
-                        </nav>
+                        <SubTabs
+                            tabs={tabs.map((t) => ({ id: t, label: t }))}
+                            activeId={activeTab}
+                            onChange={(id) => setActiveTab(id)}
+                            bordered={false}
+                        />
                     </div>
                 )}
             </header>

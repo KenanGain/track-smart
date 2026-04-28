@@ -23,6 +23,7 @@ import {
 import { VIOLATION_DATA } from '@/data/violations.data';
 import { NSC_CODE_TO_SYSTEM, CCMTA_ALPHA_CODE_MAP, FMCSA_BASIC_MAP, cfr_to_basic } from '@/pages/inspections/nscViolationMap';
 import { NSC_VIOLATION_CATALOG } from '@/pages/inspections/NscAnalysis';
+import { SubTabs } from '@/components/ui/SubTabs';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
@@ -606,25 +607,12 @@ export function ViolationsPage() {
       </div>
 
       {/* ── Category Tabs + Search ── */}
-      <div className="bg-white border-b border-slate-200 px-6">
-        <div className="flex items-center gap-0 overflow-x-auto">
-          {TABS_CONFIG.map((tab) => {
-            const isActiveTab = activeCategory === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => { setActiveCategory(tab.key); resetPage(); }}
-                className={`whitespace-nowrap px-4 py-3 border-b-2 font-medium text-sm transition-colors ${
-                  isActiveTab
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      <div className="bg-white px-6">
+        <SubTabs
+          tabs={TABS_CONFIG.map((t) => ({ id: t.key, label: t.label }))}
+          activeId={activeCategory}
+          onChange={(id) => { setActiveCategory(id); resetPage(); }}
+        />
       </div>
 
       {/* ── Search + Filter Row ── */}
