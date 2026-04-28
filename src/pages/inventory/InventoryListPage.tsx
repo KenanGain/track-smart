@@ -1,21 +1,27 @@
 import { useMemo, useState } from "react";
-import { Plus, Download, Building2, ChevronRight, Truck, IdCard, Mail, Phone, FileText } from "lucide-react";
-import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
+import {
+    Plus, Download, Building2, ChevronRight, ChevronDown, Search,
+    Truck, IdCard, Mail, Phone, FileText,
+    Fuel, Radio, Activity, Map as MapIcon, Camera, Wrench, Layers,
+} from "lucide-react";
 import {
     INVENTORY_ITEMS,
     VENDORS,
+    VENDOR_TYPES,
     ACME_ASSETS,
     ACME_DRIVERS,
-    VENDOR_TYPE_LABELS,
     CARRIER_NAME,
     type InventoryItem,
     type InventoryStatus,
+    type VendorType,
 } from "./inventory.data";
 import { cn } from "@/lib/utils";
 
 type Props = {
     onNavigate: (path: string) => void;
 };
+
+// ── Status pill styling ────────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<InventoryStatus, string> = {
     "Active": "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -28,17 +34,22 @@ const STATUS_DOT: Record<InventoryStatus, string> = {
     "Expired": "bg-red-500",
 };
 
-const ALL_COLUMNS: ColumnDef[] = [
-    { id: "vendorName", label: "Vendor Name", visible: true },
-    { id: "vendorType", label: "Vendor Type", visible: true },
-    { id: "serial", label: "Serial #", visible: true },
-    { id: "pin", label: "PIN #", visible: true },
-    { id: "issueDate", label: "Issue Date", visible: true },
-    { id: "expiryDate", label: "Expiry Date", visible: true },
-    { id: "recurrence", label: "Recurrence", visible: true },
-    { id: "reminder", label: "Reminder", visible: true },
-    { id: "status", label: "Status", visible: true },
-];
+// ── Per-type visual treatment ──────────────────────────────────────────────
+
+const TYPE_VISUAL: Record<string, { icon: React.ElementType; tone: string; bg: string; text: string }> = {
+    "fuel-card":          { icon: Fuel,     tone: "amber",   bg: "bg-amber-50",   text: "text-amber-700" },
+    "transponder":        { icon: Radio,    tone: "violet",  bg: "bg-violet-50",  text: "text-violet-700" },
+    "eld-provider":       { icon: Activity, tone: "blue",    bg: "bg-blue-50",    text: "text-blue-700" },
+    "gps-tracking":       { icon: MapIcon,  tone: "emerald", bg: "bg-emerald-50", text: "text-emerald-700" },
+    "dashcam":            { icon: Camera,   tone: "cyan",    bg: "bg-cyan-50",    text: "text-cyan-700" },
+    "repair-maintenance": { icon: Wrench,   tone: "slate",   bg: "bg-slate-100",  text: "text-slate-700" },
+};
+
+const DEFAULT_VISUAL = { icon: Layers, tone: "slate", bg: "bg-slate-100", text: "text-slate-700" };
+
+const visualFor = (typeKey: string) => TYPE_VISUAL[typeKey] ?? DEFAULT_VISUAL;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 const fmtDate = (d: string) => {
     if (!d) return "—";
@@ -56,43 +67,52 @@ const TD = ({ children, className }: { children?: React.ReactNode; className?: s
     <td className={cn("px-4 py-3 text-sm whitespace-nowrap align-middle", className)}>{children}</td>
 );
 
+// ── Page ───────────────────────────────────────────────────────────────────
+
 export function InventoryListPage({ onNavigate }: Props) {
     const [search, setSearch] = useState("");
-    const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
-    const [page, setPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(25);
+    const [statusFilter, setStatusFilter] = useState<InventoryStatus | "all">("all");
     const [items] = useState<InventoryItem[]>(INVENTORY_ITEMS);
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [collapsedTypes, setCollapsedTypes] = useState<Record<string, boolean>>({});
 
-    const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
-    const toggleColumn = (id: string) =>
-        setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, visible: !c.visible } : c)));
-
-    const visibleColCount = columns.filter((c) => c.visible).length + 1; // +1 for chevron col
-
-    const filtered = useMemo(() => {
+    // 1) Filter items by search + status
+    const matched = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return items
-            .map((item) => ({ item, vendor: VENDORS.find((v) => v.id === item.vendorId) }))
-            .filter(({ item, vendor }) => {
-                if (!vendor) return false;
-                if (!q) return true;
-                return (
-                    vendor.name.toLowerCase().includes(q) ||
-                    VENDOR_TYPE_LABELS[vendor.type].toLowerCase().includes(q) ||
-                    item.serial.toLowerCase().includes(q) ||
-                    item.pin.toLowerCase().includes(q)
-                );
-            });
-    }, [search, items]);
+        return items.filter((item) => {
+            if (statusFilter !== "all" && item.status !== statusFilter) return false;
+            if (!q) return true;
+            const vendor = VENDORS.find((v) => v.id === item.vendorId);
+            return (
+                (vendor?.name ?? "").toLowerCase().includes(q) ||
+                item.serial.toLowerCase().includes(q) ||
+                item.pin.toLowerCase().includes(q)
+            );
+        });
+    }, [items, search, statusFilter]);
 
-    const paged = useMemo(() => {
-        const start = (page - 1) * rowsPerPage;
-        return filtered.slice(start, start + rowsPerPage);
-    }, [filtered, page, rowsPerPage]);
+    // 2) Group filtered items by vendor type
+    const grouped = useMemo(() => {
+        const map = new Map<string, { type: VendorType; items: InventoryItem[] }>();
+        // Seed with all known types so empty blocks can still render in order
+        for (const t of VENDOR_TYPES) map.set(t.key, { type: t, items: [] });
+        for (const item of matched) {
+            const vendor = VENDORS.find((v) => v.id === item.vendorId);
+            if (!vendor) continue;
+            const t = VENDOR_TYPES.find((x) => x.key === vendor.type);
+            if (!t) continue;
+            map.get(t.key)!.items.push(item);
+        }
+        return Array.from(map.values());
+    }, [matched]);
+
+    // Counts for the header summary
+    const totalShown = matched.length;
+    const totalAll = items.length;
 
     return (
         <div className="p-6 lg:p-8 bg-slate-50 min-h-screen">
+            {/* Header */}
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
@@ -103,7 +123,8 @@ export function InventoryListPage({ onNavigate }: Props) {
                     </div>
                     <h1 className="text-2xl font-bold text-slate-900">Inventory</h1>
                     <p className="text-sm text-slate-500 mt-0.5">
-                        {items.length} items across {VENDORS.length} vendors · click a row to view assignments
+                        Showing <span className="font-semibold text-slate-700">{totalShown}</span> of{" "}
+                        <span className="font-semibold text-slate-700">{totalAll}</span> items, grouped by vendor type
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -119,87 +140,179 @@ export function InventoryListPage({ onNavigate }: Props) {
                 </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <DataListToolbar
-                    searchValue={search}
-                    onSearchChange={(v) => { setSearch(v); setPage(1); }}
-                    searchPlaceholder="Search vendor, serial, or PIN..."
-                    columns={columns}
-                    onToggleColumn={toggleColumn}
-                    totalItems={filtered.length}
-                    currentPage={page}
-                    rowsPerPage={rowsPerPage}
-                    onPageChange={setPage}
-                    onRowsPerPageChange={setRowsPerPage}
-                />
+            {/* Toolbar — search + status filter */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-3 mb-5 flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[240px] max-w-md">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search vendor, serial, or PIN…"
+                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                </div>
+                <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as InventoryStatus | "all")}
+                    className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                >
+                    <option value="all">All Statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Expiring Soon">Expiring Soon</option>
+                    <option value="Expired">Expired</option>
+                </select>
+                <div className="ml-auto flex items-center gap-3 text-xs text-slate-500">
+                    <button
+                        type="button"
+                        onClick={() => setCollapsedTypes({})}
+                        className="text-blue-600 hover:underline font-medium"
+                    >
+                        Expand all
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const all: Record<string, boolean> = {};
+                            for (const g of grouped) all[g.type.key] = true;
+                            setCollapsedTypes(all);
+                        }}
+                        className="text-blue-600 hover:underline font-medium"
+                    >
+                        Collapse all
+                    </button>
+                </div>
+            </div>
 
+            {/* Empty state when nothing matches at all */}
+            {totalShown === 0 && (
+                <div className="bg-white border border-dashed border-slate-200 rounded-xl p-12 text-center">
+                    <Layers size={28} className="mx-auto text-slate-300 mb-2" />
+                    <p className="text-sm font-medium text-slate-600">No inventory items match your filters</p>
+                    <p className="text-xs text-slate-500 mt-1">Try clearing the search or status filter.</p>
+                </div>
+            )}
+
+            {/* One block per vendor type */}
+            {totalShown > 0 && (
+                <div className="space-y-5">
+                    {grouped.map((g) => {
+                        if (g.items.length === 0) return null;
+                        const collapsed = !!collapsedTypes[g.type.key];
+                        return (
+                            <TypeBlock
+                                key={g.type.key}
+                                type={g.type}
+                                items={g.items}
+                                collapsed={collapsed}
+                                onToggleCollapse={() =>
+                                    setCollapsedTypes((prev) => ({ ...prev, [g.type.key]: !prev[g.type.key] }))
+                                }
+                                expandedId={expandedId}
+                                onToggleRow={(id) => setExpandedId((cur) => (cur === id ? null : id))}
+                            />
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Per-type block ─────────────────────────────────────────────────────────
+
+function TypeBlock({
+    type, items, collapsed, onToggleCollapse, expandedId, onToggleRow,
+}: {
+    type: VendorType;
+    items: InventoryItem[];
+    collapsed: boolean;
+    onToggleCollapse: () => void;
+    expandedId: string | null;
+    onToggleRow: (id: string) => void;
+}) {
+    const visual = visualFor(type.key);
+    const Icon = visual.icon;
+
+    return (
+        <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            {/* Block header */}
+            <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="w-full flex items-center gap-3 px-4 py-3 border-b border-slate-100 hover:bg-slate-50/60 transition-colors text-left"
+            >
+                <div className={cn(
+                    "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                    visual.bg, visual.text
+                )}>
+                    <Icon size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-bold text-slate-900">{type.label}</h2>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider">
+                            {items.length} item{items.length === 1 ? "" : "s"}
+                        </span>
+                        {type.multiAsset && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                Multi-asset
+                            </span>
+                        )}
+                    </div>
+                </div>
+                {collapsed ? <ChevronRight size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
+            </button>
+
+            {/* Block table */}
+            {!collapsed && (
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        <thead className="bg-slate-50 border-b border-slate-200">
+                        <thead className="bg-slate-50/60 border-b border-slate-200">
                             <tr>
                                 <TH className="w-10"></TH>
-                                {colVisible.vendorName && <TH>Vendor Name</TH>}
-                                {colVisible.vendorType && <TH>Vendor Type</TH>}
-                                {colVisible.serial && <TH>Serial #</TH>}
-                                {colVisible.pin && <TH>PIN #</TH>}
-                                {colVisible.issueDate && <TH>Issue Date</TH>}
-                                {colVisible.expiryDate && <TH>Expiry Date</TH>}
-                                {colVisible.recurrence && <TH>Recurrence</TH>}
-                                {colVisible.reminder && <TH>Reminder</TH>}
-                                {colVisible.status && <TH>Status</TH>}
+                                <TH>Vendor</TH>
+                                <TH>Serial #</TH>
+                                <TH>PIN #</TH>
+                                <TH>Issue Date</TH>
+                                <TH>Expiry Date</TH>
+                                <TH>Recurrence</TH>
+                                <TH>Reminder</TH>
+                                <TH>Status</TH>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {paged.length === 0 && (
-                                <tr>
-                                    <td colSpan={visibleColCount} className="text-center py-16 text-slate-400 text-sm">
-                                        No inventory items match your filters.
-                                    </td>
-                                </tr>
-                            )}
-                            {paged.map(({ item, vendor }) => {
+                            {items.map((item) => {
+                                const vendor = VENDORS.find((v) => v.id === item.vendorId);
                                 const isExpanded = expandedId === item.id;
                                 return (
                                     <RowGroup
                                         key={item.id}
                                         item={item}
                                         vendorName={vendor?.name}
-                                        vendorTypeLabel={vendor ? VENDOR_TYPE_LABELS[vendor.type] : undefined}
                                         isExpanded={isExpanded}
-                                        onToggle={() => setExpandedId(isExpanded ? null : item.id)}
-                                        colVisible={colVisible}
-                                        colSpan={visibleColCount}
+                                        onToggle={() => onToggleRow(item.id)}
                                     />
                                 );
                             })}
                         </tbody>
                     </table>
                 </div>
-
-                <PaginationBar
-                    totalItems={filtered.length}
-                    currentPage={page}
-                    rowsPerPage={rowsPerPage}
-                    onPageChange={setPage}
-                    onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
-                />
-            </div>
-        </div>
+            )}
+        </section>
     );
 }
 
-// ── Expandable Row ──────────────────────────────────────────────────────────
+// ── Row + expanded detail ──────────────────────────────────────────────────
 
 function RowGroup({
-    item, vendorName, vendorTypeLabel, isExpanded, onToggle, colVisible, colSpan,
+    item, vendorName, isExpanded, onToggle,
 }: {
     item: InventoryItem;
     vendorName?: string;
-    vendorTypeLabel?: string;
     isExpanded: boolean;
     onToggle: () => void;
-    colVisible: Record<string, boolean>;
-    colSpan: number;
 }) {
     return (
         <>
@@ -216,29 +329,26 @@ function RowGroup({
                         className={cn("transition-transform", isExpanded && "rotate-90 text-blue-600")}
                     />
                 </TD>
-                {colVisible.vendorName && <TD className="font-semibold text-slate-900">{vendorName ?? "—"}</TD>}
-                {colVisible.vendorType && <TD className="text-slate-600">{vendorTypeLabel ?? "—"}</TD>}
-                {colVisible.serial && <TD className="font-mono text-xs text-slate-700">{item.serial}</TD>}
-                {colVisible.pin && <TD className="font-mono text-xs text-slate-700">{item.pin}</TD>}
-                {colVisible.issueDate && <TD className="text-slate-600">{fmtDate(item.issueDate)}</TD>}
-                {colVisible.expiryDate && <TD className="text-slate-600">{fmtDate(item.expiryDate)}</TD>}
-                {colVisible.recurrence && <TD className="text-slate-600">{item.recurrence}</TD>}
-                {colVisible.reminder && <TD className="text-slate-600">{item.reminder}</TD>}
-                {colVisible.status && (
-                    <TD>
-                        <span className={cn(
-                            "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                            STATUS_BADGE[item.status]
-                        )}>
-                            <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", STATUS_DOT[item.status])} />
-                            {item.status}
-                        </span>
-                    </TD>
-                )}
+                <TD className="font-semibold text-slate-900">{vendorName ?? "—"}</TD>
+                <TD className="font-mono text-xs text-slate-700">{item.serial}</TD>
+                <TD className="font-mono text-xs text-slate-700">{item.pin}</TD>
+                <TD className="text-slate-600">{fmtDate(item.issueDate)}</TD>
+                <TD className="text-slate-600">{fmtDate(item.expiryDate)}</TD>
+                <TD className="text-slate-600">{item.recurrence}</TD>
+                <TD className="text-slate-600">{item.reminder}</TD>
+                <TD>
+                    <span className={cn(
+                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                        STATUS_BADGE[item.status]
+                    )}>
+                        <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", STATUS_DOT[item.status])} />
+                        {item.status}
+                    </span>
+                </TD>
             </tr>
             {isExpanded && (
                 <tr className="bg-slate-50/70 border-y border-slate-200">
-                    <td colSpan={colSpan} className="px-6 py-5">
+                    <td colSpan={9} className="px-6 py-5">
                         <ExpandedDetail item={item} />
                     </td>
                 </tr>

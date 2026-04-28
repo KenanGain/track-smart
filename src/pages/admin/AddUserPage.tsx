@@ -8,6 +8,7 @@ import {
     type UserRole,
 } from "@/data/users.data";
 import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
+import { CarrierAccessPicker } from "./CarrierAccessPicker";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -24,6 +25,7 @@ export type NewUserPayload = {
     role: UserRole;
     accountId?: string;
     accountName?: string;
+    managedAccountIds?: string[];
     sendInvite: boolean;
 };
 
@@ -42,7 +44,9 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
         return ACCOUNTS_DB.filter((a) => managed.includes(a.id));
     }, [managed]);
 
-    const [accountId, setAccountId] = useState<string>(availableCarriers[0]?.id ?? "");
+    // Multi-carrier picker state (used for Admin and User roles)
+    const [managedIds, setManagedIds] = useState<string[]>([]);
+    const [applyToAllCarriers, setApplyToAllCarriers] = useState(false);
     const [sendInvite, setSendInvite] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -51,23 +55,34 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
         ? ["super-admin", "admin", "user"]
         : ["admin", "user"];
 
+    // Effective list of carrier IDs the new user will have access to
+    const resolvedCarrierIds = applyToAllCarriers
+        ? availableCarriers.map((a) => a.id)
+        : managedIds;
+
     const isValid =
         firstName.trim().length > 0 &&
         lastName.trim().length > 0 &&
         /^\S+@\S+\.\S+$/.test(email) &&
         title.trim().length > 0 &&
-        (role === "super-admin" || !!accountId);
+        (role === "super-admin" || resolvedCarrierIds.length > 0);
 
     const handleSave = () => {
         if (!isValid) {
             setError("Please complete all required fields with a valid email.");
             return;
         }
-        if (role !== "super-admin" && !canCreateUserForAccount(currentUser, accountId)) {
-            setError("You don't have permission to create a user for that carrier.");
-            return;
+        if (role !== "super-admin") {
+            const allowed = resolvedCarrierIds.every((id) => canCreateUserForAccount(currentUser, id));
+            if (!allowed) {
+                setError("You don't have permission to grant access to one of the selected carriers.");
+                return;
+            }
         }
-        const carrier = ACCOUNTS_DB.find((a) => a.id === accountId);
+
+        const primaryAccountId = role === "super-admin" ? undefined : resolvedCarrierIds[0];
+        const primaryCarrier = primaryAccountId ? ACCOUNTS_DB.find((a) => a.id === primaryAccountId) : undefined;
+
         const payload: NewUserPayload = {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
@@ -75,8 +90,9 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
             phone: phone.trim() || undefined,
             title: title.trim(),
             role,
-            accountId: role === "super-admin" ? undefined : accountId,
-            accountName: role === "super-admin" ? undefined : carrier?.legalName,
+            accountId: primaryAccountId,
+            accountName: primaryCarrier?.legalName,
+            managedAccountIds: role === "super-admin" ? undefined : resolvedCarrierIds,
             sendInvite,
         };
         console.log("New user payload:", payload);
@@ -151,46 +167,62 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
 
                 {/* 2. Role & Carrier */}
                 <FormSection number={2} title="Role & Carrier Access" subtitle="What this user is allowed to do, and where." icon={<Building2 size={14} className="text-blue-600" />}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <FormField label="Role" required>
-                            <SelectInput value={role} onChange={(v) => setRole(v as UserRole)}>
-                                {grantableRoles.map((r) => (
-                                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                                ))}
-                            </SelectInput>
-                            <p className="text-xs text-slate-500 mt-1.5">
-                                {role === "super-admin" && "Full access to all carriers and platform settings."}
-                                {role === "admin" && "Full control over the carriers they manage."}
-                                {role === "user" && "Operational access scoped to a single carrier."}
-                            </p>
-                        </FormField>
-
-                        {role === "super-admin" ? (
-                            <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-50 border border-violet-200">
-                                <div className="h-9 w-9 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center shrink-0">
-                                    <Lock size={15} />
-                                </div>
-                                <div>
-                                    <div className="text-sm font-semibold text-slate-900">Platform-wide access</div>
-                                    <div className="text-xs text-slate-600">Super admins are not scoped to any single carrier.</div>
-                                </div>
-                            </div>
-                        ) : (
-                            <FormField label="Carrier" required>
-                                <SelectInput value={accountId} onChange={setAccountId}>
-                                    <option value="">Select a carrier…</option>
-                                    {availableCarriers.map((a) => (
-                                        <option key={a.id} value={a.id}>{a.legalName}</option>
+                    <div className="space-y-5">
+                        {/* Role select — constrained width so it doesn't stretch */}
+                        <div className="md:max-w-md">
+                            <FormField label="Role" required>
+                                <SelectInput value={role} onChange={(v) => setRole(v as UserRole)}>
+                                    {grantableRoles.map((r) => (
+                                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                                     ))}
                                 </SelectInput>
                                 <p className="text-xs text-slate-500 mt-1.5">
-                                    {isSuperAdmin
-                                        ? `${availableCarriers.length} carrier${availableCarriers.length === 1 ? "" : "s"} available platform-wide.`
-                                        : availableCarriers.length > 1
-                                            ? `You manage ${availableCarriers.length} carriers — pick one.`
-                                            : "Limited to your managed carrier."}
+                                    {role === "super-admin" && "Full access to all carriers and platform settings."}
+                                    {role === "admin" && "Full control over one or more carriers."}
+                                    {role === "user" && "Operational access scoped to a single carrier."}
                                 </p>
                             </FormField>
+                        </div>
+
+                        {/* Role-specific carrier section */}
+                        {role === "super-admin" && (
+                            <div className="border-t border-slate-100 pt-5">
+                                <div className="flex items-center gap-3 p-4 rounded-lg bg-violet-50 border border-violet-200">
+                                    <div className="h-10 w-10 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center shrink-0">
+                                        <Lock size={16} />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-semibold text-slate-900">Platform-wide access</div>
+                                        <div className="text-xs text-slate-600 mt-0.5">
+                                            Super admins are not scoped to any single carrier — they can view and manage every carrier on the platform.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(role === "user" || role === "admin") && (
+                            <div className="border-t border-slate-100 pt-5">
+                                <div className="mb-3">
+                                    <label className="block text-sm font-medium text-slate-700">
+                                        Carrier Access <span className="text-red-500">*</span>
+                                    </label>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        {role === "admin"
+                                            ? "Select one or more carriers this admin will manage. The first selected carrier is treated as their primary."
+                                            : "Select one or more carriers this user can access. The first selected carrier is treated as their primary."}
+                                    </p>
+                                </div>
+                                <CarrierAccessPicker
+                                    carriers={availableCarriers}
+                                    selectedIds={managedIds}
+                                    applyToAll={applyToAllCarriers}
+                                    onChange={({ ids, applyToAll }) => {
+                                        setManagedIds(ids);
+                                        setApplyToAllCarriers(applyToAll);
+                                    }}
+                                />
+                            </div>
                         )}
                     </div>
                 </FormSection>

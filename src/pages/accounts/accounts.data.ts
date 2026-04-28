@@ -23,6 +23,10 @@ export interface AccountRecord {
     safetyRating: SafetyRating;
     createdAt: string;
     profilePath: string;
+    /** Service profile this carrier was created under. */
+    serviceProfileId?: string;
+    /** Admin user (id) who actually created this carrier. */
+    createdByUserId?: string;
 }
 
 export const ACCOUNTS_DB: AccountRecord[] = [
@@ -43,6 +47,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2019-01-15',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-001',
+        createdByUserId: 'u-004',
     },
     {
         id: 'acct-002',
@@ -61,6 +67,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2020-06-04',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-003',
+        createdByUserId: 'u-008',
     },
     {
         id: 'acct-003',
@@ -79,6 +87,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2017-09-22',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-006',
+        createdByUserId: 'u-013',
     },
     {
         id: 'acct-004',
@@ -97,6 +107,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Conditional',
         createdAt: '2021-03-18',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-007',
+        createdByUserId: 'u-014',
     },
     {
         id: 'acct-005',
@@ -115,6 +127,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2015-11-02',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-001',
+        createdByUserId: 'u-004',
     },
     {
         id: 'acct-006',
@@ -133,6 +147,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Not Rated',
         createdAt: '2024-08-29',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-007',
+        createdByUserId: 'u-014',
     },
     {
         id: 'acct-007',
@@ -151,6 +167,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2018-02-14',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-006',
+        createdByUserId: 'u-013',
     },
     {
         id: 'acct-008',
@@ -169,6 +187,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2016-05-30',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-001',
+        createdByUserId: 'u-004',
     },
     {
         id: 'acct-009',
@@ -187,6 +207,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Conditional',
         createdAt: '2019-07-11',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-002',
+        createdByUserId: 'u-011',
     },
     {
         id: 'acct-010',
@@ -205,6 +227,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2018-10-05',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-005',
+        createdByUserId: 'u-012',
     },
     {
         id: 'acct-011',
@@ -223,6 +247,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2022-01-20',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-006',
+        createdByUserId: 'u-013',
     },
     {
         id: 'acct-012',
@@ -241,6 +267,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Unsatisfactory',
         createdAt: '2017-03-08',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-008',
+        createdByUserId: 'u-015',
     },
     {
         id: 'acct-013',
@@ -259,6 +287,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2014-12-01',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-009',
+        createdByUserId: 'u-016',
     },
     {
         id: 'acct-014',
@@ -277,6 +307,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Conditional',
         createdAt: '2020-09-17',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-002',
+        createdByUserId: 'u-011',
     },
     {
         id: 'acct-015',
@@ -295,6 +327,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2016-04-23',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-006',
+        createdByUserId: 'u-013',
     },
     {
         id: 'acct-016',
@@ -313,6 +347,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2019-06-12',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-005',
+        createdByUserId: 'u-012',
     },
     {
         id: 'acct-017',
@@ -331,6 +367,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Conditional',
         createdAt: '2021-11-05',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-007',
+        createdByUserId: 'u-014',
     },
     {
         id: 'acct-018',
@@ -349,6 +387,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2015-07-28',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-006',
+        createdByUserId: 'u-013',
     },
     {
         id: 'acct-019',
@@ -367,6 +407,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2017-08-19',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-005',
+        createdByUserId: 'u-012',
     },
     {
         id: 'acct-020',
@@ -385,6 +427,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2018-11-30',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-008',
+        createdByUserId: 'u-015',
     },
     {
         id: 'acct-021',
@@ -403,6 +447,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Not Rated',
         createdAt: '2025-01-14',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-005',
+        createdByUserId: 'u-012',
     },
     {
         id: 'acct-022',
@@ -421,6 +467,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2020-04-09',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-002',
+        createdByUserId: 'u-011',
     },
     {
         id: 'acct-023',
@@ -439,6 +487,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2016-09-14',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-008',
+        createdByUserId: 'u-015',
     },
     {
         id: 'acct-024',
@@ -457,6 +507,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Conditional',
         createdAt: '2019-02-27',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-007',
+        createdByUserId: 'u-014',
     },
     {
         id: 'acct-025',
@@ -475,6 +527,7 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Not Rated',
         createdAt: '2018-05-21',
         profilePath: '/account/profile',
+        createdByUserId: 'u-001',
     },
     {
         id: 'acct-026',
@@ -493,6 +546,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2021-07-06',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-002',
+        createdByUserId: 'u-011',
     },
     {
         id: 'acct-027',
@@ -511,6 +566,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2017-12-11',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-005',
+        createdByUserId: 'u-012',
     },
     {
         id: 'acct-028',
@@ -529,6 +586,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Conditional',
         createdAt: '2019-10-08',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-009',
+        createdByUserId: 'u-016',
     },
     {
         id: 'acct-029',
@@ -547,6 +606,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2016-01-17',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-006',
+        createdByUserId: 'u-013',
     },
     {
         id: 'acct-030',
@@ -565,6 +626,8 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         safetyRating: 'Satisfactory',
         createdAt: '2018-06-25',
         profilePath: '/account/profile',
+        serviceProfileId: 'svc-009',
+        createdByUserId: 'u-016',
     },
 ];
 
@@ -572,6 +635,9 @@ export const ACCOUNTS_DB: AccountRecord[] = [
 
 export const getAccountById = (id: string): AccountRecord | undefined =>
     ACCOUNTS_DB.find(a => a.id === id);
+
+export const getAccountsByServiceProfileId = (serviceProfileId: string): AccountRecord[] =>
+    ACCOUNTS_DB.filter((a) => a.serviceProfileId === serviceProfileId);
 
 // Insert a new carrier at the top of the list. Mutates the module-level
 // ACCOUNTS_DB so subsequent reads reflect the addition.

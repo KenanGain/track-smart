@@ -15,6 +15,12 @@ export type AppUser = {
      * Empty for super admins (they manage all carriers — handled by the helpers).
      */
     managedAccountIds?: string[];
+    /**
+     * The service profile this user belongs to. Admins inherit the service
+     * profile's account-creation limit when creating new carrier or service
+     * accounts. Super admins are not bound to a service profile.
+     */
+    serviceProfileId?: string;
     status: "Active" | "Inactive";
     title: string;
     initials: string;
@@ -52,6 +58,7 @@ export const APP_USERS: AppUser[] = [
         accountId: "acct-001",
         accountName: "Acme Trucking Inc.",
         managedAccountIds: ["acct-001"],
+        serviceProfileId: "svc-001",
         status: "Active",
         title: "Owner / General Manager",
         initials: "JD",
@@ -103,6 +110,7 @@ export const APP_USERS: AppUser[] = [
         accountId: "acct-002",
         accountName: "Cascade Freight Systems LLC",
         managedAccountIds: ["acct-002"],
+        serviceProfileId: "svc-003",
         status: "Active",
         title: "Owner / Operations Director",
         initials: "DA",
@@ -131,6 +139,108 @@ export const APP_USERS: AppUser[] = [
         title: "Safety & Compliance Manager",
         initials: "OB",
         avatarGradient: "from-cyan-500 to-cyan-700",
+    },
+
+    // ── Admins for additional service profiles ───────────────────────────────
+    // Each is the admin "owner" of a service profile and has created the
+    // carrier accounts that fill that profile's usage count.
+    {
+        id: "u-011",
+        name: "Carlos Mendez",
+        email: "carlos.m@rmlg.com",
+        role: "admin",
+        accountId: "acct-009",
+        accountName: "Rocky Mountain Hauling Inc.",
+        managedAccountIds: ["acct-009", "acct-014", "acct-022", "acct-026"],
+        serviceProfileId: "svc-002",
+        status: "Active",
+        title: "Owner / Operations Director",
+        initials: "CM",
+        avatarGradient: "from-rose-500 to-rose-700",
+    },
+    {
+        id: "u-012",
+        name: "Marisol Ortiz",
+        email: "marisol.o@atlanticcarrier.com",
+        role: "admin",
+        accountId: "acct-010",
+        accountName: "Atlantic Coastal Transport LLC",
+        managedAccountIds: ["acct-010", "acct-016", "acct-019", "acct-021", "acct-027"],
+        serviceProfileId: "svc-005",
+        status: "Active",
+        title: "President",
+        initials: "MO",
+        avatarGradient: "from-pink-500 to-pink-700",
+    },
+    {
+        id: "u-013",
+        name: "Jean Tremblay",
+        email: "jean.t@mapleleaf.ca",
+        role: "admin",
+        accountId: "acct-003",
+        accountName: "Northern Lights Transport Ltd.",
+        managedAccountIds: ["acct-003", "acct-007", "acct-011", "acct-015", "acct-018", "acct-029"],
+        serviceProfileId: "svc-006",
+        status: "Active",
+        title: "Managing Director",
+        initials: "JT",
+        avatarGradient: "from-red-500 to-red-700",
+    },
+    {
+        id: "u-014",
+        name: "Luis Ramirez",
+        email: "luis.r@sunbelthauling.com",
+        role: "admin",
+        accountId: "acct-004",
+        accountName: "Sunbelt Haulers Corporation",
+        managedAccountIds: ["acct-004", "acct-006", "acct-017", "acct-024"],
+        serviceProfileId: "svc-007",
+        status: "Active",
+        title: "Owner",
+        initials: "LR",
+        avatarGradient: "from-orange-500 to-orange-700",
+    },
+    {
+        id: "u-015",
+        name: "Erin Ferraro",
+        email: "erin.f@heartlandfreight.com",
+        role: "admin",
+        accountId: "acct-012",
+        accountName: "Heartland Trucking Partners",
+        managedAccountIds: ["acct-012", "acct-020", "acct-023"],
+        serviceProfileId: "svc-008",
+        status: "Active",
+        title: "CEO",
+        initials: "EF",
+        avatarGradient: "from-indigo-500 to-indigo-700",
+    },
+    {
+        id: "u-016",
+        name: "Priya Nguyen",
+        email: "priya.n@bayviewexpress.com",
+        role: "admin",
+        accountId: "acct-013",
+        accountName: "Bay Area Logistics Inc.",
+        managedAccountIds: ["acct-013", "acct-028", "acct-030"],
+        serviceProfileId: "svc-009",
+        status: "Inactive",
+        title: "Owner / Director",
+        initials: "PN",
+        avatarGradient: "from-yellow-500 to-yellow-700",
+    },
+    {
+        id: "u-017",
+        name: "Margo Lindqvist",
+        email: "margo.l@northstardistribution.com",
+        role: "admin",
+        accountId: undefined,
+        accountName: undefined,
+        managedAccountIds: [],
+        serviceProfileId: "svc-010",
+        status: "Inactive",
+        title: "Sole Proprietor",
+        initials: "ML",
+        avatarGradient: "from-teal-500 to-teal-700",
     },
 ];
 
@@ -168,21 +278,25 @@ export const DEMO_PASSWORD = "demo1234";
  */
 export function getManagedAccountIds(u: AppUser): string[] | undefined {
     if (u.role === "super-admin") return undefined; // all carriers
-    if (u.role === "admin") {
-        if (u.managedAccountIds && u.managedAccountIds.length > 0) return u.managedAccountIds;
-        return u.accountId ? [u.accountId] : [];
-    }
+    // Both admins and regular users may belong to multiple carriers via the
+    // managedAccountIds list. Fall back to the legacy single accountId field.
+    if (u.managedAccountIds && u.managedAccountIds.length > 0) return u.managedAccountIds;
     return u.accountId ? [u.accountId] : [];
 }
 
 /**
  * Returns the list of users the given currentUser is allowed to see on the
- * Users admin page.
+ * Users admin page. A user is visible if any of the carriers they belong to
+ * overlaps with the current user's managed carriers.
  */
 export function getVisibleUsers(currentUser: AppUser): AppUser[] {
     if (currentUser.role === "super-admin") return APP_USERS;
     const managed = getManagedAccountIds(currentUser) ?? [];
-    return APP_USERS.filter((u) => u.accountId && managed.includes(u.accountId));
+    return APP_USERS.filter((u) => {
+        if (u.role === "super-admin") return false;
+        const userCarriers = getManagedAccountIds(u) ?? [];
+        return userCarriers.some((id) => managed.includes(id));
+    });
 }
 
 /**
@@ -201,4 +315,31 @@ export function canCreateUserForAccount(currentUser: AppUser, accountId: string)
  */
 export function canCreateCarrier(currentUser: AppUser): boolean {
     return currentUser.role === "super-admin" || currentUser.role === "admin";
+}
+
+/**
+ * Account-creation limit for the user. Returns:
+ *   - Infinity for super admins (no limit, no service profile)
+ *   - Infinity for admins whose service profile is unlimited or unset
+ *   - The remaining count for admins whose service profile has a custom limit
+ *   - 0 for users with no creation rights
+ */
+export function getRemainingAccountSlotsForUser(
+    user: AppUser,
+    serviceProfilesDb: { id: string; accountLimit: number; accountsCreated: number }[],
+): number {
+    if (user.role === "super-admin") return Infinity;
+    if (user.role !== "admin") return 0;
+    if (!user.serviceProfileId) return Infinity; // legacy admin, treat as unlimited
+    const sp = serviceProfilesDb.find((s) => s.id === user.serviceProfileId);
+    if (!sp) return Infinity;
+    if (sp.accountLimit < 0) return Infinity; // unlimited
+    return Math.max(0, sp.accountLimit - sp.accountsCreated);
+}
+
+export function canCreateAnotherAccount(
+    user: AppUser,
+    serviceProfilesDb: { id: string; accountLimit: number; accountsCreated: number }[],
+): boolean {
+    return getRemainingAccountSlotsForUser(user, serviceProfilesDb) > 0;
 }

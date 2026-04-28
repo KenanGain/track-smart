@@ -22,6 +22,9 @@ export const ACME_TRUCKS: Asset[] = ACME_ASSETS.filter(
 export const ACME_ACTIVE_DRIVERS: Driver[] = ACME_DRIVERS.filter((d) => d.status === "Active");
 
 // ── Vendor types ─────────────────────────────────────────────────────────────
+// Vendor types belong to a category (hierarchical relationship). The seed
+// keys below are the well-known type ids, but the type field on Vendor is
+// `string` so users can add custom types via the Categories manager.
 
 export type VendorTypeKey =
     | "fuel-card"
@@ -29,21 +32,39 @@ export type VendorTypeKey =
     | "eld-provider"
     | "gps-tracking"
     | "dashcam"
-    | "repair-maintenance";
+    | "repair-maintenance"
+    | string;
 
-export const VENDOR_TYPES: { key: VendorTypeKey; label: string; multiAsset: boolean }[] = [
-    { key: "fuel-card", label: "Fuel Card", multiAsset: true },
-    { key: "transponder", label: "Transponder", multiAsset: true },
-    { key: "eld-provider", label: "ELD Provider", multiAsset: true },
-    { key: "gps-tracking", label: "GPS Tracking", multiAsset: true },
-    { key: "dashcam", label: "Dashcam", multiAsset: true },
-    { key: "repair-maintenance", label: "Repair and Maintenance", multiAsset: false },
+export type VendorType = {
+    key: string;
+    label: string;
+    /** Owning category id. */
+    categoryId: string;
+    /** Whether this type can apply to multiple assets/trucks at once. */
+    multiAsset: boolean;
+};
+
+export const VENDOR_TYPES: VendorType[] = [
+    { key: "fuel-card", label: "Fuel Card", categoryId: "cat-fuel", multiAsset: true },
+    { key: "transponder", label: "Transponder", categoryId: "cat-fuel", multiAsset: true },
+    { key: "eld-provider", label: "ELD Provider", categoryId: "cat-fleet-tech", multiAsset: true },
+    { key: "gps-tracking", label: "GPS Tracking", categoryId: "cat-fleet-tech", multiAsset: true },
+    { key: "dashcam", label: "Dashcam", categoryId: "cat-fleet-tech", multiAsset: true },
+    { key: "repair-maintenance", label: "Repair and Maintenance", categoryId: "cat-maintenance", multiAsset: false },
 ];
 
-export const VENDOR_TYPE_LABELS: Record<VendorTypeKey, string> = VENDOR_TYPES.reduce(
+export const VENDOR_TYPE_LABELS: Record<string, string> = VENDOR_TYPES.reduce(
     (acc, t) => ({ ...acc, [t.key]: t.label }),
-    {} as Record<VendorTypeKey, string>
+    {} as Record<string, string>
 );
+
+export function getTypesByCategory(categoryId: string, types: VendorType[] = VENDOR_TYPES): VendorType[] {
+    return types.filter((t) => t.categoryId === categoryId);
+}
+
+export function getTypeLabel(typeKey: string, types: VendorType[] = VENDOR_TYPES): string {
+    return types.find((t) => t.key === typeKey)?.label ?? typeKey;
+}
 
 // ── Categories & Address types ───────────────────────────────────────────────
 

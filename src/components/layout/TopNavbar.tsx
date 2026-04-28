@@ -36,6 +36,7 @@ const PATH_TITLES: Record<string, string> = {
     "/profile/me": "My Profile",
     "/admin/users": "Users",
     "/admin/users/new": "Add User",
+    "/accounts/services/new": "Add Service Profile",
 };
 
 function getPageTitle(path: string): string {

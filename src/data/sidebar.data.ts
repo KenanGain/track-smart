@@ -44,12 +44,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: Building2,
         path: "/account/profile",
     },
-    {
-        key: "accounts",
-        label: "Accounts",
-        icon: Users,
-        path: "/accounts",
-    },
+
     {
         key: "inventory",
         label: "Inventory",
@@ -153,6 +148,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Admin",
         icon: UserCog,
         children: [
+            { key: "accounts", label: "Accounts", icon: Users, path: "/accounts" },
             { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
             { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },
             { key: "admin-permissions", label: "Permissions", icon: Lock, path: "/admin/permissions" },

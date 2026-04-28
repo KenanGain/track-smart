@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react";
-import { Plus, Building2, Mail, Shield, Users as UsersIcon, Filter } from "lucide-react";
+import { Plus, Building2, Mail, Shield, Users as UsersIcon, Filter, Eye, Edit2 } from "lucide-react";
 import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
 import {
     APP_USERS,
     ROLE_BADGE,
     ROLE_LABELS,
-    getVisibleUsers,
     getManagedAccountIds,
     type AppUser,
     type UserRole,
 } from "@/data/users.data";
 import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
+import { UserViewModal } from "./UserViewModal";
+import { UserEditModal } from "./UserEditModal";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -24,6 +25,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     { id: "carrier", label: "Carrier", visible: true },
     { id: "title", label: "Title", visible: true },
     { id: "status", label: "Status", visible: true },
+    { id: "actions", label: "Actions", visible: true },
 ];
 
 const TH = ({ children, className }: { children?: React.ReactNode; className?: string }) => (
@@ -42,6 +44,9 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
     const [rowsPerPage, setRowsPerPage] = useState(25);
     const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
     const [carrierFilter, setCarrierFilter] = useState<string>("all");
+    const [users, setUsers] = useState<AppUser[]>(APP_USERS);
+    const [viewingUser, setViewingUser] = useState<AppUser | null>(null);
+    const [editingUser, setEditingUser] = useState<AppUser | null>(null);
 
     const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
     const toggleColumn = (id: string) =>
@@ -54,16 +59,33 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
         return ACCOUNTS_DB.filter((a) => managed.includes(a.id));
     }, [currentUser]);
 
-    // Base list, scoped by current user role
-    const baseUsers = useMemo(() => getVisibleUsers(currentUser), [currentUser]);
+    // Base list, scoped by current user role. A target user is visible when
+    // any of their carriers overlaps with what the viewer manages.
+    const baseUsers = useMemo(() => {
+        if (currentUser.role === "super-admin") return users;
+        const managed = getManagedAccountIds(currentUser) ?? [];
+        return users.filter((u) => {
+            if (u.role === "super-admin") return false;
+            const userCarriers = getManagedAccountIds(u) ?? [];
+            return userCarriers.some((id) => managed.includes(id));
+        });
+    }, [users, currentUser]);
+
+    const handleSaveUser = (next: AppUser) => {
+        setUsers((prev) => prev.map((u) => (u.id === next.id ? next : u)));
+    };
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         return baseUsers.filter((u) => {
             if (roleFilter !== "all" && u.role !== roleFilter) return false;
             if (carrierFilter !== "all") {
-                if (carrierFilter === "_platform" && u.role !== "super-admin") return false;
-                if (carrierFilter !== "_platform" && u.accountId !== carrierFilter) return false;
+                if (carrierFilter === "_platform") {
+                    if (u.role !== "super-admin") return false;
+                } else {
+                    const userCarriers = getManagedAccountIds(u) ?? [];
+                    if (!userCarriers.includes(carrierFilter)) return false;
+                }
             }
             if (!q) return true;
             return (
@@ -167,12 +189,13 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
                                 {colVisible.carrier && <TH>Carrier</TH>}
                                 {colVisible.title && <TH>Title</TH>}
                                 {colVisible.status && <TH>Status</TH>}
+                                {colVisible.actions && <TH className="text-right pr-6">Actions</TH>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {paged.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="text-center py-16">
+                                    <td colSpan={6} className="text-center py-16">
                                         <div className="inline-flex flex-col items-center gap-2 text-slate-400">
                                             <UsersIcon size={28} />
                                             <p className="text-sm">No users match your filters.</p>
@@ -212,9 +235,31 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
                                     )}
                                     {colVisible.carrier && (
                                         <TD className="text-sm text-slate-600">
-                                            {u.role === "super-admin"
-                                                ? <span className="text-violet-700 font-medium">Platform-wide</span>
-                                                : u.accountName ?? "—"}
+                                            {u.role === "super-admin" ? (
+                                                <span className="text-violet-700 font-medium">Platform-wide</span>
+                                            ) : (() => {
+                                                const ids = getManagedAccountIds(u) ?? [];
+                                                if (ids.length === 0) return "—";
+                                                if (ids.length === 1) {
+                                                    const a = ACCOUNTS_DB.find((x) => x.id === ids[0]);
+                                                    return a?.legalName ?? u.accountName ?? "—";
+                                                }
+                                                const primary = ACCOUNTS_DB.find((x) => x.id === ids[0]);
+                                                return (
+                                                    <span className="inline-flex items-center gap-1.5">
+                                                        <span>{primary?.legalName ?? u.accountName ?? "—"}</span>
+                                                        <span
+                                                            title={ids
+                                                                .map((id) => ACCOUNTS_DB.find((x) => x.id === id)?.legalName)
+                                                                .filter(Boolean)
+                                                                .join(", ")}
+                                                            className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold"
+                                                        >
+                                                            +{ids.length - 1}
+                                                        </span>
+                                                    </span>
+                                                );
+                                            })()}
                                         </TD>
                                     )}
                                     {colVisible.title && <TD className="text-sm text-slate-600">{u.title}</TD>}
@@ -234,6 +279,30 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
                                             </span>
                                         </TD>
                                     )}
+                                    {colVisible.actions && (
+                                        <TD className="text-right pr-6">
+                                            <div className="inline-flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setViewingUser(u)}
+                                                    className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                                    title="View user"
+                                                    aria-label="View user"
+                                                >
+                                                    <Eye size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingUser(u)}
+                                                    className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                                    title="Edit user"
+                                                    aria-label="Edit user"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                            </div>
+                                        </TD>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
@@ -248,6 +317,19 @@ export function UsersListPage({ currentUser, onNavigate }: Props) {
                     onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
                 />
             </div>
+
+            {/* View / Edit modals */}
+            <UserViewModal
+                user={viewingUser}
+                onClose={() => setViewingUser(null)}
+                onEdit={(u) => setEditingUser(u)}
+            />
+            <UserEditModal
+                user={editingUser}
+                currentUser={currentUser}
+                onClose={() => setEditingUser(null)}
+                onSave={handleSaveUser}
+            />
         </div>
     );
 }

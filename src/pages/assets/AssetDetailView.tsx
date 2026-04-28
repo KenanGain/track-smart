@@ -9,6 +9,7 @@ import {
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { Asset } from './assets.data';
+import { GvwrTag } from './GvwrTag';
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { CreateScheduleForm } from './CreateScheduleForm';
 import { CreateOrderModal } from './CreateOrderModal';
@@ -865,6 +866,10 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                 } />
                 
                 <MetadataItem label="Gross Weight" value={currentVehicle.grossWeight ? `${currentVehicle.grossWeight.toLocaleString()} ${currentVehicle.grossWeightUnit}` : '—'} />
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">GVWR Class</span>
+                    <GvwrTag weight={currentVehicle.grossWeight} unit={currentVehicle.grossWeightUnit} size="md" />
+                </div>
                 <MetadataItem label="Unloaded Weight" value={currentVehicle.unloadedWeight ? `${currentVehicle.unloadedWeight.toLocaleString()} ${currentVehicle.unloadedWeightUnit}` : '—'} />
                 <MetadataItem label="Ownership" value={currentVehicle.financialStructure} />
                 <MetadataItem label="Market Value" value={currentVehicle.marketValue ? `$${currentVehicle.marketValue.toLocaleString()} ${currentVehicle.marketValueCurrency || 'USD'}` : '—'} />

@@ -125,20 +125,62 @@ export function AddVendorPage({ onNavigate }: Props) {
             </header>
 
             <main className="flex-1 overflow-y-auto px-8 py-8 space-y-6 max-w-5xl mx-auto w-full">
-                {/* 1. Vendor Identity */}
-                <FormSection number={1} title="Vendor Identity" subtitle="Who is this vendor?">
+                {/* 1. Identity & Classification (combined) */}
+                <FormSection number={1} title="Vendor Identity & Classification" subtitle="Who this vendor is and what services they provide.">
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <FormField label="Vendor Name" required>
+                                <TextInput value={name} onChange={setName} placeholder="e.g. Comdata" />
+                            </FormField>
+                            <FormField label="Company Name" optional>
+                                <TextInput value={companyName} onChange={setCompanyName} placeholder="e.g. Comdata Inc." />
+                            </FormField>
+                            <FormField label="Vendor Category" required>
+                                <SelectInput value={categoryId} onChange={setCategoryId}>
+                                    {VENDOR_CATEGORIES.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </SelectInput>
+                            </FormField>
+                            <FormField label="Vendor Type" required>
+                                <SelectInput value={type} onChange={(v) => setType(v as VendorTypeKey)}>
+                                    {VENDOR_CATEGORIES.map((c) => {
+                                        const catTypes = VENDOR_TYPES.filter((t) => t.categoryId === c.id);
+                                        if (catTypes.length === 0) return null;
+                                        return (
+                                            <optgroup key={c.id} label={c.name}>
+                                                {catTypes.map((t) => (
+                                                    <option key={t.key} value={t.key}>{t.label}</option>
+                                                ))}
+                                            </optgroup>
+                                        );
+                                    })}
+                                </SelectInput>
+                            </FormField>
+                        </div>
+                    </div>
+                </FormSection>
+
+                {/* 2. Contact */}
+                <FormSection number={2} title="Contact Information" subtitle="Primary point of contact at this vendor.">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <FormField label="Vendor Name" required>
-                            <TextInput value={name} onChange={setName} placeholder="e.g. Comdata" />
+                        <FormField label="Email">
+                            <TextInput value={email} onChange={setEmail} type="email" placeholder="contact@vendor.com" />
                         </FormField>
-                        <FormField label="Company Name" optional>
-                            <TextInput value={companyName} onChange={setCompanyName} placeholder="e.g. Comdata Inc." />
+                        <FormField label="Phone">
+                            <TextInput value={phone} onChange={setPhone} placeholder="(555) 555-0100" />
+                        </FormField>
+                        <FormField label="Contact Name">
+                            <TextInput value={contactName} onChange={setContactName} placeholder="e.g. Jane Smith" />
+                        </FormField>
+                        <FormField label="Contact Information">
+                            <TextInput value={contactInfo} onChange={setContactInfo} placeholder="Direct phone or email" />
                         </FormField>
                     </div>
                 </FormSection>
 
-                {/* 2. Vendor Address */}
-                <FormSection number={2} title="Vendor Address" subtitle="Primary business location.">
+                {/* 3. Vendor Address */}
+                <FormSection number={3} title="Vendor Address" subtitle="Primary business location.">
                     <div className="space-y-5">
                         <FormField label="Country">
                             <SelectInput
@@ -181,44 +223,6 @@ export function AddVendorPage({ onNavigate }: Props) {
                                 />
                             </FormField>
                         </div>
-                    </div>
-                </FormSection>
-
-                {/* 3. Vendor Classification */}
-                <FormSection number={3} title="Vendor Classification" subtitle="Categorize the vendor and select its service type.">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <FormField label="Vendor Category" required>
-                            <SelectInput value={categoryId} onChange={setCategoryId}>
-                                {VENDOR_CATEGORIES.map((c) => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </SelectInput>
-                        </FormField>
-                        <FormField label="Vendor Type" required>
-                            <SelectInput value={type} onChange={(v) => setType(v as VendorTypeKey)}>
-                                {VENDOR_TYPES.map((t) => (
-                                    <option key={t.key} value={t.key}>{t.label}</option>
-                                ))}
-                            </SelectInput>
-                        </FormField>
-                    </div>
-                </FormSection>
-
-                {/* 4. Contact */}
-                <FormSection number={4} title="Contact Information" subtitle="Primary point of contact at this vendor.">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <FormField label="Email">
-                            <TextInput value={email} onChange={setEmail} type="email" placeholder="contact@vendor.com" />
-                        </FormField>
-                        <FormField label="Phone">
-                            <TextInput value={phone} onChange={setPhone} placeholder="(555) 555-0100" />
-                        </FormField>
-                        <FormField label="Contact Name">
-                            <TextInput value={contactName} onChange={setContactName} placeholder="e.g. Jane Smith" />
-                        </FormField>
-                        <FormField label="Contact Information">
-                            <TextInput value={contactInfo} onChange={setContactInfo} placeholder="Direct phone or email" />
-                        </FormField>
                     </div>
                 </FormSection>
 

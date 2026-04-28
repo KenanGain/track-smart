@@ -20,3 +20,4 @@ List/manage all fleet assets (power units, trailers).
 - [[Asset Directory]]
 - [[Asset Maintenance]]
 - [[Inventory Drivers]]
+- [[GVWR Classes]] — gross-weight classification used in detail view + add/edit modal

@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 type UserRole = "user" | "admin" | "super-admin";
 
-const ADMIN_ONLY_KEYS = new Set(["accounts", "admin"]);
+const ADMIN_ONLY_KEYS = new Set(["admin"]);
 
 type AppSidebarProps = {
     currentPath: string;

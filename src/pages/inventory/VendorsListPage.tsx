@@ -5,11 +5,13 @@ import { VendorCategoriesModal } from "./VendorCategoriesModal";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
-    VENDOR_TYPE_LABELS,
+    VENDOR_TYPES,
     CARRIER_NAME,
     formatVendorAddress,
+    getTypeLabel,
     type Vendor,
     type VendorCategory,
+    type VendorType,
 } from "./inventory.data";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +44,7 @@ export function VendorsListPage({ onNavigate }: Props) {
     const [rowsPerPage, setRowsPerPage] = useState(25);
     const [vendors] = useState<Vendor[]>(VENDORS);
     const [categories, setCategories] = useState<VendorCategory[]>(VENDOR_CATEGORIES);
+    const [types, setTypes] = useState<VendorType[]>(VENDOR_TYPES);
     const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
 
     const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
@@ -56,11 +59,11 @@ export function VendorsListPage({ onNavigate }: Props) {
                 v.name.toLowerCase().includes(q) ||
                 (v.companyName ?? "").toLowerCase().includes(q) ||
                 (v.email ?? "").toLowerCase().includes(q) ||
-                VENDOR_TYPE_LABELS[v.type].toLowerCase().includes(q) ||
+                getTypeLabel(v.type, types).toLowerCase().includes(q) ||
                 formatVendorAddress(v.address).toLowerCase().includes(q)
             );
         });
-    }, [search, vendors]);
+    }, [search, vendors, types]);
 
     const paged = useMemo(() => {
         const start = (page - 1) * rowsPerPage;
@@ -145,7 +148,7 @@ export function VendorsListPage({ onNavigate }: Props) {
                                         </TD>
                                     )}
                                     {colVisible.category && <TD className="text-sm text-slate-600">{categoryName(v.categoryId)}</TD>}
-                                    {colVisible.type && <TD className="text-sm text-slate-600">{VENDOR_TYPE_LABELS[v.type]}</TD>}
+                                    {colVisible.type && <TD className="text-sm text-slate-600">{getTypeLabel(v.type, types)}</TD>}
                                     {colVisible.address && (
                                         <TD>
                                             {v.address && formatVendorAddress(v.address) ? (
@@ -216,8 +219,10 @@ export function VendorsListPage({ onNavigate }: Props) {
                 open={categoriesModalOpen}
                 onClose={() => setCategoriesModalOpen(false)}
                 categories={categories}
+                types={types}
                 vendors={vendors}
-                onChange={setCategories}
+                onCategoriesChange={setCategories}
+                onTypesChange={setTypes}
             />
         </div>
     );

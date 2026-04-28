@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { USA_STATES, CANADA_PROVINCES, MOCK_YARDS } from './assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
+import { GvwrTag } from './GvwrTag';
 
 // --- UI Utilities & Primitives ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
@@ -411,6 +412,8 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
     const financial = watch('financialStructure');
     const plateCountry = watch('plateCountry');
     const opStatus = watch('operationalStatus');
+    const grossWeightValue = watch('grossWeight');
+    const grossWeightUnit = watch('grossWeightUnit');
 
     const assetTypeOptions = useMemo(() => {
         if (category === 'CMV') return ['Truck', 'Trailer'];
@@ -485,6 +488,19 @@ export function AssetModal({ asset, onClose, onSave, isSaving }: AssetModalProps
                                         <option value="lbs">lbs</option>
                                         <option value="kg">kg</option>
                                     </select>
+                                </div>
+                                <div className="mt-2">
+                                    {grossWeightValue && grossWeightValue > 0 ? (
+                                        <GvwrTag
+                                            weight={grossWeightValue}
+                                            unit={grossWeightUnit}
+                                            size="sm"
+                                        />
+                                    ) : (
+                                        <span className="text-[10px] text-slate-400 italic">
+                                            GVWR class will appear once a weight is entered
+                                        </span>
+                                    )}
                                 </div>
                             </FormInput>
 

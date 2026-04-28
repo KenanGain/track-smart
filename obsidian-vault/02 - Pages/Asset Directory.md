@@ -14,3 +14,4 @@ tags: [page, assets]
 
 - [[Inventory Assets]]
 - [[Asset Maintenance]]
+- [[GVWR Classes]]

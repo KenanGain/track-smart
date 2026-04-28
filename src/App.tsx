@@ -13,7 +13,8 @@ import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
 import { LocationsPage } from '@/pages/account/LocationsPage'
-import { AccountsListPage } from '@/pages/accounts/AccountsListPage'
+import { AccountsTabsPage } from '@/pages/accounts/AccountsTabsPage'
+import { AddServiceProfilePage } from '@/pages/accounts/AddServiceProfilePage'
 import { AddAccountPage } from '@/pages/accounts/AddAccountPage'
 import { InventoryListPage } from '@/pages/inventory/InventoryListPage'
 import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
@@ -126,8 +127,11 @@ function App() {
         if (path === "/account/locations") {
             return <LocationsPage />
         }
+        if (path === "/accounts/services/new") {
+            return <AddServiceProfilePage onNavigate={handleNavigate} />
+        }
         if (path === "/accounts") {
-            return <AccountsListPage onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} />
+            return <AccountsTabsPage onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} currentUser={currentUser} />
         }
         if (path === "/accounts/new") {
             return <AddAccountPage onNavigate={handleNavigate} />
