@@ -5,13 +5,11 @@ import { VendorCategoriesModal } from "./VendorCategoriesModal";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
-    VENDOR_TYPES,
     CARRIER_NAME,
     formatVendorAddress,
-    getTypeLabel,
+    getCategoryLabel,
     type Vendor,
     type VendorCategory,
-    type VendorType,
 } from "./inventory.data";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +20,6 @@ type Props = {
 const ALL_COLUMNS: ColumnDef[] = [
     { id: "vendor", label: "Vendor", visible: true },
     { id: "category", label: "Category", visible: true },
-    { id: "type", label: "Type", visible: true },
     { id: "address", label: "Address", visible: true },
     { id: "contact", label: "Contact", visible: true },
     { id: "status", label: "Status", visible: true },
@@ -44,7 +41,6 @@ export function VendorsListPage({ onNavigate }: Props) {
     const [rowsPerPage, setRowsPerPage] = useState(25);
     const [vendors] = useState<Vendor[]>(VENDORS);
     const [categories, setCategories] = useState<VendorCategory[]>(VENDOR_CATEGORIES);
-    const [types, setTypes] = useState<VendorType[]>(VENDOR_TYPES);
     const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
 
     const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
@@ -59,11 +55,11 @@ export function VendorsListPage({ onNavigate }: Props) {
                 v.name.toLowerCase().includes(q) ||
                 (v.companyName ?? "").toLowerCase().includes(q) ||
                 (v.email ?? "").toLowerCase().includes(q) ||
-                getTypeLabel(v.type, types).toLowerCase().includes(q) ||
+                getCategoryLabel(v.categoryId, VENDOR_CATEGORIES).toLowerCase().includes(q) ||
                 formatVendorAddress(v.address).toLowerCase().includes(q)
             );
         });
-    }, [search, vendors, types]);
+    }, [search, vendors]);
 
     const paged = useMemo(() => {
         const start = (page - 1) * rowsPerPage;
@@ -125,7 +121,6 @@ export function VendorsListPage({ onNavigate }: Props) {
                             <tr>
                                 {colVisible.vendor && <TH>Vendor</TH>}
                                 {colVisible.category && <TH>Category</TH>}
-                                {colVisible.type && <TH>Type</TH>}
                                 {colVisible.address && <TH>Address</TH>}
                                 {colVisible.contact && <TH>Contact</TH>}
                                 {colVisible.status && <TH>Status</TH>}
@@ -148,8 +143,7 @@ export function VendorsListPage({ onNavigate }: Props) {
                                         </TD>
                                     )}
                                     {colVisible.category && <TD className="text-sm text-slate-600">{categoryName(v.categoryId)}</TD>}
-                                    {colVisible.type && <TD className="text-sm text-slate-600">{getTypeLabel(v.type, types)}</TD>}
-                                    {colVisible.address && (
+                                        {colVisible.address && (
                                         <TD>
                                             {v.address && formatVendorAddress(v.address) ? (
                                                 <div className="flex items-start gap-1.5 text-sm text-slate-600 max-w-xs">
@@ -219,10 +213,8 @@ export function VendorsListPage({ onNavigate }: Props) {
                 open={categoriesModalOpen}
                 onClose={() => setCategoriesModalOpen(false)}
                 categories={categories}
-                types={types}
                 vendors={vendors}
                 onCategoriesChange={setCategories}
-                onTypesChange={setTypes}
             />
         </div>
     );

@@ -21,52 +21,7 @@ export const ACME_TRUCKS: Asset[] = ACME_ASSETS.filter(
 
 export const ACME_ACTIVE_DRIVERS: Driver[] = ACME_DRIVERS.filter((d) => d.status === "Active");
 
-// ── Vendor types ─────────────────────────────────────────────────────────────
-// Vendor types belong to a category (hierarchical relationship). The seed
-// keys below are the well-known type ids, but the type field on Vendor is
-// `string` so users can add custom types via the Categories manager.
-
-export type VendorTypeKey =
-    | "fuel-card"
-    | "transponder"
-    | "eld-provider"
-    | "gps-tracking"
-    | "dashcam"
-    | "repair-maintenance"
-    | string;
-
-export type VendorType = {
-    key: string;
-    label: string;
-    /** Owning category id. */
-    categoryId: string;
-    /** Whether this type can apply to multiple assets/trucks at once. */
-    multiAsset: boolean;
-};
-
-export const VENDOR_TYPES: VendorType[] = [
-    { key: "fuel-card", label: "Fuel Card", categoryId: "cat-fuel", multiAsset: true },
-    { key: "transponder", label: "Transponder", categoryId: "cat-fuel", multiAsset: true },
-    { key: "eld-provider", label: "ELD Provider", categoryId: "cat-fleet-tech", multiAsset: true },
-    { key: "gps-tracking", label: "GPS Tracking", categoryId: "cat-fleet-tech", multiAsset: true },
-    { key: "dashcam", label: "Dashcam", categoryId: "cat-fleet-tech", multiAsset: true },
-    { key: "repair-maintenance", label: "Repair and Maintenance", categoryId: "cat-maintenance", multiAsset: false },
-];
-
-export const VENDOR_TYPE_LABELS: Record<string, string> = VENDOR_TYPES.reduce(
-    (acc, t) => ({ ...acc, [t.key]: t.label }),
-    {} as Record<string, string>
-);
-
-export function getTypesByCategory(categoryId: string, types: VendorType[] = VENDOR_TYPES): VendorType[] {
-    return types.filter((t) => t.categoryId === categoryId);
-}
-
-export function getTypeLabel(typeKey: string, types: VendorType[] = VENDOR_TYPES): string {
-    return types.find((t) => t.key === typeKey)?.label ?? typeKey;
-}
-
-// ── Categories & Address types ───────────────────────────────────────────────
+// ── Vendor categories (single concept — types collapsed into categories) ────
 
 export type VendorCategory = {
     id: string;
@@ -87,7 +42,7 @@ export type Vendor = {
     id: string;
     name: string;
     companyName?: string;
-    type: VendorTypeKey;
+    /** The category this vendor belongs to. */
     categoryId: string;
     address?: VendorAddress;
     email?: string;
@@ -96,6 +51,14 @@ export type Vendor = {
     contactInfo?: string;
     status: "Active" | "Inactive";
 };
+
+export function getCategoryById(categoryId: string, categories: VendorCategory[]): VendorCategory | undefined {
+    return categories.find((c) => c.id === categoryId);
+}
+
+export function getCategoryLabel(categoryId: string, categories: VendorCategory[]): string {
+    return categories.find((c) => c.id === categoryId)?.name ?? categoryId;
+}
 
 export const ADDRESS_COUNTRIES = ["United States", "Canada"] as const;
 
@@ -123,6 +86,14 @@ export type Recurrence = "None" | "Monthly" | "Quarterly" | "Yearly";
 export type Reminder = "None" | "1 day" | "1 week" | "1 month";
 export type InventoryStatus = "Active" | "Expired" | "Expiring Soon";
 
+export type AssignmentKind = "cmv" | "non-cmv" | "driver";
+
+export type Assignment = {
+    kind: AssignmentKind;
+    /** id of the CMV asset, Non-CMV asset, or driver. */
+    targetId: string;
+};
+
 export type InventoryItem = {
     id: string;
     vendorId: string;
@@ -135,17 +106,22 @@ export type InventoryItem = {
     status: InventoryStatus;
     contactName?: string;
     contactInfo?: string;
-    assignedAssetIds: string[];
-    assignedDriverIds: string[];
+    /** One-to-one assignment to a CMV / Non-CMV asset or a driver. */
+    assignedTo?: Assignment;
     notes?: string;
 };
+
+export const ACME_NON_CMV_ASSETS = ACME_ASSETS.filter((a) => a.assetCategory === "Non-CMV");
 
 // ── Vendors ──────────────────────────────────────────────────────────────────
 
 export const VENDOR_CATEGORIES: VendorCategory[] = [
-    { id: "cat-fleet-tech", name: "Fleet Technology", description: "ELD, GPS, dashcam, telematics" },
-    { id: "cat-fuel", name: "Fuel & Tolls", description: "Fuel cards and toll transponders" },
-    { id: "cat-maintenance", name: "Maintenance", description: "Repair shops and service vendors" },
+    { id: "cat-fuel-card",          name: "Fuel Card",              description: "Vendors issuing fuel cards." },
+    { id: "cat-transponder",        name: "Transponder",            description: "Toll transponder providers." },
+    { id: "cat-eld-provider",       name: "ELD Provider",           description: "Electronic logging device providers." },
+    { id: "cat-gps-tracking",       name: "GPS Tracking",           description: "GPS / telematics providers." },
+    { id: "cat-dashcam",            name: "Dashcam",                description: "In-cab camera providers." },
+    { id: "cat-repair-maintenance", name: "Repair and Maintenance", description: "Repair shops and service vendors." },
 ];
 
 export const VENDORS: Vendor[] = [
@@ -153,8 +129,7 @@ export const VENDORS: Vendor[] = [
         id: "v-001",
         name: "Comdata",
         companyName: "Comdata Inc.",
-        type: "fuel-card",
-        categoryId: "cat-fuel",
+        categoryId: "cat-fuel-card",
         address: { country: "United States", street: "5301 Maryland Way", city: "Brentwood", state: "TN", zip: "37027" },
         email: "support@comdata.com",
         phone: "(800) 749-7166",
@@ -166,8 +141,7 @@ export const VENDORS: Vendor[] = [
         id: "v-002",
         name: "EZPass",
         companyName: "E-ZPass Group",
-        type: "transponder",
-        categoryId: "cat-fuel",
+        categoryId: "cat-transponder",
         address: { country: "United States", street: "375 N Front St", city: "Wilmington", state: "DE", zip: "19801" },
         email: "fleet@ezpass.com",
         phone: "(888) 288-6865",
@@ -179,8 +153,7 @@ export const VENDORS: Vendor[] = [
         id: "v-003",
         name: "Samsara",
         companyName: "Samsara Inc.",
-        type: "eld-provider",
-        categoryId: "cat-fleet-tech",
+        categoryId: "cat-eld-provider",
         address: { country: "United States", street: "1 De Haro St", city: "San Francisco", state: "CA", zip: "94103" },
         email: "fleet-support@samsara.com",
         phone: "(415) 985-2400",
@@ -192,8 +165,7 @@ export const VENDORS: Vendor[] = [
         id: "v-004",
         name: "Geotab",
         companyName: "Geotab Inc.",
-        type: "gps-tracking",
-        categoryId: "cat-fleet-tech",
+        categoryId: "cat-gps-tracking",
         address: { country: "Canada", street: "2440 Winston Park Dr", city: "Oakville", state: "ON", zip: "L6H 7V2" },
         email: "support@geotab.com",
         phone: "(877) 436-8221",
@@ -205,8 +177,7 @@ export const VENDORS: Vendor[] = [
         id: "v-005",
         name: "Lytx",
         companyName: "Lytx Inc.",
-        type: "dashcam",
-        categoryId: "cat-fleet-tech",
+        categoryId: "cat-dashcam",
         address: { country: "United States", street: "9785 Towne Centre Dr", city: "San Diego", state: "CA", zip: "92121" },
         email: "service@lytx.com",
         phone: "(866) 419-5861",
@@ -218,8 +189,7 @@ export const VENDORS: Vendor[] = [
         id: "v-006",
         name: "Midwest Diesel Repair",
         companyName: "Midwest Diesel Repair LLC",
-        type: "repair-maintenance",
-        categoryId: "cat-maintenance",
+        categoryId: "cat-repair-maintenance",
         address: { country: "United States", street: "421 Industrial Dr", city: "Indianapolis", state: "IN", zip: "46202" },
         email: "service@midwestdiesel.com",
         phone: "(317) 555-0142",
@@ -233,10 +203,9 @@ export const VENDORS: Vendor[] = [
 // Asset and driver IDs are generated at module load by the carrier datasets,
 // so we sample them here rather than hardcoding.
 
-const truckIds = ACME_TRUCKS.map((a) => a.id);
+const cmvAssetIds = ACME_TRUCKS.map((a) => a.id);
+const nonCmvAssetIds = ACME_NON_CMV_ASSETS.map((a) => a.id);
 const activeDriverIds = ACME_ACTIVE_DRIVERS.map((d) => d.id);
-
-const pickN = <T,>(arr: T[], n: number): T[] => arr.slice(0, Math.min(n, arr.length));
 
 export const INVENTORY_ITEMS: InventoryItem[] = [
     {
@@ -251,8 +220,7 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
         status: "Active",
         contactName: "Lisa Howard",
         contactInfo: "lisa.h@comdata.com",
-        assignedAssetIds: pickN(truckIds, 2),
-        assignedDriverIds: pickN(activeDriverIds, 2),
+        assignedTo: cmvAssetIds[0] ? { kind: "cmv", targetId: cmvAssetIds[0] } : undefined,
     },
     {
         id: "inv-1002",
@@ -266,8 +234,7 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
         status: "Active",
         contactName: "Mark Reed",
         contactInfo: "(302) 555-0118",
-        assignedAssetIds: pickN(truckIds, 3),
-        assignedDriverIds: pickN(activeDriverIds, 1),
+        assignedTo: cmvAssetIds[1] ? { kind: "cmv", targetId: cmvAssetIds[1] } : undefined,
     },
     {
         id: "inv-1003",
@@ -281,8 +248,7 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
         status: "Expiring Soon",
         contactName: "Priya Patel",
         contactInfo: "priya@samsara.com",
-        assignedAssetIds: truckIds, // fleet-wide ELD
-        assignedDriverIds: pickN(activeDriverIds, 5),
+        assignedTo: cmvAssetIds[2] ? { kind: "cmv", targetId: cmvAssetIds[2] } : undefined,
     },
     {
         id: "inv-1004",
@@ -296,8 +262,7 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
         status: "Expired",
         contactName: "Tom Becker",
         contactInfo: "tom@geotab.com",
-        assignedAssetIds: pickN(truckIds.slice(1), 2),
-        assignedDriverIds: pickN(activeDriverIds.slice(2), 1),
+        assignedTo: nonCmvAssetIds[0] ? { kind: "non-cmv", targetId: nonCmvAssetIds[0] } : undefined,
     },
     {
         id: "inv-1005",
@@ -311,8 +276,7 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
         status: "Active",
         contactName: "Angela Cruz",
         contactInfo: "angela.cruz@lytx.com",
-        assignedAssetIds: pickN(truckIds, 2),
-        assignedDriverIds: pickN(activeDriverIds.slice(1), 2),
+        assignedTo: activeDriverIds[0] ? { kind: "driver", targetId: activeDriverIds[0] } : undefined,
     },
     {
         id: "inv-1006",
@@ -326,8 +290,7 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
         status: "Active",
         contactName: "Dave O'Connor",
         contactInfo: "(317) 555-0144",
-        assignedAssetIds: [],
-        assignedDriverIds: [],
+        assignedTo: activeDriverIds[1] ? { kind: "driver", targetId: activeDriverIds[1] } : undefined,
         notes: "On-call repair and maintenance vendor for fleet emergencies.",
     },
 ];
@@ -335,11 +298,13 @@ export const INVENTORY_ITEMS: InventoryItem[] = [
 // ── Public lookup helpers used by Asset / Driver detail views ───────────────
 
 export function getInventoryByAssetId(assetId: string): InventoryItem[] {
-    return INVENTORY_ITEMS.filter((it) => it.assignedAssetIds.includes(assetId));
+    return INVENTORY_ITEMS.filter(
+        (it) => it.assignedTo && (it.assignedTo.kind === "cmv" || it.assignedTo.kind === "non-cmv") && it.assignedTo.targetId === assetId
+    );
 }
 
 export function getInventoryByDriverId(driverId: string): InventoryItem[] {
-    return INVENTORY_ITEMS.filter((it) => it.assignedDriverIds.includes(driverId));
+    return INVENTORY_ITEMS.filter((it) => it.assignedTo?.kind === "driver" && it.assignedTo.targetId === driverId);
 }
 
 export function getVendorById(vendorId: string): Vendor | undefined {

@@ -18,7 +18,7 @@ import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/
 import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
 import { Boxes } from 'lucide-react';
-import { getInventoryByDriverId, getVendorById, VENDOR_TYPE_LABELS } from '@/pages/inventory/inventory.data';
+import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -1971,7 +1971,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                         return (
                                             <tr key={it.id} className="hover:bg-slate-50/60">
                                                 <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
-                                                <td className="px-4 py-3 text-slate-600">{vendor ? VENDOR_TYPE_LABELS[vendor.type] : '—'}</td>
+                                                <td className="px-4 py-3 text-slate-600">{vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '—'}</td>
                                                 <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
                                                 <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
                                                 <td className="px-4 py-3 text-slate-600">{it.issueDate}</td>

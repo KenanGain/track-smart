@@ -2,12 +2,10 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, Building2, Check } from "lucide-react";
 import {
     VENDOR_CATEGORIES,
-    VENDOR_TYPES,
     CARRIER_NAME,
     ADDRESS_COUNTRIES,
     US_STATES,
     CA_PROVINCES,
-    type VendorTypeKey,
     type VendorAddress,
 } from "./inventory.data";
 
@@ -22,7 +20,6 @@ export type VendorFormPayload = {
     email?: string;
     phone?: string;
     categoryId: string;
-    type: VendorTypeKey;
     contactName?: string;
     contactInfo?: string;
 };
@@ -42,7 +39,6 @@ export function AddVendorPage({ onNavigate }: Props) {
 
     // 3. Vendor Classification
     const [categoryId, setCategoryId] = useState(VENDOR_CATEGORIES[0]?.id ?? "");
-    const [type, setType] = useState<VendorTypeKey>("fuel-card");
 
     // 4. Contact
     const [email, setEmail] = useState("");
@@ -55,7 +51,7 @@ export function AddVendorPage({ onNavigate }: Props) {
         [country]
     );
 
-    const isValid = name.trim().length > 0 && !!categoryId && !!type;
+    const isValid = name.trim().length > 0 && !!categoryId;
 
     const handleSave = () => {
         if (!isValid) return;
@@ -73,7 +69,6 @@ export function AddVendorPage({ onNavigate }: Props) {
             email: email || undefined,
             phone: phone || undefined,
             categoryId,
-            type,
             contactName: contactName || undefined,
             contactInfo: contactInfo || undefined,
         };
@@ -140,21 +135,6 @@ export function AddVendorPage({ onNavigate }: Props) {
                                     {VENDOR_CATEGORIES.map((c) => (
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
-                                </SelectInput>
-                            </FormField>
-                            <FormField label="Vendor Type" required>
-                                <SelectInput value={type} onChange={(v) => setType(v as VendorTypeKey)}>
-                                    {VENDOR_CATEGORIES.map((c) => {
-                                        const catTypes = VENDOR_TYPES.filter((t) => t.categoryId === c.id);
-                                        if (catTypes.length === 0) return null;
-                                        return (
-                                            <optgroup key={c.id} label={c.name}>
-                                                {catTypes.map((t) => (
-                                                    <option key={t.key} value={t.key}>{t.label}</option>
-                                                ))}
-                                            </optgroup>
-                                        );
-                                    })}
                                 </SelectInput>
                             </FormField>
                         </div>

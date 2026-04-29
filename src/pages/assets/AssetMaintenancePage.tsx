@@ -6,7 +6,7 @@ import {
     X, Check, FileText, Eye
 } from "lucide-react";
 import { CreateScheduleForm } from "./CreateScheduleForm";
-import { INITIAL_VENDORS } from "@/data/vendors.data";
+import { VENDORS as INVENTORY_VENDORS } from "@/pages/inventory/inventory.data";
 
 import { 
     INITIAL_SERVICE_TYPES, INITIAL_TASKS, INITIAL_ORDERS
@@ -658,7 +658,7 @@ export function AssetMaintenancePage() {
     const [tasks, setTasks] = useState<MaintenanceTask[]>(INITIAL_TASKS);
     const [orders, setOrders] = useState<TaskOrder[]>(INITIAL_ORDERS);
     // Manage vendors list state
-    const [vendors, setVendors] = useState<any[]>(INITIAL_VENDORS);
+    const [vendors, setVendors] = useState<any[]>(INVENTORY_VENDORS);
     const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
     const [statusFilter, setStatusFilter] = useState("All");
     const [assetFilter, setAssetFilter] = useState<"all" | "cmv" | "non_cmv">("all");
@@ -789,20 +789,34 @@ export function AssetMaintenancePage() {
     const handleCreateOrder = (orderData: any) => {
         const batchId = `batch_${Math.random().toString(36).substr(2, 9)}`;
         const newOrders: TaskOrder[] = [];
-        
-        // Use taskIds from orderData if present (new modal), otherwise fallback to selectedTaskIds (legacy/bulk)
-        const taskIdsToProcess = orderData.taskIds && orderData.taskIds.length > 0 
-            ? orderData.taskIds 
+
+        const taskIdsToProcess: string[] = orderData.taskIds && orderData.taskIds.length > 0
+            ? orderData.taskIds
             : selectedTaskIds;
-        
-        // Group selected tasks by Asset ID to create individual orders per asset
+
+        // Materialize lightweight tasks for any direct (no-schedule) entries
+        const directTaskRecords: MaintenanceTask[] = (orderData.directTasks || []).map((dt: { assetId: string; serviceTypeIds: string[] }) => ({
+            id: `task_${Math.random().toString(36).substr(2, 9)}`,
+            assetId: dt.assetId,
+            scheduleId: `direct_${batchId}`,
+            serviceTypeIds: dt.serviceTypeIds,
+            status: 'in_progress' as MaintenanceTaskStatus,
+            meterSnapshot: { odometer: 0, engineHours: 0, capturedAt: new Date().toISOString() },
+            createdAt: new Date().toISOString(),
+        }));
+
+        // Group all task IDs (existing + direct) by asset
         const tasksByAsset: Record<string, string[]> = {};
-        taskIdsToProcess.forEach((taskId: string) => {
+        taskIdsToProcess.forEach((taskId) => {
             const task = tasks.find(t => t.id === taskId);
             if (task) {
                 if (!tasksByAsset[task.assetId]) tasksByAsset[task.assetId] = [];
                 tasksByAsset[task.assetId].push(taskId);
             }
+        });
+        directTaskRecords.forEach(t => {
+            if (!tasksByAsset[t.assetId]) tasksByAsset[t.assetId] = [];
+            tasksByAsset[t.assetId].push(t.id);
         });
 
         Object.values(tasksByAsset).forEach((assetTaskIds) => {
@@ -816,16 +830,17 @@ export function AssetMaintenancePage() {
                 notes: orderData.notes,
                 meta: orderData.meta,
                 completions: [],
-                batchId: batchId // Link via batchId
+                batchId: batchId
             };
             newOrders.push(newOrder);
         });
 
         setOrders([...newOrders, ...orders]);
-        
-        // Update task statuses
-        setTasks(tasks.map(t => taskIdsToProcess.includes(t.id) ? { ...t, status: "in_progress" as MaintenanceTaskStatus } : t));
-        
+
+        // Add direct tasks; flip existing selected tasks to in_progress
+        const updatedTasks = tasks.map(t => taskIdsToProcess.includes(t.id) ? { ...t, status: "in_progress" as MaintenanceTaskStatus } : t);
+        setTasks([...directTaskRecords, ...updatedTasks]);
+
         setSelectedTaskIds([]);
         setIsCreateOrderModalOpen(false);
         setActiveTab('orders');
@@ -882,36 +897,19 @@ export function AssetMaintenancePage() {
     };
 
     const handleSaveSchedule = (schedule: any) => {
-        // console.log("Saving Schedule:", schedule);
         const newTasks: MaintenanceTask[] = [];
-        const isDateBased = schedule.frequency.unit === 'days';
 
         schedule.assignment.entityIds.forEach((assetId: string) => {
-            const details = schedule.assetDetails?.[assetId] || {};
-            
-            // Determine due rule parameters based on specific asset details or defaults
-            const dueAtOdometer = !isDateBased && details.nextDueValue ? Number(details.nextDueValue) : undefined;
-            const dueAtDate = isDateBased && details.nextDueValue ? String(details.nextDueValue) : undefined;
-            const dueAtEngineHours = schedule.frequency.unit === 'engine_hours' && details.nextDueValue ? Number(details.nextDueValue) : undefined;
-
             const newTask: MaintenanceTask = {
                 id: `task_${Math.random().toString(36).substr(2, 9)}`,
                 assetId: assetId,
-                scheduleId: schedule.id, // Serves as the grouping ID for tasks
+                scheduleId: schedule.id,
                 serviceTypeIds: schedule.serviceTypeIds,
                 status: 'upcoming',
-                meterSnapshot: { 
-                    odometer: 0, // In real app, would fetch current asset meter
-                    engineHours: 0, 
-                    capturedAt: new Date().toISOString() 
-                },
-                dueRule: {
-                    unit: schedule.frequency.unit,
-                    frequencyEvery: schedule.frequency.every,
-                    upcomingThreshold: schedule.upcomingThreshold,
-                    dueAtOdometer,
-                    dueAtDate,
-                    dueAtEngineHours
+                meterSnapshot: {
+                    odometer: 0,
+                    engineHours: 0,
+                    capturedAt: new Date().toISOString()
                 },
                 createdAt: new Date().toISOString()
             };
@@ -1121,9 +1119,15 @@ export function AssetMaintenancePage() {
                                             <td className="px-6 py-4"><div className="text-slate-900 max-w-xs truncate" title={getServiceNames(task.serviceTypeIds)}>{getServiceNames(task.serviceTypeIds)}</div></td>
                                             <td className="px-6 py-4 font-mono text-xs">{associatedOrder ? <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">#{associatedOrder.id.slice(-6).toUpperCase()}</span> : <span className="text-slate-400">-</span>}</td>
                                             <td className="px-6 py-4">
-                                                <div className="font-medium text-slate-900">{task.dueRule.unit === 'miles' ? `${task.dueRule.dueAtOdometer?.toLocaleString()} mi` : task.dueRule.unit === 'days' ? new Date(task.dueRule.dueAtDate!).toLocaleDateString() : `${task.dueRule.dueAtEngineHours} hrs`}</div>
-                                                {task.status !== 'completed' && task.status !== 'cancelled' && task.status !== 'in_progress' && (
-                                                    <div className="text-xs text-slate-500">{task.dueRule.unit === 'miles' ? `${Math.max(0, (task.dueRule.dueAtOdometer || 0) - (asset?.currentOdometer || 0)).toLocaleString()} mi remaining` : 'Due soon'}</div>
+                                                {task.dueRule ? (
+                                                    <>
+                                                        <div className="font-medium text-slate-900">{task.dueRule.unit === 'miles' ? `${task.dueRule.dueAtOdometer?.toLocaleString()} mi` : task.dueRule.unit === 'days' ? new Date(task.dueRule.dueAtDate!).toLocaleDateString() : `${task.dueRule.dueAtEngineHours} hrs`}</div>
+                                                        {task.status !== 'completed' && task.status !== 'cancelled' && task.status !== 'in_progress' && (
+                                                            <div className="text-xs text-slate-500">{task.dueRule.unit === 'miles' ? `${Math.max(0, (task.dueRule.dueAtOdometer || 0) - (asset?.currentOdometer || 0)).toLocaleString()} mi remaining` : 'Due soon'}</div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <span className="text-xs text-slate-400">No schedule</span>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4"><Badge variant={task.status}>{task.status}</Badge></td>
@@ -1216,7 +1220,7 @@ export function AssetMaintenancePage() {
                                     return (
                                         <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                                             <td className="px-6 py-4 font-medium text-slate-900">#{order.id.slice(-6).toUpperCase()}</td>
-                                            <td className="px-6 py-4 text-slate-700">{vendor?.companyName || 'Unknown'}</td>
+                                            <td className="px-6 py-4 text-slate-700">{vendor?.name || vendor?.companyName || 'Unknown'}</td>
                                             <td className="px-6 py-4 text-slate-700">{assetNames}</td>
                                             <td className="px-6 py-4 text-slate-500">{totalTasks} tasks</td>
                                             <td className="px-6 py-4">

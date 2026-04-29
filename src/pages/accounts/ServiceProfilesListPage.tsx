@@ -20,6 +20,8 @@ type Props = {
     onNavigate?: (path: string) => void;
     /** Logged-in user — drives row-level visibility. */
     currentUser?: AppUser | null;
+    /** Setter that App.tsx uses to remember which profile to load on /service-profile. */
+    onSelectServiceProfile?: (id: string) => void;
 };
 
 const ALL_COLUMNS: ColumnDef[] = [
@@ -49,7 +51,7 @@ const STATUS_DOT: Record<ServiceProfileStatus, string> = {
 type SortKey = "legalName" | "stateOfInc" | "businessType" | "accountsCreated" | "createdAt" | "status";
 type SortDir = "asc" | "desc";
 
-export function ServiceProfilesListPage({ currentUser }: Props = {}) {
+export function ServiceProfilesListPage({ currentUser, onNavigate, onSelectServiceProfile }: Props = {}) {
     const [search, setSearch] = useState("");
     const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
     const [page, setPage] = useState(1);
@@ -185,7 +187,14 @@ export function ServiceProfilesListPage({ currentUser }: Props = {}) {
                                 const initials = p.legalName.replace(/[^a-zA-Z0-9\s]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join("");
                                 const utilization = isUnlimitedLimit(p.accountLimit) ? null : Math.round((p.accountsCreated / Math.max(1, p.accountLimit)) * 100);
                                 return (
-                                    <tr key={p.id} onClick={() => setViewing(p)} className="hover:bg-slate-50/60 transition-colors cursor-pointer">
+                                    <tr
+                                        key={p.id}
+                                        onClick={() => {
+                                            onSelectServiceProfile?.(p.id);
+                                            onNavigate?.("/service-profile");
+                                        }}
+                                        className="hover:bg-slate-50/60 transition-colors cursor-pointer"
+                                    >
                                         {colVisible.service && (
                                             <TD>
                                                 <div className="flex items-center gap-3">
@@ -283,6 +292,7 @@ export function ServiceProfilesListPage({ currentUser }: Props = {}) {
             />
             <ServiceProfileEditModal
                 profile={editing}
+                currentUser={currentUser}
                 onClose={() => setEditing(null)}
                 onSave={handleSaveProfile}
             />

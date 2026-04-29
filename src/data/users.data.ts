@@ -16,11 +16,18 @@ export type AppUser = {
      */
     managedAccountIds?: string[];
     /**
-     * The service profile this user belongs to. Admins inherit the service
-     * profile's account-creation limit when creating new carrier or service
-     * accounts. Super admins are not bound to a service profile.
+     * Primary service profile this user belongs to. For users assigned to
+     * multiple service profiles, this is the first entry of `serviceProfileIds`.
+     * Admins inherit their primary service profile's account-creation limit
+     * when creating new carrier or service accounts. Super admins are not
+     * bound to a service profile.
      */
     serviceProfileId?: string;
+    /**
+     * All service profiles this user has access to. Empty/undefined means
+     * none. Useful when a user works across multiple service organizations.
+     */
+    serviceProfileIds?: string[];
     status: "Active" | "Inactive";
     title: string;
     initials: string;

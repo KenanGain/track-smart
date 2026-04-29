@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-    Check, X, Search, User, Info, AlertCircle
+    Check, X, Search, Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { INITIAL_SERVICE_TYPES } from '@/data/service-types.data';
@@ -8,7 +8,6 @@ import { INITIAL_SERVICE_TYPES } from '@/data/service-types.data';
 import { INITIAL_ASSETS } from '../assets/assets.data';
 
 type EntityType = "truck" | "trailer" | "both";
-type FrequencyUnit = "miles" | "kilometers" | "days" | "engine_hours";
 
 interface CreateScheduleFormProps {
     onSave: (schedule: any) => void;
@@ -26,51 +25,12 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
     const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
     const [serviceSearchQuery, setServiceSearchQuery] = useState("");
     const [activeServiceGroup, setActiveServiceGroup] = useState<string>("All");
-    const [frequencyEvery, setFrequencyEvery] = useState<number>(0);
-    const [frequencyUnit, setFrequencyUnit] = useState<FrequencyUnit>("miles");
-    const [upcomingThreshold, setUpcomingThreshold] = useState<number>(0);
 
     // Section 2: Assets
     const [applyToAll, setApplyToAll] = useState(false);
     const [assignedAssetIds, setAssignedAssetIds] = useState<string[]>(initialAssetId ? [initialAssetId] : []);
     const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
     const [assetSearchQuery, setAssetSearchQuery] = useState("");
-
-    // Section 3: Alerts
-    const [alertRecipients, setAlertRecipients] = useState<string[]>([]);
-    const [alertReminders, setAlertReminders] = useState<string[]>([]);
-    const [alertChannels, setAlertChannels] = useState<string[]>([]);
-
-    // Section 4: Per-Asset Details (New)
-    const [assetScheduleDetails, setAssetScheduleDetails] = useState<Record<string, { lastServiceValue: string | number | undefined, nextDueValue: string | number | undefined }>>({});
-
-    // --- Derived State & Helpers ---
-
-    // Update Asset Detail Helper
-    const updateAssetDetail = (assetId: string, field: 'lastServiceValue' | 'nextDueValue', value: string | number) => {
-        setAssetScheduleDetails(prev => {
-            const current = prev[assetId] || {};
-            const updated = { ...current, [field]: value };
-
-            // Auto-calculate Next Due if Last Service changes
-            if (field === 'lastServiceValue' && value && frequencyEvery) {
-                if (frequencyUnit === 'days') {
-                    // Date calculation
-                    const date = new Date(value as string);
-                    if (!isNaN(date.getTime())) {
-                        date.setDate(date.getDate() + frequencyEvery);
-                        updated.nextDueValue = date.toISOString().split('T')[0];
-                    }
-                } else {
-                    // Numeric calculation (miles/km/hours)
-                    const numVal = parseInt(value as string) || 0;
-                    updated.nextDueValue = numVal + frequencyEvery;
-                }
-            }
-
-            return { ...prev, [assetId]: updated };
-        });
-    };
 
     // Filter Services based on Entity Type and Group
     const availableServices = useMemo(() => {
@@ -122,7 +82,6 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
         setSelectedServiceIds([]); // Clear services
         setAssignedAssetIds([]);   // Clear assets
         setApplyToAll(false);      // Reset Apply to All
-        setAssetScheduleDetails({}); // Clear details
     };
 
     // Toggle Service Selection
@@ -139,21 +98,14 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
         );
     };
 
-    // Toggle Alert Selection helpers
-    const toggleItem = (list: string[], setList: any, item: string) => {
-        setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
-    };
-
     // Validation
     const isValid = useMemo(() => {
         return (
             scheduleName.trim().length > 0 &&
             selectedServiceIds.length > 0 &&
-            frequencyEvery > 0 &&
-            upcomingThreshold >= 0 &&
             (applyToAll || assignedAssetIds.length > 0)
         );
-    }, [scheduleName, selectedServiceIds, frequencyEvery, upcomingThreshold, applyToAll, assignedAssetIds]);
+    }, [scheduleName, selectedServiceIds, applyToAll, assignedAssetIds]);
 
     const handleSave = () => {
         if (!isValid) return;
@@ -163,20 +115,9 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
             entityCategory: entityType,
             name: scheduleName,
             serviceTypeIds: selectedServiceIds,
-            frequency: {
-                every: frequencyEvery,
-                unit: frequencyUnit
-            },
-            upcomingThreshold,
             assignment: {
                 applyToAll,
-                entityIds: applyToAll ? [] : assignedAssetIds
-            },
-            assetDetails: assetScheduleDetails, // Include detailed per-asset data
-            alert: {
-                recipients: alertRecipients,
-                reminders: alertReminders,
-                channels: alertChannels
+                entityIds: applyToAll ? availableAssets.map(a => a.id) : assignedAssetIds
             },
             status: "active",
             createdAt: new Date().toISOString()
@@ -317,56 +258,6 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
 
 
 
-                        {/* Frequency & Threshold */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Frequency */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Maintenance Frequency <span className="text-red-500">*</span></label>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-sm text-slate-500 font-medium">Every</span>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="0"
-                                        value={frequencyEvery || ''}
-                                        onChange={(e) => setFrequencyEvery(parseInt(e.target.value) || 0)}
-                                        className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-                                    />
-                                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                                        {(['miles', 'kilometers', 'days', 'engine_hours'] as const).map((unit) => (
-                                            <button
-                                                key={unit}
-                                                onClick={() => setFrequencyUnit(unit)}
-                                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${frequencyUnit === unit
-                                                    ? 'bg-white text-slate-900 shadow-sm ring-1 ring-black/5'
-                                                    : 'text-slate-500 hover:text-slate-900'
-                                                    }`}
-                                            >
-                                                {unit === 'engine_hours' ? 'Hrs' : unit === 'kilometers' ? 'Km' : unit.charAt(0).toUpperCase() + unit.slice(1)}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Threshold */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">Upcoming Threshold <span className="text-red-500">*</span></label>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="0"
-                                        value={upcomingThreshold || ''}
-                                        onChange={(e) => setUpcomingThreshold(parseInt(e.target.value) || 0)}
-                                        className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all"
-                                    />
-                                    <span className="text-sm text-slate-500">
-                                        {frequencyUnit === 'miles' ? 'miles' : frequencyUnit === 'kilometers' ? 'km' : frequencyUnit === 'days' ? 'days' : 'hours'} before due
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </section>
 
@@ -406,21 +297,21 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                             </button>
                         </div>
 
-                        {/* Asset List / Table */}
+                        {/* Asset List */}
                         <div className="min-h-[100px]">
                             {(() => {
                                 // Determine which assets to show
-                                const assetsToDisplay = applyToAll 
-                                    ? availableAssets 
+                                const assetsToDisplay = applyToAll
+                                    ? availableAssets
                                     : assignedAssetIds.map(id => INITIAL_ASSETS.find(a => a.id === id)).filter(Boolean) as typeof INITIAL_ASSETS;
-                                
+
                                 if (assetsToDisplay.length > 0) {
                                     return (
                                         <div className="space-y-4">
                                             {applyToAll && (
                                                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center gap-3 text-blue-700">
                                                     <Info size={18} />
-                                                    <span className="text-sm font-medium">Applied to All {assetsToDisplay.length} Eligible {entityType === 'truck' ? 'CMV' : entityType === 'trailer' ? 'Non-CMV' : ''} Assets. You can initialize their service data below.</span>
+                                                    <span className="text-sm font-medium">Applied to All {assetsToDisplay.length} Eligible {entityType === 'truck' ? 'CMV' : entityType === 'trailer' ? 'Non-CMV' : ''} Assets.</span>
                                                 </div>
                                             )}
 
@@ -429,27 +320,14 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                                     <thead className="bg-slate-50 border-b border-slate-200 font-medium text-slate-500 text-xs uppercase tracking-wider">
                                                         <tr>
                                                             <th className="px-4 py-3">Vehicles - {assetsToDisplay.length} Total</th>
-                                                            <th className="px-4 py-3">Last Service ({frequencyUnit === 'days' ? 'Date' : frequencyUnit === 'miles' ? 'Mi' : frequencyUnit === 'kilometers' ? 'Km' : 'Hrs'})</th>
-                                                            <th className="px-4 py-3">Current ({frequencyUnit === 'days' ? 'Added Date' : frequencyUnit === 'miles' ? 'Odo (Mi)' : frequencyUnit === 'kilometers' ? 'Odo (Km)' : 'Hrs'})</th>
-                                                            <th className="px-4 py-3">Next Service Due ({frequencyUnit === 'days' ? 'Date' : frequencyUnit === 'miles' ? 'Mi' : frequencyUnit === 'kilometers' ? 'Km' : 'Hrs'})</th>
+                                                            <th className="px-4 py-3">Type</th>
+                                                            <th className="px-4 py-3">VIN</th>
                                                             <th className="px-4 py-3 w-10"></th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100">
                                                         {assetsToDisplay.map(asset => {
                                                             const id = asset!.id;
-                                                            const details = assetScheduleDetails[id] || {};
-                                                            const isDateMode = frequencyUnit === 'days';
-        
-                                                            // Validation check
-                                                            let isOverdue = false;
-                                                            if (details.nextDueValue && asset) {
-                                                                if (!isDateMode && typeof details.nextDueValue === 'number' && asset.odometer) {
-                                                                    isOverdue = details.nextDueValue < asset.odometer;
-                                                                }
-                                                                // Date comparison could be added here
-                                                            }
-        
                                                             return (
                                                                 <tr key={id} className="group hover:bg-slate-50 transition-colors">
                                                                     <td className="px-4 py-3">
@@ -457,32 +335,11 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                                                         <div className="text-xs text-slate-500 uppercase">{asset?.year} {asset?.make} {asset?.model}</div>
                                                                     </td>
                                                                     <td className="px-4 py-3">
-                                                                        <input
-                                                                            type={isDateMode ? "date" : "number"}
-                                                                            value={details.lastServiceValue || ''}
-                                                                            onChange={(e) => updateAssetDetail(id, 'lastServiceValue', e.target.value)}
-                                                                            className="w-full max-w-[140px] px-2 py-1.5 bg-white border border-slate-200 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                                                            placeholder={isDateMode ? "Select Date" : "Enter Value"}
-                                                                        />
+                                                                        <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${asset?.assetCategory === 'CMV' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                                                                            {asset?.assetCategory}
+                                                                        </span>
                                                                     </td>
-                                                                    <td className="px-4 py-3 text-slate-600 font-medium">
-                                                                        {isDateMode ? (
-                                                                            asset?.dateAdded ? new Date(asset.dateAdded).toLocaleDateString() : 'N/A'
-                                                                        ) : (
-                                                                            (asset?.odometer || 0).toLocaleString()
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-4 py-3 relative">
-                                                                        <input
-                                                                            type={isDateMode ? "date" : "number"}
-                                                                            value={details.nextDueValue || ''}
-                                                                            onChange={(e) => updateAssetDetail(id, 'nextDueValue', e.target.value)}
-                                                                            className={`w-full max-w-[140px] px-2 py-1.5 bg-white border rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${isOverdue ? 'border-red-300 text-red-600' : 'border-slate-200'}`}
-                                                                        />
-                                                                        {isOverdue && (
-                                                                            <AlertCircle size={14} className="text-red-500 absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                                                        )}
-                                                                    </td>
+                                                                    <td className="px-4 py-3 text-xs text-slate-500 font-mono">•••••{asset?.vin.slice(-4)}</td>
                                                                     <td className="px-4 py-3 text-right">
                                                                         {!initialAssetId && !applyToAll && (
                                                                             <button onClick={() => toggleAsset(id)} className="text-slate-300 hover:text-red-500 transition-colors">
@@ -499,7 +356,7 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                         </div>
                                     );
                                 }
-                                
+
                                 // Empty State
                                 return (
                                     <div className="border-2 border-dashed border-slate-200 rounded-lg h-24 flex items-center justify-center text-slate-400 text-sm">
@@ -507,102 +364,6 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                     </div>
                                 );
                             })()}
-                        </div>
-                    </div>
-                </section>
-
-                {/* --- Section 3: Alerts --- */}
-                <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 relative overflow-hidden">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">3</div>
-                        <h2 className="text-lg font-semibold text-slate-900">Alerts</h2>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pl-11">
-                        <div className="space-y-6">
-                            {/* Notify Users */}
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Notify Users</label>
-                                <div className="space-y-2">
-                                    {['Fleet Admin', 'Safety Manager', 'Maintenance Manager'].map(role => (
-                                        <label key={role} className="flex items-center gap-2 cursor-pointer">
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${alertRecipients.includes(role) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
-                                                }`}>
-                                                {alertRecipients.includes(role) && <Check size={10} className="text-white" strokeWidth={3} />}
-                                            </div>
-                                            <input type="checkbox" className="hidden" checked={alertRecipients.includes(role)} onChange={() => toggleItem(alertRecipients, setAlertRecipients, role)} />
-                                            <span className="text-sm text-slate-700">{role}</span>
-                                        </label>
-                                    ))}
-
-                                    {/* Driver separate for helper text */}
-                                    <div className="pt-1">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${alertRecipients.includes('Driver') ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
-                                                }`}>
-                                                {alertRecipients.includes('Driver') && <Check size={10} className="text-white" strokeWidth={3} />}
-                                            </div>
-                                            <input type="checkbox" className="hidden" checked={alertRecipients.includes('Driver')} onChange={() => toggleItem(alertRecipients, setAlertRecipients, 'Driver')} />
-                                            <span className="text-sm text-slate-700">Driver</span>
-                                        </label>
-                                        {alertRecipients.includes('Driver') && (
-                                            <div className="flex items-center gap-2 mt-2 ml-6 text-xs text-blue-600 bg-blue-50 px-2 py-1.5 rounded-md border border-blue-100 inline-flex">
-                                                <User size={12} />
-                                                Alerts will be sent to the respective assigned driver.
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-6">
-                            {/* Reminders */}
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Notification Reminders</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {['90 Days Before', '60 Days Before', '30 Days Before', '7 Days Before'].map(reminder => (
-                                        <label key={reminder} className="flex items-center gap-2 cursor-pointer">
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${alertReminders.includes(reminder) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
-                                                }`}>
-                                                {alertReminders.includes(reminder) && <Check size={10} className="text-white" strokeWidth={3} />}
-                                            </div>
-                                            <input type="checkbox" className="hidden" checked={alertReminders.includes(reminder)} onChange={() => toggleItem(alertReminders, setAlertReminders, reminder)} />
-                                            <span className="text-sm text-slate-700">{reminder}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Channels */}
-                            <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Channels</label>
-                                <div className="flex gap-4">
-                                    {['Email', 'In-App', 'SMS'].map(channel => (
-                                        <label key={channel} className="flex items-center gap-2 cursor-pointer">
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${alertChannels.includes(channel) ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
-                                                }`}>
-                                                {alertChannels.includes(channel) && <Check size={10} className="text-white" strokeWidth={3} />}
-                                            </div>
-                                            <input type="checkbox" className="hidden" checked={alertChannels.includes(channel)} onChange={() => toggleItem(alertChannels, setAlertChannels, channel)} />
-                                            <span className="text-sm text-slate-700">{channel}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Projected Schedule Box */}
-                    <div className="mt-8 ml-11 bg-blue-50 border border-blue-100 rounded-lg p-4 flex gap-3 text-blue-900 shadow-sm relative overflow-hidden">
-                        <div className="absolute right-0 top-0 h-full w-1 bg-blue-400 opacity-20"></div>
-                        <AlertCircle size={20} className="shrink-0 text-blue-600 mt-0.5" />
-                        <div>
-                            <h4 className="text-sm font-bold">{frequencyUnit === 'days' ? 'Monitor Expiry Date' : 'Monitor Usage'}</h4>
-                            <p className="text-sm text-blue-700 mt-1">
-                                System will track {frequencyUnit === 'miles' ? 'mileage' : frequencyUnit === 'kilometers' ? 'kilometers' : frequencyUnit === 'engine_hours' ? 'engine hours' : 'calendar dates'} and trigger alerts
-                                {alertChannels.length > 0 ? ` via ${alertChannels.join(', ')}` : ''}.
-                            </p>
                         </div>
                     </div>
                 </section>

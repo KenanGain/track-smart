@@ -34,6 +34,7 @@ const PATH_TITLES: Record<string, string> = {
     "/safety-analysis": "Safety Analysis",
     "/tickets": "Tickets",
     "/profile/me": "My Profile",
+    "/service-profile": "Service Profile",
     "/admin/users": "Users",
     "/admin/users/new": "Add User",
     "/accounts/services/new": "Add Service Profile",

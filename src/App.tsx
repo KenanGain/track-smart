@@ -8,6 +8,9 @@ import { AddUserPage } from '@/pages/admin/AddUserPage'
 import { findUserById, type AppUser } from '@/data/users.data'
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data'
 import { EmptyCarrierProfile } from '@/pages/account/EmptyCarrierProfile'
+import { ServiceProfilePage } from '@/pages/service/ServiceProfilePage'
+import { EmptyServiceProfile } from '@/pages/service/EmptyServiceProfile'
+import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/service-profiles.data'
 import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
@@ -49,6 +52,7 @@ function App() {
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
     const [path, setPath] = useState("/dashboard")
     const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
+    const [selectedServiceProfileId, setSelectedServiceProfileId] = useState<string | undefined>(undefined)
     const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
         if (typeof window === 'undefined') return null
         const id = localStorage.getItem('app_current_user_id')
@@ -99,6 +103,38 @@ function App() {
         if (user.role === "super-admin") {
             return ACCOUNTS_DB.find((x) => x.id === "acct-001")
                 ?? ACCOUNTS_DB[0]
+                ?? null
+        }
+        return null
+    }
+
+    /**
+     * Mirror of getDefaultCarrierForUser for service profiles.
+     *   1. user.serviceProfileId → its profile
+     *   2. user.serviceProfileIds[0] → its profile
+     *   3. user.accountId → look up that carrier's parent service profile
+     *   4. super-admin → svc-001 (TrackSmart) so they always land somewhere real
+     *   5. otherwise → null (admin/user with no scope → empty-state page)
+     */
+    const getDefaultServiceProfileForUser = (user: AppUser): ServiceProfile | null => {
+        if (user.serviceProfileId) {
+            const sp = SERVICE_PROFILES_DB.find((x) => x.id === user.serviceProfileId)
+            if (sp) return sp
+        }
+        if (user.serviceProfileIds && user.serviceProfileIds.length > 0) {
+            const sp = SERVICE_PROFILES_DB.find((x) => x.id === user.serviceProfileIds![0])
+            if (sp) return sp
+        }
+        if (user.accountId) {
+            const acct = ACCOUNTS_DB.find((x) => x.id === user.accountId)
+            if (acct?.serviceProfileId) {
+                const sp = SERVICE_PROFILES_DB.find((x) => x.id === acct.serviceProfileId)
+                if (sp) return sp
+            }
+        }
+        if (user.role === "super-admin") {
+            return SERVICE_PROFILES_DB.find((x) => x.id === "svc-001")
+                ?? SERVICE_PROFILES_DB[0]
                 ?? null
         }
         return null
@@ -179,11 +215,41 @@ function App() {
         if (path === "/account/locations") {
             return <LocationsPage />
         }
+        if (path === "/service-profile") {
+            // Resolve in the same order as /account/profile: explicit selection → user's
+            // default → empty state. Super-admins always get svc-001 so they don't see
+            // the empty state.
+            const explicit = selectedServiceProfileId
+                ? SERVICE_PROFILES_DB.find((x) => x.id === selectedServiceProfileId)
+                : null
+            const profile = explicit
+                ?? (currentUser ? getDefaultServiceProfileForUser(currentUser) : null)
+            if (currentUser && !profile) {
+                return <EmptyServiceProfile user={currentUser} onNavigate={handleNavigate} />
+            }
+            return (
+                <ServiceProfilePage
+                    key={profile?.id ?? 'default'}
+                    serviceProfileId={profile?.id}
+                    currentUser={currentUser}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                    onSelectAccount={handleSelectAccount}
+                    onNavigate={handleNavigate}
+                />
+            )
+        }
         if (path === "/accounts/services/new") {
             return <AddServiceProfilePage onNavigate={handleNavigate} />
         }
         if (path === "/accounts") {
-            return <AccountsTabsPage onNavigate={handleNavigate} onSelectAccount={handleSelectAccount} currentUser={currentUser} />
+            return (
+                <AccountsTabsPage
+                    onNavigate={handleNavigate}
+                    onSelectAccount={handleSelectAccount}
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
+                    currentUser={currentUser}
+                />
+            )
         }
         if (path === "/accounts/new") {
             return <AddAccountPage onNavigate={handleNavigate} />

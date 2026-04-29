@@ -29,7 +29,8 @@ export type MaintenanceTask = {
         engineHours: number;
         capturedAt: string;
     };
-    dueRule: {
+    /** Optional — schedules created without a frequency rule have no dueRule. */
+    dueRule?: {
         unit: FrequencyUnit;
         frequencyEvery: number;
         upcomingThreshold: number;

@@ -22,6 +22,7 @@ type TabId = "carriers" | "services";
 type Props = {
     onNavigate: (path: string) => void;
     onSelectAccount?: (account: AccountRecord) => void;
+    onSelectServiceProfile?: (id: string) => void;
     currentUser?: AppUser | null;
 };
 
@@ -30,7 +31,7 @@ const TABS: SubTab<TabId>[] = [
     { id: "services", label: "Service Profiles", icon: Briefcase },
 ];
 
-export function AccountsTabsPage({ onNavigate, onSelectAccount, currentUser }: Props) {
+export function AccountsTabsPage({ onNavigate, onSelectAccount, onSelectServiceProfile, currentUser }: Props) {
     const [activeTab, setActiveTab] = useState<TabId>("carriers");
 
     // Role-aware visible counts for the page subtitle
@@ -122,19 +123,15 @@ export function AccountsTabsPage({ onNavigate, onSelectAccount, currentUser }: P
                                 <Plus size={15} /> Add Carrier Profile
                             </button>
                         ) : (
-                            <button
-                                onClick={() => canCreate && onNavigate("/accounts/services/new")}
-                                disabled={!canCreate}
-                                title={!canCreate ? "Account limit reached for your service profile" : undefined}
-                                className={cn(
-                                    "h-9 px-3.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2 shadow-sm transition-colors",
-                                    canCreate
-                                        ? "bg-[#2563EB] hover:bg-blue-700 text-white"
-                                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                                )}
-                            >
-                                <Plus size={15} /> Add Service Profile
-                            </button>
+                            // Add Service Profile is reserved for Super Admins.
+                            currentUser?.role === "super-admin" && (
+                                <button
+                                    onClick={() => onNavigate("/accounts/services/new")}
+                                    className="h-9 px-3.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2 shadow-sm transition-colors bg-[#2563EB] hover:bg-blue-700 text-white"
+                                >
+                                    <Plus size={15} /> Add Service Profile
+                                </button>
+                            )
                         )}
                     </div>
                 </div>
@@ -166,7 +163,11 @@ export function AccountsTabsPage({ onNavigate, onSelectAccount, currentUser }: P
                     />
                 ) : (
                     <div className="px-6 py-6">
-                        <ServiceProfilesListPage onNavigate={onNavigate} currentUser={currentUser} />
+                        <ServiceProfilesListPage
+                            onNavigate={onNavigate}
+                            currentUser={currentUser}
+                            onSelectServiceProfile={onSelectServiceProfile}
+                        />
                     </div>
                 )}
             </div>

@@ -2,6 +2,7 @@ import {
     LayoutDashboard,
     ClipboardCheck,
     Building2,
+    Briefcase,
     CheckSquare,
     AlertTriangle,
     FileText,
@@ -43,6 +44,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Account",
         icon: Building2,
         path: "/account/profile",
+    },
+    {
+        key: "service-profile",
+        label: "Service Profile",
+        icon: Briefcase,
+        path: "/service-profile",
     },
 
     {

@@ -25,7 +25,7 @@ import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { INCIDENTS } from '@/pages/incidents/incidents.data';
 import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
-import { getInventoryByAssetId, getVendorById, VENDOR_TYPE_LABELS } from '@/pages/inventory/inventory.data';
+import { getInventoryByAssetId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
 import { Boxes } from 'lucide-react';
 
 // --- Types for Rich Data (extending base Asset) ---
@@ -1925,7 +1925,10 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                                         {INITIAL_SERVICE_TYPES.find(s => s.id === assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.serviceTypeIds[0])?.name || 'Service'}
                                     </div>
                                     <div className="text-xs text-blue-600 mt-1">
-                                        Due in {assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.dueRule.upcomingThreshold} {assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.dueRule.unit}
+                                        {(() => {
+                                            const t = assetTasks.find(t => t.status === 'upcoming' || t.status === 'due');
+                                            return t?.dueRule ? `Due in ${t.dueRule.upcomingThreshold} ${t.dueRule.unit}` : 'No schedule set';
+                                        })()}
                                     </div>
                                  </>
                              ) : (
@@ -1980,8 +1983,9 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                                                     <div className="flex items-center gap-1">
                                                         <Clock size={12} className="text-slate-400" />
                                                         <span>
-                                                            {task.dueRule.unit === 'miles' ? `${task.dueRule.dueAtOdometer?.toLocaleString()} mi` : 
-                                                             task.dueRule.dueAtDate ? new Date(task.dueRule.dueAtDate!).toLocaleDateString() : '—'}
+                                                            {!task.dueRule ? '—' :
+                                                                task.dueRule.unit === 'miles' ? `${task.dueRule.dueAtOdometer?.toLocaleString()} mi` :
+                                                                task.dueRule.dueAtDate ? new Date(task.dueRule.dueAtDate!).toLocaleDateString() : '—'}
                                                         </span>
                                                     </div>
                                                     <span>•</span>
@@ -2107,7 +2111,7 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                           return (
                             <tr key={it.id} className="hover:bg-slate-50/60">
                               <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
-                              <td className="px-4 py-3 text-slate-600">{vendor ? VENDOR_TYPE_LABELS[vendor.type] : '—'}</td>
+                              <td className="px-4 py-3 text-slate-600">{vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '—'}</td>
                               <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
                               <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
                               <td className="px-4 py-3 text-slate-600">{it.issueDate}</td>

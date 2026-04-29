@@ -8,7 +8,9 @@ import {
     type UserRole,
 } from "@/data/users.data";
 import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
+import { SERVICE_PROFILES_DB } from "@/pages/accounts/service-profiles.data";
 import { CarrierAccessPicker } from "./CarrierAccessPicker";
+import { ServiceProfileAccessPicker } from "./ServiceProfileAccessPicker";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -26,6 +28,8 @@ export type NewUserPayload = {
     accountId?: string;
     accountName?: string;
     managedAccountIds?: string[];
+    serviceProfileId?: string;
+    serviceProfileIds?: string[];
     sendInvite: boolean;
 };
 
@@ -44,11 +48,25 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
         return ACCOUNTS_DB.filter((a) => managed.includes(a.id));
     }, [managed]);
 
-    // Multi-carrier picker state (used for Admin and User roles)
+    // Multi-carrier picker state (optional now)
     const [managedIds, setManagedIds] = useState<string[]>([]);
     const [applyToAllCarriers, setApplyToAllCarriers] = useState(false);
+    // Multi service-profile picker state (optional)
+    const [serviceProfileIds, setServiceProfileIds] = useState<string[]>([]);
+    const [applyToAllServiceProfiles, setApplyToAllServiceProfiles] = useState(false);
     const [sendInvite, setSendInvite] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Service profiles the current actor is allowed to assign:
+    //   - Super admin → all
+    //   - Admin       → only their own service profile
+    const availableServiceProfiles = useMemo(() => {
+        if (isSuperAdmin) return SERVICE_PROFILES_DB;
+        if (currentUser.serviceProfileId) {
+            return SERVICE_PROFILES_DB.filter((s) => s.id === currentUser.serviceProfileId);
+        }
+        return [];
+    }, [isSuperAdmin, currentUser.serviceProfileId]);
 
     // Roles current user can grant
     const grantableRoles: UserRole[] = isSuperAdmin
@@ -60,27 +78,44 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
         ? availableCarriers.map((a) => a.id)
         : managedIds;
 
+    const resolvedServiceProfileIds = applyToAllServiceProfiles
+        ? availableServiceProfiles.map((s) => s.id)
+        : serviceProfileIds;
+
     const isValid =
         firstName.trim().length > 0 &&
         lastName.trim().length > 0 &&
         /^\S+@\S+\.\S+$/.test(email) &&
-        title.trim().length > 0 &&
-        (role === "super-admin" || resolvedCarrierIds.length > 0);
+        title.trim().length > 0;
 
     const handleSave = () => {
         if (!isValid) {
             setError("Please complete all required fields with a valid email.");
             return;
         }
-        if (role !== "super-admin") {
+        if (role !== "super-admin" && resolvedCarrierIds.length > 0) {
             const allowed = resolvedCarrierIds.every((id) => canCreateUserForAccount(currentUser, id));
             if (!allowed) {
                 setError("You don't have permission to grant access to one of the selected carriers.");
                 return;
             }
         }
+        if (role !== "super-admin" && resolvedServiceProfileIds.length > 0) {
+            const allowedSps = resolvedServiceProfileIds.every((id) =>
+                availableServiceProfiles.some((s) => s.id === id)
+            );
+            if (!allowedSps) {
+                setError("You don't have permission to assign one of the selected service profiles.");
+                return;
+            }
+        }
 
-        const primaryAccountId = role === "super-admin" ? undefined : resolvedCarrierIds[0];
+        const primaryAccountId =
+            role === "super-admin"
+                ? undefined
+                : resolvedCarrierIds.length > 0
+                ? resolvedCarrierIds[0]
+                : undefined;
         const primaryCarrier = primaryAccountId ? ACCOUNTS_DB.find((a) => a.id === primaryAccountId) : undefined;
 
         const payload: NewUserPayload = {
@@ -92,7 +127,22 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
             role,
             accountId: primaryAccountId,
             accountName: primaryCarrier?.legalName,
-            managedAccountIds: role === "super-admin" ? undefined : resolvedCarrierIds,
+            managedAccountIds:
+                role === "super-admin"
+                    ? undefined
+                    : resolvedCarrierIds.length > 0
+                    ? resolvedCarrierIds
+                    : undefined,
+            serviceProfileId:
+                role === "super-admin"
+                    ? undefined
+                    : resolvedServiceProfileIds[0] ?? undefined,
+            serviceProfileIds:
+                role === "super-admin"
+                    ? undefined
+                    : resolvedServiceProfileIds.length > 0
+                    ? resolvedServiceProfileIds
+                    : undefined,
             sendInvite,
         };
         console.log("New user payload:", payload);
@@ -202,27 +252,59 @@ export function AddUserPage({ currentUser, onNavigate }: Props) {
                         )}
 
                         {(role === "user" || role === "admin") && (
-                            <div className="border-t border-slate-100 pt-5">
-                                <div className="mb-3">
-                                    <label className="block text-sm font-medium text-slate-700">
-                                        Carrier Access <span className="text-red-500">*</span>
-                                    </label>
-                                    <p className="text-xs text-slate-500 mt-0.5">
-                                        {role === "admin"
-                                            ? "Select one or more carriers this admin will manage. The first selected carrier is treated as their primary."
-                                            : "Select one or more carriers this user can access. The first selected carrier is treated as their primary."}
-                                    </p>
+                            <>
+                                {/* Service Profile Access (optional, multi-select) */}
+                                <div className="border-t border-slate-100 pt-5">
+                                    <div className="mb-3">
+                                        <label className="block text-sm font-medium text-slate-700">
+                                            Service Profile Access
+                                            <span className="text-slate-400 font-normal ml-1">(Optional)</span>
+                                        </label>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            Assign this user to one or more service profiles. The first selected profile is treated as their primary.
+                                        </p>
+                                    </div>
+                                    {availableServiceProfiles.length === 0 ? (
+                                        <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
+                                            You don't have a service profile to assign yet.
+                                        </div>
+                                    ) : (
+                                        <ServiceProfileAccessPicker
+                                            profiles={availableServiceProfiles}
+                                            selectedIds={serviceProfileIds}
+                                            applyToAll={applyToAllServiceProfiles}
+                                            onChange={({ ids, applyToAll }) => {
+                                                setServiceProfileIds(ids);
+                                                setApplyToAllServiceProfiles(applyToAll);
+                                            }}
+                                        />
+                                    )}
                                 </div>
-                                <CarrierAccessPicker
-                                    carriers={availableCarriers}
-                                    selectedIds={managedIds}
-                                    applyToAll={applyToAllCarriers}
-                                    onChange={({ ids, applyToAll }) => {
-                                        setManagedIds(ids);
-                                        setApplyToAllCarriers(applyToAll);
-                                    }}
-                                />
-                            </div>
+
+                                {/* Carrier Access (optional) */}
+                                <div className="border-t border-slate-100 pt-5">
+                                    <div className="mb-3">
+                                        <label className="block text-sm font-medium text-slate-700">
+                                            Carrier Access
+                                            <span className="text-slate-400 font-normal ml-1">(Optional)</span>
+                                        </label>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            {role === "admin"
+                                                ? "Select one or more carriers this admin will manage. Leave empty if the user only needs service-profile access."
+                                                : "Select one or more carriers this user can access. Leave empty if the user only needs service-profile access."}
+                                        </p>
+                                    </div>
+                                    <CarrierAccessPicker
+                                        carriers={availableCarriers}
+                                        selectedIds={managedIds}
+                                        applyToAll={applyToAllCarriers}
+                                        onChange={({ ids, applyToAll }) => {
+                                            setManagedIds(ids);
+                                            setApplyToAllCarriers(applyToAll);
+                                        }}
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
                 </FormSection>
