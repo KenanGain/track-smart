@@ -1,4 +1,5 @@
-const puppeteer = require('puppeteer');
+
+kindconst puppeteer = require('puppeteer');
 
 (async () => {
   const browser = await puppeteer.launch();
@@ -17,3 +18,4 @@ const puppeteer = require('puppeteer');
   await browser.close();
   console.log('Done.');
 })();
+

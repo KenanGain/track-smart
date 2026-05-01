@@ -19,6 +19,7 @@ Welcome. This vault is the second brain for the **TrackSmart Dashboard** — a f
 - [[Components Index]]
 - [[Active Tasks]]
 - [[Decisions Index]]
+- [[CVOR Upload Reference]] · [[CVOR PDF Extraction Map]]
 
 ## Sections
 

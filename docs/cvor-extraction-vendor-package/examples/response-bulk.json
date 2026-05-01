@@ -1,0 +1,44 @@
+{
+  "jobId": "job_01HZAXVX4P2K1Q2D8RWSJ7E5KP",
+  "status": "partially_failed",
+  "submitted": 3,
+  "completed": 2,
+  "failed": 1,
+  "createdAt": "2026-04-29T18:11:00Z",
+  "completedAt": "2026-04-29T18:14:32Z",
+
+  "results": [
+    {
+      "fileName": "06042001_Ontario.pdf",
+      "ok": true,
+      "data": {
+        "_comment": "Same shape as examples/response-single.json — full extraction object",
+        "source": { "fileName": "06042001_Ontario.pdf", "pageCount": 19, "extractedAt": "2026-04-29T18:11:42Z" },
+        "carrier": { "cvorNumber": "138-903-258", "legalName": "3580768 CANADA INC.", "...": "..." },
+        "pull":    { "reportDate": "2026-04-02", "rating": 21.81, "...": "..." },
+        "inspectionEvents": []
+      }
+    },
+    {
+      "fileName": "06042001_Ontario_2026-02-02.pdf",
+      "ok": true,
+      "data": {
+        "source": { "fileName": "06042001_Ontario_2026-02-02.pdf", "pageCount": 19, "extractedAt": "2026-04-29T18:13:05Z" },
+        "carrier": { "cvorNumber": "138-903-258", "legalName": "3580768 CANADA INC.", "...": "..." },
+        "pull":    { "reportDate": "2026-02-02", "rating": 22.31, "...": "..." },
+        "inspectionEvents": []
+      }
+    },
+    {
+      "fileName": "scanned_at_30dpi.pdf",
+      "ok": false,
+      "error": {
+        "code": "OCR_FAILED",
+        "message": "Image resolution too low for reliable OCR (estimated 32 dpi). Required: ≥150 dpi.",
+        "field": null,
+        "page": 1,
+        "traceId": "trace_01HZAXVX9F8Z6M3K7Q1Y4D2N0J"
+      }
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+cvorNumber,reportDate,fromDate,toDate,type,vehicles,doubleShifted,totalVehicles,ontarioKm,restOfCanadaKm,usMexicoKm,drivers,totalKm
+369-110-004,2024-11-04,2023-11-03,2024-11-04,Estimated,45,0,45,2101700,60900,0,52,2162600
+369-110-004,2024-11-04,2022-11-03,2023-11-03,Actual,45,0,45,2101700,60900,0,52,2162600

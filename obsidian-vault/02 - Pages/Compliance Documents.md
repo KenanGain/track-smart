@@ -18,6 +18,8 @@ Manage fleet compliance documents — permits, registrations, insurance, expirat
 
 - [[Safety Compliance Upload]]
 - [[PDF Extraction]]
+- [[CVOR Upload Reference]] — field map for Ontario CVOR PDF upload
+- [[CVOR PDF Extraction Map]] — page-by-page highlight guide
 - `docs/Safety_Compliance_Upload_Data_Requirements.md`
 
 ## Related

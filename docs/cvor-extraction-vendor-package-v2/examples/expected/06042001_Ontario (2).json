@@ -1,0 +1,215 @@
+{
+  "source": {
+    "fileName": "06042001_Ontario (2).pdf",
+    "orderNumber": "06042001",
+    "searchDate": "2026-04-02T15:42:00-04:00",
+    "formVersion": "SR-LV-029A (2021/10)",
+    "pageCount": 19,
+    "extractedAt": "2026-04-29T18:11:42Z"
+  },
+  "carrier": {
+    "cvorNumber": "138-903-258",
+    "legalName": "3580768 CANADA INC.",
+    "operatingAs": null,
+    "address": {
+      "street": "1234 Industrial Pkwy",
+      "city": "Mississauga",
+      "state": "ON",
+      "zip": "L5N 6P9",
+      "country": "Canada"
+    },
+    "phone": "(905) 555-0182",
+    "mobile": null,
+    "fax": null,
+    "email": "ops@3580768canada.com",
+    "usDotNumber": null,
+    "cvorStatus": "Registered",
+    "originalIssueDate": "2014-08-22",
+    "safetyRating": "Satisfactory-Unaudited",
+    "vehicleTypes": [
+      "Truck"
+    ],
+    "dangerousGoods": false
+  },
+  "pull": {
+    "reportDate": "2026-04-02",
+    "periodLabel": "Apr 2/26",
+    "effectiveDate": "2024-12-15",
+    "expiryDate": "2026-12-15",
+    "windowStart": "2024-04-02",
+    "windowEnd": "2026-04-02",
+    "rating": 21.81,
+    "colContrib": 2.81,
+    "colPctOfThresh": 7.03,
+    "conContrib": 2.16,
+    "conPctOfThresh": 5.4,
+    "insContrib": 16.84,
+    "insPctOfThresh": 84.2,
+    "collisionEvents": 18,
+    "collWithPoints": 0,
+    "collWithoutPoints": 0,
+    "totalCollisionPoints": 14,
+    "convictionEvents": 11,
+    "convictionPoints": 24,
+    "oosOverall": 0.0,
+    "oosVehicle": 0.0,
+    "oosDriver": 0.0,
+    "trucks": 135,
+    "drivers": 142,
+    "onMiles": 12407962,
+    "canadaMiles": 3372498,
+    "usMexicoMiles": 0,
+    "totalMiles": 15780460,
+    "inspectionsByLevel": {
+      "l1": 4,
+      "l2": 5,
+      "l3": 2,
+      "l4": 1,
+      "l5": 1
+    },
+    "inspectionsOosByLevel": {
+      "l1": 3,
+      "l2": 0,
+      "l3": 0,
+      "l4": 0,
+      "l5": 1
+    },
+    "totalVehiclesInspected": 13,
+    "inspectionThreshold": {
+      "cvsaInspectionsConducted": 13,
+      "vehiclesInspected": 12,
+      "driversInspected": 1,
+      "totalUnitsInspected": 13,
+      "driverPointsAssigned": 30,
+      "vehiclePointsAssigned": 18,
+      "totalInspectionPoints": 33,
+      "setThresholdPoints": 40,
+      "pctOfSetThreshold": 84.2
+    }
+  },
+  "inspectionEvents": [
+    {
+      "cvirNumber": "ONCALGR11738",
+      "inspectionDate": "2026-01-30",
+      "startTime": "14:15",
+      "endTime": "15:48",
+      "level": 1,
+      "location": "HAMILTON",
+      "vehiclePoints": 6,
+      "driverPoints": 5,
+      "cvorPoints": 11,
+      "categoriesOos": 3,
+      "totalDefects": 8,
+      "status": "OOS",
+      "driver": {
+        "name": "James Sullivan",
+        "licenseNumber": "S12345-67890-12345",
+        "jurisdiction": "CAON"
+      },
+      "vehicles": [
+        {
+          "make": "VOLV",
+          "unitNumber": "TANK-01",
+          "plate": "PA72341",
+          "jurisdiction": "CAON"
+        }
+      ],
+      "defects": [
+        {
+          "category": "Vehicle Maintenance",
+          "defect": "BRAKES DEFECTIVE",
+          "oos": true,
+          "points": 33
+        },
+        {
+          "category": "Hazmat compliance",
+          "defect": "CLEARANCE LAMPS",
+          "oos": true,
+          "points": 27
+        },
+        {
+          "category": "Unsafe Driving",
+          "defect": "FRAME CONDITION",
+          "oos": false,
+          "points": 21
+        }
+      ]
+    },
+    {
+      "cvirNumber": "ONTORON15003",
+      "inspectionDate": "2026-02-10",
+      "startTime": "08:45",
+      "endTime": "10:20",
+      "level": 1,
+      "location": "TORONTO",
+      "vehiclePoints": 10,
+      "driverPoints": 8,
+      "cvorPoints": 18,
+      "categoriesOos": 3,
+      "totalDefects": 13,
+      "status": "OOS",
+      "driver": {
+        "name": "Sarah Johnson",
+        "licenseNumber": "J98765-43210-09876",
+        "jurisdiction": "CAON"
+      },
+      "vehicles": [
+        {
+          "make": "FRHT",
+          "unitNumber": "FLT-409",
+          "plate": "PA63102",
+          "jurisdiction": "CAON"
+        }
+      ],
+      "defects": [
+        {
+          "category": "Vehicle Maintenance",
+          "defect": "BRAKES \u00e2\u2030\u00a520% DEFECTIVE",
+          "oos": true,
+          "points": 84
+        },
+        {
+          "category": "Hours-of-service Compliance",
+          "defect": "STOP LAMPS",
+          "oos": true,
+          "points": 36
+        },
+        {
+          "category": "Driver Fitness",
+          "defect": "WASHER",
+          "oos": true,
+          "points": 24
+        }
+      ]
+    },
+    {
+      "cvirNumber": "ONWINDS16001",
+      "inspectionDate": "2026-03-19",
+      "startTime": "11:29",
+      "endTime": "12:02",
+      "level": 2,
+      "location": "WINDSOR",
+      "vehiclePoints": 0,
+      "driverPoints": 0,
+      "cvorPoints": 0,
+      "categoriesOos": 0,
+      "totalDefects": 0,
+      "status": "OK",
+      "driver": {
+        "name": "Gurwinder Singh",
+        "licenseNumber": "S99887-66554-43210",
+        "jurisdiction": "CAON"
+      },
+      "vehicles": [
+        {
+          "make": "FRHT",
+          "unitNumber": "X1954W",
+          "plate": "PA58877",
+          "jurisdiction": "CAON"
+        }
+      ],
+      "defects": []
+    }
+  ],
+  "warnings": []
+}

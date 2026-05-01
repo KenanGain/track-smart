@@ -190,7 +190,7 @@ export function ServiceProfilePage({ serviceProfileId, currentUser, onSelectServ
             </div>
 
             {/* Tab content */}
-            <div className="px-8 py-8 max-w-6xl">
+            <div className="px-8 py-8 w-full">
                 {activeTab === "overview" && (
                     <OverviewTab
                         profile={profile}

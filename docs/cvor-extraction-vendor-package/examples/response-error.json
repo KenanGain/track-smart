@@ -1,0 +1,83 @@
+{
+  "_comment": "Each entry below is a SEPARATE example response body for a different error condition. Pick the one that matches your case.",
+
+  "INVALID_PDF__not_a_pdf": {
+    "error": {
+      "code": "INVALID_PDF",
+      "message": "Uploaded file is not a valid PDF (got Content-Type: image/png).",
+      "field": null,
+      "page": null,
+      "traceId": "trace_01HZBBC3YH4Q2KJ7M5R8V1X6P0"
+    }
+  },
+
+  "WRONG_FORM__inspection_report": {
+    "error": {
+      "code": "WRONG_FORM",
+      "message": "Document detected as MTO Roadside Inspection Report (Form SR-LV-067), not the CVOR Carrier Safety Profile (SR-LV-029A).",
+      "field": "source.formVersion",
+      "page": 1,
+      "traceId": "trace_01HZBBC3YJ2P0X9D4N7R3V2M1K"
+    }
+  },
+
+  "OCR_FAILED__low_resolution": {
+    "error": {
+      "code": "OCR_FAILED",
+      "message": "OCR confidence below threshold (0.42). Image resolution: 32 dpi. Re-scan at ≥150 dpi or supply the original PDF download from MTO.",
+      "field": null,
+      "page": 1,
+      "traceId": "trace_01HZBBC3YK7K8L2H4Q5R8V1X6P"
+    }
+  },
+
+  "MISSING_REQUIRED__performance_summary": {
+    "error": {
+      "code": "MISSING_REQUIRED",
+      "message": "Could not locate Performance Summary table on page 2. Required field is unrecoverable.",
+      "field": "pull.colContrib",
+      "page": 2,
+      "traceId": "trace_01HZBBC3YL2H4Q5R8V1X6P0J9F"
+    }
+  },
+
+  "UNAUTHORIZED__bad_key": {
+    "error": {
+      "code": "UNAUTHORIZED",
+      "message": "API key invalid or revoked.",
+      "field": null,
+      "page": null,
+      "traceId": "trace_01HZBBC3YM5N0J9F8C7B6A4Z3X"
+    }
+  },
+
+  "RATE_LIMITED__quota_exceeded": {
+    "error": {
+      "code": "RATE_LIMITED",
+      "message": "100 requests / minute quota exceeded for this API key.",
+      "field": null,
+      "page": null,
+      "traceId": "trace_01HZBBC3YN6Y3X4Z5A6B7C8D9E"
+    }
+  },
+
+  "JOB_NOT_FOUND__bulk_poll": {
+    "error": {
+      "code": "JOB_NOT_FOUND",
+      "message": "Job 'job_xxx' does not exist or has expired (jobs are retained for 24 h after completion).",
+      "field": null,
+      "page": null,
+      "traceId": "trace_01HZBBC3YP9F4D6N0Q3R7V1Y8X"
+    }
+  },
+
+  "INTERNAL__unhandled": {
+    "error": {
+      "code": "INTERNAL",
+      "message": "Internal server error. Please retry with exponential backoff. Reference traceId in support tickets.",
+      "field": null,
+      "page": null,
+      "traceId": "trace_01HZBBC3YQ4P0X9D2H8K1M3N5J"
+    }
+  }
+}

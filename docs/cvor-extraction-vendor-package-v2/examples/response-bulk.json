@@ -1,0 +1,149 @@
+{
+  "jobId": "job_01HZAXVX4P2K1Q2D8RWSJ7E5KP",
+  "status": "partially_failed",
+  "submitted": 3,
+  "completed": 2,
+  "failed": 1,
+  "createdAt": "2026-04-29T18:11:00Z",
+  "completedAt": "2026-04-29T18:14:32Z",
+
+  "results": [
+    {
+      "fileName": "06042001_Ontario.pdf",
+      "ok": true,
+      "data": {
+        "source": {
+          "fileName":   "06042001_Ontario.pdf",
+          "pageCount":  19,
+          "extractedAt":"2026-04-29T18:11:42Z"
+        },
+        "carrier": {
+          "cvorNumber": "138-903-258",
+          "legalName":  "3580768 CANADA INC.",
+          "cvorStatus": "Registered",
+          "originalIssueDate": "2014-06-12",
+          "safetyRating": "Satisfactory",
+          "vehicleTypes": ["Truck"],
+          "dangerousGoods": false
+        },
+        "pull": {
+          "reportDate":           "2026-04-02",
+          "rating":               21.81,
+          "colContrib":           2.81,
+          "conContrib":           2.16,
+          "insContrib":           16.84,
+          "colPctOfThresh":       7.03,
+          "conPctOfThresh":       5.40,
+          "insPctOfThresh":       84.20,
+          "collisionEvents":      18,
+          "collWithPoints":       5,
+          "collWithoutPoints":    13,
+          "totalCollisionPoints": 14,
+          "convictionEvents":     11,
+          "convictionPoints":     24,
+          "oosOverall":           28.50,
+          "oosVehicle":           36.00,
+          "oosDriver":            3.50,
+          "trucks":               135,
+          "totalMiles":           15780460,
+          "collisionDetails":     { "fatal": 0, "personalInjury": 2, "propertyDamage": 16 },
+          "convictionDetails":    { "withPoints": 9, "notPointed": 2, "driver": 6, "vehicle": 3, "load": 1, "other": 1 },
+          "levelStats": {
+            "level1": { "count": 55, "oosCount": 21 },
+            "level2": { "count": 41, "oosCount": 14 },
+            "level3": { "count": 34, "oosCount": 4 },
+            "level4": { "count": 4,  "oosCount": 1 },
+            "level5": { "count": 3,  "oosCount": 0 }
+          },
+          "inspectionStats": {
+            "cvsaInspections":       137,
+            "vehiclesInspected":     205,
+            "driversInspected":      137,
+            "driverPoints":          2,
+            "vehiclePoints":         46,
+            "totalInspectionPoints": 47.38,
+            "setThreshold":          56.27
+          },
+          "collisionBreakdown":  [ { "events": 7, "points": 6 }, { "events": 6, "points": 5 }, { "events": 5, "points": 3 } ],
+          "convictionBreakdown": [ { "events": 5, "points": 9 }, { "events": 4, "points": 9 }, { "events": 2, "points": 6 } ],
+          "events":   [],
+          "travelKm": []
+        }
+      }
+    },
+    {
+      "fileName": "06042001_Ontario_2026-02-02.pdf",
+      "ok": true,
+      "data": {
+        "source": {
+          "fileName":   "06042001_Ontario_2026-02-02.pdf",
+          "pageCount":  19,
+          "extractedAt":"2026-04-29T18:13:05Z"
+        },
+        "carrier": {
+          "cvorNumber": "138-903-258",
+          "legalName":  "3580768 CANADA INC.",
+          "cvorStatus": "Registered",
+          "originalIssueDate": "2014-06-12",
+          "safetyRating": "Satisfactory",
+          "vehicleTypes": ["Truck"],
+          "dangerousGoods": false
+        },
+        "pull": {
+          "reportDate":           "2026-02-02",
+          "rating":               22.31,
+          "colContrib":           2.81,
+          "conContrib":           3.00,
+          "insContrib":           16.49,
+          "colPctOfThresh":       7.03,
+          "conPctOfThresh":       7.50,
+          "insPctOfThresh":       82.45,
+          "collisionEvents":      23,
+          "collWithPoints":       6,
+          "collWithoutPoints":    17,
+          "totalCollisionPoints": 14,
+          "convictionEvents":     14,
+          "convictionPoints":     34,
+          "oosOverall":           30.00,
+          "oosVehicle":           42.00,
+          "oosDriver":            3.75,
+          "trucks":               135,
+          "totalMiles":           15780460,
+          "collisionDetails":     { "fatal": 0, "personalInjury": 3, "propertyDamage": 20 },
+          "convictionDetails":    { "withPoints": 11, "notPointed": 3, "driver": 8, "vehicle": 3, "load": 2, "other": 1 },
+          "levelStats": {
+            "level1": { "count": 56, "oosCount": 22 },
+            "level2": { "count": 42, "oosCount": 15 },
+            "level3": { "count": 35, "oosCount": 5 },
+            "level4": { "count": 4,  "oosCount": 1 },
+            "level5": { "count": 3,  "oosCount": 0 }
+          },
+          "inspectionStats": {
+            "cvsaInspections":       140,
+            "vehiclesInspected":     210,
+            "driversInspected":      140,
+            "driverPoints":          2,
+            "vehiclePoints":         46,
+            "totalInspectionPoints": 47.38,
+            "setThreshold":          57.46
+          },
+          "collisionBreakdown":  [ { "events": 8, "points": 6 }, { "events": 8, "points": 5 }, { "events": 7, "points": 3 } ],
+          "convictionBreakdown": [ { "events": 6, "points": 13 }, { "events": 5, "points": 12 }, { "events": 3, "points": 9 } ],
+          "events":   [],
+          "travelKm": []
+        }
+      }
+    },
+    {
+      "fileName": "scanned_at_30dpi.pdf",
+      "ok": false,
+      "error": {
+        "code": "OCR_FAILED",
+        "message": "Image resolution too low for reliable OCR (estimated 32 dpi). Required: >=150 dpi.",
+        "field": null,
+        "page": 1,
+        "traceId": "trace_01HZAXVX9F8Z6M3K7Q1Y4D2N0J"
+      }
+    }
+  ]
+}

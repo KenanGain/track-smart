@@ -1,0 +1,2 @@
+cvorNumber,reportDate,periodLabel,rating,colContrib,conContrib,insContrib,colPctOfThresh,conPctOfThresh,insPctOfThresh,collisionEvents,collWithPoints,collWithoutPoints,totalCollisionPoints,convictionEvents,convictionPoints,oosOverall,oosVehicle,oosDriver,trucks,drivers,onMiles,canadaMiles,usMexicoMiles,totalMiles
+850-000-203,2025-02-03,Feb 3/25,27.21,3.31,5.62,18.29,8.28,14.05,91.45,22,8,14,18,26,72,28.57,31.43,4.4,130,150,16388058,666469,0,17054528

@@ -1,0 +1,2 @@
+cvorNumber,reportDate,id,date,time,ticket,location,driverName,driverLicence,driverLicenceJurisdiction,vehicle1_make,vehicle1_unit,vehicle1_plate,vehicle1_jurisdiction,convictionDate,jurisdiction,chargedCarrier,microfilm,offence,ccmtaEquivalency,points
+123-456-789,2026-04-02,20260402-conv-0,2026-02-10,10:15,CONV-20260402-000,"HWY 7 Mississauga, ON","PATEL, A",D2000000-ON,ON,PETERBILT,T200,PR5000,CAON,2026-03-12,CAON,N,MF260402-0001,HTA s.128 - Speeding,,3

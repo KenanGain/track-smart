@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart://schemas/cvor-extraction.v2.schema.json",
+  "title": "CVOR PDF Extraction (v2)",
+  "description": "Output shape produced by the CVOR PDF extractor. v2 adds every per-pull field the TrackSmart frontend now renders: granular collision/conviction breakdowns, Level 1-5 inspection stats, full inspection-threshold table, 3-period KM-rate breakdowns, the full intervention & event details list, and the per-pull travel kilometric rows. Field names match src/pages/inspections/inspectionsData.ts (CvorPeriodicReport).",
+  "type": "object",
+  "required": ["source", "carrier", "pull"],
+  "additionalProperties": false,
+  "properties": {
+
+    "warnings": {
+      "type": "array",
+      "description": "Soft validation issues (cross-field drift, OCR confidence, unknown form version).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code":    { "type": "string", "description": "Stable enum, e.g. RFACTOR_DRIFT, KMS_DRIFT, FORM_VERSION_UNKNOWN, OCR_LOW_CONFIDENCE, BREAKDOWN_DRIFT" },
+          "message": { "type": "string" },
+          "field":   { "type": ["string", "null"], "description": "Dotted JSON path of the affected field" },
+          "page":    { "type": ["integer", "null"], "minimum": 1 }
+        }
+      }
+    },
+
+    "source": {
+      "type": "object",
+      "description": "PDF metadata (audit trail).",
+      "additionalProperties": false,
+      "required": ["fileName", "extractedAt"],
+      "properties": {
+        "fileName":     { "type": "string", "description": "Source PDF filename" },
+        "orderNumber":  { "type": ["string", "null"], "description": "p.1 — Order #" },
+        "searchDate":   { "type": ["string", "null"], "format": "date-time", "description": "p.1 — Search Date and Time" },
+        "formVersion":  { "type": ["string", "null"], "description": "Footer — e.g. SR-LV-029A (2021/10)" },
+        "pageCount":    { "type": "integer" },
+        "extractedAt":  { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "carrier": {
+      "type": "object",
+      "description": "Carrier identity — populates the Carrier Profile (sticky).",
+      "additionalProperties": false,
+      "required": ["cvorNumber", "legalName"],
+      "properties": {
+        "cvorNumber":         { "type": "string", "pattern": "^\\d{3}-?\\d{3}-?\\d{3}$", "description": "p.1 — CVOR / RIN #" },
+        "legalName":          { "type": "string", "description": "p.1 — Client Name" },
+        "operatingAs":        { "type": ["string", "null"], "description": "p.1 — Operating As" },
+        "address": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "street":  { "type": ["string", "null"] },
+            "city":    { "type": ["string", "null"] },
+            "state":   { "type": ["string", "null"] },
+            "zip":     { "type": ["string", "null"] },
+            "country": { "type": ["string", "null"] }
+          }
+        },
+        "phone":              { "type": ["string", "null"], "description": "p.1 — Phone #" },
+        "mobile":             { "type": ["string", "null"], "description": "p.1 — Mobile #" },
+        "fax":                { "type": ["string", "null"], "description": "p.1 — Fax #" },
+        "email":              { "type": ["string", "null"], "description": "p.1 — Email" },
+        "usDotNumber":        { "type": ["string", "null"], "description": "p.1 — US DOT #" },
+        "cvorStatus":         { "type": "string", "enum": ["Registered", "Cancelled", "Surrendered", "Suspended"] },
+        "originalIssueDate":  { "type": "string", "format": "date" },
+        "safetyRating":       { "type": "string", "enum": ["Excellent", "Satisfactory", "Satisfactory-Unaudited", "Conditional", "Unsatisfactory"] },
+        "vehicleTypes":       { "type": "array", "items": { "type": "string" } },
+        "dangerousGoods":     { "type": "boolean" }
+      }
+    },
+
+    "pull": {
+      "type": "object",
+      "description": "Per-pull record. One uploaded PDF = one entry in cvorPeriodicReports.",
+      "additionalProperties": false,
+      "required": [
+        "reportDate", "rating",
+        "colContrib", "conContrib", "insContrib",
+        "colPctOfThresh", "conPctOfThresh", "insPctOfThresh",
+        "collisionEvents", "convictionEvents",
+        "oosOverall", "oosVehicle", "oosDriver",
+        "trucks", "totalMiles",
+        "collWithPoints", "collWithoutPoints", "totalCollisionPoints", "convictionPoints",
+        "collisionDetails", "convictionDetails",
+        "levelStats", "inspectionStats",
+        "collisionBreakdown", "convictionBreakdown"
+      ],
+      "properties": {
+
+        "reportDate":           { "type": "string", "format": "date", "description": "p.1 — Search Date & Time → ISO date. Frontend: reportDate" },
+        "periodLabel":          { "type": "string", "description": "Derived display label, e.g. 'Apr 2/26'. Frontend: periodLabel" },
+        "effectiveDate":        { "type": "string", "format": "date", "description": "p.1 — Start Date" },
+        "expiryDate":           { "type": "string", "format": "date", "description": "p.1 — Expiry Date" },
+        "windowStart":          { "type": "string", "format": "date", "description": "Derived: reportDate − 24 months" },
+        "windowEnd":            { "type": "string", "format": "date", "description": "= reportDate" },
+
+        "rating":               { "type": "number", "description": "p.2 — Overall Violation Rate %. Frontend: rating" },
+
+        "colContrib":           { "type": "number", "description": "p.2 — Collision % Overall Contribution. Frontend: colContrib" },
+        "conContrib":           { "type": "number", "description": "p.2 — Conviction % Overall Contribution. Frontend: conContrib" },
+        "insContrib":           { "type": "number", "description": "p.2 — Inspection % Overall Contribution. Frontend: insContrib" },
+
+        "colPctOfThresh":       { "type": "number", "description": "p.2 — Collision % of set Threshold. Frontend: colPctOfThresh" },
+        "conPctOfThresh":       { "type": "number", "description": "p.2 — Conviction % of set Threshold. Frontend: conPctOfThresh" },
+        "insPctOfThresh":       { "type": "number", "description": "p.2 — Inspection % of set Threshold. Frontend: insPctOfThresh" },
+
+        "collisionEvents":      { "type": "integer", "description": "p.1 — Total # of Collisions. Frontend: collisionEvents" },
+        "collWithPoints":       { "type": "integer", "description": "p.1 — # of Collisions with points. Frontend: collWithPoints" },
+        "collWithoutPoints":    { "type": "integer", "description": "p.1 — # of Collisions not pointed. Frontend: collWithoutPoints" },
+        "totalCollisionPoints": { "type": "integer", "description": "p.2 — Collision Breakdown Total row → # of Points. Frontend: totalCollisionPoints" },
+
+        "convictionEvents":     { "type": "integer", "description": "p.1 — Total # of convictions. Frontend: convictionEvents" },
+        "convictionPoints":     { "type": "integer", "description": "p.2/p.3 — Conviction Breakdown Total row → # of Points. Frontend: convictionPoints" },
+
+        "oosOverall":           { "type": "number", "description": "p.2 — Overall Out of Service %. Frontend: oosOverall" },
+        "oosVehicle":           { "type": "number", "description": "p.2 — Vehicle Out of Service %. Frontend: oosVehicle" },
+        "oosDriver":            { "type": "number", "description": "p.2 — Driver Out of Service %. Frontend: oosDriver" },
+
+        "trucks":               { "type": "integer", "description": "p.1 — # of Commercial Vehicles. Frontend: trucks" },
+        "drivers":              { "type": "integer", "description": "p.1 — # of Drivers" },
+
+        "onMiles":              { "type": "number", "description": "p.1 — Ontario Kms Travelled. Frontend: onMiles" },
+        "canadaMiles":          { "type": "number", "description": "p.1 — Rest of Canada Kms Travelled. Frontend: canadaMiles" },
+        "usMexicoMiles":        { "type": "number", "description": "p.1 — US/Mexico Kms Travelled" },
+        "totalMiles":           { "type": "number", "description": "p.1 — Total Kms Travelled. Frontend: totalMiles" },
+
+        "collisionDetails": {
+          "type": "object",
+          "description": "p.2 — Collision Details section (severity breakdown). fatal+personalInjury+propertyDamage MUST equal collisionEvents. Frontend: collisionDetails (renders 'By Severity' rows in the Collision Details mini section).",
+          "additionalProperties": false,
+          "required": ["fatal", "personalInjury", "propertyDamage"],
+          "properties": {
+            "fatal":          { "type": "integer", "description": "p.2 — Fatal collisions" },
+            "personalInjury": { "type": "integer", "description": "p.2 — Personal Injury collisions" },
+            "propertyDamage": { "type": "integer", "description": "p.2 — Property Damage collisions" }
+          }
+        },
+
+        "convictionDetails": {
+          "type": "object",
+          "description": "p.2/p.3 — Conviction Details section (category + points-status breakdown). Both axes must sum to convictionEvents. Frontend: convictionDetails (renders 'By Category' + 'By Points Status' rows in the Conviction Details mini section).",
+          "additionalProperties": false,
+          "required": ["withPoints", "notPointed", "driver", "vehicle", "load", "other"],
+          "properties": {
+            "withPoints": { "type": "integer", "description": "p.2/p.3 — Convictions with points" },
+            "notPointed": { "type": "integer", "description": "p.2/p.3 — Convictions not pointed" },
+            "driver":     { "type": "integer", "description": "p.2/p.3 — Driver-category convictions" },
+            "vehicle":    { "type": "integer", "description": "p.2/p.3 — Vehicle-category convictions" },
+            "load":       { "type": "integer", "description": "p.2/p.3 — Load-category convictions" },
+            "other":      { "type": "integer", "description": "p.2/p.3 — Other-category convictions" }
+          }
+        },
+
+        "levelStats": {
+          "type": "object",
+          "description": "p.2 — # of Inspections by level (1-5) with their OOS counts. Sum of counts = inspectionStats.cvsaInspections. Sum of oosCounts × 100 / cvsaInspections ≈ oosOverall. Frontend: levelStats (CVOR Rating Comparison mini section + main page Level cards).",
+          "additionalProperties": false,
+          "required": ["level1", "level2", "level3", "level4", "level5"],
+          "properties": {
+            "level1": { "$ref": "#/$defs/levelBucket" },
+            "level2": { "$ref": "#/$defs/levelBucket" },
+            "level3": { "$ref": "#/$defs/levelBucket" },
+            "level4": { "$ref": "#/$defs/levelBucket" },
+            "level5": { "$ref": "#/$defs/levelBucket" }
+          }
+        },
+
+        "inspectionStats": {
+          "type": "object",
+          "description": "p.3 — Inspection Threshold Calculation table. Drives the Inspection Statistics mini section. totalInspectionPoints MUST equal 0.6875 × driverPoints + vehiclePoints. (totalInspectionPoints / setThreshold × 100) MUST be within 0.1 of insPctOfThresh.",
+          "additionalProperties": false,
+          "required": ["cvsaInspections", "vehiclesInspected", "driversInspected", "driverPoints", "vehiclePoints", "totalInspectionPoints", "setThreshold"],
+          "properties": {
+            "cvsaInspections":       { "type": "integer", "description": "p.3 — # of CVSA inspections conducted" },
+            "vehiclesInspected":     { "type": "integer", "description": "p.3 — # of Vehicles inspected" },
+            "driversInspected":      { "type": "integer", "description": "p.3 — # of Drivers inspected" },
+            "driverPoints":          { "type": "integer", "description": "p.3 — # of Driver points assigned (D)" },
+            "vehiclePoints":         { "type": "integer", "description": "p.3 — # of Vehicle points assigned (V)" },
+            "totalInspectionPoints": { "type": "number",  "description": "p.3 — Total inspection points = 0.6875 × D + V" },
+            "setThreshold":          { "type": "number",  "description": "p.3 — # of Set inspection threshold points" }
+          }
+        },
+
+        "collisionBreakdown": {
+          "type": "array",
+          "description": "p.3 — Collision Breakdown by Kilometre Rate (3 sub-period rows ordered most-recent-first). Sum of events = collisionEvents. Sum of points = totalCollisionPoints. Frontend: collisionBreakdown (Collision Breakdown by Km Rate mini section).",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/breakdownPeriod" }
+        },
+
+        "convictionBreakdown": {
+          "type": "array",
+          "description": "p.3 — Conviction Breakdown by Kilometre Rate (3 sub-period rows ordered most-recent-first). Sum of events = convictionEvents. Sum of points = convictionPoints. Frontend: convictionBreakdown (Conviction Breakdown by Km Rate mini section).",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/breakdownPeriod" }
+        },
+
+        "events": {
+          "type": "array",
+          "description": "pp.4-N — Intervention & Event Details (the full chronological list). One entry per row, regardless of type (inspection / collision / conviction). The same logical event can appear in multiple consecutive pulls — TrackSmart deduplicates downstream by (type+date+driver+cvirOrTicket+plate+level). Frontend: events (drives the Pull Snapshot Intervention & Event Details mini section + the bottom all-pulls aggregate table).",
+          "items": { "$ref": "#/$defs/event" }
+        },
+
+        "travelKm": {
+          "type": "array",
+          "description": "p.18+ — Travel Kilometric Information (per-period table). Typically 1-3 rows per pull (Estimated forward + Actual back). Sum of totalKm should equal pull.totalMiles. Frontend: travelKm (Travel Kilometric Information mini section).",
+          "items": { "$ref": "#/$defs/travelKmRow" }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+
+    "levelBucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "oosCount"],
+      "properties": {
+        "count":    { "type": "integer", "description": "# of inspections at this level" },
+        "oosCount": { "type": "integer", "description": "# of inspections at this level with OOS" }
+      }
+    },
+
+    "breakdownPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "points"],
+      "properties": {
+        "events": { "type": "integer", "description": "# of events recorded in this 8-month sub-period" },
+        "points": { "type": "integer", "description": "Sum of points across this sub-period's events" }
+      }
+    },
+
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "date"],
+      "properties": {
+        "id":                        { "type": "string", "description": "Stable identifier — recommended `${reportDate}-${type}-${seq}`. Used for React keys and dedup." },
+        "type":                      { "type": "string", "enum": ["inspection", "collision", "conviction"] },
+        "date":                      { "type": "string", "format": "date", "description": "Event date (YYYY-MM-DD)" },
+        "startTime":                 { "type": ["string", "null"], "description": "HH:MM (inspections only)" },
+        "endTime":                   { "type": ["string", "null"], "description": "HH:MM (inspections only)" },
+        "time":                      { "type": ["string", "null"], "description": "HH:MM (collision / conviction event time)" },
+
+        "cvir":                      { "type": ["string", "null"], "description": "Inspection CVIR #" },
+        "ticket":                    { "type": ["string", "null"], "description": "Collision / conviction ticket #" },
+        "location":                  { "type": ["string", "null"] },
+
+        "driverName":                { "type": ["string", "null"] },
+        "driverLicence":             { "type": ["string", "null"] },
+        "driverLicenceJurisdiction": { "type": ["string", "null"] },
+
+        "vehicle1":                  { "anyOf": [ { "$ref": "#/$defs/vehicleRef" }, { "type": "null" } ] },
+        "vehicle2":                  { "anyOf": [ { "$ref": "#/$defs/vehicleRef" }, { "type": "null" } ] },
+
+        "level":                     { "type": ["integer", "null"], "minimum": 1, "maximum": 5, "description": "Inspection level 1-5 (inspections only)" },
+        "numVehicles":               { "type": ["integer", "null"] },
+        "vehiclePoints":             { "type": ["integer", "null"], "description": "Inspection vehicle points" },
+        "driverPoints":              { "type": ["integer", "null"], "description": "Inspection driver points" },
+        "pointsTotal":               { "type": ["integer", "null"], "description": "Collision / conviction event points" },
+        "oosCount":                  { "type": ["integer", "null"], "description": "Categories OOS* count for this inspection" },
+        "totalDefects":              { "type": ["integer", "null"], "description": "Total defects across all categories for this inspection" },
+        "charged":                   { "type": ["string", "null"], "enum": ["Y", "N", null], "description": "Inspection charged Y/N" },
+        "coDriver":                  { "type": ["string", "null"], "enum": ["Y", "N", null] },
+        "impoundment":               { "type": ["string", "null"], "enum": ["Y", "N", null] },
+
+        "defects": {
+          "type": "array",
+          "description": "Inspection defect rows (Category / Defect / OOS flag).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["category", "defect"],
+            "properties": {
+              "category": { "type": "string", "description": "e.g. 'BRAKE SYSTEM', 'HOURS OF SERVICE'" },
+              "defect":   { "type": "string", "description": "Specific defect text" },
+              "oos":      { "type": "boolean", "description": "True if Category had asterisk (OOS-eligible)" }
+            }
+          }
+        },
+
+        "collision": {
+          "type": "object",
+          "description": "Only present when type === 'collision'.",
+          "additionalProperties": false,
+          "required": ["collisionClass", "jurisdiction", "points"],
+          "properties": {
+            "collisionClass":   { "type": "string", "description": "e.g. 'CLASS-FATAL', 'CLASS-INJURY', 'CLASS-PROPERTY DAMAGE ONLY'" },
+            "jurisdiction":     { "type": "string" },
+            "vehicleAction":    { "type": ["string", "null"] },
+            "vehicleCondition": { "type": ["string", "null"] },
+            "driverAction":     { "type": ["string", "null"] },
+            "driverCondition":  { "type": ["string", "null"] },
+            "driverCharged":    { "type": "string", "enum": ["Y", "N"] },
+            "points":           { "type": "integer" },
+            "microfilm":        { "type": ["string", "null"] }
+          }
+        },
+
+        "conviction": {
+          "type": "object",
+          "description": "Only present when type === 'conviction'.",
+          "additionalProperties": false,
+          "required": ["convictionDate", "jurisdiction", "offence", "points"],
+          "properties": {
+            "convictionDate":   { "type": "string", "format": "date" },
+            "jurisdiction":     { "type": "string" },
+            "chargedCarrier":   { "type": "string", "enum": ["Y", "N", "-"] },
+            "microfilm":        { "type": ["string", "null"] },
+            "offence":          { "type": "string", "description": "e.g. 'HTA s.128 - Speeding'" },
+            "ccmtaEquivalency": { "type": ["string", "null"] },
+            "points":           { "type": "integer" }
+          }
+        }
+      }
+    },
+
+    "vehicleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "make":         { "type": "string" },
+        "unit":         { "type": "string" },
+        "plate":        { "type": "string" },
+        "jurisdiction": { "type": "string" }
+      }
+    },
+
+    "travelKmRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromDate", "toDate", "type", "totalVehicles", "totalKm"],
+      "properties": {
+        "fromDate":       { "type": "string", "format": "date" },
+        "toDate":         { "type": "string", "format": "date" },
+        "type":           { "type": "string", "enum": ["Estimated", "Actual"] },
+        "vehicles":       { "type": "integer" },
+        "doubleShifted":  { "type": "integer" },
+        "totalVehicles":  { "type": "integer" },
+        "ontarioKm":      { "type": "number" },
+        "restOfCanadaKm": { "type": "number" },
+        "usMexicoKm":     { "type": "number" },
+        "drivers":        { "type": "integer" },
+        "totalKm":        { "type": "number", "description": "ontarioKm + restOfCanadaKm + usMexicoKm" }
+      }
+    }
+  }
+}

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "00 - Home/Home.md",
+                "file": "09 - References/CVOR Upload Reference.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Home"
+              "title": "CVOR Upload Reference"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "00 - Home/Home.md",
+                "file": "09 - References/CVOR Upload Reference.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for Home"
+              "title": "Backlinks for CVOR Upload Reference"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "00 - Home/Home.md",
+                "file": "09 - References/CVOR Upload Reference.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from Home"
+              "title": "Outgoing links from CVOR Upload Reference"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "00 - Home/Home.md",
+                "file": "09 - References/CVOR Upload Reference.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of Home"
+              "title": "Outline of CVOR Upload Reference"
             }
           }
         ]
@@ -183,14 +183,16 @@
       "bases:Create new base": false
     }
   },
-  "active": "1f41f1796b4df823",
+  "active": "835b186621f5d0a5",
   "lastOpenFiles": [
+    "09 - References/CVOR PDF Extraction Map.md",
+    "README.md",
+    "00 - Home/Home.md",
+    "09 - References/CVOR Upload Reference.md",
     "05 - Features & Specs/GVWR Classes.md",
     "05 - Features & Specs/Frontend Data Reference.md",
     "templates/Page Spec Template.md",
     "templates/Decision Template.md",
-    "templates/Daily Note.md",
-    "README.md",
-    "00 - Home/Home.md"
+    "templates/Daily Note.md"
   ]
 }

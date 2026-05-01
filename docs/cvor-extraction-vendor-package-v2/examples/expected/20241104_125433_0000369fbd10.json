@@ -1,0 +1,52 @@
+{
+  "_README": "Ground-truth stub for raw-pdfs/20241104_125433_0000369fbd10.pdf (8 pages — compact). Open the matching annotated PDF and fill <FILL> placeholders. Schema: cvor-extraction-response.schema.json.",
+  "source": {
+    "fileName": "20241104_125433_0000369fbd10.pdf",
+    "orderNumber": null,
+    "searchDate": null,
+    "formVersion": "SR-LV-029A (2021/10)",
+    "pageCount": 8,
+    "extractedAt": "2026-04-30T00:00:00Z"
+  },
+  "carrier": {
+    "cvorNumber": "<FILL>",
+    "legalName": "<FILL>",
+    "operatingAs": null,
+    "address": { "street": null, "city": null, "state": null, "zip": null, "country": "Canada" },
+    "phone": null, "mobile": null, "fax": null, "email": null, "usDotNumber": null,
+    "cvorStatus": "Registered",
+    "originalIssueDate": "<FILL>",
+    "safetyRating": "<FILL>",
+    "vehicleTypes": ["<FILL>"],
+    "dangerousGoods": false
+  },
+  "pull": {
+    "reportDate": "<FILL>",
+    "periodLabel": "<FILL>",
+    "effectiveDate": "<FILL>",
+    "expiryDate": "<FILL>",
+    "windowStart": "<FILL>",
+    "windowEnd": "<FILL>",
+    "rating": null,
+    "colContrib": null, "colPctOfThresh": null,
+    "conContrib": null, "conPctOfThresh": null,
+    "insContrib": null, "insPctOfThresh": null,
+    "collisionEvents": null, "collWithPoints": null, "collWithoutPoints": null, "totalCollisionPoints": null,
+    "convictionEvents": null, "convictionPoints": null,
+    "oosOverall": null, "oosVehicle": null, "oosDriver": null,
+    "trucks": null, "drivers": null,
+    "onMiles": null, "canadaMiles": null, "usMexicoMiles": null, "totalMiles": null,
+    "inspectionsByLevel":    { "l1": 0, "l2": 0, "l3": 0, "l4": 0, "l5": 0 },
+    "inspectionsOosByLevel": { "l1": 0, "l2": 0, "l3": 0, "l4": 0, "l5": 0 },
+    "totalVehiclesInspected": 0,
+    "inspectionThreshold": {
+      "cvsaInspectionsConducted": 0, "vehiclesInspected": 0, "driversInspected": 0,
+      "totalUnitsInspected": 0,      "driverPointsAssigned": 0, "vehiclePointsAssigned": 0,
+      "totalInspectionPoints": 0,    "setThresholdPoints": 0,   "pctOfSetThreshold": 0
+    }
+  },
+  "inspectionEvents": [],
+  "warnings": [
+    { "code": "STUB", "message": "Hand-keyed checkpoint stub. Replace with real extraction.", "field": null, "page": null }
+  ]
+}

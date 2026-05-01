@@ -1,0 +1,2 @@
+cvorNumber,reportDate,id,date,time,ticket,location,driverName,driverLicence,driverLicenceJurisdiction,vehicle1_make,vehicle1_unit,vehicle1_plate,vehicle1_jurisdiction,collisionClass,jurisdiction,vehicleAction,vehicleCondition,driverAction,driverCondition,driverCharged,points,microfilm
+123-456-789,2026-04-02,20260402-coll-0,2026-03-15,13:45,COLL-20260402-000,"HWY 401 Toronto, ON","SINGH, M",D1000000-ON,ON,VOLVO,T100,PR4000,CAON,CLASS-PROPERTY DAMAGE ONLY,CAON,VEH ACTN-CHANGING LANES,VEH COND-NO APPARENT DEFECT,DR ACT-IMPROPER LANE CHANGE,DR COND-NORMAL,Y,2,MF260402-0000

@@ -137,11 +137,9 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         }
     }, [selectedTasks, isOpen]);
 
-    if (!isOpen) return null;
-
     // Use local tasks if props tasks are empty (selection mode), otherwise use props tasks
-    const effectiveSelectedTasks = (selectedTasks && selectedTasks.length > 0) 
-        ? selectedTasks 
+    const effectiveSelectedTasks = (selectedTasks && selectedTasks.length > 0)
+        ? selectedTasks
         : (availableTasks || []).filter(t => localSelectedTaskIds.includes(t.id));
 
     // For display in the summary section
@@ -229,6 +227,8 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
             return true;
         });
     }, [serviceQuery, serviceGroup, draftAsset]);
+
+    if (!isOpen) return null;
 
     return (
         <Modal

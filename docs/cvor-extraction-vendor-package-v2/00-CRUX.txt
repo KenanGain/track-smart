@@ -1,0 +1,79 @@
+================================================================================
+  TRACKSMART  ·  CVOR PDF EXTRACTION  ·  VENDOR CRUX  (read this first)
+================================================================================
+
+WHAT WE WANT
+------------
+A REST API that ingests an Ontario MTO CVOR Carrier Safety Profile PDF and
+returns a JSON document we can persist and render in our existing UI. One PDF
+per request OR a bulk endpoint that accepts up to 50.
+
+EVERY EXTRACTION MUST CONFORM TO:
+   cvor-extraction-response.schema.json   (Draft-07)
+
+
+WHAT WE DELIVER (this bundle)
+-----------------------------
+README.md                        Master entry point. Read after this file.
+00-CRUX.txt                      You are here.
+01-overview.md                   What CVOR is, why we ingest pulls over time.
+02-data-model.md                 Field-by-field map: PDF label -> JSON field.
+03-api-contract.md               Endpoints, auth, errors, bulk semantics.
+04-validation.md                 Required fields, format rules, OCR pitfalls.
+05-frontend-mapping.md           Where each JSON field renders in our UI.
+06-pdf-extraction-by-page.md     Per-PDF-page walkthrough.  *** NEW ***
+07-training-data-guide.md        How to use the 5 sample PDFs.   *** NEW ***
+cvor-extraction-response.schema.json   Authoritative output schema.
+validate.py                      Self-test. `pip install jsonschema && python validate.py`
+examples/
+   response-single.json          Full ground truth for PDF #1.
+   response-bulk.json            Bulk shape (success + failure example).
+   response-error.json           All 7 error codes, one example each.
+   expected/                     One ground-truth JSON per training PDF.
+templates/
+   pulls.csv                     CSV header + sample row (per-pull metric).
+   inspection-events.csv         CSV header + sample rows (per inspection).
+   tickets.csv                   CSV header + sample rows (per ticket). NEW
+highlighted-pdfs/                5 annotated PDFs (4-color overlay).
+raw-pdfs/                        5 raw PDFs (the training/validation set).
+
+
+THE 4 EXTRACTION SINKS  (matches the 4 colors on the highlighted PDFs)
+----------------------------------------------------------------------
+GREEN   Carrier Identity         One-time. CVOR #, name, address, status,
+                                 dates, rating, fleet. Only on PDF page 1.
+BLUE    Per-Pull Metric          One row per upload. R-Factor, OOS rates,
+                                 event counts, kms, points. Pages 1-3.
+PURPLE  Per-Inspection Event     CVIR-keyed events from PDF event log
+                                 (pages 4-17). Inspection-typed only.
+                                 Each carries violations[] and tickets[].
+YELLOW  Optional / Audit         Order #, Search Date, US DOT, Mobile, Fax.
+
+We do NOT extract: Conviction events, Collision events, Tow Operator section,
+                   Travel Kilometric History (pages 18-19).
+
+
+THE TRAINING SET  (5 PDFs, 4 carriers, 92 pages total)
+------------------------------------------------------
+#1  06042001_Ontario.pdf                  19 pp   3580768 CANADA INC.   837 hl
+#2  03072022_Ontario.pdf                  17 pp   <carrier 2>           735 hl
+#3  06042001_Ontario (2).pdf              19 pp   = #1 (dup, determinism)
+#4  20250203_100539_0000850abd10.pdf      29 pp   <carrier 4>           801 hl
+#5  20241104_125433_0000369fbd10.pdf       8 pp   <carrier 5>           292 hl
+
+Each annotated PDF starts with a legend page explaining the 4 colors, total
+highlights, and the UI surfaces driven by the data.
+
+
+ACCEPTANCE
+----------
+1.  Output validates against cvor-extraction-response.schema.json.
+2.  For PDF #1, output matches examples/response-single.json field-for-field
+    (within tolerances in 04-validation.md).
+3.  Bulk endpoint accepts 1-50 PDFs, returns per-file success or error.
+4.  Single-PDF latency <= 30s synchronous.
+5.  examples/expected/<pdf>.json is what your API should return for that PDF.
+
+
+CONTACT  ·  TrackSmart  ·  Kenan Gain  ·  kenangain2910@gmail.com
+================================================================================

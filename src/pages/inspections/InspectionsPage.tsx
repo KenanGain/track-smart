@@ -6,8 +6,11 @@ import {
   Activity, 
   ChevronDown, 
   ChevronUp, 
-  Truck, 
+  Truck,
   FileText,
+  Ticket,
+  Receipt,
+  Scale,
   Upload,
   Plus,
   User,
@@ -18,11 +21,11 @@ import {
   Gauge,
   Info,
   X,
-  Target,
   Building2,
   MapPin
 } from 'lucide-react';
 import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode, cvorPeriodicReports } from './inspectionsData';
+import { cvorInterventionEvents, cvorTravelKm, CVOR_INTERVENTION_PERIOD, type CvorInterventionEvent } from './cvorInterventionEvents.data';
 import { NscPerformanceCard, type NscPerformanceCardProps } from './NscPerformanceCard';
 import { InspectionReportPanel } from './InspectionReportPanel';
 import { NscBcCarrierProfile, INERTIA_CARRIER_BC_DATA } from './NscBcCarrierProfile';
@@ -773,13 +776,25 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
           )}
         </div>
 
-        {/* Violations Count */}
-        <div className="col-span-1 flex justify-center items-center">
+        {/* Violations Count + ticket badge */}
+        <div className="col-span-1 flex flex-col justify-center items-center gap-1">
           {record.isClean ? (
             <span className="text-[13px] font-bold text-emerald-600">Clean</span>
           ) : (
             <span className="text-[13px] font-bold text-orange-600">{record.violations.length}</span>
           )}
+          {(record.tickets || []).length > 0 && (() => {
+            const tk = record.tickets as any[];
+            const fines = tk.reduce((s, t) => s + (t.fineAmount || 0), 0);
+            return (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-rose-700"
+                title={`${tk.length} ticket${tk.length === 1 ? '' : 's'} · $${fines.toLocaleString()}`}
+              >
+                <Ticket size={10} /> {tk.length}
+              </span>
+            );
+          })()}
         </div>
 
         {/* Vehicle Points */}
@@ -1636,6 +1651,144 @@ const InspectionRow = ({ record, onEdit, cvorOverride }: { record: any; onEdit?:
                   </table>
                 </div>
               </div>
+
+              {/* ── Inspection Flags + Tickets (CVOR-only, mirrors PDF event) ── */}
+              {(record.coDriver != null || record.impoundment != null || record.charged != null
+                || (record as any).categoriesOos != null || (record as any).totalDefects != null
+                || ((record as any).tickets || []).length > 0) && (
+                <div className="space-y-4 mt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Inspection Flags card */}
+                    <div className="flex flex-col gap-3 h-full">
+                      <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
+                        <Info size={14} className="text-slate-400" /> Inspection Flags
+                      </h4>
+                      <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 h-full">
+                        <div className="grid grid-cols-3 gap-3">
+                          {[
+                            { label: 'Co-Driver',  v: record.coDriver  },
+                            { label: 'Impoundment', v: record.impoundment },
+                            { label: 'Charged',    v: record.charged   },
+                          ].map((f) => (
+                            <div key={f.label} className="bg-slate-50 border border-slate-100 rounded p-2">
+                              <p className="text-[11px] text-slate-500 uppercase tracking-wide">{f.label}</p>
+                              <p className={`mt-0.5 font-bold text-sm ${f.v === true ? 'text-red-600' : f.v === false ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                {f.v === true ? 'Yes' : f.v === false ? 'No' : '—'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-3 text-[13px]">
+                          <div>
+                            <p className="text-[11px] text-slate-500 uppercase tracking-wide">Categories OOS</p>
+                            <p className="mt-0.5 font-bold text-slate-800">{(record as any).categoriesOos ?? record.oosSummary?.total ?? 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Defects</p>
+                            <p className="mt-0.5 font-bold text-slate-800">{(record as any).totalDefects ?? (record.violations || []).length}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tickets summary card */}
+                    {((record as any).tickets || []).length > 0 ? (
+                      <div className="flex flex-col gap-3 h-full">
+                        <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
+                          <Ticket size={14} className="text-rose-500" /> Tickets Issued
+                        </h4>
+                        <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 h-full flex flex-col">
+                          {(() => {
+                            const tk = (record as any).tickets as any[];
+                            const fines = tk.reduce((s, t) => s + (t.fineAmount || 0), 0);
+                            const driverCt  = tk.filter(t => t.chargedTo === 'Driver').length;
+                            const carrierCt = tk.filter(t => t.chargedTo === 'Carrier').length;
+                            const cur = tk[0]?.currency || 'CAD';
+                            return (
+                              <div className="grid grid-cols-3 gap-3 text-[13px]">
+                                <div className="bg-rose-50 border border-rose-100 rounded p-2">
+                                  <p className="text-[11px] text-rose-600 uppercase tracking-wide">Tickets</p>
+                                  <p className="mt-0.5 font-bold text-rose-700 text-lg">{tk.length}</p>
+                                </div>
+                                <div className="bg-slate-50 border border-slate-100 rounded p-2">
+                                  <p className="text-[11px] text-slate-500 uppercase tracking-wide">Total Fines</p>
+                                  <p className="mt-0.5 font-bold text-slate-800 font-mono">${fines.toLocaleString()} <span className="text-[10px] text-slate-500">{cur}</span></p>
+                                </div>
+                                <div className="bg-slate-50 border border-slate-100 rounded p-2">
+                                  <p className="text-[11px] text-slate-500 uppercase tracking-wide">Driver / Carrier</p>
+                                  <p className="mt-0.5 font-bold text-slate-800">{driverCt} / {carrierCt}</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 h-full">
+                        <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider leading-tight">
+                          <Ticket size={14} className="text-slate-300" /> Tickets Issued
+                        </h4>
+                        <div className="bg-white border border-dashed border-slate-200 rounded-lg p-4 h-full flex items-center justify-center text-[13px] text-slate-400">
+                          No tickets issued for this inspection.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ticket detail cards (one per ticket) */}
+                  {((record as any).tickets || []).length > 0 && (
+                    <div>
+                      <h4 className="text-[13px] font-bold text-slate-500 flex items-center gap-2 uppercase tracking-wider mb-3">
+                        <Receipt size={14} className="text-rose-500" /> Ticket Details
+                      </h4>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {((record as any).tickets as any[]).map((t, ti) => {
+                          const statusTone =
+                            t.status === 'Convicted' ? 'bg-red-100 text-red-700 ring-red-200' :
+                            t.status === 'Paid'      ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' :
+                            t.status === 'Dismissed' || t.status === 'Withdrawn' ? 'bg-slate-100 text-slate-600 ring-slate-200' :
+                            'bg-amber-100 text-amber-700 ring-amber-200';
+                          const partyTone = t.chargedTo === 'Driver'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-violet-50 text-violet-700 border-violet-200';
+                          return (
+                            <div key={`${record.id}-tk-${ti}`} className="bg-white border border-rose-100 rounded-xl shadow-sm p-3.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="font-mono text-[12px] font-bold text-rose-700">{t.ticketNumber}</div>
+                                  <div className="mt-0.5 text-[12px] text-slate-700 leading-snug">{t.offenceDescription}</div>
+                                </div>
+                                <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${statusTone}`}>
+                                  {t.status}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center gap-2 flex-wrap text-[10px]">
+                                <span className={`inline-flex items-center rounded border px-1.5 py-0.5 font-bold ${partyTone}`}>
+                                  {t.chargedTo === 'Driver' ? 'DRIVER' : 'CARRIER'}
+                                </span>
+                                <span className="font-mono text-indigo-700">{t.offenceCode}</span>
+                                <span className="ml-auto inline-flex items-center gap-1 font-bold text-slate-700">
+                                  <Receipt size={10} className="text-slate-400" />
+                                  ${(t.fineAmount || 0).toLocaleString()} {t.currency}
+                                </span>
+                              </div>
+                              <div className="mt-1.5 flex items-center gap-3 text-[10px] text-slate-500">
+                                <span>Issued <span className="font-mono text-slate-700">{t.issueDate}</span></span>
+                                {t.courtDate && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Scale size={9} className="text-slate-400" />
+                                    Court <span className="font-mono text-slate-700">{t.courtDate}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -2373,6 +2526,9 @@ export const NscOverviewRow = ({ row }: { row: NscInspectionRecord }) => {
   );
 };
 
+void MiniKpiCard;
+void InspectionRow;
+
 const PERIOD_OPTIONS = ['1M', '3M', '6M', '12M', '24M'] as const;
 type PeriodLabel =
   | typeof PERIOD_OPTIONS[number]
@@ -2410,6 +2566,60 @@ export function InspectionsPage() {
   // CVOR tab chart states
   const [cvorPeriod, setCvorPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All'>('All');
   const [cvorThreshOpen, setCvorThreshOpen] = useState(false);
+  const [cvorCollBreakdownOpen, setCvorCollBreakdownOpen] = useState(false);
+  const [cvorConvBreakdownOpen, setCvorConvBreakdownOpen] = useState(false);
+  const [cvorInspStatsOpen, setCvorInspStatsOpen] = useState(false);
+  const [cvorEventKpiFilter, setCvorEventKpiFilter] = useState<'ALL' | 'CLEAN' | 'OOS' | 'VEHICLE' | 'HOS_DRIVER' | 'SEVERE' | 'TICKETS'>('ALL');
+  const [cvorEventTypeFilter, setCvorEventTypeFilter] = useState<'ALL' | 'inspection' | 'collision' | 'conviction'>('ALL');
+  const [cvorEventExpanded, setCvorEventExpanded] = useState<string | null>(null);
+  const [cvorEventSearch, setCvorEventSearch] = useState('');
+  const [cvorEventSort, setCvorEventSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
+  const [cvorEventPage, setCvorEventPage] = useState(1);
+  const [cvorEventRowsPerPage, setCvorEventRowsPerPage] = useState(10);
+  const [cvorEventColumns, setCvorEventColumns] = useState<ColumnDef[]>([
+    { id: 'type',          label: 'Type',          visible: true },
+    { id: 'date',          label: 'Date',          visible: true },
+    { id: 'time',          label: 'Time',          visible: true },
+    { id: 'cvirOrTicket',  label: 'CVIR / Ticket', visible: true },
+    { id: 'location',      label: 'Location',      visible: true },
+    { id: 'driver',        label: 'Driver',        visible: true },
+    { id: 'driverLicence', label: 'Driver Licence',visible: true },
+    { id: 'vehicle1',      label: 'Vehicle 1',     visible: true },
+    { id: 'vehicle2',      label: 'Vehicle 2',     visible: true },
+    { id: 'level',         label: 'Level',         visible: true },
+    { id: 'vPts',          label: 'V Pts',         visible: true },
+    { id: 'dPts',          label: 'D Pts',         visible: true },
+    { id: 'oos',           label: 'OOS',           visible: true },
+    { id: 'defects',       label: 'Defects',       visible: true },
+    { id: 'charged',       label: 'Charged',       visible: true },
+  ]);
+
+  // Reset pagination when filter / search / rows-per-page changes
+  useEffect(() => {
+    setCvorEventPage(1);
+    setCvorEventExpanded(null);
+  }, [cvorEventKpiFilter, cvorEventTypeFilter, cvorEventSearch, cvorEventRowsPerPage]);
+
+  // Travel Kilometric Information state
+  const [cvorTravelType, setCvorTravelType] = useState<'ALL' | 'Estimated' | 'Actual'>('ALL');
+  const [cvorTravelSort, setCvorTravelSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'fromDate', dir: 'desc' });
+  const [cvorTravelSearch, setCvorTravelSearch] = useState('');
+  const [cvorTravelPage, setCvorTravelPage] = useState(1);
+  const [cvorTravelRowsPerPage, setCvorTravelRowsPerPage] = useState(5);
+  const [cvorTravelColumns, setCvorTravelColumns] = useState<ColumnDef[]>([
+    { id: 'type',           label: 'E/A',              visible: true },
+    { id: 'fromDate',       label: 'From',             visible: true },
+    { id: 'toDate',         label: 'To',               visible: true },
+    { id: 'vehicles',       label: '# Vehicles',       visible: true },
+    { id: 'doubleShifted',  label: '# Double Shifted', visible: true },
+    { id: 'totalVehicles',  label: 'Total Vehicles',   visible: true },
+    { id: 'ontarioKm',      label: 'Ontario KM',       visible: true },
+    { id: 'restOfCanadaKm', label: 'Rest of Canada KM',visible: true },
+    { id: 'usMexicoKm',     label: 'US/Mexico KM',     visible: true },
+    { id: 'drivers',        label: '# Drivers',        visible: true },
+    { id: 'totalKm',        label: 'Total KM',         visible: true },
+  ]);
+  useEffect(() => { setCvorTravelPage(1); }, [cvorTravelType, cvorTravelSearch, cvorTravelRowsPerPage]);
   const [cvorHoveredPull, setCvorHoveredPull] = useState<{ chart: string; idx: number } | null>(null);
   const [cvorSelectedPull, setCvorSelectedPull] = useState<string | null>(null);
   const [cvorPullFilter, setCvorPullFilter] = useState<'ALL' | 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'SELECTED'>('ALL');
@@ -2453,6 +2663,14 @@ export function InspectionsPage() {
     { id: 'status', label: 'Status', visible: true },
   ]);
   const [cvorPullDetailExpanded, setCvorPullDetailExpanded] = useState<string | null>(null);
+  void setCvorPullDetailFilter;
+  void setCvorPullDetailSearch;
+  void cvorPullDetailPage;
+  void setCvorPullDetailRowsPerPage;
+  void setCvorPullDetailSort;
+  void cvorPullDetailColumns;
+  void setCvorPullDetailColumns;
+  void cvorPullDetailExpanded;
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window === 'undefined' ? 1440 : window.innerWidth
   );
@@ -2488,7 +2706,133 @@ export function InspectionsPage() {
 
   useEffect(() => {
     setCvorPullPage(1);
-  }, [cvorPullFilter, cvorPullSearch, cvorPullSort.col, cvorPullSort.dir, cvorPullRowsPerPage, cvorSelectedPull]);
+  }, [cvorPullFilter, cvorPullSearch, cvorPullSort.col, cvorPullSort.dir, cvorPullRowsPerPage]);
+
+  // ── Mini-CVOR (pull drill-down) panel state ─────────────────────────────────
+  type MiniSectionKey =
+    | 'performance' | 'mileage' | 'collisionDetails' | 'convictionDetails'
+    | 'comparison' | 'collisionBd' | 'convictionBd'
+    | 'inspStats' | 'events' | 'travel';
+  const [miniOpen, setMiniOpen] = useState<Record<MiniSectionKey, boolean>>({
+    performance: true, mileage: false, collisionDetails: false, convictionDetails: false,
+    comparison: false, collisionBd: false, convictionBd: false,
+    inspStats: false, events: false, travel: false,
+  });
+  const toggleMini = (k: MiniSectionKey) => setMiniOpen(p => ({ ...p, [k]: !p[k] }));
+
+  // Collision Breakdown (mini)
+  const [miniColBdPage, setMiniColBdPage] = useState(1);
+  const [miniColBdRowsPerPage, setMiniColBdRowsPerPage] = useState(5);
+  const [miniColBdColumns, setMiniColBdColumns] = useState<ColumnDef[]>([
+    { id: 'period',     label: 'Period',     visible: true },
+    { id: 'fromDate',   label: 'From',       visible: true },
+    { id: 'toDate',     label: 'To',         visible: true },
+    { id: 'months',     label: 'Months',     visible: true },
+    { id: 'kmPerMonth', label: 'KM/Month',   visible: true },
+    { id: 'events',     label: 'Events',     visible: true },
+    { id: 'points',     label: 'Points',     visible: true },
+    { id: 'threshold',  label: 'Threshold',  visible: true },
+    { id: 'pctSet',     label: '% Set',      visible: true },
+  ]);
+  useEffect(() => { setMiniColBdPage(1); }, [miniColBdRowsPerPage]);
+
+  // Conviction Breakdown (mini)
+  const [miniConBdPage, setMiniConBdPage] = useState(1);
+  const [miniConBdRowsPerPage, setMiniConBdRowsPerPage] = useState(5);
+  const [miniConBdColumns, setMiniConBdColumns] = useState<ColumnDef[]>([
+    { id: 'period',     label: 'Period',     visible: true },
+    { id: 'fromDate',   label: 'From',       visible: true },
+    { id: 'toDate',     label: 'To',         visible: true },
+    { id: 'months',     label: 'Months',     visible: true },
+    { id: 'kmPerMonth', label: 'KM/Month',   visible: true },
+    { id: 'events',     label: 'Events',     visible: true },
+    { id: 'points',     label: 'Points',     visible: true },
+    { id: 'threshold',  label: 'Threshold',  visible: true },
+    { id: 'pctSet',     label: '% Set',      visible: true },
+  ]);
+  useEffect(() => { setMiniConBdPage(1); }, [miniConBdRowsPerPage]);
+
+  // Intervention & Event Details (mini)
+  const [miniEventsKpiFilter, setMiniEventsKpiFilter] = useState<'ALL' | 'CLEAN' | 'OOS' | 'VEHICLE' | 'HOS_DRIVER' | 'SEVERE' | 'TICKETS'>('ALL');
+  const [miniEventsTypeFilter, setMiniEventsTypeFilter] = useState<'ALL' | 'inspection' | 'collision' | 'conviction'>('ALL');
+  const [miniEventsSearch, setMiniEventsSearch] = useState('');
+  const [miniEventsSort, setMiniEventsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
+  const [miniEventsPage, setMiniEventsPage] = useState(1);
+  const [miniEventsRowsPerPage, setMiniEventsRowsPerPage] = useState(5);
+  const [miniEventsColumns, setMiniEventsColumns] = useState<ColumnDef[]>([
+    { id: 'type',          label: 'Type',           visible: true },
+    { id: 'date',          label: 'Date',           visible: true },
+    { id: 'time',          label: 'Time',           visible: false },
+    { id: 'cvirOrTicket',  label: 'CVIR / Ticket',  visible: true },
+    { id: 'location',      label: 'Location',       visible: false },
+    { id: 'driver',        label: 'Driver',         visible: true },
+    { id: 'driverLicence', label: 'Driver Licence', visible: false },
+    { id: 'vehicle1',      label: 'Vehicle 1',      visible: false },
+    { id: 'vehicle2',      label: 'Vehicle 2',      visible: false },
+    { id: 'level',         label: 'Level',          visible: true },
+    { id: 'vPts',          label: 'V Pts',          visible: true },
+    { id: 'dPts',          label: 'D Pts',          visible: true },
+    { id: 'oos',           label: 'OOS',            visible: true },
+    { id: 'defects',       label: 'Defects',        visible: false },
+    { id: 'charged',       label: 'Charged',        visible: false },
+  ]);
+  useEffect(() => { setMiniEventsPage(1); }, [miniEventsKpiFilter, miniEventsTypeFilter, miniEventsSearch, miniEventsRowsPerPage]);
+
+  // Travel Kilometric Information (mini)
+  const [miniTravelType, setMiniTravelType] = useState<'ALL' | 'Estimated' | 'Actual'>('ALL');
+  const [miniTravelSearch, setMiniTravelSearch] = useState('');
+  const [miniTravelSort, setMiniTravelSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'fromDate', dir: 'desc' });
+  const [miniTravelPage, setMiniTravelPage] = useState(1);
+  const [miniTravelRowsPerPage, setMiniTravelRowsPerPage] = useState(5);
+  const [miniTravelColumns, setMiniTravelColumns] = useState<ColumnDef[]>([
+    { id: 'type',           label: 'E/A',               visible: true },
+    { id: 'fromDate',       label: 'From',              visible: true },
+    { id: 'toDate',         label: 'To',                visible: true },
+    { id: 'vehicles',       label: '# Vehicles',        visible: true },
+    { id: 'doubleShifted',  label: '# Double Shifted',  visible: false },
+    { id: 'totalVehicles',  label: 'Total Vehicles',    visible: false },
+    { id: 'ontarioKm',      label: 'Ontario KM',        visible: true },
+    { id: 'restOfCanadaKm', label: 'Rest of Canada KM', visible: true },
+    { id: 'usMexicoKm',     label: 'US/Mexico KM',      visible: false },
+    { id: 'drivers',        label: '# Drivers',         visible: true },
+    { id: 'totalKm',        label: 'Total KM',          visible: true },
+  ]);
+  useEffect(() => { setMiniTravelPage(1); }, [miniTravelType, miniTravelSearch, miniTravelRowsPerPage]);
+
+  // ── All-pulls Intervention & Event Details (bottom of CVOR tab) ─────────────
+  const [allEventsTimePeriod, setAllEventsTimePeriod] = useState<'12M' | '24M' | '36M' | 'ALL' | 'CUSTOM'>('24M');
+  const [allEventsDateFrom, setAllEventsDateFrom] = useState('');
+  const [allEventsDateTo,   setAllEventsDateTo]   = useState('');
+  const [allEventsType, setAllEventsType] = useState<'ALL' | 'inspection' | 'collision' | 'conviction'>('ALL');
+  const [allEventsKpi, setAllEventsKpi] = useState<'ALL' | 'CLEAN' | 'OOS' | 'VEHICLE' | 'HOS_DRIVER' | 'SEVERE' | 'TICKETS'>('ALL');
+  const [allEventsSearch, setAllEventsSearch] = useState('');
+  const [allEventsSort, setAllEventsSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'date', dir: 'desc' });
+  const [allEventsPage, setAllEventsPage] = useState(1);
+  const [allEventsRowsPerPage, setAllEventsRowsPerPage] = useState(10);
+  const [allEventsExpanded, setAllEventsExpanded] = useState<string | null>(null);
+  const [allEventsChartOpen, setAllEventsChartOpen] = useState(false);
+  const [allEventsColumns, setAllEventsColumns] = useState<ColumnDef[]>([
+    { id: 'type',          label: 'Type',           visible: true },
+    { id: 'date',          label: 'Date',           visible: true },
+    { id: 'time',          label: 'Time',           visible: false },
+    { id: 'cvirOrTicket',  label: 'CVIR / Ticket',  visible: true },
+    { id: 'location',      label: 'Location',       visible: true },
+    { id: 'driver',        label: 'Driver',         visible: true },
+    { id: 'driverLicence', label: 'Driver Licence', visible: false },
+    { id: 'vehicle1',      label: 'Vehicle 1',      visible: true },
+    { id: 'vehicle2',      label: 'Vehicle 2',      visible: false },
+    { id: 'level',         label: 'Level',          visible: true },
+    { id: 'vPts',          label: 'V Pts',          visible: true },
+    { id: 'dPts',          label: 'D Pts',          visible: true },
+    { id: 'oos',           label: 'OOS',            visible: true },
+    { id: 'defects',       label: 'Defects',        visible: false },
+    { id: 'charged',       label: 'Charged',        visible: false },
+    { id: 'sourcePulls',   label: 'Pull Coverage',  visible: true },
+  ]);
+  useEffect(() => {
+    setAllEventsPage(1);
+    setAllEventsExpanded(null);
+  }, [allEventsTimePeriod, allEventsDateFrom, allEventsDateTo, allEventsType, allEventsKpi, allEventsSearch, allEventsRowsPerPage]);
 
   useEffect(() => {
     setCvorPullDetailPage(1);
@@ -2499,17 +2843,25 @@ export function InspectionsPage() {
   }, [cvorSelectedPull]);
 
   const [columns, setColumns] = useState<ColumnDef[]>([
-    { id: 'date', label: 'Insp. Date', visible: true },
+    { id: 'date', label: 'Date / Time', visible: true },
     { id: 'report', label: 'Report ID', visible: true },
-    { id: 'country', label: 'Country', visible: true },
-    { id: 'state', label: 'State', visible: true },
-    { id: 'driver', label: 'Driver', visible: true },
-    { id: 'asset', label: 'Asset', visible: true },
+    { id: 'location', label: 'Location', visible: true },
+    { id: 'driver', label: 'Driver / Licence', visible: true },
+    { id: 'vehicle', label: 'Power Unit / Defects', visible: true },
     { id: 'violations', label: 'Violations', visible: true },
-    { id: 'severity', label: 'Severity', visible: true },
-    { id: 'points', label: 'Points', visible: true },
+    { id: 'vehPts', label: 'Veh Pts', visible: true },
+    { id: 'dvrPts', label: 'Dvr Pts', visible: true },
+    { id: 'cvorPts', label: 'CVOR Pts', visible: true },
     { id: 'status', label: 'Status', visible: true },
   ]);
+  // Sort + expand state for the All-CVOR list (mirrors pull-by-pull)
+  const [cvorListSort, setCvorListSort] = useState<{col:string;dir:'asc'|'desc'}>({col:'date',dir:'desc'});
+  const [cvorListExpanded, setCvorListExpanded] = useState<string | null>(null);
+  void columns;
+  void setColumns;
+  void setCvorListSort;
+  void cvorListExpanded;
+  void setCvorListExpanded;
   
   // Modal States
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -2638,36 +2990,6 @@ export function InspectionsPage() {
     setNsNscForm(EMPTY_NS);
     setUploadedReport(null);
     setEditingInspection(null);
-    setShowAddModal(true);
-  };
-  const openEditModal = (record: any) => {
-    const pts = record.smsPoints || record.cvorPoints || {};
-    setInspForm({
-      id: record.id, date: record.date, country: record.country || (getJurisdiction(record.state) === 'CVOR' ? 'Canada' : 'US'),
-      state: record.state, locationStreet: record.locationStreet || '', locationCity: record.location?.city || record.locationCity || '', locationZip: record.locationZip || '',
-      startTime: record.startTime || '', endTime: record.endTime || '',
-      driverId: record.driverId,
-      driver: record.driver, driverLicense: record.driverLicense || '',
-      vehiclePlate: record.vehiclePlate, vehicleType: record.vehicleType,
-      assetId: record.assetId, level: record.level, isClean: record.isClean, hasOOS: record.hasOOS,
-      hasVehicleViolations: record.hasVehicleViolations, hasDriverViolations: record.hasDriverViolations,
-      units: record.units || [{ type: 'Truck', make: '', license: '', vin: '' }],
-      oosSummary: record.oosSummary || { driver: 'PASSED', vehicle: 'PASSED', total: 0 },
-      violations: [],
-      fineAmount: record.fineAmount || '', currency: record.currency || 'USD',
-      powerUnitDefects: record.powerUnitDefects || '', trailerDefects: record.trailerDefects || '',
-      vehiclePoints: pts.vehicle || 0, driverPoints: pts.driver || 0, carrierPoints: pts.carrier || pts.cvor || 0,
-    });
-    setFormViolations(record.violations || []);
-    if (record.attachedDocuments?.length) {
-      setInspAttachedDocs(record.attachedDocuments);
-    } else {
-      setInspAttachedDocs(requiredDocTypes.map(dt => ({
-        id: `doc-${Math.random().toString(36).substr(2, 9)}`,
-        docTypeId: dt.id, docNumber: '', issueDate: '', fileName: ''
-      })));
-    }
-    setEditingInspection(record);
     setShowAddModal(true);
   };
   const closeFormModal = () => { setShowAddModal(false); setEditingInspection(null); };
@@ -4633,7 +4955,35 @@ export function InspectionsPage() {
           vehicle: cvorInspections.filter(i => i.hasVehicleViolations).length,
           driver: cvorInspections.filter(i => i.hasDriverViolations).length,
           severe: cvorInspections.filter(i => i.violations.some(v => v.severity >= 7)).length,
+          tickets:    cvorInspections.filter(i => (((i as any).tickets || []).length > 0)).length,
+          ticketsCount: cvorInspections.reduce((s, i) => s + (((i as any).tickets || []).length), 0),
+          ticketsTotal: cvorInspections.reduce((s, i) => s + ((i as any).tickets || []).reduce((a: number, t: any) => a + (t.fineAmount || 0), 0), 0),
         };
+        void cvorStats;
+        // Cross-pull context: how many of our pulls "see" these inspections + the
+        // overall inspection date range. Each pull is a 24-month rolling window
+        // ending on its reportDate; an inspection is in the pull if its date is
+        // inside that window.
+        const cvorListContext = (() => {
+          const dates = cvorInspections.map(i => i.date).filter(Boolean).sort();
+          const earliest = dates[0] || null;
+          const latest = dates[dates.length - 1] || null;
+          const pullsCovering = cvorPeriodicReports.filter(p => {
+            const end = new Date(p.reportDate);
+            const start = new Date(end); start.setMonth(start.getMonth() - 24);
+            return cvorInspections.some(i => {
+              const d = new Date(i.date);
+              return d >= start && d <= end;
+            });
+          });
+          return {
+            earliest,
+            latest,
+            pullsCount: pullsCovering.length,
+            totalPulls: cvorPeriodicReports.length,
+          };
+        })();
+        void cvorListContext;
         const cvorFilteredData = cvorInspections.filter(insp => {
           const st = searchTerm.toLowerCase();
           const matchesSearch = insp.id.toLowerCase().includes(st) ||
@@ -4644,18 +4994,90 @@ export function InspectionsPage() {
             (insp.location?.raw && insp.location.raw.toLowerCase().includes(st));
           let matchesFilter = true;
           switch(activeFilter) {
-            case 'CLEAN': matchesFilter = insp.isClean; break;
-            case 'OOS': matchesFilter = insp.hasOOS; break;
+            case 'CLEAN':   matchesFilter = insp.isClean; break;
+            case 'OOS':     matchesFilter = insp.hasOOS; break;
             case 'VEHICLE': matchesFilter = insp.hasVehicleViolations; break;
-            case 'DRIVER': matchesFilter = insp.hasDriverViolations; break;
-            case 'SEVERE': matchesFilter = insp.violations.some(v => v.severity >= 7); break;
+            case 'DRIVER':  matchesFilter = insp.hasDriverViolations; break;
+            case 'SEVERE':  matchesFilter = insp.violations.some(v => v.severity >= 7); break;
+            case 'TICKETS': matchesFilter = (((insp as any).tickets || []).length > 0); break;
             default: matchesFilter = true;
           }
           return matchesSearch && matchesFilter;
         });
-        const cvorPagedData = cvorFilteredData.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+        // ── Build PDF-faithful detail rows for the All-CVOR list (mirrors pull-by-pull) ──
+        const cvorListDetailRows = cvorFilteredData.map((record, ri) => {
+          const veh = record.cvorPoints?.vehicle ?? (record.violations||[]).filter((v:any)=>!v.driverViolation).reduce((s:number,v:any)=>s+(v.points||0),0);
+          const dvr = record.cvorPoints?.driver  ?? (record.violations||[]).filter((v:any)=>!!v.driverViolation).reduce((s:number,v:any)=>s+(v.points||0),0);
+          const cvr = record.cvorPoints?.cvor ?? veh + dvr;
+          const primaryUnit = (record as any).units?.[0];
+          const cats = new Map<string, { isOos: boolean; pts: number }>();
+          for (const violation of (record.violations || [])) {
+            const label = (violation as any).category || 'Other';
+            const cur = cats.get(label);
+            if (!cur) cats.set(label, { isOos: !!(violation as any).oos, pts: violation.points || 0 });
+            else cats.set(label, { isOos: cur.isOos || !!(violation as any).oos, pts: cur.pts + (violation.points || 0) });
+          }
+          const categories = Array.from(cats.entries()).map(([label, info]) => ({ label, ...info }));
+          const status = record.hasOOS ? 'OOS' : record.isClean ? 'OK' : 'DEFECT';
+          const timestamp = new Date(`${record.date}T${(record as any).startTime || '00:00'}`).getTime();
+          return {
+            id: `cvlist-${record.id}-${ri}`,
+            record,
+            pts: { veh, dvr, cvr },
+            date: record.date,
+            time: (record as any).startTime && (record as any).endTime
+              ? `${(record as any).startTime} - ${(record as any).endTime}`
+              : (record as any).startTime || '--',
+            timestamp,
+            report: record.id,
+            locationCity: (record as any).location?.city || record.state || '--',
+            locationRegion: (record as any).location ? `${(record as any).location.province}, CAN` : `${record.state}, CAN`,
+            driverName: record.driver?.split(',')[0] || 'Unknown driver',
+            driverId: (record as any).driverLicense || (record as any).driverId || '--',
+            vehicleName: primaryUnit?.license || record.vehiclePlate || '--',
+            defectText: (record as any).powerUnitDefects || (record.isClean ? 'No defects' : 'No defect details'),
+            violationCount: (record.violations || []).length,
+            vehPts: veh ?? 0,
+            dvrPts: dvr ?? 0,
+            cvorPts: cvr,
+            status,
+            hasOos: !!record.hasOOS,
+            isClean: !!record.isClean,
+            categories,
+            violations: record.violations || [],
+            tickets: (record as any).tickets || [],
+            ticketCount: ((record as any).tickets || []).length,
+            totalFine: ((record as any).tickets || []).reduce((s:number,t:any)=>s+(t.fineAmount||0), 0),
+          };
+        });
+        const cvorListSortedRows = [...cvorListDetailRows].sort((a, b) => {
+          const dir = cvorListSort.dir === 'asc' ? 1 : -1;
+          const get = (r: typeof cvorListDetailRows[number]): string | number => {
+            switch (cvorListSort.col) {
+              case 'date': return r.timestamp;
+              case 'report': return r.report;
+              case 'location': return `${r.locationCity} ${r.locationRegion}`;
+              case 'driver': return `${r.driverName} ${r.driverId}`;
+              case 'vehicle': return `${r.vehicleName} ${r.defectText}`;
+              case 'violations': return r.violationCount;
+              case 'vehPts': return r.vehPts;
+              case 'dvrPts': return r.dvrPts;
+              case 'cvorPts': return r.cvorPts;
+              case 'status': return r.status;
+              default: return r.timestamp;
+            }
+          };
+          const av = get(a); const bv = get(b);
+          if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+          return String(av).localeCompare(String(bv)) * dir;
+        });
+        const cvorListPagedRows = cvorListSortedRows.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+        void cvorListPagedRows;
 
-        const cvorRating = carrierProfile.cvorAnalysis.rating;
+        // Latest pull drives the headline CVOR rating + numbers shown on the main card,
+        // so the "Latest Pull" banner above stays consistent with the data displayed below.
+        const _latestPull = cvorPeriodicReports[cvorPeriodicReports.length - 1];
+        const cvorRating = _latestPull?.rating ?? carrierProfile.cvorAnalysis.rating;
         let overallRatingClass = 'bg-green-100 text-green-800';
         let overallRatingLabel = 'OK';
         if (cvorRating >= cvorThresholds.showCause) { overallRatingClass = 'bg-red-100 text-red-800'; overallRatingLabel = 'CRITICAL'; }
@@ -5066,18 +5488,70 @@ export function InspectionsPage() {
           </div>
 
           {/* ══════════════════════════════════════════════════════════════
+               LATEST PULL SNAPSHOT — single merged card containing CVOR
+               Performance, Intervention & Event Details, and Travel
+               Kilometric Information. Inner sections sit flush with no gap
+               and a shared border so the three look like one component.
+          ══════════════════════════════════════════════════════════════ */}
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden divide-y divide-slate-200">
+            {/* Latest-pull banner — tight, single line, white-on-blue */}
+            <div className="flex items-center justify-between gap-3 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex-wrap">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <ShieldAlert size={14} className="shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-90">Latest Pull</span>
+                <span className="h-3 w-px bg-white/40"/>
+                <span className="text-[12px] font-semibold truncate">CVOR Performance · Intervention &amp; Event Details · Travel Kilometric Information</span>
+              </div>
+              <span className="text-[10px] uppercase tracking-wider opacity-80 font-semibold whitespace-nowrap">All sections below reflect the most recent pull</span>
+            </div>
+
+          {/* ══════════════════════════════════════════════════════════════
                CVOR PERFORMANCE SUMMARY - top-of-tab overview card
           ══════════════════════════════════════════════════════════════ */}
           {(() => {
-            const col = carrierProfile.cvorAnalysis.collisions;
-            const con = carrierProfile.cvorAnalysis.convictions;
-            const ins = carrierProfile.cvorAnalysis.inspections;
-            const cts = carrierProfile.cvorAnalysis.counts;
+            // Drive the main CVOR Performance card from the latest pull so it matches the
+            // "Latest Pull" banner above it. Fall back to carrierProfile if (somehow) no pulls.
+            const lp = cvorPeriodicReports[cvorPeriodicReports.length - 1];
+            const carrierCounts = carrierProfile.cvorAnalysis.counts;
 
-            // % of threshold used (what the screenshot shows: 47.6 / 53.9 / 87.8)
-            const colPct = +(col.percentage / (col.weight / 100)).toFixed(2);
-            const conPct = +(con.percentage / (con.weight / 100)).toFixed(2);
-            const insPct = +(ins.percentage / (ins.weight / 100)).toFixed(2);
+            const col = lp
+              ? { percentage: lp.colContrib, weight: 40 }
+              : carrierProfile.cvorAnalysis.collisions;
+            const con = lp
+              ? { percentage: lp.conContrib, weight: 40 }
+              : carrierProfile.cvorAnalysis.convictions;
+            const ins = lp
+              ? { percentage: lp.insContrib, weight: 20 }
+              : carrierProfile.cvorAnalysis.inspections;
+
+            // Per-pull counts replace the hard-coded carrierProfile counts. We keep the
+            // milesByPeriod map from the carrier profile (used by the Mileage period filter)
+            // since pulls only carry their own 24-month totals, not per-period breakdowns.
+            const cts = lp
+              ? {
+                  ...carrierCounts,
+                  collisions:                lp.collisionEvents,
+                  convictions:               lp.convictionEvents,
+                  oosOverall:                lp.oosOverall,
+                  oosVehicle:                lp.oosVehicle,
+                  oosDriver:                 lp.oosDriver,
+                  trucks:                    lp.trucks,
+                  onMiles:                   lp.onMiles,
+                  canadaMiles:               lp.canadaMiles,
+                  totalCanadaMiles:          lp.onMiles + lp.canadaMiles,
+                  totalMiles:                lp.totalMiles,
+                  collisionPointsWithPoints: lp.collWithPoints,
+                  collisionPointsWithoutPoints: lp.collWithoutPoints,
+                  totalCollisionPoints:      lp.totalCollisionPoints,
+                  convictionPoints:          lp.convictionPoints,
+                }
+              : carrierCounts;
+
+            // % of threshold used — taken directly from the pull when available so it
+            // exactly matches the Pull Snapshot tiles below.
+            const colPct = lp ? lp.colPctOfThresh : +(col.percentage / (col.weight / 100)).toFixed(2);
+            const conPct = lp ? lp.conPctOfThresh : +(con.percentage / (con.weight / 100)).toFixed(2);
+            const insPct = lp ? lp.insPctOfThresh : +(ins.percentage / (ins.weight / 100)).toFixed(2);
 
             // Color helpers (applied to pctOfThresh for category tiles)
             const rc = (v: number) =>
@@ -5159,7 +5633,7 @@ export function InspectionsPage() {
             const lvlOos   = lvlStats.reduce((s,l) => s+l.oosCount, 0);
 
             return (
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+              <div className="bg-white">
 
                 {/* â"€â"€â"€ HEADER â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                 <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
@@ -5307,34 +5781,34 @@ export function InspectionsPage() {
                     })()}
                   </div>
 
-                  {/* â"€â"€â"€ CATEGORY TILES â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
+                  {/* â"€â"€â"€ CATEGORY BLOCKS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
                   <div className="px-5 py-4">
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {([
                       { key:'col', label:'Collisions',  pct:colPct, weight:col.weight, detail1:`${cts.collisions} collisions`, detail2:`${cts.totalCollisionPoints} pts` },
                       { key:'con', label:'Convictions', pct:conPct, weight:con.weight, detail1:`${cts.convictions} convictions`, detail2:`${cts.convictionPoints} pts` },
                       { key:'ins', label:'Inspections', pct:insPct, weight:ins.weight, detail1:`OOS rate`, detail2:`${cts.oosOverall}%` },
                     ] as {key:string;label:string;pct:number;weight:number;detail1:string;detail2:string}[]).map(({ key, label, pct, weight, detail1, detail2 }) => (
-                      <div key={key} className={`relative rounded-xl border p-3 ${tileBg(pct)} group/card cursor-pointer transition-shadow hover:shadow-lg`}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${rb(pct)}`}>{rl(pct)}</span>
+                      <div key={key} className={`relative rounded-2xl border p-5 ${tileBg(pct)} group/card cursor-pointer transition-all hover:shadow-lg hover:-translate-y-0.5`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${rb(pct)}`}>{rl(pct)}</span>
                         </div>
-                        <div className="text-[30px] leading-none font-black my-1" style={{ color: rc(pct) }}>
+                        <div className="text-[48px] leading-none font-black mb-3 tabular-nums" style={{ color: rc(pct) }}>
                           {pct.toFixed(1)}%
                         </div>
-                        <div className="text-[11px] text-slate-600 mb-0.5">{detail1}  ·  {detail2}</div>
-                        <div className="text-[10px] text-slate-400 mb-2">{rl(pct)}  ·  {weight}% weight</div>
+                        <div className="text-[12px] text-slate-600 mb-1">{detail1}  -  {detail2}</div>
+                        <div className="text-[11px] text-slate-500 mb-3">{rl(pct)}  -  {weight}% weight</div>
                         <div className="relative">
-                          <div className="relative h-[7px] rounded-full overflow-hidden" style={{ background: grad, boxShadow:'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
-                            <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background:'linear-gradient(to bottom,rgba(255,255,255,0.28),transparent)' }}/>
+                          <div className="relative h-[8px] rounded-full overflow-hidden" style={{ background: grad, boxShadow:'inset 0 1px 3px rgba(0,0,0,0.20)' }}>
+                            <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background:'linear-gradient(to bottom,rgba(255,255,255,0.30),transparent)' }}/>
                             <div className="absolute top-0 bottom-0 bg-slate-900/30 rounded-r-full" style={{ left:`${Math.min(pct,100)}%`, right:0 }}/>
-                            <div className="absolute top-0 bottom-0 w-[2px] bg-white shadow" style={{ left:`${Math.min(pct,100)}%`, transform:'translateX(-50%)' }}/>
+                            <div className="absolute top-0 bottom-0 w-[2.5px] bg-white shadow" style={{ left:`${Math.min(pct,100)}%`, transform:'translateX(-50%)' }}/>
                             {[cvorThresholds.warning, cvorThresholds.intervention].map(t => (
                               <div key={t} className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left:`${t}%` }}/>
                             ))}
                           </div>
-                          <div className="flex justify-between text-[8.5px] mt-0.5 text-slate-400">
+                          <div className="flex justify-between text-[9px] mt-1 text-slate-400 font-semibold">
                             <span>WARN {cvorThresholds.warning}%</span>
                             <span>AUDIT {cvorThresholds.intervention}%</span>
                             <span>SC {cvorThresholds.showCause}%</span>
@@ -5574,7 +6048,115 @@ export function InspectionsPage() {
                   </div>
 
                   {/* â"€â"€â"€ CVOR RATING COMPARISON â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
-                  <div className="px-5 py-4">
+                  <div className="px-5 py-4 space-y-4">
+                  {/* â"€â"€â"€ COLLISION + CONVICTION DETAIL BOXES (hover to reveal breakdown) â"€â"€â"€ */}
+                  {(() => {
+                    const cd = carrierProfile.cvorAnalysis.collisionDetails;
+                    const cv = carrierProfile.cvorAnalysis.convictionDetails;
+                    const collRows: { label: string; value: number; color: string }[] = [
+                      { label: 'With Points',     value: cd.withPoints,     color: '#dc2626' },
+                      { label: 'Not Pointed',     value: cd.notPointed,     color: '#94a3b8' },
+                      { label: 'Fatal',           value: cd.fatal,          color: '#e2e8f0' },
+                      { label: 'Personal Injury', value: cd.personalInjury, color: '#f59e0b' },
+                      { label: 'Property Damage', value: cd.propertyDamage, color: '#3b82f6' },
+                    ];
+                    const convRows: { label: string; value: number; color: string }[] = [
+                      { label: 'With Points', value: cv.withPoints, color: '#f59e0b' },
+                      { label: 'Not Pointed', value: cv.notPointed, color: '#94a3b8' },
+                      { label: 'Driver',      value: cv.driver,     color: '#a855f7' },
+                      { label: 'Vehicle',     value: cv.vehicle,    color: '#6366f1' },
+                      { label: 'Load',        value: cv.load,       color: '#10b981' },
+                      { label: 'Other',       value: cv.other,      color: '#e2e8f0' },
+                    ];
+
+                    type Box = {
+                      title: string;
+                      total: number;
+                      totalLabel: string;
+                      monthsLabel: string;
+                      fromDate: string;
+                      toDate: string;
+                      IconCmp: React.ComponentType<{ size?: number; className?: string }>;
+                      iconBg: string;
+                      iconColor: string;
+                      headerBg: string;
+                      totalColor: string;
+                      rows: { label: string; value: number; color: string }[];
+                    };
+                    const boxes: Box[] = [
+                      {
+                        title: 'Collision Details', total: cd.total, totalLabel: 'Total Collisions',
+                        monthsLabel: cd.monthsLabel, fromDate: cd.fromDate, toDate: cd.toDate,
+                        IconCmp: Truck, iconBg: 'bg-red-50', iconColor: 'text-red-600', headerBg: '#dc2626',
+                        totalColor: 'text-red-600', rows: collRows,
+                      },
+                      {
+                        title: 'Conviction Details', total: cv.total, totalLabel: 'Total Convictions',
+                        monthsLabel: cv.monthsLabel, fromDate: cv.fromDate, toDate: cv.toDate,
+                        IconCmp: Scale, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', headerBg: '#d97706',
+                        totalColor: 'text-amber-600', rows: convRows,
+                      },
+                    ];
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {boxes.map(b => (
+                          <div
+                            key={b.title}
+                            className="group/detail relative rounded-xl border border-slate-200 bg-white px-4 py-3 cursor-help hover:border-slate-300 hover:shadow-sm transition-all"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className={`w-8 h-8 rounded-lg ${b.iconBg} flex items-center justify-center flex-shrink-0`}>
+                                  <b.IconCmp size={14} className={b.iconColor} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[12px] font-bold text-slate-900 truncate">{b.title}</div>
+                                  <div className="text-[10px] text-slate-500">{b.monthsLabel}  ·  Hover for breakdown</div>
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <div className={`text-2xl font-black tabular-nums ${b.totalColor}`}>{b.total}</div>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{b.totalLabel}</div>
+                              </div>
+                            </div>
+
+                            {/* Hover popup - matches existing CVOR Rating Comparison tooltip pattern */}
+                            <div
+                              className="hidden group-hover/detail:flex absolute z-[100] pointer-events-none flex-col gap-0"
+                              style={{ top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', width: 260 }}
+                            >
+                              <div
+                                className="self-center w-0 h-0"
+                                style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '6px solid #0f172a' }}
+                              />
+                              <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-700" style={{ background: '#0f172a' }}>
+                                <div className="px-3 py-2 flex items-center justify-between" style={{ background: b.headerBg }}>
+                                  <span className="text-white font-bold text-[11px] truncate">{b.title}</span>
+                                  <span className="text-white/90 text-[11px] font-mono ml-1 flex-shrink-0">{b.total} total</span>
+                                </div>
+                                <div className="px-3 py-1.5 text-[10px] text-slate-400 border-b border-slate-700/60">
+                                  {b.fromDate} â†' {b.toDate} ({b.monthsLabel})
+                                </div>
+                                <div className="px-3 py-2 space-y-1.5">
+                                  {b.rows.map(r => (
+                                    <div key={r.label} className="flex justify-between items-center">
+                                      <span className="inline-flex items-center gap-2 text-[11px] text-slate-300">
+                                        <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: r.color }} />
+                                        {r.label}
+                                      </span>
+                                      <span className="text-[12px] font-bold tabular-nums" style={{ color: r.color }}>{r.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
                   <div className="rounded-xl border border-slate-200">
                     <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 rounded-t-xl flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -5638,12 +6220,987 @@ export function InspectionsPage() {
                       })}
                     </div>
                   </div>
+
+                  {/* â"€â"€â"€ COLLISION + CONVICTION BREAKDOWNS (two separate collapsible inner subsections) â"€â"€â"€ */}
+                  {(() => {
+                    const fmtNum = (n: number) => n.toLocaleString('en-US');
+                    const fmt2 = (n: number) => n.toFixed(2);
+                    const collisionRows = [
+                      { period: 1, from: '2025-04-01', to: '2026-01-26', months: 9.87,  kmPerMonth: 1334629, events: 3, points: 6,  threshold: 79.04, pctSet: 7.59 },
+                      { period: 2, from: '2024-05-07', to: '2025-03-31', months: 10.83, kmPerMonth: 1355579, events: 8, points: 10, threshold: 88.09, pctSet: 11.35 },
+                      { period: 3, from: '2024-01-27', to: '2024-05-06', months: 3.33,  kmPerMonth: 1312112, events: 2, points: 4,  threshold: 26.22, pctSet: 15.26 },
+                    ];
+                    const convictionRows = [
+                      { period: 1, from: '2025-04-01', to: '2026-01-26', months: 9.87,  kmPerMonth: 1334629, events: 8,  points: 18, threshold: 181.67, pctSet: 9.91 },
+                      { period: 2, from: '2024-05-07', to: '2025-03-31', months: 10.83, kmPerMonth: 1355579, events: 17, points: 42, threshold: 202.47, pctSet: 20.74 },
+                      { period: 3, from: '2024-01-27', to: '2024-05-06', months: 3.33,  kmPerMonth: 1312112, events: 4,  points: 11, threshold: 60.26,  pctSet: 18.25 },
+                    ];
+                    const sumTotals = (rows: typeof collisionRows) =>
+                      rows.reduce(
+                        (acc, r) => ({ months: acc.months + r.months, events: acc.events + r.events, points: acc.points + r.points }),
+                        { months: 0, events: 0, points: 0 }
+                      );
+                    const weightedPct = (rows: typeof collisionRows, totalMonths: number) =>
+                      +(rows.reduce((s, r) => s + r.pctSet * r.months, 0) / totalMonths).toFixed(2);
+                    const colTotals = sumTotals(collisionRows);
+                    const conTotals = sumTotals(convictionRows);
+                    const colTotalPctSet = weightedPct(collisionRows, colTotals.months);
+                    const conTotalPctSet = weightedPct(convictionRows, conTotals.months);
+
+                    type Row = typeof collisionRows[number];
+                    const renderBreakdownCard = (
+                      title: string,
+                      subtitle: string,
+                      IconCmp: React.ComponentType<{ size?: number; className?: string }>,
+                      iconBg: string,
+                      iconColor: string,
+                      isOpen: boolean,
+                      setOpen: (fn: (o: boolean) => boolean) => void,
+                      rows: Row[],
+                      totals: { months: number; events: number; points: number },
+                      totalPct: number,
+                      accent: 'red' | 'amber',
+                    ) => {
+                      const accentText = accent === 'red' ? 'text-red-600' : 'text-amber-600';
+                      return (
+                        <div className="rounded-xl border border-slate-200 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setOpen(o => !o)}
+                            aria-expanded={isOpen}
+                            className="w-full px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`w-6 h-6 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0`}>
+                                <IconCmp size={12} className={iconColor} />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-[12px] font-bold text-slate-900">{title}</div>
+                                <div className="text-[10px] text-slate-500">{subtitle}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                {isOpen ? 'Hide' : 'Show'}
+                              </span>
+                              {isOpen
+                                ? <ChevronUp size={14} className="text-slate-400" />
+                                : <ChevronDown size={14} className="text-slate-400" />}
+                            </div>
+                          </button>
+                          {isOpen && (
+                            <>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="bg-slate-50/40 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                      <th className="px-3 py-2 text-left">Period</th>
+                                      <th className="px-3 py-2 text-left">From</th>
+                                      <th className="px-3 py-2 text-left">To</th>
+                                      <th className="px-3 py-2 text-right">Months</th>
+                                      <th className="px-3 py-2 text-right">KM/Month</th>
+                                      <th className="px-3 py-2 text-right">Events</th>
+                                      <th className="px-3 py-2 text-right">Points</th>
+                                      <th className="px-3 py-2 text-right">Threshold</th>
+                                      <th className="px-3 py-2 text-right">% Set</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {rows.map(r => (
+                                      <tr key={r.period} className="hover:bg-slate-50/60">
+                                        <td className="px-3 py-2 font-bold text-blue-600 tabular-nums">{r.period}</td>
+                                        <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.from}</td>
+                                        <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.to}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-blue-600 tabular-nums">{fmt2(r.months)}</td>
+                                        <td className="px-3 py-2 text-right text-slate-700 tabular-nums">{fmtNum(r.kmPerMonth)}</td>
+                                        <td className="px-3 py-2 text-right font-bold text-slate-900 tabular-nums">{r.events}</td>
+                                        <td className={`px-3 py-2 text-right font-bold tabular-nums ${accentText}`}>{r.points}</td>
+                                        <td className="px-3 py-2 text-right text-slate-700 tabular-nums">{fmt2(r.threshold)}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">{fmt2(r.pctSet)}%</td>
+                                      </tr>
+                                    ))}
+                                    <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold">
+                                      <td className="px-3 py-2 text-slate-900" colSpan={3}>Total</td>
+                                      <td className="px-3 py-2 text-right text-slate-900 tabular-nums">{fmt2(totals.months)}</td>
+                                      <td className="px-3 py-2 text-right text-slate-400">â€"</td>
+                                      <td className="px-3 py-2 text-right text-slate-900 tabular-nums">{totals.events}</td>
+                                      <td className={`px-3 py-2 text-right tabular-nums ${accentText}`}>{totals.points}</td>
+                                      <td className="px-3 py-2 text-right text-slate-400">â€"</td>
+                                      <td className={`px-3 py-2 text-right tabular-nums ${accentText}`}>{fmt2(totalPct)}%</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                              <p className="px-4 py-2 text-[10px] text-slate-500 italic border-t border-slate-100 bg-slate-50/40">
+                                *Based on actual/estimated km rate per month reported by carrier
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <>
+                        {renderBreakdownCard(
+                          'Collision Breakdown by Kilometre Rate',
+                          `${colTotals.events} events  ·  ${colTotals.points} points  ·  ${fmt2(colTotalPctSet)}% of threshold`,
+                          AlertTriangle, 'bg-red-50', 'text-red-600',
+                          cvorCollBreakdownOpen, setCvorCollBreakdownOpen,
+                          collisionRows, colTotals, colTotalPctSet, 'red'
+                        )}
+                        {renderBreakdownCard(
+                          'Conviction Breakdown by Kilometre Rate',
+                          `${conTotals.events} events  ·  ${conTotals.points} points  ·  ${fmt2(conTotalPctSet)}% of threshold`,
+                          Scale, 'bg-amber-50', 'text-amber-600',
+                          cvorConvBreakdownOpen, setCvorConvBreakdownOpen,
+                          convictionRows, conTotals, conTotalPctSet, 'amber'
+                        )}
+                      </>
+                    );
+                  })()}
+
+                  {/* â"€â"€â"€ INSPECTION STATISTICS (collapsible inner subsection) â"€â"€â"€ */}
+                  {(() => {
+                    const inspStats = {
+                      fromDate: '2024-01-27',
+                      toDate: '2026-01-26',
+                      monthsLabel: '24 Months',
+                      cvsaInspections: 149,
+                      vehiclesInspected: 220,
+                      driversInspected: 149,
+                      totalUnits: 369,
+                      driverPoints: 2,
+                      vehiclePoints: 45,
+                      totalPoints: 46.37,
+                      setThreshold: 59.08,
+                      pctSetThreshold: 78.50,
+                    };
+
+                    const rows: { label: string; value: string | number; emphasis?: boolean; tone?: 'red' | 'amber' | 'default' }[] = [
+                      { label: '# of CVSA inspections conducted',           value: inspStats.cvsaInspections },
+                      { label: '# of Vehicles inspected',                   value: inspStats.vehiclesInspected },
+                      { label: '# of Drivers inspected',                    value: inspStats.driversInspected },
+                      { label: 'Total units inspected',                     value: inspStats.totalUnits, emphasis: true },
+                      { label: '# of Driver points assigned (D)',           value: inspStats.driverPoints },
+                      { label: '# of Vehicle points assigned (V)',          value: inspStats.vehiclePoints },
+                      { label: 'Total inspection points (0.6875 Ã— D + V)',  value: inspStats.totalPoints.toFixed(2), emphasis: true },
+                      { label: '# of Set inspection threshold points**',    value: inspStats.setThreshold.toFixed(2) },
+                      { label: '% of Set Threshold',                        value: `${inspStats.pctSetThreshold.toFixed(1)}%`, emphasis: true, tone: inspStats.pctSetThreshold >= 70 ? 'red' : inspStats.pctSetThreshold >= 50 ? 'amber' : 'default' },
+                    ];
+
+                    return (
+                      <div className="rounded-xl border border-slate-200 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setCvorInspStatsOpen(o => !o)}
+                          aria-expanded={cvorInspStatsOpen}
+                          className="w-full px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                              <ClipboardCheck size={12} className="text-blue-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[12px] font-bold text-slate-900">Inspection Statistics</div>
+                              <div className="text-[10px] text-slate-500">From {inspStats.fromDate} to {inspStats.toDate} ({inspStats.monthsLabel})</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {cvorInspStatsOpen ? 'Hide' : 'Show'}
+                            </span>
+                            {cvorInspStatsOpen
+                              ? <ChevronUp size={14} className="text-slate-400" />
+                              : <ChevronDown size={14} className="text-slate-400" />}
+                          </div>
+                        </button>
+                        {cvorInspStatsOpen && (
+                          <>
+                            <table className="w-full text-xs">
+                              <tbody className="divide-y divide-slate-100">
+                                {rows.map(r => {
+                                  const tone = r.tone ?? 'default';
+                                  const valueColor =
+                                    tone === 'red'   ? 'text-red-600'
+                                    : tone === 'amber' ? 'text-amber-600'
+                                    : r.emphasis ? 'text-slate-900' : 'text-slate-700';
+                                  const isPct = r.label.startsWith('% of');
+                                  return (
+                                    <tr key={r.label} className={`hover:bg-slate-50/60 ${isPct ? 'bg-orange-50/40' : ''}`}>
+                                      <td className={`px-4 py-2.5 ${isPct ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{r.label}</td>
+                                      <td className={`px-4 py-2.5 text-right tabular-nums font-bold ${valueColor}`}>{r.value}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                            <p className="px-4 py-2 text-[10px] text-slate-500 italic border-t border-slate-100 bg-slate-50/40">
+                              **Inspection threshold value is based on number of drivers and vehicles inspected during the entire performance period.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   </div>
 
                 </div>
               </div>
             );
           })()}
+
+          {/* ══════════════════════════════════════════════════════════════
+               INTERVENTION & EVENT DETAILS - PDF-faithful event table
+               (Inspection / Collision / Conviction) - expandable rows
+               + KPI cards, search, sortable columns, column toggles, pagination
+          ══════════════════════════════════════════════════════════════ */}
+          {(() => {
+            const allEvents = cvorInterventionEvents;
+
+            // KPI helpers
+            const VEH_DEFECT_CATS = ['BRAKE SYSTEM', 'WHEELS/RIMS', 'COUPLING DEVICES', 'BODY', 'LOAD SECURITY', 'REGISTRATION', 'OFFICER DIRECTION'];
+            const DRV_DEFECT_CATS = ['HOURS OF SERVICE', 'DRIVERS LICENCES', 'TRIP INSPECTION', 'CVOR/NSC'];
+            const isClean = (e: CvorInterventionEvent) =>
+              e.type === 'inspection' && (e.oosCount ?? 0) === 0 && (e.totalDefects ?? 0) === 0 &&
+              (e.vehiclePoints ?? 0) === 0 && (e.driverPoints ?? 0) === 0;
+            const hasOos = (e: CvorInterventionEvent) => (e.oosCount ?? 0) > 0;
+            const hasVehIssue = (e: CvorInterventionEvent) =>
+              (e.vehiclePoints ?? 0) > 0 || (e.defects ?? []).some(d => VEH_DEFECT_CATS.includes(d.category));
+            const hasDriverIssue = (e: CvorInterventionEvent) =>
+              (e.driverPoints ?? 0) > 0 || (e.defects ?? []).some(d => DRV_DEFECT_CATS.includes(d.category));
+            const isSevere = (e: CvorInterventionEvent) => {
+              const totalPts = (e.vehiclePoints ?? 0) + (e.driverPoints ?? 0) + (e.pointsTotal ?? 0);
+              return totalPts >= 7 || (e.totalDefects ?? 0) >= 7;
+            };
+            const hasTicket = (e: CvorInterventionEvent) =>
+              !!e.ticket || e.charged === 'Y' || e.collision?.driverCharged === 'Y';
+
+            const kpiCounts = {
+              all:        allEvents.length,
+              clean:      allEvents.filter(isClean).length,
+              oos:        allEvents.filter(hasOos).length,
+              vehicle:    allEvents.filter(hasVehIssue).length,
+              hosDriver:  allEvents.filter(hasDriverIssue).length,
+              severe:     allEvents.filter(isSevere).length,
+              tickets:    allEvents.filter(hasTicket).length,
+            };
+
+            const matchesKpi = (e: CvorInterventionEvent) => {
+              switch (cvorEventKpiFilter) {
+                case 'ALL':        return true;
+                case 'CLEAN':      return isClean(e);
+                case 'OOS':        return hasOos(e);
+                case 'VEHICLE':    return hasVehIssue(e);
+                case 'HOS_DRIVER': return hasDriverIssue(e);
+                case 'SEVERE':     return isSevere(e);
+                case 'TICKETS':    return hasTicket(e);
+              }
+            };
+
+            const matchesSearch = (e: CvorInterventionEvent) => {
+              const q = cvorEventSearch.trim().toLowerCase();
+              if (!q) return true;
+              const haystack = [
+                e.cvir, e.ticket, e.location, e.driverName, e.driverLicence,
+                e.vehicle1?.make, e.vehicle1?.unit, e.vehicle1?.plate,
+                e.vehicle2?.make, e.vehicle2?.unit, e.vehicle2?.plate,
+                e.type, e.date,
+                e.collision?.collisionClass, e.collision?.microfilm,
+                e.conviction?.offence, e.conviction?.microfilm, e.conviction?.ccmtaEquivalency,
+                ...(e.defects ?? []).flatMap(d => [d.category, d.defect]),
+              ].filter(Boolean).join(' ').toLowerCase();
+              return haystack.includes(q);
+            };
+
+            const matchesType = (e: CvorInterventionEvent) =>
+              cvorEventTypeFilter === 'ALL' ? true : e.type === cvorEventTypeFilter;
+
+            const filtered = allEvents.filter(e => matchesKpi(e) && matchesType(e) && matchesSearch(e));
+
+            // Sorting
+            const getSortVal = (r: CvorInterventionEvent): string | number => {
+              switch (cvorEventSort.col) {
+                case 'date':          return new Date(r.date).getTime();
+                case 'time':          return r.startTime ?? r.time ?? '';
+                case 'type':          return r.type;
+                case 'cvirOrTicket':  return r.cvir ?? r.ticket ?? '';
+                case 'location':      return r.location ?? '';
+                case 'driver':        return r.driverName ?? '';
+                case 'driverLicence': return r.driverLicence ?? '';
+                case 'vehicle1':      return r.vehicle1?.plate ?? '';
+                case 'vehicle2':      return r.vehicle2?.plate ?? '';
+                case 'level':         return r.level ?? -1;
+                case 'vPts':          return r.vehiclePoints ?? 0;
+                case 'dPts':          return (r.driverPoints ?? 0) + (r.pointsTotal ?? 0);
+                case 'oos':           return r.oosCount ?? 0;
+                case 'defects':       return r.totalDefects ?? 0;
+                case 'charged':       return (r.charged === 'Y' || r.collision?.driverCharged === 'Y') ? 1 : 0;
+                default:              return 0;
+              }
+            };
+            const sorted = [...filtered].sort((a, b) => {
+              const dir = cvorEventSort.dir === 'asc' ? 1 : -1;
+              const av = getSortVal(a), bv = getSortVal(b);
+              if (av < bv) return -1 * dir;
+              if (av > bv) return 1 * dir;
+              return 0;
+            });
+
+            // Pagination
+            const totalPages = Math.max(1, Math.ceil(sorted.length / cvorEventRowsPerPage));
+            const safePage = Math.min(cvorEventPage, totalPages);
+            const paged = sorted.slice((safePage - 1) * cvorEventRowsPerPage, safePage * cvorEventRowsPerPage);
+
+            const isVis = (id: string) => cvorEventColumns.find(c => c.id === id)?.visible !== false;
+
+            const onSort = (col: string) => {
+              setCvorEventSort(prev => prev.col === col
+                ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                : { col, dir: 'asc' });
+            };
+            const SortIcon = ({ col }: { col: string }) => {
+              if (cvorEventSort.col !== col) return <ChevronDown size={11} className="text-slate-300 inline -mt-0.5" />;
+              return cvorEventSort.dir === 'asc'
+                ? <ChevronUp size={11} className="text-blue-500 inline -mt-0.5" />
+                : <ChevronDown size={11} className="text-blue-500 inline -mt-0.5" />;
+            };
+            const SortableTh = ({ col, label, className }: { col: string; label: string; className?: string }) => (
+              <th className={`px-3 py-2.5 text-left ${className ?? ''}`}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onSort(col); }}
+                  className={`inline-flex items-center gap-1 hover:text-slate-700 transition-colors ${cvorEventSort.col === col ? 'text-slate-700' : ''}`}
+                >
+                  {label} <SortIcon col={col} />
+                </button>
+              </th>
+            );
+
+            const typeBadge = (t: CvorInterventionEvent['type']) => {
+              if (t === 'inspection') return { cls: 'bg-blue-50 text-blue-700 border-blue-200',     IconCmp: ClipboardCheck, label: 'Inspection' };
+              if (t === 'collision')  return { cls: 'bg-red-50 text-red-700 border-red-200',        IconCmp: Truck,         label: 'Collision'  };
+              return                       { cls: 'bg-amber-50 text-amber-700 border-amber-200',   IconCmp: Scale,         label: 'Conviction' };
+            };
+
+            const fmtVeh = (v?: { make: string; unit: string; plate: string }) => {
+              if (!v || (!v.make && !v.unit && !v.plate)) return '—';
+              const top = [v.make, v.unit].filter(Boolean).join(' ');
+              return { top: top || '—', plate: v.plate || '' };
+            };
+
+            const renderExpand = (e: CvorInterventionEvent) => {
+              if (e.type === 'inspection') {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Inspection Summary</div>
+                      <div className="text-xs space-y-1.5">
+                        <div className="flex justify-between"><span className="text-slate-500">CVIR #</span><span className="font-mono font-bold text-slate-800">{e.cvir ?? '—'}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Date</span><span className="font-mono text-slate-700">{e.date}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Time</span><span className="font-mono text-slate-700">{e.startTime} - {e.endTime}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Level</span><span className="font-bold text-slate-800">{e.level}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500"># of Vehicles</span><span className="font-bold text-slate-800">{e.numVehicles}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Co-Driver</span><span className="font-bold text-slate-800">{e.coDriver}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Impoundment</span><span className="font-bold text-slate-800">{e.impoundment}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Charged</span><span className={`font-bold ${e.charged === 'Y' ? 'text-red-600' : 'text-emerald-600'}`}>{e.charged}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Categories OOS*</span><span className={`font-bold ${(e.oosCount ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{e.oosCount ?? 0}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Total Defects</span><span className={`font-bold ${(e.totalDefects ?? 0) > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{e.totalDefects ?? 0}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Vehicle Points</span><span className={`font-bold ${(e.vehiclePoints ?? 0) > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{e.vehiclePoints ?? 0}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Driver Points</span><span className={`font-bold ${(e.driverPoints ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{e.driverPoints ?? 0}</span></div>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Driver &amp; Vehicles</div>
+                      <div className="text-xs space-y-2">
+                        <div>
+                          <div className="text-slate-500">Driver</div>
+                          <div className="font-bold text-slate-800">{e.driverName ?? '—'}</div>
+                          <div className="font-mono text-slate-600 text-[11px]">{e.driverLicence ?? '—'} <span className="text-slate-400">({e.driverLicenceJurisdiction ?? '—'})</span></div>
+                        </div>
+                        {e.vehicle1 && (
+                          <div className="pt-2 border-t border-slate-100">
+                            <div className="text-slate-500">Vehicle 1</div>
+                            <div className="font-bold text-slate-800">{e.vehicle1.make} {e.vehicle1.unit}</div>
+                            <div className="font-mono text-slate-600 text-[11px]">{e.vehicle1.plate} <span className="text-slate-400">({e.vehicle1.jurisdiction})</span></div>
+                          </div>
+                        )}
+                        {e.vehicle2 && (e.vehicle2.make || e.vehicle2.unit || e.vehicle2.plate) && (
+                          <div className="pt-2 border-t border-slate-100">
+                            <div className="text-slate-500">Vehicle 2</div>
+                            <div className="font-bold text-slate-800">{e.vehicle2.make} {e.vehicle2.unit}</div>
+                            <div className="font-mono text-slate-600 text-[11px]">{e.vehicle2.plate} <span className="text-slate-400">({e.vehicle2.jurisdiction})</span></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Defects ({e.defects?.length ?? 0})</div>
+                      {e.defects && e.defects.length > 0 ? (
+                        <ul className="space-y-1.5 text-xs">
+                          {e.defects.map((d, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              {d.oos
+                                ? <span className="mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">OOS</span>
+                                : <span className="mt-1 w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />}
+                              <div className="min-w-0">
+                                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{d.category}</div>
+                                <div className={`text-[12px] font-medium ${d.oos ? 'text-red-700' : 'text-slate-700'}`}>{d.defect}</div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-xs text-slate-500 italic">No defects recorded.</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              if (e.type === 'collision' && e.collision) {
+                const c = e.collision;
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-2">Collision Details</div>
+                      <div className="text-xs space-y-1.5">
+                        <div className="flex justify-between"><span className="text-slate-500">Incident Date</span><span className="font-mono text-slate-700">{e.date}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Incident Time</span><span className="font-mono text-slate-700">{e.time}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Class</span><span className="font-bold text-slate-800">{c.collisionClass}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Jurisdiction</span><span className="font-bold text-slate-800">{c.jurisdiction}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Location</span><span className="font-bold text-slate-800 text-right max-w-[60%] truncate">{e.location ?? '—'}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Ticket #</span><span className="font-mono text-slate-700">{e.ticket ?? '—'}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Microfilm #</span><span className="font-mono text-slate-700">{c.microfilm}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Driver Charged</span><span className={`font-bold ${c.driverCharged === 'Y' ? 'text-red-600' : 'text-emerald-600'}`}>{c.driverCharged}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Points</span><span className="font-bold text-red-600">{c.points}</span></div>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vehicle &amp; Driver Action</div>
+                      <div className="text-xs space-y-2">
+                        <div>
+                          <div className="text-slate-500">Vehicle</div>
+                          <div className="font-mono text-slate-700">{e.vehicle1?.plate ?? '—'} <span className="text-slate-400">({e.vehicle1?.jurisdiction ?? '—'})</span></div>
+                          <div className="text-slate-700">{c.vehicleAction}</div>
+                          <div className="text-slate-500 text-[11px]">{c.vehicleCondition}</div>
+                        </div>
+                        <div className="pt-2 border-t border-slate-100">
+                          <div className="text-slate-500">Driver</div>
+                          <div className="font-bold text-slate-800">{e.driverName ?? '—'}</div>
+                          <div className="font-mono text-slate-600 text-[11px]">{e.driverLicence ?? '—'} <span className="text-slate-400">({e.driverLicenceJurisdiction ?? '—'})</span></div>
+                          <div className="text-slate-700 mt-1">{c.driverAction}</div>
+                          <div className="text-slate-500 text-[11px]">{c.driverCondition}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              if (e.type === 'conviction' && e.conviction) {
+                const c = e.conviction;
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-2">Conviction Details</div>
+                      <div className="text-xs space-y-1.5">
+                        <div className="flex justify-between"><span className="text-slate-500">Event Date</span><span className="font-mono text-slate-700">{e.date}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Event Time</span><span className="font-mono text-slate-700">{e.time ?? '—'}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Conviction Date</span><span className="font-mono text-slate-700">{c.convictionDate}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Jurisdiction</span><span className="font-bold text-slate-800">{c.jurisdiction}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Ticket #</span><span className="font-mono text-slate-700">{e.ticket ?? '—'}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Microfilm #</span><span className="font-mono text-slate-700">{c.microfilm}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Charged Carrier</span><span className="font-bold text-slate-800">{c.chargedCarrier}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Points</span><span className="font-bold text-amber-600">{c.points}</span></div>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Offence &amp; Vehicle</div>
+                      <div className="text-xs space-y-2">
+                        <div>
+                          <div className="text-slate-500">Vehicle Plate</div>
+                          <div className="font-mono text-slate-700">{e.vehicle1?.plate ?? '—'} <span className="text-slate-400">({e.vehicle1?.jurisdiction ?? '—'})</span></div>
+                        </div>
+                        <div className="pt-2 border-t border-slate-100">
+                          <div className="text-slate-500">Offence</div>
+                          <div className="font-bold text-slate-800">{c.offence}</div>
+                          {c.ccmtaEquivalency && <div className="text-slate-500 text-[11px] mt-0.5"><span className="font-semibold">CCMTA:</span> {c.ccmtaEquivalency}</div>}
+                        </div>
+                        {c.offenceLocation && (
+                          <div className="pt-2 border-t border-slate-100">
+                            <div className="text-slate-500">Offence Location</div>
+                            <div className="text-slate-700">{c.offenceLocation}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            };
+
+            const visibleColCount = cvorEventColumns.filter(c => c.visible).length + 1; // +1 for chevron col
+
+            return (
+              <div className="bg-white overflow-hidden">
+                {/* Header */}
+                <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <FileText size={15} className="text-slate-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">Intervention &amp; Event Details</div>
+                      <div className="text-[11px] text-slate-500">From {CVOR_INTERVENTION_PERIOD.fromDate} to {CVOR_INTERVENTION_PERIOD.toDate}  ·  {sorted.length} of {kpiCounts.all} events</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KPI cards (stacked layout - works well at 7 across) */}
+                {(() => {
+                  type Tone = 'rose' | 'emerald' | 'red' | 'orange' | 'blue' | 'purple' | 'yellow';
+                  const toneMap: Record<Tone, { iconBg: string; iconText: string; ring: string; valueText: string; activeBg: string }> = {
+                    rose:    { iconBg: 'bg-rose-100',    iconText: 'text-rose-600',    ring: 'ring-rose-300 border-rose-300',       valueText: 'text-rose-700',    activeBg: 'bg-rose-50/40' },
+                    emerald: { iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', ring: 'ring-emerald-300 border-emerald-300', valueText: 'text-emerald-700', activeBg: 'bg-emerald-50/40' },
+                    red:     { iconBg: 'bg-red-100',     iconText: 'text-red-600',     ring: 'ring-red-300 border-red-300',         valueText: 'text-red-700',     activeBg: 'bg-red-50/40' },
+                    orange:  { iconBg: 'bg-orange-100',  iconText: 'text-orange-600',  ring: 'ring-orange-300 border-orange-300',   valueText: 'text-orange-700',  activeBg: 'bg-orange-50/40' },
+                    blue:    { iconBg: 'bg-blue-100',    iconText: 'text-blue-600',    ring: 'ring-blue-300 border-blue-300',       valueText: 'text-blue-700',    activeBg: 'bg-blue-50/40' },
+                    purple:  { iconBg: 'bg-purple-100',  iconText: 'text-purple-600',  ring: 'ring-purple-300 border-purple-300',   valueText: 'text-purple-700',  activeBg: 'bg-purple-50/40' },
+                    yellow:  { iconBg: 'bg-yellow-100',  iconText: 'text-yellow-700',  ring: 'ring-yellow-300 border-yellow-300',   valueText: 'text-yellow-700',  activeBg: 'bg-yellow-50/40' },
+                  };
+
+                  type KpiDef = { id: typeof cvorEventKpiFilter; title: string; value: number; IconCmp: React.ComponentType<{ size?: number; className?: string }>; tone: Tone };
+                  const kpis: KpiDef[] = [
+                    { id: 'ALL',        title: 'All CVOR',    value: kpiCounts.all,       IconCmp: ClipboardCheck, tone: 'rose' },
+                    { id: 'CLEAN',      title: 'Clean',       value: kpiCounts.clean,     IconCmp: CheckCircle2,   tone: 'emerald' },
+                    { id: 'OOS',        title: 'OOS Flags',   value: kpiCounts.oos,       IconCmp: ShieldAlert,    tone: 'red' },
+                    { id: 'VEHICLE',    title: 'Veh. Issues', value: kpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
+                    { id: 'HOS_DRIVER', title: 'HOS/Driver',  value: kpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
+                    { id: 'SEVERE',     title: 'Severe (7+)', value: kpiCounts.severe,    IconCmp: AlertTriangle,  tone: 'purple' },
+                    { id: 'TICKETS',    title: 'Tickets',     value: kpiCounts.tickets,   IconCmp: Ticket,         tone: 'yellow' },
+                  ];
+
+                  return (
+                    <div className="px-5 pt-4 pb-3 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                      {kpis.map(k => {
+                        const t = toneMap[k.tone];
+                        const isActive = cvorEventKpiFilter === k.id;
+                        return (
+                          <button
+                            key={k.id}
+                            type="button"
+                            onClick={() => setCvorEventKpiFilter(k.id)}
+                            className={`group/kpi flex items-center gap-2.5 px-3 py-2.5 rounded-xl border bg-white text-left transition-all ${
+                              isActive
+                                ? `ring-2 ring-offset-1 ${t.ring} ${t.activeBg} shadow-sm`
+                                : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                            }`}
+                          >
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${t.iconBg}`}>
+                              <k.IconCmp size={16} className={t.iconText} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate leading-tight">{k.title}</div>
+                              <div className={`text-xl font-black tabular-nums leading-tight mt-0.5 ${isActive ? t.valueText : 'text-slate-900'}`}>{k.value}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Type filter row */}
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/40 flex items-center justify-between flex-wrap gap-3">
+                  <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                    <FileText size={12} className="text-slate-400" />
+                    <span className="font-semibold">Filter by type:</span>
+                    <select
+                      value={cvorEventTypeFilter}
+                      onChange={(e) => setCvorEventTypeFilter(e.target.value as typeof cvorEventTypeFilter)}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      <option value="ALL">All Types</option>
+                      <option value="inspection">Inspections</option>
+                      <option value="collision">Collisions</option>
+                      <option value="conviction">Convictions</option>
+                    </select>
+                  </label>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {sorted.length} record{sorted.length === 1 ? '' : 's'}
+                  </div>
+                </div>
+
+                {/* Toolbar: search + column toggles */}
+                <DataListToolbar
+                  searchValue={cvorEventSearch}
+                  onSearchChange={setCvorEventSearch}
+                  searchPlaceholder="Search CVIR, ticket, driver, licence, location, vehicle, defect..."
+                  columns={cvorEventColumns}
+                  onToggleColumn={(id) => setCvorEventColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                  totalItems={sorted.length}
+                  currentPage={safePage}
+                  rowsPerPage={cvorEventRowsPerPage}
+                  onPageChange={setCvorEventPage}
+                  onRowsPerPageChange={setCvorEventRowsPerPage}
+                />
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-2 py-2.5 w-8" />
+                        {isVis('type')          && <SortableTh col="type"          label="Type" />}
+                        {isVis('date')          && <SortableTh col="date"          label="Date" />}
+                        {isVis('time')          && <SortableTh col="time"          label="Time" />}
+                        {isVis('cvirOrTicket')  && <SortableTh col="cvirOrTicket"  label="CVIR / Ticket" />}
+                        {isVis('location')      && <SortableTh col="location"      label="Location" />}
+                        {isVis('driver')        && <SortableTh col="driver"        label="Driver" />}
+                        {isVis('driverLicence') && <SortableTh col="driverLicence" label="Driver Licence" />}
+                        {isVis('vehicle1')      && <SortableTh col="vehicle1"      label="Vehicle 1" />}
+                        {isVis('vehicle2')      && <SortableTh col="vehicle2"      label="Vehicle 2" />}
+                        {isVis('level')         && <SortableTh col="level"         label="Level"   className="!text-center" />}
+                        {isVis('vPts')          && <SortableTh col="vPts"          label="V Pts"   className="!text-center" />}
+                        {isVis('dPts')          && <SortableTh col="dPts"          label="D Pts"   className="!text-center" />}
+                        {isVis('oos')           && <SortableTh col="oos"           label="OOS"     className="!text-center" />}
+                        {isVis('defects')       && <SortableTh col="defects"       label="Defects" className="!text-center" />}
+                        {isVis('charged')       && <SortableTh col="charged"       label="Charged" className="!text-center" />}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paged.map(e => {
+                        const tb = typeBadge(e.type);
+                        const isOpen = cvorEventExpanded === e.id;
+                        const v1 = fmtVeh(e.vehicle1);
+                        const v2 = fmtVeh(e.vehicle2);
+                        const vPts = e.type === 'inspection' ? (e.vehiclePoints ?? 0) : 0;
+                        const dPts = e.type === 'inspection'
+                          ? (e.driverPoints ?? 0)
+                          : (e.pointsTotal ?? 0);
+                        const time = e.type === 'inspection'
+                          ? `${e.startTime ?? ''}${e.endTime ? '-' + e.endTime : ''}`
+                          : (e.time ?? '—');
+                        const cvirOrTicket = e.cvir ?? e.ticket ?? '—';
+                        const charged = e.type === 'collision'
+                          ? (e.collision?.driverCharged === 'Y' ? 'Yes' : 'No')
+                          : e.type === 'inspection'
+                            ? (e.charged === 'Y' ? 'Yes' : 'No')
+                            : 'No';
+
+                        return (
+                          <Fragment key={e.id}>
+                            <tr
+                              onClick={() => setCvorEventExpanded(isOpen ? null : e.id)}
+                              className={`cursor-pointer transition-colors ${isOpen ? 'bg-blue-50/40' : 'hover:bg-slate-50/60'}`}
+                            >
+                              <td className="px-2 py-2.5 text-center">
+                                {isOpen ? <ChevronUp size={14} className="text-slate-400 inline" /> : <ChevronDown size={14} className="text-slate-400 inline" />}
+                              </td>
+                              {isVis('type') && (
+                                <td className="px-3 py-2.5">
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] font-bold ${tb.cls}`}>
+                                    <tb.IconCmp size={11} />
+                                    {tb.label}
+                                  </span>
+                                </td>
+                              )}
+                              {isVis('date')          && <td className="px-3 py-2.5 font-mono text-slate-700 tabular-nums">{e.date}</td>}
+                              {isVis('time')          && <td className="px-3 py-2.5 font-mono text-slate-600 tabular-nums">{time}</td>}
+                              {isVis('cvirOrTicket')  && <td className="px-3 py-2.5 font-mono text-slate-700">{cvirOrTicket}</td>}
+                              {isVis('location')      && <td className="px-3 py-2.5 text-slate-700 max-w-[180px] truncate">{e.location ?? '—'}</td>}
+                              {isVis('driver')        && <td className="px-3 py-2.5 text-slate-700 font-medium max-w-[180px] truncate">{e.driverName ?? '—'}</td>}
+                              {isVis('driverLicence') && <td className="px-3 py-2.5 font-mono text-slate-600 max-w-[160px] truncate">{e.driverLicence ?? '—'}</td>}
+                              {isVis('vehicle1') && (
+                                <td className="px-3 py-2.5">
+                                  {typeof v1 === 'string'
+                                    ? <span className="text-slate-400">{v1}</span>
+                                    : <div><div className="font-bold text-slate-800">{v1.top}</div>{v1.plate && <div className="font-mono text-[10px] text-blue-600">{v1.plate}</div>}</div>}
+                                </td>
+                              )}
+                              {isVis('vehicle2') && (
+                                <td className="px-3 py-2.5">
+                                  {typeof v2 === 'string'
+                                    ? <span className="text-slate-400">{v2}</span>
+                                    : <div><div className="font-bold text-slate-800">{v2.top}</div>{v2.plate && <div className="font-mono text-[10px] text-blue-600">{v2.plate}</div>}</div>}
+                                </td>
+                              )}
+                              {isVis('level') && (
+                                <td className="px-3 py-2.5 text-center text-slate-700 tabular-nums">
+                                  {e.type === 'inspection' ? e.level : <span className="text-slate-400">—</span>}
+                                </td>
+                              )}
+                              {isVis('vPts') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  {e.type === 'inspection'
+                                    ? <span className={`inline-flex items-center justify-center min-w-[20px] px-1.5 rounded ${vPts > 0 ? 'bg-amber-50 text-amber-700 font-bold' : 'text-slate-400'}`}>{vPts}</span>
+                                    : <span className="text-slate-400">0</span>}
+                                </td>
+                              )}
+                              {isVis('dPts') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  <span className={`inline-flex items-center justify-center min-w-[20px] px-1.5 rounded ${dPts > 0 ? 'bg-red-50 text-red-700 font-bold' : 'text-slate-400'}`}>{dPts}</span>
+                                </td>
+                              )}
+                              {isVis('oos') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  {e.type === 'inspection' && (e.oosCount ?? 0) > 0
+                                    ? <span className="inline-flex items-center gap-1 px-1.5 rounded border bg-amber-50 text-amber-700 border-amber-200 font-bold"><AlertTriangle size={10} />{e.oosCount}</span>
+                                    : <span className="text-slate-400">—</span>}
+                                </td>
+                              )}
+                              {isVis('defects') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  {e.type === 'inspection'
+                                    ? <span className={(e.totalDefects ?? 0) > 0 ? 'font-bold text-slate-800' : 'text-slate-400'}>{e.totalDefects ?? 0}</span>
+                                    : <span className="text-slate-400">—</span>}
+                                </td>
+                              )}
+                              {isVis('charged') && (
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${charged === 'Yes' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-slate-400'}`}>{charged}</span>
+                                </td>
+                              )}
+                            </tr>
+                            {isOpen && (
+                              <tr>
+                                <td colSpan={visibleColCount} className="px-5 py-4 bg-slate-50/60 border-t border-slate-100">
+                                  {renderExpand(e)}
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                      {paged.length === 0 && (
+                        <tr>
+                          <td colSpan={visibleColCount} className="px-5 py-10 text-center text-sm text-slate-500">
+                            No events match the selected filter or search.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <PaginationBar
+                  totalItems={sorted.length}
+                  currentPage={safePage}
+                  rowsPerPage={cvorEventRowsPerPage}
+                  onPageChange={setCvorEventPage}
+                  onRowsPerPageChange={setCvorEventRowsPerPage}
+                />
+              </div>
+            );
+          })()}
+
+          {/* ══════════════════════════════════════════════════════════════
+               TRAVEL KILOMETRIC INFORMATION - period list with type filter,
+               sortable headers, search, column toggles, pagination
+          ══════════════════════════════════════════════════════════════ */}
+          {(() => {
+            const fmtNum = (n: number) => n.toLocaleString('en-US');
+            const isVis = (id: string) => cvorTravelColumns.find(c => c.id === id)?.visible !== false;
+
+            const matchesSearch = (r: typeof cvorTravelKm[number]) => {
+              const q = cvorTravelSearch.trim().toLowerCase();
+              if (!q) return true;
+              return [r.fromDate, r.toDate, r.type].join(' ').toLowerCase().includes(q);
+            };
+            const filtered = cvorTravelKm
+              .filter(r => cvorTravelType === 'ALL' ? true : r.type === cvorTravelType)
+              .filter(matchesSearch);
+
+            const getSortVal = (r: typeof cvorTravelKm[number]): string | number => {
+              switch (cvorTravelSort.col) {
+                case 'type':           return r.type;
+                case 'fromDate':       return r.fromDate;
+                case 'toDate':         return r.toDate;
+                case 'vehicles':       return r.vehicles;
+                case 'doubleShifted':  return r.doubleShifted;
+                case 'totalVehicles':  return r.totalVehicles;
+                case 'ontarioKm':      return r.ontarioKm;
+                case 'restOfCanadaKm': return r.restOfCanadaKm;
+                case 'usMexicoKm':     return r.usMexicoKm;
+                case 'drivers':        return r.drivers;
+                case 'totalKm':        return r.totalKm;
+                default:               return 0;
+              }
+            };
+            const sorted = [...filtered].sort((a, b) => {
+              const dir = cvorTravelSort.dir === 'asc' ? 1 : -1;
+              const av = getSortVal(a), bv = getSortVal(b);
+              if (av < bv) return -1 * dir;
+              if (av > bv) return 1 * dir;
+              return 0;
+            });
+
+            // Pagination
+            const totalPages = Math.max(1, Math.ceil(sorted.length / cvorTravelRowsPerPage));
+            const safePage = Math.min(cvorTravelPage, totalPages);
+            const paged = sorted.slice((safePage - 1) * cvorTravelRowsPerPage, safePage * cvorTravelRowsPerPage);
+
+            const onSort = (col: string) => {
+              setCvorTravelSort(prev => prev.col === col
+                ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                : { col, dir: 'desc' });
+            };
+            const SortIcon = ({ col }: { col: string }) => {
+              if (cvorTravelSort.col !== col) return <ChevronDown size={11} className="text-slate-300 inline -mt-0.5" />;
+              return cvorTravelSort.dir === 'asc'
+                ? <ChevronUp size={11} className="text-blue-500 inline -mt-0.5" />
+                : <ChevronDown size={11} className="text-blue-500 inline -mt-0.5" />;
+            };
+            const SortableTh = ({ col, label, align = 'left' }: { col: string; label: string; align?: 'left' | 'right' | 'center' }) => (
+              <th className={`px-3 py-2.5 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
+                <button
+                  type="button"
+                  onClick={() => onSort(col)}
+                  className={`inline-flex items-center gap-1 hover:text-slate-700 transition-colors ${cvorTravelSort.col === col ? 'text-slate-700' : ''}`}
+                >
+                  {label} <SortIcon col={col} />
+                </button>
+              </th>
+            );
+
+            const typeBadge = (t: 'Estimated' | 'Actual') =>
+              t === 'Estimated'
+                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+            const visibleColCount = cvorTravelColumns.filter(c => c.visible).length;
+
+            return (
+              <div className="bg-white overflow-hidden">
+                {/* Header */}
+                <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <Activity size={15} className="text-slate-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">Travel Kilometric Information</div>
+                      <div className="text-[11px] text-slate-500">Per-period vehicle / driver counts &amp; kilometres travelled</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Type filter + legend row */}
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/40 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                      <Activity size={12} className="text-slate-400" />
+                      <span className="font-semibold">Filter by type:</span>
+                      <select
+                        value={cvorTravelType}
+                        onChange={(e) => setCvorTravelType(e.target.value as typeof cvorTravelType)}
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="ALL">All Periods</option>
+                        <option value="Estimated">Estimated only</option>
+                        <option value="Actual">Actual only</option>
+                      </select>
+                    </label>
+                    <span className="text-xs text-slate-500">{sorted.length} period{sorted.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    *E: Estimated &nbsp;·&nbsp; A: Actual
+                  </div>
+                </div>
+
+                {/* Toolbar: search + column toggles */}
+                <DataListToolbar
+                  searchValue={cvorTravelSearch}
+                  onSearchChange={setCvorTravelSearch}
+                  searchPlaceholder="Search by date or type..."
+                  columns={cvorTravelColumns}
+                  onToggleColumn={(id) => setCvorTravelColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                  totalItems={sorted.length}
+                  currentPage={safePage}
+                  rowsPerPage={cvorTravelRowsPerPage}
+                  onPageChange={setCvorTravelPage}
+                  onRowsPerPageChange={setCvorTravelRowsPerPage}
+                />
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        {isVis('type')           && <SortableTh col="type"           label="E/A" />}
+                        {isVis('fromDate')       && <SortableTh col="fromDate"       label="From" />}
+                        {isVis('toDate')         && <SortableTh col="toDate"         label="To" />}
+                        {isVis('vehicles')       && <SortableTh col="vehicles"       label="# Vehicles"        align="right" />}
+                        {isVis('doubleShifted')  && <SortableTh col="doubleShifted"  label="# Double Shifted"  align="right" />}
+                        {isVis('totalVehicles')  && <SortableTh col="totalVehicles"  label="Total Vehicles"    align="right" />}
+                        {isVis('ontarioKm')      && <SortableTh col="ontarioKm"      label="Ontario KM"        align="right" />}
+                        {isVis('restOfCanadaKm') && <SortableTh col="restOfCanadaKm" label="Rest of Canada KM" align="right" />}
+                        {isVis('usMexicoKm')     && <SortableTh col="usMexicoKm"     label="US/Mexico KM"      align="right" />}
+                        {isVis('drivers')        && <SortableTh col="drivers"        label="# Drivers"         align="right" />}
+                        {isVis('totalKm')        && <SortableTh col="totalKm"        label="Total KM"          align="right" />}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paged.map((r, i) => (
+                        <tr key={`${r.fromDate}-${r.toDate}-${r.type}-${i}`} className="hover:bg-slate-50/60 transition-colors">
+                          {isVis('type') && (
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold ${typeBadge(r.type)}`}>
+                                {r.type}
+                              </span>
+                            </td>
+                          )}
+                          {isVis('fromDate')      && <td className="px-3 py-2.5 font-mono text-slate-700 tabular-nums">{r.fromDate}</td>}
+                          {isVis('toDate')        && <td className="px-3 py-2.5 font-mono text-slate-700 tabular-nums">{r.toDate}</td>}
+                          {isVis('vehicles')      && <td className="px-3 py-2.5 text-right tabular-nums font-bold text-slate-900">{fmtNum(r.vehicles)}</td>}
+                          {isVis('doubleShifted') && (
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              <span className={r.doubleShifted > 0 ? 'font-semibold text-blue-600' : 'text-slate-400'}>{r.doubleShifted}</span>
+                            </td>
+                          )}
+                          {isVis('totalVehicles')  && <td className="px-3 py-2.5 text-right tabular-nums font-bold text-slate-900">{fmtNum(r.totalVehicles)}</td>}
+                          {isVis('ontarioKm')      && <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{fmtNum(r.ontarioKm)}</td>}
+                          {isVis('restOfCanadaKm') && <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">{fmtNum(r.restOfCanadaKm)}</td>}
+                          {isVis('usMexicoKm') && (
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              <span className={r.usMexicoKm > 0 ? 'text-slate-700' : 'text-slate-400'}>{fmtNum(r.usMexicoKm)}</span>
+                            </td>
+                          )}
+                          {isVis('drivers') && (
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              <span className={r.drivers > 0 ? 'font-bold text-slate-900' : 'text-slate-400'}>{fmtNum(r.drivers)}</span>
+                            </td>
+                          )}
+                          {isVis('totalKm') && <td className="px-3 py-2.5 text-right tabular-nums font-bold text-blue-600">{fmtNum(r.totalKm)}</td>}
+                        </tr>
+                      ))}
+                      {paged.length === 0 && (
+                        <tr>
+                          <td colSpan={visibleColCount} className="px-5 py-10 text-center text-sm text-slate-500">
+                            No periods match the selected filter or search.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <PaginationBar
+                  totalItems={sorted.length}
+                  currentPage={safePage}
+                  rowsPerPage={cvorTravelRowsPerPage}
+                  onPageChange={setCvorTravelPage}
+                  onRowsPerPageChange={setCvorTravelRowsPerPage}
+                />
+              </div>
+            );
+          })()}
+
+          </div>
+          {/* end LATEST PULL SNAPSHOT wrapper */}
 
           {/* ===== CVOR Mileage Summary - removed (shown inside CVOR Performance card) ===== */}
           {false && (() => {
@@ -6723,7 +8280,7 @@ export function InspectionsPage() {
                                         <tr
                                           key={row.id}
                                           onClick={() => setCvorSelectedPull(row.isSelected ? null : row.reportDate)}
-                                          className={`cursor-pointer transition-colors hover:bg-slate-50 ${row.isSelected ? 'bg-indigo-50/70' : rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}
+                                          className={`cursor-pointer transition-colors ${row.isSelected ? 'bg-indigo-100 hover:bg-indigo-100 ring-2 ring-inset ring-indigo-400 shadow-[inset_4px_0_0_0_rgb(79,70,229)]' : `hover:bg-slate-50 ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}`}
                                         >
                                           {visible('pullDate') && (
                                             <td className="px-4 py-3.5 align-top">
@@ -6909,597 +8466,1058 @@ export function InspectionsPage() {
                         </div>
                       </div>
 
-                      {/* ══ INSPECTIONS DRILL-DOWN ══ */}
+                      {/* ══ MINI-CVOR PANEL FOR SELECTED PULL ══ */}
                       {cvorSelectedPull && (() => {
-                        const pullObj = cvorPeriodicReports.find(d => d.reportDate === cvorSelectedPull);
-                        if (!pullObj) return null;
-                        const win = windowOf(cvorSelectedPull);
-                        const pullInspections = [...inspectionsData]
-                          .filter(r => { const rd = new Date(r.date); return rd >= win.start && rd <= win.end; })
-                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                        const calcCvor = (r: any) => {
-                          const veh = r.cvorPoints?.vehicle ?? (r.violations||[]).filter((v:any)=>!v.driverViolation).reduce((s:number,v:any)=>s+(v.points||0),0);
-                          const dvr = r.cvorPoints?.driver  ?? (r.violations||[]).filter((v:any)=>!!v.driverViolation).reduce((s:number,v:any)=>s+(v.points||0),0);
-                          return { veh, dvr, cvr: r.cvorPoints?.cvor ?? veh+dvr };
+                        const pull = cvorPeriodicReports.find(d => d.reportDate === cvorSelectedPull);
+                        if (!pull) return null;
+                        const winSel = windowOf(pull.reportDate);
+
+                        const rcMini = (v: number) =>
+                          v >= cvorThresholds.showCause ? '#dc2626'
+                          : v >= cvorThresholds.intervention ? '#d97706'
+                          : v >= cvorThresholds.warning ? '#b45309'
+                          : '#16a34a';
+                        const rbMini = (v: number) =>
+                          v >= cvorThresholds.showCause ? 'bg-red-100 text-red-700 border-red-300'
+                          : v >= cvorThresholds.intervention ? 'bg-amber-100 text-amber-700 border-amber-300'
+                          : v >= cvorThresholds.warning ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                          : 'bg-emerald-100 text-emerald-700 border-emerald-300';
+                        const rlMini = (v: number) =>
+                          v >= cvorThresholds.showCause ? 'SHOW CAUSE'
+                          : v >= cvorThresholds.intervention ? 'AUDIT'
+                          : v >= cvorThresholds.warning ? 'WARN'
+                          : 'OK';
+                        const tileBgMini = (v: number) =>
+                          v >= cvorThresholds.showCause ? 'bg-red-50/70 border-red-200'
+                          : v >= cvorThresholds.intervention ? 'bg-amber-50/70 border-amber-200'
+                          : v >= cvorThresholds.warning ? 'bg-yellow-50/70 border-yellow-200'
+                          : 'bg-emerald-50/70 border-emerald-200';
+                        const gradMini = 'linear-gradient(to right,#22c55e 0%,#eab308 28%,#f97316 45%,#ef4444 70%,#991b1b 100%)';
+
+                        const inWinMini = inspectionsData.filter((r: any) => {
+                          const rd = new Date(r.date);
+                          return rd >= winSel.start && rd <= winSel.end;
+                        });
+                        // Per-pull events (source of truth — generated to match all summary fields)
+                        const eventsInWin = pull.events ?? [];
+                        // Per-pull travel km records (Estimated recent 12 mo + Actual older 12 mo)
+                        const travelInWin = pull.travelKm ?? [];
+
+                        const _emptyLvl = { count: 0, oosCount: 0 };
+                        const _ls = pull.levelStats ?? { level1: _emptyLvl, level2: _emptyLvl, level3: _emptyLvl, level4: _emptyLvl, level5: _emptyLvl };
+                        const cvorLvlsMini: { level: string; name: string; data: { count: number; oosCount: number } }[] = [
+                          { level: 'Level 1', name: 'Level 1 - Full Inspection',          data: _ls.level1 ?? _emptyLvl },
+                          { level: 'Level 2', name: 'Level 2 - Walk-Around',              data: _ls.level2 ?? _emptyLvl },
+                          { level: 'Level 3', name: 'Level 3 - Driver/Credentials',       data: _ls.level3 ?? _emptyLvl },
+                          { level: 'Level 4', name: 'Level 4 - Special Inspections',      data: _ls.level4 ?? _emptyLvl },
+                          { level: 'Level 5', name: 'Level 5 - Vehicle Only',             data: _ls.level5 ?? _emptyLvl },
+                        ];
+                        const lvlStatsMini = cvorLvlsMini.map(l => {
+                          const count = l.data.count;
+                          const oosCount = l.data.oosCount;
+                          return { level: l.level, name: l.name, count, oosCount, pct: count > 0 ? (oosCount / count) * 100 : 0 };
+                        });
+                        const lvlTotalMini = lvlStatsMini.reduce((s, l) => s + l.count, 0);
+                        const lvlOosMini = lvlStatsMini.reduce((s, l) => s + l.oosCount, 0);
+
+                        const fmtNumMini = (n: number) => n.toLocaleString('en-US');
+                        const fmtMiMini = (n: number) =>
+                          n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M`
+                          : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K`
+                          : String(Math.round(n));
+
+                        const colPctMini = pull.colPctOfThresh;
+                        const conPctMini = pull.conPctOfThresh;
+                        const insPctMini = pull.insPctOfThresh;
+
+                        // ── 3-period breakdowns from real cvorInterventionEvents ──
+                        const PERIOD_MONTHS = 8;
+                        const THRESHOLD_DIVISOR = 166666.67;
+                        const kmPerMonth = pull.totalMiles / 24;
+                        const thresholdPerPeriod = +(kmPerMonth * PERIOD_MONTHS / THRESHOLD_DIVISOR).toFixed(2);
+                        type BdRow = {
+                          period: number; fromDate: string; toDate: string; months: number;
+                          kmPerMonth: number; events: number; points: number; threshold: number; pctSet: number;
                         };
-                        const totalCvrPts  = pullInspections.reduce((s,r)=>s+calcCvor(r).cvr,0);
-                        const totalVehPts  = pullInspections.reduce((s,r)=>s+calcCvor(r).veh,0);
-                        const totalDvrPts  = pullInspections.reduce((s,r)=>s+calcCvor(r).dvr,0);
-                        const oosCount     = pullInspections.filter(r=>r.hasOOS).length;
-                        const cleanCount   = pullInspections.filter(r=>r.isClean).length;
-                        const withPtsCount = pullInspections.filter(r=>calcCvor(r).cvr>0).length;
-                        const al = alertLevel(pullObj);
-                        const accentColor = al==='critical'
-                          ? 'border-red-200 bg-red-50/60'
-                          : al==='warning'
-                            ? 'border-amber-200 bg-amber-50/60'
-                            : 'border-indigo-200 bg-indigo-50/40';
-                        const detailWindowLabel = `${win.start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} to ${win.end.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-                        return (
-                          <div className={`mt-4 overflow-hidden rounded-[24px] border shadow-[0_16px_40px_-26px_rgba(15,23,42,0.35)] ${accentColor}`}>
-                            <div className="border-b border-white/70 px-5 py-4 sm:px-6">
-                              <div className="flex items-start justify-between gap-4 flex-wrap">
-                                <div className="flex items-start gap-3">
-                                  <div className={`mt-0.5 h-11 w-1.5 rounded-full flex-shrink-0 ${al==='critical'?'bg-red-500':al==='warning'?'bg-amber-500':'bg-indigo-500'}`}/>
-                                  <div className="space-y-1">
-                                    <div className="text-xl font-bold tracking-tight text-slate-900">CVOR Inspections - {pullObj.periodLabel}</div>
-                                  <div className="hidden text-sm font-bold text-slate-800">CVOR Inspections - {pullObj.periodLabel}</div>
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                                    <span className="font-semibold text-indigo-600">Window:</span>
-                                    <span className="rounded-full bg-white/85 px-2.5 py-0.5 font-mono font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-100">{detailWindowLabel}</span>
-                                  </div>
-                                  <div className="text-[11px] text-slate-500">
-                                    These inspections drive the <span className="font-bold text-slate-700">{pullObj.rating.toFixed(2)}%</span> CVOR rating for this pull
-                                    {al==='critical'&&<span className="ml-2 text-red-600 font-semibold">Above audit threshold</span>}
-                                  </div>
+                        // Build per-pull breakdown rows from the pull's own collisionBreakdown/convictionBreakdown.
+                        // Period 1 = most recent 8 mo, Period 2 = middle 8 mo, Period 3 = earliest 8 mo.
+                        const buildSubPeriods = (slices: { events: number; points: number }[]): BdRow[] =>
+                          slices.map((slice, i) => {
+                            const to = new Date(winSel.end);
+                            to.setMonth(to.getMonth() - i * PERIOD_MONTHS);
+                            const from = new Date(to);
+                            from.setMonth(from.getMonth() - PERIOD_MONTHS);
+                            return {
+                              period: i + 1,
+                              fromDate: from.toISOString().split('T')[0],
+                              toDate: to.toISOString().split('T')[0],
+                              months: PERIOD_MONTHS,
+                              kmPerMonth: Math.round(kmPerMonth),
+                              events: slice.events,
+                              points: slice.points,
+                              threshold: thresholdPerPeriod,
+                              pctSet: thresholdPerPeriod > 0 ? +((slice.points / thresholdPerPeriod) * 100).toFixed(2) : 0,
+                            };
+                          });
+                        const _emptyBd = [{ events: 0, points: 0 }, { events: 0, points: 0 }, { events: 0, points: 0 }];
+                        const colBdRowsAll = buildSubPeriods(pull.collisionBreakdown ?? _emptyBd);
+                        const conBdRowsAll = buildSubPeriods(pull.convictionBreakdown ?? _emptyBd);
+
+                        const filterAndPageBd = (rows: BdRow[], search: string, page: number, rpp: number) => {
+                          const q = search.trim().toLowerCase();
+                          const filtered = q
+                            ? rows.filter(r => [r.period, r.fromDate, r.toDate, r.months, r.kmPerMonth, r.events, r.points, r.threshold, r.pctSet].join(' ').toLowerCase().includes(q))
+                            : rows;
+                          const totalPages = Math.max(1, Math.ceil(filtered.length / rpp));
+                          const safe = Math.min(page, totalPages);
+                          return { filtered, paged: filtered.slice((safe - 1) * rpp, safe * rpp), safe };
+                        };
+                        const colBd = filterAndPageBd(colBdRowsAll, '', miniColBdPage, miniColBdRowsPerPage);
+                        const conBd = filterAndPageBd(conBdRowsAll, '', miniConBdPage, miniConBdRowsPerPage);
+
+                        // ── Inspection statistics rows (from per-pull inspectionStats) ──
+                        const _is = pull.inspectionStats ?? { cvsaInspections: 0, vehiclesInspected: 0, driversInspected: 0, driverPoints: 0, vehiclePoints: 0, totalInspectionPoints: 0, setThreshold: 0 };
+                        const cvsaCount        = _is.cvsaInspections;
+                        const driversInsp      = _is.driversInspected;
+                        const vehiclesInsp     = _is.vehiclesInspected;
+                        const totalUnitsInsp   = driversInsp + vehiclesInsp;
+                        const totalDriverPts   = _is.driverPoints;
+                        const totalVehPts      = _is.vehiclePoints;
+                        const totalInspPts     = _is.totalInspectionPoints;
+                        const insThreshold     = _is.setThreshold;
+
+                        // ── Top-of-panel KPI counts (derived from per-pull events) ──
+                        const inspectionEventsMini = pull.events.filter(e => e.type === 'inspection');
+                        const oosCountMini     = inspectionEventsMini.filter(e => (e.oosCount ?? 0) > 0).length;
+                        const cleanCountMini   = inspectionEventsMini.filter(e => (e.oosCount ?? 0) === 0 && (e.totalDefects ?? 0) === 0 && (e.vehiclePoints ?? 0) === 0 && (e.driverPoints ?? 0) === 0).length;
+                        const withPtsCountMini = inspectionEventsMini.filter(e => (e.vehiclePoints ?? 0) + (e.driverPoints ?? 0) > 0).length
+                                                + pull.events.filter(e => e.type !== 'inspection' && (e.collision?.points ?? e.conviction?.points ?? 0) > 0).length;
+                        const ticketsCountMini = pull.events.filter(e => !!e.ticket || e.charged === 'Y' || e.collision?.driverCharged === 'Y').length;
+                        const ticketsTotalMini = ticketsCountMini * 250; // illustrative average fine — keeps the "$ fines" subtitle non-zero
+                        const totalCvrPtsMini  = totalVehPts + totalDriverPts;
+                        const inspRowsAll: { label: string; value: string | number; emphasis?: boolean; tone?: 'red' | 'amber' | 'default' }[] = [
+                          { label: '# of CVSA inspections conducted', value: cvsaCount },
+                          { label: '# of Vehicles inspected', value: vehiclesInsp },
+                          { label: '# of Drivers inspected', value: driversInsp },
+                          { label: 'Total units inspected', value: totalUnitsInsp, emphasis: true },
+                          { label: '# of Driver points assigned (D)', value: totalDriverPts },
+                          { label: '# of Vehicle points assigned (V)', value: totalVehPts },
+                          { label: 'Total inspection points (0.6875 × D + V)', value: totalInspPts.toFixed(2), emphasis: true },
+                          { label: '# of Set inspection threshold points', value: insThreshold.toFixed(2) },
+                          { label: '% of Set Threshold', value: `${insPctMini.toFixed(1)}%`, emphasis: true, tone: insPctMini >= 70 ? 'red' : insPctMini >= 50 ? 'amber' : 'default' },
+                        ];
+                        const inspRowsFiltered = inspRowsAll;
+
+                        // ── Events filtering / sorting / paging ──
+                        const VEH_DEFECT_CATS = ['BRAKE SYSTEM', 'WHEELS/RIMS', 'COUPLING DEVICES', 'BODY', 'LOAD SECURITY', 'REGISTRATION', 'OFFICER DIRECTION'];
+                        const DRV_DEFECT_CATS = ['HOURS OF SERVICE', 'DRIVERS LICENCES', 'TRIP INSPECTION', 'CVOR/NSC'];
+                        const isClean = (e: CvorInterventionEvent) =>
+                          e.type === 'inspection' && (e.oosCount ?? 0) === 0 && (e.totalDefects ?? 0) === 0 &&
+                          (e.vehiclePoints ?? 0) === 0 && (e.driverPoints ?? 0) === 0;
+                        const hasOos = (e: CvorInterventionEvent) => (e.oosCount ?? 0) > 0;
+                        const hasVehIssue = (e: CvorInterventionEvent) =>
+                          (e.vehiclePoints ?? 0) > 0 || (e.defects ?? []).some(d => VEH_DEFECT_CATS.includes(d.category));
+                        const hasDriverIssue = (e: CvorInterventionEvent) =>
+                          (e.driverPoints ?? 0) > 0 || (e.defects ?? []).some(d => DRV_DEFECT_CATS.includes(d.category));
+                        const isSevere = (e: CvorInterventionEvent) => {
+                          const totalPts = (e.vehiclePoints ?? 0) + (e.driverPoints ?? 0) + (e.pointsTotal ?? 0);
+                          return totalPts >= 7 || (e.totalDefects ?? 0) >= 7;
+                        };
+                        const hasTicket = (e: CvorInterventionEvent) =>
+                          !!e.ticket || e.charged === 'Y' || e.collision?.driverCharged === 'Y';
+
+                        const eventKpiCounts = {
+                          all: eventsInWin.length,
+                          clean: eventsInWin.filter(isClean).length,
+                          oos: eventsInWin.filter(hasOos).length,
+                          vehicle: eventsInWin.filter(hasVehIssue).length,
+                          hosDriver: eventsInWin.filter(hasDriverIssue).length,
+                          severe: eventsInWin.filter(isSevere).length,
+                          tickets: eventsInWin.filter(hasTicket).length,
+                        };
+                        const matchesEventKpi = (e: CvorInterventionEvent) => {
+                          switch (miniEventsKpiFilter) {
+                            case 'ALL':        return true;
+                            case 'CLEAN':      return isClean(e);
+                            case 'OOS':        return hasOos(e);
+                            case 'VEHICLE':    return hasVehIssue(e);
+                            case 'HOS_DRIVER': return hasDriverIssue(e);
+                            case 'SEVERE':     return isSevere(e);
+                            case 'TICKETS':    return hasTicket(e);
+                          }
+                        };
+                        const matchesEventSearch = (e: CvorInterventionEvent) => {
+                          const q = miniEventsSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          const hay = [
+                            e.cvir, e.ticket, e.location, e.driverName, e.driverLicence,
+                            e.vehicle1?.make, e.vehicle1?.unit, e.vehicle1?.plate,
+                            e.vehicle2?.make, e.vehicle2?.unit, e.vehicle2?.plate,
+                            e.type, e.date,
+                            e.collision?.collisionClass, e.collision?.microfilm,
+                            e.conviction?.offence, e.conviction?.microfilm, e.conviction?.ccmtaEquivalency,
+                            ...(e.defects ?? []).flatMap(d => [d.category, d.defect]),
+                          ].filter(Boolean).join(' ').toLowerCase();
+                          return hay.includes(q);
+                        };
+                        const matchesEventType = (e: CvorInterventionEvent) =>
+                          miniEventsTypeFilter === 'ALL' ? true : e.type === miniEventsTypeFilter;
+                        const eventsFilteredAll = eventsInWin.filter(e => matchesEventType(e) && matchesEventKpi(e) && matchesEventSearch(e));
+                        const getEventSortVal = (r: CvorInterventionEvent): string | number => {
+                          switch (miniEventsSort.col) {
+                            case 'date':          return new Date(r.date).getTime();
+                            case 'time':          return r.startTime ?? r.time ?? '';
+                            case 'type':          return r.type;
+                            case 'cvirOrTicket':  return r.cvir ?? r.ticket ?? '';
+                            case 'location':      return r.location ?? '';
+                            case 'driver':        return r.driverName ?? '';
+                            case 'driverLicence': return r.driverLicence ?? '';
+                            case 'vehicle1':      return r.vehicle1?.plate ?? '';
+                            case 'vehicle2':      return r.vehicle2?.plate ?? '';
+                            case 'level':         return r.level ?? -1;
+                            case 'vPts':          return r.vehiclePoints ?? 0;
+                            case 'dPts':          return (r.driverPoints ?? 0) + (r.pointsTotal ?? 0);
+                            case 'oos':           return r.oosCount ?? 0;
+                            case 'defects':       return r.totalDefects ?? 0;
+                            case 'charged':       return (r.charged === 'Y' || r.collision?.driverCharged === 'Y') ? 1 : 0;
+                            default:              return 0;
+                          }
+                        };
+                        const eventsSortedAll = [...eventsFilteredAll].sort((a, b) => {
+                          const dir = miniEventsSort.dir === 'asc' ? 1 : -1;
+                          const av = getEventSortVal(a), bv = getEventSortVal(b);
+                          if (av < bv) return -1 * dir;
+                          if (av > bv) return 1 * dir;
+                          return 0;
+                        });
+                        const eventsTotalPages = Math.max(1, Math.ceil(eventsSortedAll.length / miniEventsRowsPerPage));
+                        const eventsSafePage = Math.min(miniEventsPage, eventsTotalPages);
+                        const eventsPaged = eventsSortedAll.slice((eventsSafePage - 1) * miniEventsRowsPerPage, eventsSafePage * miniEventsRowsPerPage);
+                        const isEventVis = (id: string) => miniEventsColumns.find(c => c.id === id)?.visible !== false;
+                        const sortEvent = (col: string) => setMiniEventsSort(p => p.col === col ? { col, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
+
+                        // ── Travel KM filtering / sorting / paging ──
+                        const matchesTravelSearch = (r: typeof cvorTravelKm[number]) => {
+                          const q = miniTravelSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return [r.fromDate, r.toDate, r.type].join(' ').toLowerCase().includes(q);
+                        };
+                        const travelFilteredAll = travelInWin
+                          .filter(r => miniTravelType === 'ALL' ? true : r.type === miniTravelType)
+                          .filter(matchesTravelSearch);
+                        const getTravelSortVal = (r: typeof cvorTravelKm[number]): string | number => {
+                          switch (miniTravelSort.col) {
+                            case 'type':           return r.type;
+                            case 'fromDate':       return r.fromDate;
+                            case 'toDate':         return r.toDate;
+                            case 'vehicles':       return r.vehicles;
+                            case 'doubleShifted':  return r.doubleShifted;
+                            case 'totalVehicles':  return r.totalVehicles;
+                            case 'ontarioKm':      return r.ontarioKm;
+                            case 'restOfCanadaKm': return r.restOfCanadaKm;
+                            case 'usMexicoKm':     return r.usMexicoKm;
+                            case 'drivers':        return r.drivers;
+                            case 'totalKm':        return r.totalKm;
+                            default:               return 0;
+                          }
+                        };
+                        const travelSortedAll = [...travelFilteredAll].sort((a, b) => {
+                          const dir = miniTravelSort.dir === 'asc' ? 1 : -1;
+                          const av = getTravelSortVal(a), bv = getTravelSortVal(b);
+                          if (av < bv) return -1 * dir;
+                          if (av > bv) return 1 * dir;
+                          return 0;
+                        });
+                        const travelTotalPages = Math.max(1, Math.ceil(travelSortedAll.length / miniTravelRowsPerPage));
+                        const travelSafePage = Math.min(miniTravelPage, travelTotalPages);
+                        const travelPaged = travelSortedAll.slice((travelSafePage - 1) * miniTravelRowsPerPage, travelSafePage * miniTravelRowsPerPage);
+                        const isTravelVis = (id: string) => miniTravelColumns.find(c => c.id === id)?.visible !== false;
+                        const sortTravel = (col: string) => setMiniTravelSort(p => p.col === col ? { col, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
+
+                        const SortIndicator = ({ active, dir }: { active: boolean; dir: 'asc' | 'desc' }) =>
+                          active
+                            ? (dir === 'asc' ? <ChevronUp size={11} className="text-blue-500 inline -mt-0.5" /> : <ChevronDown size={11} className="text-blue-500 inline -mt-0.5" />)
+                            : <ChevronDown size={11} className="text-slate-300 inline -mt-0.5" />;
+
+                        const Section = ({ k, title, subtitle, IconCmp, iconBg, iconColor, headerExtra, children }: {
+                          k: MiniSectionKey;
+                          title: string;
+                          subtitle?: string;
+                          IconCmp: React.ComponentType<{ size?: number; className?: string }>;
+                          iconBg: string;
+                          iconColor: string;
+                          headerExtra?: React.ReactNode;
+                          children: React.ReactNode;
+                        }) => (
+                          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => toggleMini(k)}
+                              aria-expanded={miniOpen[k]}
+                              className="w-full px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors text-left"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0`}>
+                                  <IconCmp size={13} className={iconColor}/>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[12px] font-bold text-slate-900 truncate">{title}</div>
+                                  {subtitle && <div className="text-[10px] text-slate-500 truncate">{subtitle}</div>}
                                 </div>
                               </div>
-                              <button
-                                onClick={() => setCvorSelectedPull(null)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2 text-xs font-semibold text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-700"
-                              >
-                                <X size={14} />
-                                <span>Close</span>
-                              </button>
-                            </div>
-                            </div>
-                            <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-6">
-                            {/* Impact summary */}
-                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-7">
-                              {[
-                                {label:'Inspections',      val:String(pullInspections.length), sub:'in 24-mo window',  color:'text-slate-800', bg:'bg-slate-50', border:'border-slate-200'},
-                                {label:'CVOR Impact',      val:String(withPtsCount),           sub:'have CVOR pts',    color:'text-red-700',   bg:'bg-red-50',   border:'border-red-200'},
-                                {label:'OOS',              val:String(oosCount),               sub:'out-of-service',   color:'text-red-700',   bg:'bg-red-50',   border:'border-red-200'},
-                                {label:'Clean',            val:String(cleanCount),             sub:'no violations',    color:'text-emerald-700',bg:'bg-emerald-50',border:'border-emerald-200'},
-                                {label:'Veh Pts',          val:String(totalVehPts),            sub:'vehicle CVOR',     color:'text-orange-700',bg:'bg-orange-50',border:'border-orange-200'},
-                                {label:'Dvr Pts',          val:String(totalDvrPts),            sub:'driver CVOR',      color:'text-amber-700', bg:'bg-amber-50', border:'border-amber-200'},
-                                {label:'CVOR Pts',         val:String(totalCvrPts),            sub:'combined impact',  color:'text-indigo-700',bg:'bg-indigo-50',border:'border-indigo-200'},
-                              ].map(c=>(
-                                <div key={c.label} className={`${c.bg} border ${c.border} rounded-2xl px-4 py-3.5 shadow-sm`}>
-                                  <div className={`text-[30px] font-black leading-none ${c.color}`}>{c.val}</div>
-                                  <div className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600">{c.label}</div>
-                                  <div className="mt-1 text-[10px] text-slate-500">{c.sub}</div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {headerExtra}
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{miniOpen[k] ? 'Hide' : 'Show'}</span>
+                                {miniOpen[k] ? <ChevronUp size={14} className="text-slate-400"/> : <ChevronDown size={14} className="text-slate-400"/>}
+                              </div>
+                            </button>
+                            {miniOpen[k] && <div className="border-t border-slate-100">{children}</div>}
+                          </div>
+                        );
+
+                        const expandAll = () => setMiniOpen({ performance: true, mileage: true, collisionDetails: true, convictionDetails: true, comparison: true, collisionBd: true, convictionBd: true, inspStats: true, events: true, travel: true });
+                        const collapseAll = () => setMiniOpen({ performance: false, mileage: false, collisionDetails: false, convictionDetails: false, comparison: false, collisionBd: false, convictionBd: false, inspStats: false, events: false, travel: false });
+
+                        return (
+                          <div className="mt-4 rounded-2xl border border-indigo-200 bg-gradient-to-b from-indigo-50/40 to-white shadow-sm">
+                            {/* Mini header */}
+                            <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-indigo-100 flex-wrap">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                                  <ShieldAlert size={18} />
                                 </div>
-                              ))}
-                            </div>
-                            {/* Category breakdown */}
-                            <div className="grid gap-3 md:grid-cols-3">
-                              {[
-                                {label:'Collisions',  pct:pullObj.colContrib, thresh:pullObj.colPctOfThresh, weight:40, color:'blue',  events:pullObj.collisionEvents,  pts:pullObj.totalCollisionPoints},
-                                {label:'Convictions', pct:pullObj.conContrib, thresh:pullObj.conPctOfThresh, weight:40, color:'amber', events:pullObj.convictionEvents, pts:pullObj.convictionPoints},
-                                {label:'Inspections', pct:pullObj.insContrib, thresh:pullObj.insPctOfThresh, weight:20, color:'red',   events:pullInspections.length,   pts:totalCvrPts},
-                              ].map(cat=>{
-                                const barColor=cat.color==='blue'?'#2563eb':cat.color==='amber'?'#d97706':'#dc2626';
-                                const borderCls=cat.color==='blue'?'border-blue-200':cat.color==='amber'?'border-amber-200':'border-red-200';
-                                const textCls=cat.color==='blue'?'text-blue-700':cat.color==='amber'?'text-amber-700':'text-red-700';
-                                const softBg=cat.color==='blue'?'bg-blue-50/70':cat.color==='amber'?'bg-amber-50/70':'bg-red-50/70';
-                                const zoneLabel =
-                                  cat.thresh >= cvorThresholds.showCause ? 'SHOW CAUSE' :
-                                  cat.thresh >= cvorThresholds.intervention ? 'AUDIT' :
-                                  cat.thresh >= cvorThresholds.warning ? 'WARN' :
-                                  'OK';
-                                const zoneBadge =
-                                  cat.thresh >= cvorThresholds.showCause
-                                    ? 'bg-red-50 text-red-700 border-red-200'
-                                    : cat.thresh >= cvorThresholds.intervention
-                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                      : cat.thresh >= cvorThresholds.warning
-                                        ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                        : 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                                const grad='linear-gradient(90deg,#fde68a 0%,#facc15 35%,#fb923c 50%,#f87171 85%,#991b1b 100%)';
-                                return (
-                                  <div key={cat.label} className={`group/tileinfo relative rounded-2xl border p-4 shadow-sm ${softBg} ${borderCls}`}>
-                                    <div className="mb-2 flex items-center justify-between gap-3">
-                                      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{cat.label}</span>
-                                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${zoneBadge}`}>{zoneLabel}</span>
-                                    </div>
-                                    <div className={`text-[42px] font-black leading-none ${textCls}`}>
-                                      {cat.thresh.toFixed(1)}%
-                                    </div>
-                                    <div className="mt-2 text-[12px] text-slate-600">
-                                      {cat.events} {cat.label === 'Inspections' ? 'inspections' : cat.label.toLowerCase()} - {cat.pts} pts
-                                    </div>
-                                    <div className="mt-1 text-[10px] font-medium text-slate-500">
-                                      {zoneLabel} - {cat.weight}% weight
-                                    </div>
-                                    <div className="relative mt-3">
-                                      <div
-                                        className="relative h-[7px] cursor-pointer overflow-hidden rounded-full"
-                                        style={{ background: grad, boxShadow:'inset 0 1px 3px rgba(0,0,0,0.18)' }}
-                                      >
-                                        <div
-                                          className="absolute inset-y-0 right-0 rounded-r-full bg-slate-900/30"
-                                          style={{ left:`${Math.min(cat.thresh,100)}%` }}
-                                        />
-                                        <div
-                                          className="absolute inset-y-0 w-[2px] bg-white shadow"
-                                          style={{ left:`${Math.min(cat.thresh,100)}%`, transform:'translateX(-50%)' }}
-                                        />
-                                        {[cvorThresholds.warning, cvorThresholds.intervention, cvorThresholds.showCause].map((t) => (
-                                          <div key={t} className="absolute inset-y-0 w-px bg-white/60" style={{ left:`${t}%` }} />
-                                        ))}
-                                      </div>
-                                      <div className="mt-1 flex justify-between text-[8.5px] text-slate-400">
-                                        <span>WARN {cvorThresholds.warning}%</span>
-                                        <span>AUDIT {cvorThresholds.intervention}%</span>
-                                        <span>SC {cvorThresholds.showCause}%</span>
-                                      </div>
-                                      <div className="pointer-events-none absolute left-1/2 top-0 z-50 hidden w-[240px] -translate-x-1/2 -translate-y-[calc(100%+18px)] group-hover/tileinfo:block">
-                                        <div className="relative overflow-hidden rounded-xl border border-slate-700 shadow-2xl" style={{ background:'#0f172a' }}>
-                                          <div className="flex items-center justify-between px-3.5 py-2" style={{ background: barColor }}>
-                                            <span className="text-[12px] font-black uppercase tracking-wide text-white">{cat.label}</span>
-                                            <span className="font-mono text-[12px] font-bold text-white">{cat.thresh.toFixed(1)}%</span>
-                                          </div>
-                                          <div className="space-y-1.5 px-3.5 py-2.5">
-                                            <div className="flex justify-between text-[11px]">
-                                              <span className="text-slate-400">Status</span>
-                                              <span className="font-bold" style={{ color: barColor }}>{zoneLabel}</span>
-                                            </div>
-                                            <div className="flex justify-between text-[11px]">
-                                              <span className="text-slate-400">Weighted Contribution</span>
-                                              <span className="font-bold text-white">{cat.pct.toFixed(2)}%</span>
-                                            </div>
-                                            <div className="flex justify-between text-[11px]">
-                                              <span className="text-slate-400">Category Weight</span>
-                                              <span className="font-bold text-white">{cat.weight}%</span>
-                                            </div>
-                                            <div className="flex justify-between text-[11px]">
-                                              <span className="text-slate-400">Events / Points</span>
-                                              <span className="font-bold text-white">{cat.events} / {cat.pts}</span>
-                                            </div>
-                                            <div className="border-t border-slate-700/60 pt-1.5">
-                                              <div className="mb-1 text-[9px] uppercase tracking-wider text-slate-500">Thresholds</div>
-                                              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                                                {([
-                                                  { n:'Warning', v:cvorThresholds.warning, c:'#facc15' },
-                                                  { n:'Audit', v:cvorThresholds.intervention, c:'#fb923c' },
-                                                  { n:'Show Cause', v:cvorThresholds.showCause, c:'#f87171' },
-                                                  { n:'Current', v:cat.thresh, c:barColor },
-                                                ] as {n:string;v:number;c:string}[]).map((th) => (
-                                                  <div key={th.n} className="flex items-center justify-between">
-                                                    <span className="text-[9px]" style={{ color: th.c }}>{th.n}</span>
-                                                    <span className="font-mono text-[10px] font-bold text-white">{th.v.toFixed(1)}%</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-slate-900" />
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            {/* Inspection list */}
-                            {(() => {
-                              const detailRows = pullInspections.map((record, ri) => {
-                                const pts = calcCvor(record);
-                                const primaryUnit = record.units?.[0];
-                                const categories = (() => {
-                                  const cats = new Map<string, { isOos: boolean; pts: number }>();
-                                  for (const violation of (record.violations || [])) {
-                                    const label = violation.category || 'Other';
-                                    const current = cats.get(label);
-                                    if (!current) cats.set(label, { isOos: !!violation.oos, pts: violation.points || 0 });
-                                    else cats.set(label, { isOos: current.isOos || !!violation.oos, pts: current.pts + (violation.points || 0) });
-                                  }
-                                  return Array.from(cats.entries()).map(([label, info]) => ({ label, ...info }));
-                                })();
-                                const status = record.hasOOS ? 'OOS' : record.isClean ? 'OK' : 'DEFECT';
-                                const timestamp = new Date(`${record.date}T${record.startTime || '00:00'}`).getTime();
-                                return {
-                                  id: `${record.id}-${ri}`,
-                                  record,
-                                  pts,
-                                  date: record.date,
-                                  time: record.startTime && record.endTime ? `${record.startTime} - ${record.endTime}` : record.startTime || '--',
-                                  timestamp,
-                                  report: record.id,
-                                  locationCity: record.location?.city || record.state || '--',
-                                  locationRegion: record.location ? `${record.location.province}, CAN` : `${record.state}, CAN`,
-                                  driverName: record.driver?.split(',')[0] || 'Unknown driver',
-                                  driverId: record.driverLicense || record.driverId || '--',
-                                  vehicleName: primaryUnit?.license || record.vehiclePlate || '--',
-                                  defectText: record.powerUnitDefects || (record.isClean ? 'No defects' : 'No defect details'),
-                                  violationCount: (record.violations || []).length,
-                                  vehPts: pts.veh ?? 0,
-                                  dvrPts: pts.dvr ?? 0,
-                                  cvorPts: pts.cvr,
-                                  status,
-                                  hasOos: !!record.hasOOS,
-                                  isClean: !!record.isClean,
-                                  categories,
-                                  violations: record.violations || [],
-                                };
-                              });
-
-                              const detailStats = {
-                                all: detailRows.length,
-                                clean: detailRows.filter((row) => row.isClean).length,
-                                oos: detailRows.filter((row) => row.hasOos).length,
-                                impact: detailRows.filter((row) => row.cvorPts > 0).length,
-                                defect: detailRows.filter((row) => !row.isClean).length,
-                              };
-
-                              const filteredRows = detailRows.filter((row) => {
-                                if (cvorPullDetailFilter === 'CLEAN' && !row.isClean) return false;
-                                if (cvorPullDetailFilter === 'OOS' && !row.hasOos) return false;
-                                if (cvorPullDetailFilter === 'IMPACT' && row.cvorPts <= 0) return false;
-                                if (cvorPullDetailFilter === 'DEFECT' && row.isClean) return false;
-
-                                const query = cvorPullDetailSearch.trim().toLowerCase();
-                                if (!query) return true;
-
-                                const haystack = [
-                                  row.date,
-                                  row.time,
-                                  win.label,
-                                  row.report,
-                                  row.locationCity,
-                                  row.locationRegion,
-                                  row.driverName,
-                                  row.driverId,
-                                  row.vehicleName,
-                                  row.defectText,
-                                  row.status,
-                                  row.violationCount,
-                                  row.vehPts,
-                                  row.dvrPts,
-                                  row.cvorPts,
-                                ].join(' ').toLowerCase();
-
-                                return haystack.includes(query);
-                              });
-
-                              const sortedRows = [...filteredRows].sort((a, b) => {
-                                const dir = cvorPullDetailSort.dir === 'asc' ? 1 : -1;
-                                const getValue = (row: typeof detailRows[number]) => {
-                                  switch (cvorPullDetailSort.col) {
-                                    case 'date': return row.timestamp;
-                                    case 'report': return row.report;
-                                    case 'location': return `${row.locationCity} ${row.locationRegion}`;
-                                    case 'driver': return `${row.driverName} ${row.driverId}`;
-                                    case 'vehicle': return `${row.vehicleName} ${row.defectText}`;
-                                    case 'violations': return row.violationCount;
-                                    case 'vehPts': return row.vehPts;
-                                    case 'dvrPts': return row.dvrPts;
-                                    case 'cvorPts': return row.cvorPts;
-                                    case 'status': return row.status;
-                                    default: return row.timestamp;
-                                  }
-                                };
-                                const av = getValue(a);
-                                const bv = getValue(b);
-                                if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-                                return String(av).localeCompare(String(bv)) * dir;
-                              });
-
-                              const totalPages = Math.max(1, Math.ceil(sortedRows.length / cvorPullDetailRowsPerPage));
-                              const currentPage = Math.min(cvorPullDetailPage, totalPages);
-                              const pagedRows = sortedRows.slice(
-                                (currentPage - 1) * cvorPullDetailRowsPerPage,
-                                currentPage * cvorPullDetailRowsPerPage,
-                              );
-                              const visible = (id: string) => cvorPullDetailColumns.find((col) => col.id === id)?.visible !== false;
-                              const sortIcon = (id: string) => cvorPullDetailSort.col === id ? (cvorPullDetailSort.dir === 'asc' ? '->' : '→"') : '';
-                              const setSort = (id: string) => {
-                                setCvorPullDetailSort((prev) => ({
-                                  col: id,
-                                  dir: prev.col === id && prev.dir === 'asc' ? 'desc' : 'asc',
-                                }));
-                              };
-                              const headerBtn = (id: string, label: string, tone = 'text-slate-500') => (
+                                <div className="min-w-0">
+                                  <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.18em]">Pull Snapshot</div>
+                                  <div className="text-base font-bold text-slate-900 truncate">{pull.periodLabel}</div>
+                                  <div className="text-[11px] text-slate-500">24-month window: <span className="font-mono text-indigo-600">{winSel.label}</span></div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => setSort(id)}
-                                  className={`inline-flex items-center gap-1 font-bold uppercase tracking-[0.14em] transition-colors hover:text-slate-800 ${tone}`}
-                                >
-                                  <span>{label}</span>
-                                  <span className="text-[10px] text-slate-400">{sortIcon(id)}</span>
-                                </button>
-                              );
-                              const visibleCount = Math.max(1, cvorPullDetailColumns.filter((col) => col.visible).length);
-
-                              return (
-                                <div className="space-y-4">
-                                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-                                    <MiniKpiCard title="All" value={detailStats.all} icon={ClipboardCheck} color="gray" active={cvorPullDetailFilter === 'ALL'} onClick={() => setCvorPullDetailFilter('ALL')} />
-                                    <MiniKpiCard title="Clean" value={detailStats.clean} icon={CheckCircle2} color="emerald" active={cvorPullDetailFilter === 'CLEAN'} onClick={() => setCvorPullDetailFilter('CLEAN')} />
-                                    <MiniKpiCard title="OOS" value={detailStats.oos} icon={ShieldAlert} color="red" active={cvorPullDetailFilter === 'OOS'} onClick={() => setCvorPullDetailFilter('OOS')} />
-                                    <MiniKpiCard title="Impact" value={detailStats.impact} icon={Target} color="indigo" active={cvorPullDetailFilter === 'IMPACT'} onClick={() => setCvorPullDetailFilter('IMPACT')} />
-                                    <MiniKpiCard title="Defect" value={detailStats.defect} icon={AlertTriangle} color="orange" active={cvorPullDetailFilter === 'DEFECT'} onClick={() => setCvorPullDetailFilter('DEFECT')} />
-                                  </div>
-
-                                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_34px_-24px_rgba(15,23,42,0.28)]">
-                                    <DataListToolbar
-                                      searchValue={cvorPullDetailSearch}
-                                      onSearchChange={setCvorPullDetailSearch}
-                                      searchPlaceholder="Search date, time, window, report, driver, unit, or status..."
-                                      columns={cvorPullDetailColumns}
-                                      onToggleColumn={(id) => setCvorPullDetailColumns((prev) => prev.map((col) => col.id === id ? { ...col, visible: !col.visible } : col))}
-                                      totalItems={sortedRows.length}
-                                      currentPage={currentPage}
-                                      rowsPerPage={cvorPullDetailRowsPerPage}
-                                      onPageChange={setCvorPullDetailPage}
-                                      onRowsPerPageChange={setCvorPullDetailRowsPerPage}
-                                    />
-
-                                    <div className="overflow-x-auto px-1 pb-1">
-                                      <table className="w-full min-w-[1340px] border-separate border-spacing-0 text-[13px]">
-                                        <thead>
-                                          <tr className="bg-slate-50/90 text-left text-[11px]">
-                                            {visible('date') && <th className="px-4 py-3.5">{headerBtn('date', 'Date / Time')}</th>}
-                                            {visible('report') && <th className="px-4 py-3.5">{headerBtn('report', 'Report ID', 'text-indigo-500')}</th>}
-                                            {visible('location') && <th className="px-4 py-3.5">{headerBtn('location', 'Location')}</th>}
-                                            {visible('driver') && <th className="px-4 py-3.5">{headerBtn('driver', 'Driver / Licence')}</th>}
-                                            {visible('vehicle') && <th className="px-4 py-3.5">{headerBtn('vehicle', 'Power Unit / Defects')}</th>}
-                                            {visible('violations') && <th className="px-3 py-3.5 text-center">{headerBtn('violations', 'Violations')}</th>}
-                                            {visible('vehPts') && <th className="px-3 py-3.5 text-center">{headerBtn('vehPts', 'Veh Pts', 'text-orange-500')}</th>}
-                                            {visible('dvrPts') && <th className="px-3 py-3.5 text-center">{headerBtn('dvrPts', 'Dvr Pts', 'text-amber-500')}</th>}
-                                            {visible('cvorPts') && <th className="px-3 py-3.5 text-center">{headerBtn('cvorPts', 'CVOR Pts', 'text-rose-500')}</th>}
-                                            {visible('status') && <th className="px-4 py-3.5">{headerBtn('status', 'Status')}</th>}
-                                          </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-200">
-                                          {pagedRows.length > 0 ? pagedRows.map((row) => (
-                                            <Fragment key={row.id}>
-                                              <tr
-                                                onClick={() => setCvorPullDetailExpanded((prev) => prev === row.id ? null : row.id)}
-                                                className="cursor-pointer bg-white transition-colors hover:bg-slate-50/90"
-                                              >
-                                                {visible('date') && (
-                                                  <td className="px-4 py-4.5 align-top">
-                                                    <div className="font-mono text-[13px] font-semibold text-slate-900">{row.date}</div>
-                                                    <div className="mt-1 text-[11px] text-slate-500">{row.time}</div>
-                                                  </td>
-                                                )}
-                                                {visible('report') && (
-                                                  <td className="px-4 py-4.5 align-top">
-                                                    <div className="text-[13px] font-bold text-blue-600">{row.report}</div>
-                                                    <div className={`mt-1 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-bold tracking-wide ${getInspectionTagSpecs('CVOR', row.record.level)}`}>
-                                                      CVOR L{row.record.level?.replace(/level\s*/i, '') || '1'}
-                                                    </div>
-                                                  </td>
-                                                )}
-                                                {visible('location') && (
-                                                  <td className="px-4 py-4.5 align-top">
-                                                    <div className="text-[13px] font-semibold text-slate-800">{row.locationCity}</div>
-                                                    <div className="mt-1 text-[11px] text-slate-500">{row.locationRegion}</div>
-                                                  </td>
-                                                )}
-                                                {visible('driver') && (
-                                                  <td className="px-4 py-4.5 align-top">
-                                                    <div className="text-[13px] font-semibold text-slate-800">{row.driverName}</div>
-                                                    <div className="mt-1 font-mono text-[11px] text-slate-500">{row.driverId}</div>
-                                                  </td>
-                                                )}
-                                                {visible('vehicle') && (
-                                                  <td className="px-4 py-4.5 align-top">
-                                                    <div className="text-[13px] font-semibold text-slate-800">{row.vehicleName}</div>
-                                                    <div className={`mt-1 text-[11px] ${row.record.powerUnitDefects ? 'text-amber-600' : 'text-emerald-600'}`}>{row.defectText}</div>
-                                                  </td>
-                                                )}
-                                                {visible('violations') && (
-                                                  <td className="px-3 py-4.5 text-center align-top">
-                                                    <span className={`text-[13px] font-bold ${row.isClean ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                                      {row.isClean ? 'Clean' : row.violationCount}
-                                                    </span>
-                                                  </td>
-                                                )}
-                                                {visible('vehPts') && (
-                                                  <td className="px-3 py-4.5 text-center align-top">
-                                                    <span className={`text-[13px] font-bold ${row.vehPts > 0 ? 'text-red-600' : 'text-slate-400'}`}>{row.vehPts || 0}</span>
-                                                  </td>
-                                                )}
-                                                {visible('dvrPts') && (
-                                                  <td className="px-3 py-4.5 text-center align-top">
-                                                    <span className={`text-[13px] font-bold ${row.dvrPts > 0 ? 'text-red-600' : 'text-slate-400'}`}>{row.dvrPts || 0}</span>
-                                                  </td>
-                                                )}
-                                                {visible('cvorPts') && (
-                                                  <td className="px-3 py-4.5 text-center align-top">
-                                                    <span className={`text-[13px] font-bold ${row.cvorPts > 0 ? 'text-red-700' : 'text-slate-400'}`}>{row.cvorPts}</span>
-                                                  </td>
-                                                )}
-                                                {visible('status') && (
-                                                  <td className="px-4 py-4.5 align-top">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                                                        row.hasOos
-                                                          ? 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200'
-                                                          : row.isClean
-                                                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200'
-                                                            : 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200'
-                                                      }`}>
-                                                        {row.status}
-                                                      </span>
-                                                      <span className="text-slate-400">{cvorPullDetailExpanded === row.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
-                                                    </div>
-                                                  </td>
-                                                )}
-                                              </tr>
-                                              {cvorPullDetailExpanded === row.id && (
-                                                <tr className="bg-slate-50/80">
-                                                  <td colSpan={visibleCount} className="px-5 py-5">
-                                                    <div className="space-y-4">
-                                                      <div className="grid gap-3 md:grid-cols-4">
-                                                        <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
-                                                          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Window</div>
-                                                          <div className="mt-1 font-mono text-[12px] font-semibold text-indigo-600">{detailWindowLabel}</div>
-                                                        </div>
-                                                        <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
-                                                          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Driver</div>
-                                                          <div className="mt-1 text-[12px] font-semibold text-slate-800">{row.driverName}</div>
-                                                          <div className="text-[11px] text-slate-500">{row.driverId}</div>
-                                                        </div>
-                                                        <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
-                                                          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Unit / Defects</div>
-                                                          <div className="mt-1 text-[12px] font-semibold text-slate-800">{row.vehicleName}</div>
-                                                          <div className={`text-[11px] ${row.record.powerUnitDefects ? 'text-amber-600' : 'text-emerald-600'}`}>{row.defectText}</div>
-                                                        </div>
-                                                        <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
-                                                          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Impact</div>
-                                                          <div className="mt-1 text-[12px] font-semibold text-slate-800">{row.cvorPts} CVOR pts</div>
-                                                          <div className="text-[11px] text-slate-500">{row.vehPts} vehicle / {row.dvrPts} driver</div>
-                                                        </div>
-                                                      </div>
-
-                                                      {!row.isClean && row.categories.length > 0 && (
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">CVOR Violation Categories</span>
-                                                          {row.categories.map((item) => (
-                                                            <span
-                                                              key={item.label}
-                                                              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${item.isOos ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}
-                                                            >
-                                                              <span className={`h-1.5 w-1.5 rounded-full ${item.isOos ? 'bg-red-500' : 'bg-amber-500'}`} />
-                                                              {item.label}
-                                                              {item.isOos && <span className="rounded bg-red-100 px-1 text-[9px] font-black text-red-700">OOS</span>}
-                                                              {item.pts > 0 && <span className="text-[9px] font-bold opacity-70">{item.pts}pt</span>}
-                                                            </span>
-                                                          ))}
-                                                        </div>
-                                                      )}
-
-                                                      {!row.isClean && row.violations.length > 0 && (
-                                                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                                          {row.violations.slice(0, 6).map((violation: any, violationIndex: number) => (
-                                                            <div key={`${row.id}-violation-${violationIndex}`} className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
-                                                              <div className="flex items-center justify-between gap-2">
-                                                                <div className="text-[12px] font-semibold text-slate-800">{violation.category || 'Violation'}</div>
-                                                                <div className="flex items-center gap-1.5">
-                                                                  {violation.oos && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[9px] font-bold text-red-700 ring-1 ring-inset ring-red-200">OOS</span>}
-                                                                  <span className="text-[10px] font-bold text-slate-500">{violation.points || 0} pts</span>
-                                                                </div>
-                                                              </div>
-                                                              <div className="mt-1 text-[11px] text-slate-500">{violation.code || violation.description || 'No additional detail'}</div>
-                                                            </div>
-                                                          ))}
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  </td>
-                                                </tr>
-                                              )}
-                                            </Fragment>
-                                          )) : (
-                                            <tr>
-                                              <td colSpan={visibleCount} className="px-6 py-16 text-center">
-                                                <div className="flex flex-col items-center">
-                                                  <div className="mb-4 rounded-full border border-slate-200 bg-white p-4 shadow-sm">
-                                                    <AlertCircle size={28} className="text-slate-400" />
-                                                  </div>
-                                                  <div className="text-lg font-bold text-slate-900">No inspections match your filters</div>
-                                                  <div className="mt-1 max-w-md text-sm text-slate-500">
-                                                    Search by date, time, report, driver, unit, or status, or clear the active filter cards.
-                                                  </div>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                      setCvorPullDetailSearch('');
-                                                      setCvorPullDetailFilter('ALL');
-                                                      setCvorPullDetailSort({ col: 'date', dir: 'desc' });
-                                                    }}
-                                                    className="mt-5 rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-600 shadow-sm transition-colors hover:bg-blue-50"
-                                                  >
-                                                    Clear filters
-                                                  </button>
-                                                </div>
-                                              </td>
-                                            </tr>
-                                          )}
-                                        </tbody>
-                                      </table>
-                                    </div>
-
-                                    <div className="hidden md:grid grid-cols-12 gap-x-2 border-t border-slate-200 bg-slate-50/90 px-5 py-3 text-[11px]">
-                                      <div className="col-span-6 font-bold text-slate-600">
-                                        {sortedRows.length} inspections shown ¢ {withPtsCount} with CVOR impact ¢ {oosCount} OOS ¢ {cleanCount} clean
-                                      </div>
-                                      <div className="col-span-2" />
-                                      <div className="col-span-1 text-center font-bold text-orange-700">{totalVehPts}</div>
-                                      <div className="col-span-1 text-center font-bold text-amber-700">{totalDvrPts}</div>
-                                      <div className="col-span-1 text-center font-bold text-red-700">{totalCvrPts}</div>
-                                      <div className="col-span-1" />
-                                    </div>
-
-                                    <PaginationBar
-                                      totalItems={sortedRows.length}
-                                      currentPage={currentPage}
-                                      rowsPerPage={cvorPullDetailRowsPerPage}
-                                      onPageChange={setCvorPullDetailPage}
-                                      onRowsPerPageChange={setCvorPullDetailRowsPerPage}
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                            <div className="hidden">
-                            {pullInspections.length === 0 ? (
-                              <div className="py-12 flex flex-col items-center gap-3 border border-dashed border-slate-200 rounded-xl text-slate-400">
-                                <div className="text-4xl">📋</div>
-                                <div className="text-sm font-semibold">No inspections in this 24-month window</div>
-                                <div className="text-xs font-mono text-indigo-400">{win.label}</div>
+                                  onClick={expandAll}
+                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 shadow-sm"
+                                >Expand all</button>
+                                <button
+                                  type="button"
+                                  onClick={collapseAll}
+                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 shadow-sm"
+                                >Collapse all</button>
                               </div>
-                            ) : (
-                              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-2 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-wider">
-                                  <div className="col-span-1">Date</div>
-                                  <div className="col-span-1">Report ID</div>
-                                  <div className="col-span-1">Location</div>
-                                  <div className="col-span-2">Driver / Licence</div>
-                                  <div className="col-span-2">Power Unit / Defects</div>
-                                  <div className="col-span-1 text-center">Violations</div>
-                                  <div className="col-span-1 text-center text-orange-300">Veh Pts</div>
-                                  <div className="col-span-1 text-center text-amber-300">Dvr Pts</div>
-                                  <div className="col-span-1 text-center text-red-300">CVOR Pts</div>
-                                  <div className="col-span-1">Status</div>
+                            </div>
+
+                            <div className="p-4 space-y-3">
+                              {/* Top KPI summary — mirrors CVOR Inspections drill-down impact cards */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+                                {([
+                                  { label: 'Inspections', val: String(inWinMini.length),  sub: 'in 24-mo window',                       color: 'text-slate-800',  bg: 'bg-slate-50',   border: 'border-slate-200' },
+                                  { label: 'CVOR Impact', val: String(withPtsCountMini),  sub: 'have CVOR pts',                         color: 'text-red-700',    bg: 'bg-red-50',     border: 'border-red-200' },
+                                  { label: 'OOS',         val: String(oosCountMini),      sub: 'out-of-service',                        color: 'text-red-700',    bg: 'bg-red-50',     border: 'border-red-200' },
+                                  { label: 'Clean',       val: String(cleanCountMini),    sub: 'no violations',                         color: 'text-emerald-700',bg: 'bg-emerald-50', border: 'border-emerald-200' },
+                                  { label: 'Tickets',     val: String(ticketsCountMini),  sub: `$${ticketsTotalMini.toLocaleString()} fines`, color: 'text-rose-700',  bg: 'bg-rose-50',    border: 'border-rose-200' },
+                                  { label: 'Veh Pts',     val: String(totalVehPts),       sub: 'vehicle CVOR',                          color: 'text-orange-700', bg: 'bg-orange-50',  border: 'border-orange-200' },
+                                  { label: 'Dvr Pts',     val: String(totalDriverPts),    sub: 'driver CVOR',                           color: 'text-amber-700',  bg: 'bg-amber-50',   border: 'border-amber-200' },
+                                  { label: 'CVOR Pts',    val: String(totalCvrPtsMini),   sub: 'combined impact',                       color: 'text-indigo-700', bg: 'bg-indigo-50',  border: 'border-indigo-200' },
+                                ] as { label: string; val: string; sub: string; color: string; bg: string; border: string }[]).map(c => (
+                                  <div key={c.label} className={`${c.bg} border ${c.border} rounded-2xl px-4 py-3 shadow-sm`}>
+                                    <div className={`text-[26px] font-black leading-none ${c.color}`}>{c.val}</div>
+                                    <div className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600">{c.label}</div>
+                                    <div className="mt-1 text-[10px] text-slate-500">{c.sub}</div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* 1. CVOR Performance — open by default */}
+                              <Section
+                                k="performance"
+                                title="CVOR Performance"
+                                subtitle={`Rating ${pull.rating.toFixed(2)}%`}
+                                IconCmp={ShieldAlert}
+                                iconBg="bg-slate-100"
+                                iconColor="text-slate-600"
+                                headerExtra={<span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${rbMini(pull.rating)}`}>{rlMini(pull.rating)}</span>}
+                              >
+                                <div className="px-4 py-3.5">
+                                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Overall CVOR Rating</div>
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div className="text-[36px] leading-none font-black" style={{ color: rcMini(pull.rating) }}>
+                                      {pull.rating.toFixed(2)}%
+                                    </div>
+                                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${rbMini(pull.rating)}`}>{rlMini(pull.rating)}</span>
+                                  </div>
+                                  <div className="relative" style={{ paddingTop: 22 }}>
+                                    <div className="absolute z-10 flex flex-col items-center pointer-events-none"
+                                      style={{ left: `${Math.min(pull.rating, 100)}%`, transform: 'translateX(-50%)', top: 0 }}>
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white whitespace-nowrap shadow-sm" style={{ background: rcMini(pull.rating) }}>{pull.rating.toFixed(2)}%</span>
+                                      <div className="w-[2px] h-2.5" style={{ background: rcMini(pull.rating) }}/>
+                                    </div>
+                                    <div className="relative h-[18px] rounded-full overflow-hidden" style={{ background: gradMini, boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.25)' }}>
+                                      <div className="absolute top-0 left-0 right-0 h-[7px] rounded-t-full" style={{ background: 'linear-gradient(to bottom,rgba(255,255,255,0.30),transparent)' }}/>
+                                      {[cvorThresholds.warning, cvorThresholds.intervention, cvorThresholds.showCause, cvorThresholds.seizure].map(t => (
+                                        <div key={t} className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: `${t}%` }}/>
+                                      ))}
+                                      <div className="absolute top-0 bottom-0 w-[3px] rounded-full"
+                                        style={{ left: `${Math.min(pull.rating, 100)}%`, transform: 'translateX(-50%)', background: '#fff', boxShadow: '0 0 6px 2px rgba(0,0,0,0.35)' }}/>
+                                    </div>
+                                    <div className="relative mt-1" style={{ height: 12 }}>
+                                      {([
+                                        { label: 'WARN', val: cvorThresholds.warning, color: '#b45309' },
+                                        { label: 'AUDIT', val: cvorThresholds.intervention, color: '#d97706' },
+                                        { label: 'SC', val: cvorThresholds.showCause, color: '#dc2626' },
+                                        { label: 'SZR', val: cvorThresholds.seizure, color: '#7f1d1d' },
+                                      ] as { label: string; val: number; color: string }[]).map(({ label, val, color }) => (
+                                        <span key={label} className="absolute text-[8.5px] font-bold whitespace-nowrap"
+                                          style={{ left: `${val}%`, transform: 'translateX(-50%)', color }}>{label}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-2 mt-4">
+                                    {([
+                                      { key: 'col', label: 'Collisions', pct: colPctMini, weight: 40, detail1: `${pull.collisionEvents} collisions`, detail2: `${pull.totalCollisionPoints} pts` },
+                                      { key: 'con', label: 'Convictions', pct: conPctMini, weight: 40, detail1: `${pull.convictionEvents} convictions`, detail2: `${pull.convictionPoints} pts` },
+                                      { key: 'ins', label: 'Inspections', pct: insPctMini, weight: 20, detail1: 'OOS rate', detail2: `${pull.oosOverall.toFixed(1)}%` },
+                                    ] as { key: string; label: string; pct: number; weight: number; detail1: string; detail2: string }[]).map(({ key, label, pct, weight, detail1, detail2 }) => (
+                                      <div key={key} className={`group/minitile relative rounded-lg border p-2.5 ${tileBgMini(pct)} cursor-pointer transition-shadow hover:shadow-lg`}>
+                                        <div className="flex items-center justify-between mb-0.5">
+                                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{label}</span>
+                                          <span className={`text-[9px] font-bold px-1 py-px rounded border ${rbMini(pct)}`}>{rlMini(pct)}</span>
+                                        </div>
+                                        <div className="text-[22px] leading-none font-black my-0.5" style={{ color: rcMini(pct) }}>{pct.toFixed(1)}%</div>
+                                        <div className="text-[10px] text-slate-600">{detail1}  ·  {detail2}</div>
+                                        <div className="text-[9px] text-slate-400">{weight}% weight</div>
+                                        <div className="relative h-[5px] rounded-full overflow-hidden mt-1.5" style={{ background: gradMini }}>
+                                          <div className="absolute top-0 bottom-0 bg-slate-900/30 rounded-r-full" style={{ left: `${Math.min(pct, 100)}%`, right: 0 }}/>
+                                          <div className="absolute top-0 bottom-0 w-[2px] bg-white" style={{ left: `${Math.min(pct, 100)}%`, transform: 'translateX(-50%)' }}/>
+                                        </div>
+                                        {/* Hover tooltip — mirrors main-page CVOR Performance tile popup */}
+                                        <div className="hidden group-hover/minitile:block absolute z-50 pointer-events-none"
+                                          style={{ bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', width: 230 }}>
+                                          <div className="rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
+                                            <div className="px-3.5 py-2 flex items-center justify-between" style={{ background: rcMini(pct) }}>
+                                              <span className="text-white font-black text-[12px] uppercase tracking-wide">{label}</span>
+                                              <span className="text-white/90 text-[12px] font-mono font-bold">{pct.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="px-3.5 py-2.5 space-y-1.5">
+                                              <div className="flex justify-between text-[11px]">
+                                                <span className="text-slate-400">Status</span>
+                                                <span className="font-bold" style={{ color: rcMini(pct) }}>{rlMini(pct)}</span>
+                                              </div>
+                                              <div className="flex justify-between text-[11px]">
+                                                <span className="text-slate-400">Category Weight</span>
+                                                <span className="font-bold text-slate-800">{weight}%</span>
+                                              </div>
+                                              <div className="flex justify-between text-[11px]">
+                                                <span className="text-slate-400">{detail1}</span>
+                                                <span className="font-bold text-slate-800">{detail2}</span>
+                                              </div>
+                                              <div className="pt-1.5 border-t border-slate-100">
+                                                <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Thresholds</div>
+                                                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                                  {([
+                                                    { n: 'Warning',    v: cvorThresholds.warning,      c: '#fbbf24' },
+                                                    { n: 'Audit',      v: cvorThresholds.intervention, c: '#f97316' },
+                                                    { n: 'Show Cause', v: cvorThresholds.showCause,    c: '#f87171' },
+                                                    { n: 'Current',    v: pct,                         c: rcMini(pct) },
+                                                  ] as { n: string; v: number; c: string }[]).map(th => (
+                                                    <div key={th.n} className="flex items-center justify-between">
+                                                      <span className="text-[9px]" style={{ color: th.c }}>{th.n}</span>
+                                                      <span className="text-[10px] font-bold font-mono text-slate-700">{th.v.toFixed(1)}%</span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0"
+                                              style={{ borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid white' }}/>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                                <div className="divide-y divide-slate-100">
-                                  {pullInspections.map((record, ri) => {
-                                    const pts = calcCvor(record);
+                              </Section>
+
+                              {/* 2. Mileage Summary */}
+                              <Section
+                                k="mileage"
+                                title="Mileage Summary"
+                                subtitle={`${fmtMiMini(pull.totalMiles)} mi total · ${pull.trucks} trucks`}
+                                IconCmp={Truck}
+                                iconBg="bg-slate-100"
+                                iconColor="text-slate-600"
+                              >
+                                <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                  {([
+                                    { label: 'Ontario', val: pull.onMiles },
+                                    { label: 'Rest of Canada', val: pull.canadaMiles },
+                                    { label: 'Trucks', val: pull.trucks, raw: true },
+                                    { label: 'Total', val: pull.totalMiles, total: true },
+                                  ] as { label: string; val: number; total?: boolean; raw?: boolean }[]).map(({ label, val, total, raw }) => (
+                                    <div key={label} className={`rounded-lg border p-2.5 text-center ${total ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
+                                      <div className="text-[9px] text-slate-400 uppercase tracking-wider mb-0.5">{label}</div>
+                                      <div className={`text-[14px] font-black font-mono ${total ? 'text-blue-700' : 'text-slate-800'}`}>
+                                        {raw ? fmtNumMini(val) : fmtMiMini(val)}
+                                      </div>
+                                      <div className="text-[9px] text-slate-400">{raw ? 'units' : 'mi'}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </Section>
+
+                              {/* 3. Collision Details — granular per-pull breakdown */}
+                              <Section
+                                k="collisionDetails"
+                                title="Collision Details"
+                                subtitle={`${pull.collisionEvents} collisions · ${pull.totalCollisionPoints} pts`}
+                                IconCmp={Truck}
+                                iconBg="bg-red-50"
+                                iconColor="text-red-600"
+                                headerExtra={<span className="text-[10px] font-bold text-red-600 tabular-nums">{pull.collisionEvents}</span>}
+                              >
+                                <div className="px-4 py-3 space-y-3">
+                                  {/* Severity breakdown */}
+                                  <div>
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">By Severity</div>
+                                    <div className="space-y-1">
+                                      {[
+                                        { label: 'Fatal',           value: pull.collisionDetails.fatal,           color: '#7f1d1d' },
+                                        { label: 'Personal Injury', value: pull.collisionDetails.personalInjury,  color: '#f59e0b' },
+                                        { label: 'Property Damage', value: pull.collisionDetails.propertyDamage,  color: '#3b82f6' },
+                                      ].map(r => (
+                                        <div key={r.label} className="flex items-center justify-between text-[12px]">
+                                          <span className="inline-flex items-center gap-1.5 text-slate-500">
+                                            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: r.color }}/>
+                                            {r.label}
+                                          </span>
+                                          <span className="font-bold tabular-nums" style={{ color: r.color }}>{r.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  {/* Points status + totals */}
+                                  <div className="pt-2 border-t border-slate-100">
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">By Points Status</div>
+                                    <div className="space-y-1">
+                                      {[
+                                        { label: 'With Points',     value: pull.collWithPoints,        color: '#dc2626' },
+                                        { label: 'Not Pointed',     value: pull.collWithoutPoints,     color: '#94a3b8' },
+                                        { label: 'Total Points',    value: pull.totalCollisionPoints,  color: '#dc2626', emphasis: true },
+                                        { label: 'Total Collisions',value: pull.collisionEvents,       color: '#0f172a', emphasis: true },
+                                      ].map(r => (
+                                        <div key={r.label} className="flex items-center justify-between text-[12px]">
+                                          <span className="inline-flex items-center gap-1.5 text-slate-500">
+                                            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: r.color }}/>
+                                            {r.label}
+                                          </span>
+                                          <span className={`font-bold tabular-nums ${'emphasis' in r && r.emphasis ? 'text-base' : ''}`} style={{ color: r.color }}>{r.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </Section>
+
+                              {/* 4. Conviction Details — granular per-pull breakdown */}
+                              <Section
+                                k="convictionDetails"
+                                title="Conviction Details"
+                                subtitle={`${pull.convictionEvents} convictions · ${pull.convictionPoints} pts`}
+                                IconCmp={Scale}
+                                iconBg="bg-amber-50"
+                                iconColor="text-amber-600"
+                                headerExtra={<span className="text-[10px] font-bold text-amber-600 tabular-nums">{pull.convictionEvents}</span>}
+                              >
+                                <div className="px-4 py-3 space-y-3">
+                                  {/* Category breakdown */}
+                                  <div>
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">By Category</div>
+                                    <div className="space-y-1">
+                                      {[
+                                        { label: 'Driver',  value: pull.convictionDetails.driver,  color: '#a855f7' },
+                                        { label: 'Vehicle', value: pull.convictionDetails.vehicle, color: '#6366f1' },
+                                        { label: 'Load',    value: pull.convictionDetails.load,    color: '#10b981' },
+                                        { label: 'Other',   value: pull.convictionDetails.other,   color: '#94a3b8' },
+                                      ].map(r => (
+                                        <div key={r.label} className="flex items-center justify-between text-[12px]">
+                                          <span className="inline-flex items-center gap-1.5 text-slate-500">
+                                            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: r.color }}/>
+                                            {r.label}
+                                          </span>
+                                          <span className="font-bold tabular-nums" style={{ color: r.color }}>{r.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  {/* Points status + totals */}
+                                  <div className="pt-2 border-t border-slate-100">
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">By Points Status</div>
+                                    <div className="space-y-1">
+                                      {[
+                                        { label: 'With Points',       value: pull.convictionDetails.withPoints, color: '#f59e0b' },
+                                        { label: 'Not Pointed',       value: pull.convictionDetails.notPointed, color: '#94a3b8' },
+                                        { label: 'Total Points',      value: pull.convictionPoints,             color: '#d97706', emphasis: true },
+                                        { label: 'Total Convictions', value: pull.convictionEvents,             color: '#0f172a', emphasis: true },
+                                      ].map(r => (
+                                        <div key={r.label} className="flex items-center justify-between text-[12px]">
+                                          <span className="inline-flex items-center gap-1.5 text-slate-500">
+                                            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: r.color }}/>
+                                            {r.label}
+                                          </span>
+                                          <span className={`font-bold tabular-nums ${'emphasis' in r && r.emphasis ? 'text-base' : ''}`} style={{ color: r.color }}>{r.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </Section>
+
+                              {/* 5. CVOR Rating Comparison */}
+                              <Section
+                                k="comparison"
+                                title="CVOR Rating Comparison"
+                                subtitle={`Total ${lvlTotalMini} · OOS: ${lvlOosMini}`}
+                                IconCmp={ClipboardCheck}
+                                iconBg="bg-amber-50"
+                                iconColor="text-amber-600"
+                              >
+                                <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+                                  {lvlStatsMini.map(l => {
+                                    const lColor = l.pct >= 50 ? '#ef4444' : l.pct >= 25 ? '#f97316' : l.count > 0 ? '#22c55e' : '#cbd5e1';
+                                    const dotCls = l.count > 0 ? (l.pct >= 50 ? 'bg-red-500' : l.pct >= 25 ? 'bg-orange-400' : 'bg-emerald-500') : 'bg-slate-300';
                                     return (
-                                      <InspectionRow key={record.id+'-'+ri} record={record}
-                                        cvorOverride={{ vehPts:pts.veh, dvrPts:pts.dvr, cvrPts:pts.cvr }}/>
+                                      <div key={l.level} className="px-3.5 py-2.5 flex items-center gap-2.5">
+                                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotCls}`}/>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-[11px] font-semibold text-slate-700 truncate">{l.name}</div>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(l.pct, 100)}%`, backgroundColor: lColor }}/>
+                                            </div>
+                                            <span className="text-[10px] font-bold w-7 text-right" style={{ color: lColor }}>{l.pct.toFixed(0)}%</span>
+                                          </div>
+                                        </div>
+                                        <div className="text-right flex-shrink-0">
+                                          <div className="text-[11px] font-bold text-slate-700">{l.count} insp</div>
+                                          <div className="text-[9.5px] text-slate-400">{l.oosCount} OOS</div>
+                                        </div>
+                                      </div>
                                     );
                                   })}
                                 </div>
-                                <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-[11px]">
-                                  <div className="col-span-6 font-bold text-slate-600">
-                                    {pullInspections.length} inspections  ·  {withPtsCount} with CVOR impact  ·  {oosCount} OOS  ·  {cleanCount} clean
-                                  </div>
-                                  <div className="col-span-2"/>
-                                  <div className="col-span-1 text-center font-bold text-orange-700">{totalVehPts}</div>
-                                  <div className="col-span-1 text-center font-bold text-amber-700">{totalDvrPts}</div>
-                                  <div className="col-span-1 text-center font-bold text-red-700">{totalCvrPts}</div>
-                                  <div className="col-span-1"/>
+                              </Section>
+
+                              {/* 6. Collision Breakdown by Kilometre Rate */}
+                              <Section
+                                k="collisionBd"
+                                title="Collision Breakdown by Kilometre Rate"
+                                subtitle={`${pull.collisionEvents} events · ${pull.totalCollisionPoints} pts · ${pull.colPctOfThresh.toFixed(2)}% of threshold`}
+                                IconCmp={AlertTriangle}
+                                iconBg="bg-red-50"
+                                iconColor="text-red-600"
+                              >
+                                <DataListToolbar
+                                  searchValue=""
+                                  onSearchChange={() => {}}
+                                  hideSearch
+                                  columns={miniColBdColumns}
+                                  onToggleColumn={(id) => setMiniColBdColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                                  totalItems={colBd.filtered.length}
+                                  currentPage={colBd.safe}
+                                  rowsPerPage={miniColBdRowsPerPage}
+                                  onPageChange={setMiniColBdPage}
+                                  onRowsPerPageChange={setMiniColBdRowsPerPage}
+                                />
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="bg-slate-50/40 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                        {miniColBdColumns.find(c => c.id === 'period')?.visible     && <th className="px-3 py-2 text-left">Period</th>}
+                                        {miniColBdColumns.find(c => c.id === 'fromDate')?.visible   && <th className="px-3 py-2 text-left">From</th>}
+                                        {miniColBdColumns.find(c => c.id === 'toDate')?.visible     && <th className="px-3 py-2 text-left">To</th>}
+                                        {miniColBdColumns.find(c => c.id === 'months')?.visible     && <th className="px-3 py-2 text-right">Months</th>}
+                                        {miniColBdColumns.find(c => c.id === 'kmPerMonth')?.visible && <th className="px-3 py-2 text-right">KM/Month</th>}
+                                        {miniColBdColumns.find(c => c.id === 'events')?.visible     && <th className="px-3 py-2 text-right">Events</th>}
+                                        {miniColBdColumns.find(c => c.id === 'points')?.visible     && <th className="px-3 py-2 text-right">Points</th>}
+                                        {miniColBdColumns.find(c => c.id === 'threshold')?.visible  && <th className="px-3 py-2 text-right">Threshold</th>}
+                                        {miniColBdColumns.find(c => c.id === 'pctSet')?.visible     && <th className="px-3 py-2 text-right">% Set</th>}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {colBd.paged.length > 0 ? colBd.paged.map(r => (
+                                        <tr key={r.period} className="hover:bg-slate-50/60">
+                                          {miniColBdColumns.find(c => c.id === 'period')?.visible     && <td className="px-3 py-2 font-bold text-blue-600 tabular-nums">{r.period}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'fromDate')?.visible   && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.fromDate}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'toDate')?.visible     && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.toDate}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'months')?.visible     && <td className="px-3 py-2 text-right font-semibold text-blue-600 tabular-nums">{r.months}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'kmPerMonth')?.visible && <td className="px-3 py-2 text-right text-slate-700 tabular-nums">{fmtNumMini(r.kmPerMonth)}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'events')?.visible     && <td className="px-3 py-2 text-right font-bold text-slate-900 tabular-nums">{r.events}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'points')?.visible     && <td className="px-3 py-2 text-right font-bold text-red-600 tabular-nums">{r.points}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'threshold')?.visible  && <td className="px-3 py-2 text-right text-slate-700 tabular-nums">{r.threshold.toFixed(2)}</td>}
+                                          {miniColBdColumns.find(c => c.id === 'pctSet')?.visible     && <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">{r.pctSet.toFixed(2)}%</td>}
+                                        </tr>
+                                      )) : (
+                                        <tr><td colSpan={miniColBdColumns.filter(c => c.visible).length || 1} className="px-4 py-6 text-center text-slate-500 text-xs">No matching periods.</td></tr>
+                                      )}
+                                    </tbody>
+                                  </table>
                                 </div>
-                              </div>
-                            )}
+                                <PaginationBar
+                                  totalItems={colBd.filtered.length}
+                                  currentPage={colBd.safe}
+                                  rowsPerPage={miniColBdRowsPerPage}
+                                  onPageChange={setMiniColBdPage}
+                                  onRowsPerPageChange={setMiniColBdRowsPerPage}
+                                />
+                                <p className="px-4 py-2 text-[10px] text-slate-500 italic border-t border-slate-100 bg-slate-50/40">
+                                  *Periods derived from this pull's 24-month window (3 × 8 mo). Events/points sourced from CVOR Intervention Events.
+                                </p>
+                              </Section>
+
+                              {/* 7. Conviction Breakdown by Kilometre Rate */}
+                              <Section
+                                k="convictionBd"
+                                title="Conviction Breakdown by Kilometre Rate"
+                                subtitle={`${pull.convictionEvents} events · ${pull.convictionPoints} pts · ${pull.conPctOfThresh.toFixed(2)}% of threshold`}
+                                IconCmp={Scale}
+                                iconBg="bg-amber-50"
+                                iconColor="text-amber-600"
+                              >
+                                <DataListToolbar
+                                  searchValue=""
+                                  onSearchChange={() => {}}
+                                  hideSearch
+                                  columns={miniConBdColumns}
+                                  onToggleColumn={(id) => setMiniConBdColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                                  totalItems={conBd.filtered.length}
+                                  currentPage={conBd.safe}
+                                  rowsPerPage={miniConBdRowsPerPage}
+                                  onPageChange={setMiniConBdPage}
+                                  onRowsPerPageChange={setMiniConBdRowsPerPage}
+                                />
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="bg-slate-50/40 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                        {miniConBdColumns.find(c => c.id === 'period')?.visible     && <th className="px-3 py-2 text-left">Period</th>}
+                                        {miniConBdColumns.find(c => c.id === 'fromDate')?.visible   && <th className="px-3 py-2 text-left">From</th>}
+                                        {miniConBdColumns.find(c => c.id === 'toDate')?.visible     && <th className="px-3 py-2 text-left">To</th>}
+                                        {miniConBdColumns.find(c => c.id === 'months')?.visible     && <th className="px-3 py-2 text-right">Months</th>}
+                                        {miniConBdColumns.find(c => c.id === 'kmPerMonth')?.visible && <th className="px-3 py-2 text-right">KM/Month</th>}
+                                        {miniConBdColumns.find(c => c.id === 'events')?.visible     && <th className="px-3 py-2 text-right">Events</th>}
+                                        {miniConBdColumns.find(c => c.id === 'points')?.visible     && <th className="px-3 py-2 text-right">Points</th>}
+                                        {miniConBdColumns.find(c => c.id === 'threshold')?.visible  && <th className="px-3 py-2 text-right">Threshold</th>}
+                                        {miniConBdColumns.find(c => c.id === 'pctSet')?.visible     && <th className="px-3 py-2 text-right">% Set</th>}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {conBd.paged.length > 0 ? conBd.paged.map(r => (
+                                        <tr key={r.period} className="hover:bg-slate-50/60">
+                                          {miniConBdColumns.find(c => c.id === 'period')?.visible     && <td className="px-3 py-2 font-bold text-blue-600 tabular-nums">{r.period}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'fromDate')?.visible   && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.fromDate}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'toDate')?.visible     && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.toDate}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'months')?.visible     && <td className="px-3 py-2 text-right font-semibold text-blue-600 tabular-nums">{r.months}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'kmPerMonth')?.visible && <td className="px-3 py-2 text-right text-slate-700 tabular-nums">{fmtNumMini(r.kmPerMonth)}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'events')?.visible     && <td className="px-3 py-2 text-right font-bold text-slate-900 tabular-nums">{r.events}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'points')?.visible     && <td className="px-3 py-2 text-right font-bold text-amber-600 tabular-nums">{r.points}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'threshold')?.visible  && <td className="px-3 py-2 text-right text-slate-700 tabular-nums">{r.threshold.toFixed(2)}</td>}
+                                          {miniConBdColumns.find(c => c.id === 'pctSet')?.visible     && <td className="px-3 py-2 text-right font-semibold text-slate-900 tabular-nums">{r.pctSet.toFixed(2)}%</td>}
+                                        </tr>
+                                      )) : (
+                                        <tr><td colSpan={miniConBdColumns.filter(c => c.visible).length || 1} className="px-4 py-6 text-center text-slate-500 text-xs">No matching periods.</td></tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <PaginationBar
+                                  totalItems={conBd.filtered.length}
+                                  currentPage={conBd.safe}
+                                  rowsPerPage={miniConBdRowsPerPage}
+                                  onPageChange={setMiniConBdPage}
+                                  onRowsPerPageChange={setMiniConBdRowsPerPage}
+                                />
+                                <p className="px-4 py-2 text-[10px] text-slate-500 italic border-t border-slate-100 bg-slate-50/40">
+                                  *Periods derived from this pull's 24-month window (3 × 8 mo). Events/points sourced from CVOR Intervention Events.
+                                </p>
+                              </Section>
+
+                              {/* 8. Inspection Statistics */}
+                              <Section
+                                k="inspStats"
+                                title="Inspection Statistics"
+                                subtitle={`${cvsaCount} CVSA · ${vehiclesInsp} vehicles · ${driversInsp} drivers`}
+                                IconCmp={ClipboardCheck}
+                                iconBg="bg-blue-50"
+                                iconColor="text-blue-600"
+                                headerExtra={<span className={`text-[10px] font-bold tabular-nums ${insPctMini >= 70 ? 'text-red-600' : insPctMini >= 50 ? 'text-amber-600' : 'text-slate-500'}`}>{insPctMini.toFixed(1)}%</span>}
+                              >
+                                <table className="w-full text-xs">
+                                  <tbody className="divide-y divide-slate-100">
+                                    {inspRowsFiltered.length > 0 ? inspRowsFiltered.map(r => {
+                                      const tone = r.tone ?? 'default';
+                                      const valueColor =
+                                        tone === 'red' ? 'text-red-600'
+                                        : tone === 'amber' ? 'text-amber-600'
+                                        : r.emphasis ? 'text-slate-900' : 'text-slate-700';
+                                      const isPct = r.label.startsWith('% of');
+                                      return (
+                                        <tr key={r.label} className={`hover:bg-slate-50/60 ${isPct ? 'bg-orange-50/40' : ''}`}>
+                                          <td className={`px-4 py-2 ${isPct ? 'text-red-600 font-bold' : 'text-slate-700'}`}>{r.label}</td>
+                                          <td className={`px-4 py-2 text-right tabular-nums font-bold ${valueColor}`}>{r.value}</td>
+                                        </tr>
+                                      );
+                                    }) : (
+                                      <tr><td colSpan={2} className="px-4 py-6 text-center text-slate-500 text-xs">No rows match your search.</td></tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </Section>
+
+                              {/* 9. Intervention & Event Details */}
+                              <Section
+                                k="events"
+                                title="Intervention & Event Details"
+                                subtitle={`${eventsSortedAll.length} of ${eventKpiCounts.all} events in window`}
+                                IconCmp={FileText}
+                                iconBg="bg-slate-100"
+                                iconColor="text-slate-600"
+                              >
+                                {/* KPI strip */}
+                                {(() => {
+                                  type Tone = 'rose' | 'emerald' | 'red' | 'orange' | 'blue' | 'purple' | 'yellow';
+                                  const toneMap: Record<Tone, { iconBg: string; iconText: string; ring: string; valueText: string; activeBg: string }> = {
+                                    rose:    { iconBg: 'bg-rose-100',    iconText: 'text-rose-600',    ring: 'ring-rose-300 border-rose-300',       valueText: 'text-rose-700',    activeBg: 'bg-rose-50/40' },
+                                    emerald: { iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', ring: 'ring-emerald-300 border-emerald-300', valueText: 'text-emerald-700', activeBg: 'bg-emerald-50/40' },
+                                    red:     { iconBg: 'bg-red-100',     iconText: 'text-red-600',     ring: 'ring-red-300 border-red-300',         valueText: 'text-red-700',     activeBg: 'bg-red-50/40' },
+                                    orange:  { iconBg: 'bg-orange-100',  iconText: 'text-orange-600',  ring: 'ring-orange-300 border-orange-300',   valueText: 'text-orange-700',  activeBg: 'bg-orange-50/40' },
+                                    blue:    { iconBg: 'bg-blue-100',    iconText: 'text-blue-600',    ring: 'ring-blue-300 border-blue-300',       valueText: 'text-blue-700',    activeBg: 'bg-blue-50/40' },
+                                    purple:  { iconBg: 'bg-purple-100',  iconText: 'text-purple-600',  ring: 'ring-purple-300 border-purple-300',   valueText: 'text-purple-700',  activeBg: 'bg-purple-50/40' },
+                                    yellow:  { iconBg: 'bg-yellow-100',  iconText: 'text-yellow-700',  ring: 'ring-yellow-300 border-yellow-300',   valueText: 'text-yellow-700',  activeBg: 'bg-yellow-50/40' },
+                                  };
+                                  type KpiDef = { id: typeof miniEventsKpiFilter; title: string; value: number; IconCmp: React.ComponentType<{ size?: number; className?: string }>; tone: Tone };
+                                  const kpis: KpiDef[] = [
+                                    { id: 'ALL',        title: 'All',         value: eventKpiCounts.all,       IconCmp: ClipboardCheck, tone: 'rose' },
+                                    { id: 'CLEAN',      title: 'Clean',       value: eventKpiCounts.clean,     IconCmp: CheckCircle2,   tone: 'emerald' },
+                                    { id: 'OOS',        title: 'OOS',         value: eventKpiCounts.oos,       IconCmp: ShieldAlert,    tone: 'red' },
+                                    { id: 'VEHICLE',    title: 'Veh',         value: eventKpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
+                                    { id: 'HOS_DRIVER', title: 'HOS/Drv',     value: eventKpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
+                                    { id: 'SEVERE',     title: 'Severe',      value: eventKpiCounts.severe,    IconCmp: AlertTriangle,  tone: 'purple' },
+                                    { id: 'TICKETS',    title: 'Tickets',     value: eventKpiCounts.tickets,   IconCmp: Ticket,         tone: 'yellow' },
+                                  ];
+                                  return (
+                                    <div className="px-4 pt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                                      {kpis.map(k => {
+                                        const t = toneMap[k.tone];
+                                        const isActive = miniEventsKpiFilter === k.id;
+                                        return (
+                                          <button
+                                            key={k.id}
+                                            type="button"
+                                            onClick={() => setMiniEventsKpiFilter(k.id)}
+                                            className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border bg-white text-left transition-all ${
+                                              isActive
+                                                ? `ring-2 ring-offset-1 ${t.ring} ${t.activeBg} shadow-sm`
+                                                : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                                            }`}
+                                          >
+                                            <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${t.iconBg}`}>
+                                              <k.IconCmp size={13} className={t.iconText} />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                              <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate leading-tight">{k.title}</div>
+                                              <div className={`text-base font-black tabular-nums leading-tight mt-0.5 ${isActive ? t.valueText : 'text-slate-900'}`}>{k.value}</div>
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
+                                {/* Type filter (Inspection / Collision / Conviction) */}
+                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/40 flex items-center gap-3 flex-wrap">
+                                  <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                                    <FileText size={12} className="text-slate-400" />
+                                    <span className="font-semibold">Filter by type:</span>
+                                    <select
+                                      value={miniEventsTypeFilter}
+                                      onChange={(e) => setMiniEventsTypeFilter(e.target.value as typeof miniEventsTypeFilter)}
+                                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                      <option value="ALL">All Types</option>
+                                      <option value="inspection">Inspection</option>
+                                      <option value="collision">Collision</option>
+                                      <option value="conviction">Conviction</option>
+                                    </select>
+                                  </label>
+                                  <span className="text-xs text-slate-500">{eventsSortedAll.length} event{eventsSortedAll.length === 1 ? '' : 's'}</span>
+                                </div>
+                                <DataListToolbar
+                                  searchValue={miniEventsSearch}
+                                  onSearchChange={setMiniEventsSearch}
+                                  searchPlaceholder="Search CVIR, ticket, driver, licence, location, vehicle, defect..."
+                                  columns={miniEventsColumns}
+                                  onToggleColumn={(id) => setMiniEventsColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                                  totalItems={eventsSortedAll.length}
+                                  currentPage={eventsSafePage}
+                                  rowsPerPage={miniEventsRowsPerPage}
+                                  onPageChange={setMiniEventsPage}
+                                  onRowsPerPageChange={setMiniEventsRowsPerPage}
+                                />
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                      <tr>
+                                        {isEventVis('type')          && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('type')} className="inline-flex items-center gap-1 hover:text-slate-700">Type <SortIndicator active={miniEventsSort.col === 'type'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('date')          && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('date')} className="inline-flex items-center gap-1 hover:text-slate-700">Date <SortIndicator active={miniEventsSort.col === 'date'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('time')          && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('time')} className="inline-flex items-center gap-1 hover:text-slate-700">Time <SortIndicator active={miniEventsSort.col === 'time'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('cvirOrTicket')  && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('cvirOrTicket')} className="inline-flex items-center gap-1 hover:text-slate-700">CVIR / Ticket <SortIndicator active={miniEventsSort.col === 'cvirOrTicket'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('location')      && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('location')} className="inline-flex items-center gap-1 hover:text-slate-700">Location <SortIndicator active={miniEventsSort.col === 'location'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('driver')        && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('driver')} className="inline-flex items-center gap-1 hover:text-slate-700">Driver <SortIndicator active={miniEventsSort.col === 'driver'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('driverLicence') && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('driverLicence')} className="inline-flex items-center gap-1 hover:text-slate-700">Driver Licence <SortIndicator active={miniEventsSort.col === 'driverLicence'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('vehicle1')      && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('vehicle1')} className="inline-flex items-center gap-1 hover:text-slate-700">Vehicle 1 <SortIndicator active={miniEventsSort.col === 'vehicle1'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('vehicle2')      && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortEvent('vehicle2')} className="inline-flex items-center gap-1 hover:text-slate-700">Vehicle 2 <SortIndicator active={miniEventsSort.col === 'vehicle2'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('level')         && <th className="px-3 py-2 text-center"><button type="button" onClick={() => sortEvent('level')} className="inline-flex items-center gap-1 hover:text-slate-700">Level <SortIndicator active={miniEventsSort.col === 'level'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('vPts')          && <th className="px-3 py-2 text-center"><button type="button" onClick={() => sortEvent('vPts')} className="inline-flex items-center gap-1 hover:text-slate-700">V Pts <SortIndicator active={miniEventsSort.col === 'vPts'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('dPts')          && <th className="px-3 py-2 text-center"><button type="button" onClick={() => sortEvent('dPts')} className="inline-flex items-center gap-1 hover:text-slate-700">D Pts <SortIndicator active={miniEventsSort.col === 'dPts'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('oos')           && <th className="px-3 py-2 text-center"><button type="button" onClick={() => sortEvent('oos')} className="inline-flex items-center gap-1 hover:text-slate-700">OOS <SortIndicator active={miniEventsSort.col === 'oos'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('defects')       && <th className="px-3 py-2 text-center"><button type="button" onClick={() => sortEvent('defects')} className="inline-flex items-center gap-1 hover:text-slate-700">Defects <SortIndicator active={miniEventsSort.col === 'defects'} dir={miniEventsSort.dir}/></button></th>}
+                                        {isEventVis('charged')       && <th className="px-3 py-2 text-center"><button type="button" onClick={() => sortEvent('charged')} className="inline-flex items-center gap-1 hover:text-slate-700">Charged <SortIndicator active={miniEventsSort.col === 'charged'} dir={miniEventsSort.dir}/></button></th>}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {eventsPaged.length > 0 ? eventsPaged.map(e => {
+                                        const tb = e.type === 'inspection'
+                                          ? { cls: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Inspection' }
+                                          : e.type === 'collision'
+                                            ? { cls: 'bg-red-50 text-red-700 border-red-200', label: 'Collision' }
+                                            : { cls: 'bg-amber-50 text-amber-700 border-amber-200', label: 'Conviction' };
+                                        const vPts = e.type === 'inspection' ? (e.vehiclePoints ?? 0) : 0;
+                                        const dPts = e.type === 'inspection' ? (e.driverPoints ?? 0) : (e.pointsTotal ?? 0);
+                                        const time = e.type === 'inspection'
+                                          ? `${e.startTime ?? ''}${e.endTime ? '-' + e.endTime : ''}`
+                                          : (e.time ?? '—');
+                                        const charged = e.type === 'collision'
+                                          ? (e.collision?.driverCharged === 'Y' ? 'Yes' : 'No')
+                                          : e.type === 'inspection'
+                                            ? (e.charged === 'Y' ? 'Yes' : 'No')
+                                            : 'No';
+                                        return (
+                                          <tr key={e.id} className="hover:bg-slate-50/60">
+                                            {isEventVis('type')          && <td className="px-3 py-2"><span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-bold ${tb.cls}`}>{tb.label}</span></td>}
+                                            {isEventVis('date')          && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{e.date}</td>}
+                                            {isEventVis('time')          && <td className="px-3 py-2 font-mono text-slate-600 tabular-nums">{time}</td>}
+                                            {isEventVis('cvirOrTicket')  && <td className="px-3 py-2 font-mono text-slate-700">{e.cvir ?? e.ticket ?? '—'}</td>}
+                                            {isEventVis('location')      && <td className="px-3 py-2 text-slate-700 truncate max-w-[180px]">{e.location ?? '—'}</td>}
+                                            {isEventVis('driver')        && <td className="px-3 py-2 text-slate-700 font-medium truncate max-w-[180px]">{e.driverName ?? '—'}</td>}
+                                            {isEventVis('driverLicence') && <td className="px-3 py-2 font-mono text-slate-600 truncate max-w-[160px]">{e.driverLicence ?? '—'}</td>}
+                                            {isEventVis('vehicle1')      && <td className="px-3 py-2 text-slate-700">{e.vehicle1 ? `${e.vehicle1.make ?? ''} ${e.vehicle1.unit ?? ''}`.trim() || e.vehicle1.plate : '—'}</td>}
+                                            {isEventVis('vehicle2')      && <td className="px-3 py-2 text-slate-700">{e.vehicle2 ? `${e.vehicle2.make ?? ''} ${e.vehicle2.unit ?? ''}`.trim() || e.vehicle2.plate : '—'}</td>}
+                                            {isEventVis('level')         && <td className="px-3 py-2 text-center text-slate-700 tabular-nums">{e.type === 'inspection' ? e.level : <span className="text-slate-400">—</span>}</td>}
+                                            {isEventVis('vPts')          && <td className="px-3 py-2 text-center tabular-nums"><span className={vPts > 0 ? 'font-bold text-amber-700' : 'text-slate-400'}>{vPts}</span></td>}
+                                            {isEventVis('dPts')          && <td className="px-3 py-2 text-center tabular-nums"><span className={dPts > 0 ? 'font-bold text-red-700' : 'text-slate-400'}>{dPts}</span></td>}
+                                            {isEventVis('oos')           && <td className="px-3 py-2 text-center tabular-nums">{e.type === 'inspection' && (e.oosCount ?? 0) > 0 ? <span className="font-bold text-amber-700">{e.oosCount}</span> : <span className="text-slate-400">—</span>}</td>}
+                                            {isEventVis('defects')       && <td className="px-3 py-2 text-center tabular-nums">{e.type === 'inspection' ? <span className={(e.totalDefects ?? 0) > 0 ? 'font-bold text-slate-800' : 'text-slate-400'}>{e.totalDefects ?? 0}</span> : <span className="text-slate-400">—</span>}</td>}
+                                            {isEventVis('charged')       && <td className="px-3 py-2 text-center"><span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${charged === 'Yes' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-slate-400'}`}>{charged}</span></td>}
+                                          </tr>
+                                        );
+                                      }) : (
+                                        <tr><td colSpan={miniEventsColumns.filter(c => c.visible).length || 1} className="px-4 py-6 text-center text-slate-500 text-xs">No events match the selected filter or search.</td></tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <PaginationBar
+                                  totalItems={eventsSortedAll.length}
+                                  currentPage={eventsSafePage}
+                                  rowsPerPage={miniEventsRowsPerPage}
+                                  onPageChange={setMiniEventsPage}
+                                  onRowsPerPageChange={setMiniEventsRowsPerPage}
+                                />
+                              </Section>
+
+                              {/* 10. Travel Kilometric Information */}
+                              <Section
+                                k="travel"
+                                title="Travel Kilometric Information"
+                                subtitle={`${travelSortedAll.length} of ${travelInWin.length} period${travelInWin.length === 1 ? '' : 's'} overlapping window`}
+                                IconCmp={Activity}
+                                iconBg="bg-slate-100"
+                                iconColor="text-slate-600"
+                              >
+                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/40 flex items-center gap-3 flex-wrap">
+                                  <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                                    <Activity size={12} className="text-slate-400" />
+                                    <span className="font-semibold">Filter by type:</span>
+                                    <select
+                                      value={miniTravelType}
+                                      onChange={(e) => setMiniTravelType(e.target.value as typeof miniTravelType)}
+                                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                      <option value="ALL">All Periods</option>
+                                      <option value="Estimated">Estimated only</option>
+                                      <option value="Actual">Actual only</option>
+                                    </select>
+                                  </label>
+                                  <span className="text-xs text-slate-500">{travelSortedAll.length} period{travelSortedAll.length === 1 ? '' : 's'}</span>
+                                </div>
+                                <DataListToolbar
+                                  searchValue={miniTravelSearch}
+                                  onSearchChange={setMiniTravelSearch}
+                                  searchPlaceholder="Search by date or type..."
+                                  columns={miniTravelColumns}
+                                  onToggleColumn={(id) => setMiniTravelColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                                  totalItems={travelSortedAll.length}
+                                  currentPage={travelSafePage}
+                                  rowsPerPage={miniTravelRowsPerPage}
+                                  onPageChange={setMiniTravelPage}
+                                  onRowsPerPageChange={setMiniTravelRowsPerPage}
+                                />
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                      <tr>
+                                        {isTravelVis('type')           && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortTravel('type')} className="inline-flex items-center gap-1 hover:text-slate-700">E/A <SortIndicator active={miniTravelSort.col === 'type'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('fromDate')       && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortTravel('fromDate')} className="inline-flex items-center gap-1 hover:text-slate-700">From <SortIndicator active={miniTravelSort.col === 'fromDate'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('toDate')         && <th className="px-3 py-2 text-left"><button type="button" onClick={() => sortTravel('toDate')} className="inline-flex items-center gap-1 hover:text-slate-700">To <SortIndicator active={miniTravelSort.col === 'toDate'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('vehicles')       && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('vehicles')} className="inline-flex items-center gap-1 hover:text-slate-700"># Vehicles <SortIndicator active={miniTravelSort.col === 'vehicles'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('doubleShifted')  && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('doubleShifted')} className="inline-flex items-center gap-1 hover:text-slate-700"># Double Shifted <SortIndicator active={miniTravelSort.col === 'doubleShifted'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('totalVehicles')  && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('totalVehicles')} className="inline-flex items-center gap-1 hover:text-slate-700">Total Vehicles <SortIndicator active={miniTravelSort.col === 'totalVehicles'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('ontarioKm')      && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('ontarioKm')} className="inline-flex items-center gap-1 hover:text-slate-700">Ontario KM <SortIndicator active={miniTravelSort.col === 'ontarioKm'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('restOfCanadaKm') && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('restOfCanadaKm')} className="inline-flex items-center gap-1 hover:text-slate-700">Rest of Canada KM <SortIndicator active={miniTravelSort.col === 'restOfCanadaKm'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('usMexicoKm')     && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('usMexicoKm')} className="inline-flex items-center gap-1 hover:text-slate-700">US/Mexico KM <SortIndicator active={miniTravelSort.col === 'usMexicoKm'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('drivers')        && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('drivers')} className="inline-flex items-center gap-1 hover:text-slate-700"># Drivers <SortIndicator active={miniTravelSort.col === 'drivers'} dir={miniTravelSort.dir}/></button></th>}
+                                        {isTravelVis('totalKm')        && <th className="px-3 py-2 text-right"><button type="button" onClick={() => sortTravel('totalKm')} className="inline-flex items-center gap-1 hover:text-slate-700">Total KM <SortIndicator active={miniTravelSort.col === 'totalKm'} dir={miniTravelSort.dir}/></button></th>}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {travelPaged.length > 0 ? travelPaged.map((r, i) => (
+                                        <tr key={`${r.fromDate}-${r.toDate}-${r.type}-${i}`} className="hover:bg-slate-50/60">
+                                          {isTravelVis('type')           && <td className="px-3 py-2"><span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold ${r.type === 'Estimated' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>{r.type}</span></td>}
+                                          {isTravelVis('fromDate')       && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.fromDate}</td>}
+                                          {isTravelVis('toDate')         && <td className="px-3 py-2 font-mono text-slate-700 tabular-nums">{r.toDate}</td>}
+                                          {isTravelVis('vehicles')       && <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-900">{fmtNumMini(r.vehicles)}</td>}
+                                          {isTravelVis('doubleShifted')  && <td className="px-3 py-2 text-right tabular-nums"><span className={r.doubleShifted > 0 ? 'font-semibold text-blue-600' : 'text-slate-400'}>{r.doubleShifted}</span></td>}
+                                          {isTravelVis('totalVehicles')  && <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-900">{fmtNumMini(r.totalVehicles)}</td>}
+                                          {isTravelVis('ontarioKm')      && <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmtNumMini(r.ontarioKm)}</td>}
+                                          {isTravelVis('restOfCanadaKm') && <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmtNumMini(r.restOfCanadaKm)}</td>}
+                                          {isTravelVis('usMexicoKm')     && <td className="px-3 py-2 text-right tabular-nums"><span className={r.usMexicoKm > 0 ? 'text-slate-700' : 'text-slate-400'}>{fmtNumMini(r.usMexicoKm)}</span></td>}
+                                          {isTravelVis('drivers')        && <td className="px-3 py-2 text-right tabular-nums"><span className={r.drivers > 0 ? 'font-bold text-slate-900' : 'text-slate-400'}>{fmtNumMini(r.drivers)}</span></td>}
+                                          {isTravelVis('totalKm')        && <td className="px-3 py-2 text-right tabular-nums font-bold text-blue-600">{fmtNumMini(r.totalKm)}</td>}
+                                        </tr>
+                                      )) : (
+                                        <tr><td colSpan={miniTravelColumns.filter(c => c.visible).length || 1} className="px-4 py-6 text-center text-slate-500 text-xs">No travel km records match.</td></tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <PaginationBar
+                                  totalItems={travelSortedAll.length}
+                                  currentPage={travelSafePage}
+                                  rowsPerPage={miniTravelRowsPerPage}
+                                  onPageChange={setMiniTravelPage}
+                                  onRowsPerPageChange={setMiniTravelRowsPerPage}
+                                />
+                              </Section>
                             </div>
-                          </div>
                           </div>
                         );
                       })()}
@@ -7509,94 +9527,692 @@ export function InspectionsPage() {
                 );
               })()}
 
+          {/* ══════════════════════════════════════════════════════════════
+               ALL-PULLS INTERVENTION & EVENT DETAILS
+               Aggregates events from every pull (deduped on type/date/driver/CVIR-or-ticket).
+               Filters: time period, type, KPI, search · Sortable columns ·
+               Column toggle · Pagination · Expandable rows · Hidden chart toggle.
+          ══════════════════════════════════════════════════════════════ */}
+          {(() => {
+            // ── Aggregate + dedupe events from all pulls ──
+            type AggregatedEvent = CvorInterventionEvent & {
+              sourcePulls: string[]; // pull periodLabels this event appears in
+            };
+            const dedupKey = (e: CvorInterventionEvent) =>
+              `${e.type}|${e.date}|${e.driverName ?? ''}|${e.cvir ?? e.ticket ?? ''}|${e.vehicle1?.plate ?? ''}|${e.level ?? ''}`;
+            const aggregateMap = new Map<string, AggregatedEvent>();
+            cvorPeriodicReports.forEach(p => {
+              (p.events ?? []).forEach(e => {
+                const key = dedupKey(e);
+                const existing = aggregateMap.get(key);
+                if (existing) {
+                  if (!existing.sourcePulls.includes(p.periodLabel)) existing.sourcePulls.push(p.periodLabel);
+                } else {
+                  aggregateMap.set(key, { ...e, sourcePulls: [p.periodLabel] });
+                }
+              });
+            });
+            const allEvents: AggregatedEvent[] = Array.from(aggregateMap.values());
 
-          {/* CVOR Inspection Filters */}
-          <div>
-            <h3 className="text-[13px] font-bold text-slate-500 uppercase tracking-wider mb-3">CVOR Inspection Filters</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <MiniKpiCard title="All CVOR" value={cvorStats.total} icon={ClipboardCheck} color="rose" active={activeFilter === 'ALL'} onClick={() => setActiveFilter('ALL')} />
-              <MiniKpiCard title="Clean" value={cvorStats.clean} icon={CheckCircle2} color="emerald" active={activeFilter === 'CLEAN'} onClick={() => setActiveFilter('CLEAN')} />
-              <MiniKpiCard title="OOS Flags" value={cvorStats.oos} icon={ShieldAlert} color="red" active={activeFilter === 'OOS'} onClick={() => setActiveFilter('OOS')} />
-              <MiniKpiCard title="Veh. Issues" value={cvorStats.vehicle} icon={Truck} color="orange" active={activeFilter === 'VEHICLE'} onClick={() => setActiveFilter('VEHICLE')} />
-              <MiniKpiCard title="HOS/Driver" value={cvorStats.driver} icon={User} color="purple" active={activeFilter === 'DRIVER'} onClick={() => setActiveFilter('DRIVER')} />
-              <MiniKpiCard title="Severe (7+)" value={cvorStats.severe} icon={AlertTriangle} color="yellow" active={activeFilter === 'SEVERE'} onClick={() => setActiveFilter('SEVERE')} />
-            </div>
-          </div>
+            // ── Time period / date range filter ──
+            const today = new Date();
+            let timeFiltered: AggregatedEvent[];
+            let activeRangeLabel = 'All Time';
+            if (allEventsTimePeriod === 'CUSTOM' && (allEventsDateFrom || allEventsDateTo)) {
+              const fromDate = allEventsDateFrom ? new Date(allEventsDateFrom) : null;
+              const toDate   = allEventsDateTo   ? new Date(allEventsDateTo)   : null;
+              if (toDate) toDate.setHours(23, 59, 59, 999); // include the entire end day
+              timeFiltered = allEvents.filter(e => {
+                const ed = new Date(e.date);
+                if (fromDate && ed < fromDate) return false;
+                if (toDate   && ed > toDate)   return false;
+                return true;
+              });
+              activeRangeLabel = `${allEventsDateFrom || '…'} → ${allEventsDateTo || '…'}`;
+            } else {
+              const cutoffMonths =
+                allEventsTimePeriod === '12M' ? 12 :
+                allEventsTimePeriod === '24M' ? 24 :
+                allEventsTimePeriod === '36M' ? 36 :
+                undefined;
+              if (cutoffMonths !== undefined) {
+                const cutoffDate = new Date(today);
+                cutoffDate.setMonth(cutoffDate.getMonth() - cutoffMonths);
+                timeFiltered = allEvents.filter(e => new Date(e.date) >= cutoffDate);
+                activeRangeLabel = `Last ${cutoffMonths} months`;
+              } else {
+                timeFiltered = allEvents;
+              }
+            }
 
-          {/* CVOR Inspection List */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">CVOR Inspections</h2>
-              <InfoTooltip title="Canadian Inspections" text="Inspections conducted under Canadian jurisdiction (CVOR / NSC)." />
-            </div>
+            // ── KPI helpers ──
+            const VEH_DEFECT_CATS = ['BRAKE SYSTEM', 'WHEELS/RIMS', 'COUPLING DEVICES', 'BODY', 'LOAD SECURITY', 'REGISTRATION', 'OFFICER DIRECTION'];
+            const DRV_DEFECT_CATS = ['HOURS OF SERVICE', 'DRIVERS LICENCES', 'TRIP INSPECTION', 'CVOR/NSC'];
+            const isCleanFn = (e: CvorInterventionEvent) =>
+              e.type === 'inspection' && (e.oosCount ?? 0) === 0 && (e.totalDefects ?? 0) === 0 &&
+              (e.vehiclePoints ?? 0) === 0 && (e.driverPoints ?? 0) === 0;
+            const hasOosFn = (e: CvorInterventionEvent) => (e.oosCount ?? 0) > 0;
+            const hasVehIssueFn = (e: CvorInterventionEvent) =>
+              (e.vehiclePoints ?? 0) > 0 || (e.defects ?? []).some(d => VEH_DEFECT_CATS.includes(d.category));
+            const hasDriverIssueFn = (e: CvorInterventionEvent) =>
+              (e.driverPoints ?? 0) > 0 || (e.defects ?? []).some(d => DRV_DEFECT_CATS.includes(d.category));
+            const isSevereFn = (e: CvorInterventionEvent) => {
+              const tp = (e.vehiclePoints ?? 0) + (e.driverPoints ?? 0) + (e.pointsTotal ?? 0);
+              return tp >= 7 || (e.totalDefects ?? 0) >= 7;
+            };
+            const hasTicketFn = (e: CvorInterventionEvent) =>
+              !!e.ticket || e.charged === 'Y' || e.collision?.driverCharged === 'Y';
 
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <DataListToolbar
-                searchValue={searchTerm}
-                onSearchChange={setSearchTerm}
-                searchPlaceholder="Search CVOR inspections..."
-                columns={columns}
-                onToggleColumn={(id) => setColumns(p => p.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
-                totalItems={cvorFilteredData.length}
-                currentPage={page}
-                rowsPerPage={rowsPerPage}
-                onPageChange={setPage}
-                onRowsPerPageChange={setRowsPerPage}
-              />
+            const kpiCounts = {
+              all:        timeFiltered.length,
+              clean:      timeFiltered.filter(isCleanFn).length,
+              oos:        timeFiltered.filter(hasOosFn).length,
+              vehicle:    timeFiltered.filter(hasVehIssueFn).length,
+              hosDriver:  timeFiltered.filter(hasDriverIssueFn).length,
+              severe:     timeFiltered.filter(isSevereFn).length,
+              tickets:    timeFiltered.filter(hasTicketFn).length,
+            };
 
-              {/* Table Header - CVOR specific with extra fields */}
-              <div className="hidden md:grid grid-cols-12 gap-x-2 px-4 py-3 bg-slate-50/80 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                <div className="col-span-1 pl-2">Date / Time</div>
-                <div className="col-span-1">Report</div>
-                <div className="col-span-1">Location</div>
-                <div className="col-span-2">Driver / Licence</div>
-                <div className="col-span-2">Power Unit / Defects</div>
-                <div className="col-span-1 text-center">Violations</div>
-                <div className="col-span-1 text-center">Veh Pts</div>
-                <div className="col-span-1 text-center">Dvr Pts</div>
-                <div className="col-span-1 text-center">CVOR Pts</div>
-                <div className="col-span-1">Status</div>
-              </div>
+            // ── Apply type + KPI + search filters ──
+            const matchesType = (e: AggregatedEvent) => allEventsType === 'ALL' ? true : e.type === allEventsType;
+            const matchesKpi = (e: AggregatedEvent) => {
+              switch (allEventsKpi) {
+                case 'ALL':        return true;
+                case 'CLEAN':      return isCleanFn(e);
+                case 'OOS':        return hasOosFn(e);
+                case 'VEHICLE':    return hasVehIssueFn(e);
+                case 'HOS_DRIVER': return hasDriverIssueFn(e);
+                case 'SEVERE':     return isSevereFn(e);
+                case 'TICKETS':    return hasTicketFn(e);
+              }
+            };
+            const matchesSearch = (e: AggregatedEvent) => {
+              const q = allEventsSearch.trim().toLowerCase();
+              if (!q) return true;
+              const hay = [
+                e.cvir, e.ticket, e.location, e.driverName, e.driverLicence,
+                e.vehicle1?.make, e.vehicle1?.unit, e.vehicle1?.plate,
+                e.vehicle2?.make, e.vehicle2?.unit, e.vehicle2?.plate,
+                e.type, e.date,
+                e.collision?.collisionClass, e.collision?.microfilm,
+                e.conviction?.offence, e.conviction?.microfilm,
+                ...e.sourcePulls,
+                ...(e.defects ?? []).flatMap(d => [d.category, d.defect]),
+              ].filter(Boolean).join(' ').toLowerCase();
+              return hay.includes(q);
+            };
+            const filteredEvents = timeFiltered.filter(e => matchesType(e) && matchesKpi(e) && matchesSearch(e));
 
-              <div className="divide-y divide-slate-200">
-                {cvorPagedData.length > 0 ? (
-                  cvorPagedData.map(record => {
-                    const totalPts = (record.violations || []).reduce((s: number, v: any) => s + (v.points || 0), 0);
-                    const vehPts = record.cvorPoints?.vehicle ?? null;
-                    const dvrPts = record.cvorPoints?.driver ?? null;
-                    const cvrPts = record.cvorPoints?.cvor ?? (vehPts !== null && dvrPts !== null ? vehPts + dvrPts : totalPts);
-                    return (
-                      <InspectionRow key={record.id} record={record} onEdit={openEditModal}
-                        cvorOverride={{ vehPts, dvrPts, cvrPts }}
-                      />
-                    );
-                  })
-                ) : (
-                  <div className="p-16 text-center text-slate-500 flex flex-col items-center bg-slate-50/50">
-                    <div className="bg-white border border-slate-200 p-4 rounded-full mb-4 shadow-sm">
-                      <AlertCircle size={32} className="text-slate-400" />
+            // ── Sort ──
+            const sortVal = (r: AggregatedEvent): string | number => {
+              switch (allEventsSort.col) {
+                case 'date':          return new Date(r.date).getTime();
+                case 'time':          return r.startTime ?? r.time ?? '';
+                case 'type':          return r.type;
+                case 'cvirOrTicket':  return r.cvir ?? r.ticket ?? '';
+                case 'location':      return r.location ?? '';
+                case 'driver':        return r.driverName ?? '';
+                case 'driverLicence': return r.driverLicence ?? '';
+                case 'vehicle1':      return r.vehicle1?.plate ?? '';
+                case 'vehicle2':      return r.vehicle2?.plate ?? '';
+                case 'level':         return r.level ?? -1;
+                case 'vPts':          return r.vehiclePoints ?? 0;
+                case 'dPts':          return (r.driverPoints ?? 0) + (r.pointsTotal ?? 0);
+                case 'oos':           return r.oosCount ?? 0;
+                case 'defects':       return r.totalDefects ?? 0;
+                case 'charged':       return (r.charged === 'Y' || r.collision?.driverCharged === 'Y') ? 1 : 0;
+                case 'sourcePulls':   return r.sourcePulls.length;
+                default:              return 0;
+              }
+            };
+            const sortedEvents = [...filteredEvents].sort((a, b) => {
+              const dir = allEventsSort.dir === 'asc' ? 1 : -1;
+              const av = sortVal(a), bv = sortVal(b);
+              if (av < bv) return -1 * dir;
+              if (av > bv) return 1 * dir;
+              return 0;
+            });
+
+            const totalPages = Math.max(1, Math.ceil(sortedEvents.length / allEventsRowsPerPage));
+            const safePage = Math.min(allEventsPage, totalPages);
+            const pagedEvents = sortedEvents.slice((safePage - 1) * allEventsRowsPerPage, safePage * allEventsRowsPerPage);
+            const isVis = (id: string) => allEventsColumns.find(c => c.id === id)?.visible !== false;
+            const onSort = (col: string) => setAllEventsSort(p => p.col === col ? { col, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
+            const SortIcon = ({ col }: { col: string }) =>
+              allEventsSort.col === col
+                ? (allEventsSort.dir === 'asc'
+                    ? <ChevronUp size={11} className="text-blue-500 inline -mt-0.5" />
+                    : <ChevronDown size={11} className="text-blue-500 inline -mt-0.5" />)
+                : <ChevronDown size={11} className="text-slate-300 inline -mt-0.5" />;
+
+            // ── Chart data: events per month, by type ──
+            const chartBuckets = new Map<string, { collision: number; conviction: number; inspection: number }>();
+            timeFiltered.forEach(e => {
+              const key = e.date.slice(0, 7); // YYYY-MM
+              const b = chartBuckets.get(key) ?? { collision: 0, conviction: 0, inspection: 0 };
+              b[e.type]++;
+              chartBuckets.set(key, b);
+            });
+            const chartKeys = Array.from(chartBuckets.keys()).sort();
+            const chartMax = chartKeys.length > 0
+              ? Math.max(...chartKeys.map(k => {
+                  const b = chartBuckets.get(k)!;
+                  return b.collision + b.conviction + b.inspection;
+                }))
+              : 1;
+
+            const typeBadge = (t: CvorInterventionEvent['type']) => {
+              if (t === 'inspection') return { cls: 'bg-blue-50 text-blue-700 border-blue-200', IconCmp: ClipboardCheck, label: 'Inspection' };
+              if (t === 'collision')  return { cls: 'bg-red-50 text-red-700 border-red-200',     IconCmp: Truck,          label: 'Collision'  };
+              return                       { cls: 'bg-amber-50 text-amber-700 border-amber-200', IconCmp: Scale,          label: 'Conviction' };
+            };
+
+            const fmtVeh = (v?: { make: string; unit: string; plate: string }) => {
+              if (!v || (!v.make && !v.unit && !v.plate)) return '—';
+              const top = [v.make, v.unit].filter(Boolean).join(' ');
+              return { top: top || '—', plate: v.plate || '' };
+            };
+
+            const visibleColCount = allEventsColumns.filter(c => c.visible).length + 1;
+
+            return (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                {/* Header + Show chart toggle */}
+                <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <FileText size={15} className="text-slate-600" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-900 tracking-wide">No CVOR records found</h3>
-                    <p className="text-sm text-slate-500 mt-1 mb-5 max-w-sm">No Canadian inspections match your current search or filter criteria.</p>
-                    <button
-                      onClick={() => { setSearchTerm(''); setActiveFilter('ALL'); }}
-                      className="bg-white text-blue-600 border border-blue-200 px-4 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors text-sm shadow-sm"
-                    >
-                      Clear all filters
-                    </button>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-bold text-slate-900">Intervention &amp; Event Details</div>
+                        <InfoTooltip title="All-pulls aggregate" text="Events deduplicated across every uploaded pull. Same physical event is shown once even when it falls inside multiple pulls' overlapping 12/24-month windows. The Pull Coverage column shows which pulls referenced each event." />
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {allEvents.length} unique events across {cvorPeriodicReports.length} pulls  ·  {filteredEvents.length} match current filters
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setAllEventsChartOpen(o => !o)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-bold shadow-sm transition-colors ${
+                      allEventsChartOpen
+                        ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Activity size={13} />
+                    {allEventsChartOpen ? 'Hide Chart' : 'Show Chart'}
+                  </button>
+                </div>
 
-              <PaginationBar
-                totalItems={cvorFilteredData.length}
-                currentPage={page}
-                rowsPerPage={rowsPerPage}
-                onPageChange={setPage}
-                onRowsPerPageChange={setRowsPerPage}
-              />
-            </div>
-          </div>
+                {/* Chart (collapsible) — responsive SVG with axes + legend */}
+                {allEventsChartOpen && (() => {
+                  if (chartKeys.length === 0) {
+                    return (
+                      <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-4">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] mb-2">Events by Month</div>
+                        <div className="text-xs text-slate-500 py-6 text-center italic">No events in the selected time period.</div>
+                      </div>
+                    );
+                  }
+
+                  // SVG layout — uses viewBox so it scales smoothly across small/large screens.
+                  const VW = 800;
+                  const VH = 280;
+                  const M = { top: 16, right: 24, bottom: 56, left: 44 };
+                  const plotW = VW - M.left - M.right;
+                  const plotH = VH - M.top - M.bottom;
+                  const n = chartKeys.length;
+                  // Cap bar width so a small data range doesn't stretch absurdly wide on big screens.
+                  const slotW = plotW / n;
+                  const barW = Math.min(slotW * 0.7, 56);
+                  // Y-axis: build 4–5 nice round ticks up to chartMax.
+                  const niceMax = Math.max(1, Math.ceil(chartMax / 5) * 5);
+                  const ticks: number[] = [];
+                  const tickStep = niceMax / 4;
+                  for (let i = 0; i <= 4; i++) ticks.push(Math.round(i * tickStep));
+                  const yScale = (v: number) => M.top + plotH - (v / niceMax) * plotH;
+                  // X labels: thin out if too many buckets to avoid overlap.
+                  const xLabelEvery = n <= 12 ? 1 : n <= 24 ? 2 : n <= 36 ? 3 : Math.ceil(n / 12);
+
+                  return (
+                    <div className="border-b border-slate-100 bg-slate-50/50 px-3 sm:px-5 py-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em]">
+                          Events by Month  ·  {n} bucket{n === 1 ? '' : 's'}  ·  peak {chartMax}/mo
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-600">
+                          <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block"/>Collisions</span>
+                          <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block"/>Convictions</span>
+                          <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block"/>Inspections</span>
+                        </div>
+                      </div>
+                      <div className="w-full">
+                        <svg
+                          viewBox={`0 0 ${VW} ${VH}`}
+                          preserveAspectRatio="xMidYMid meet"
+                          className="w-full h-auto"
+                          style={{ maxHeight: 360 }}
+                        >
+                          {/* Y grid + tick labels */}
+                          {ticks.map(t => (
+                            <g key={t}>
+                              <line x1={M.left} x2={VW - M.right} y1={yScale(t)} y2={yScale(t)} stroke="#e2e8f0" strokeWidth={1} strokeDasharray={t === 0 ? '0' : '3 3'} />
+                              <text x={M.left - 8} y={yScale(t) + 4} textAnchor="end" fontSize="11" fill="#64748b" fontFamily="ui-monospace, monospace">{t}</text>
+                            </g>
+                          ))}
+                          {/* Y axis line */}
+                          <line x1={M.left} x2={M.left} y1={M.top} y2={M.top + plotH} stroke="#cbd5e1" strokeWidth={1} />
+                          {/* Y axis title */}
+                          <text x={14} y={M.top + plotH / 2} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold" transform={`rotate(-90, 14, ${M.top + plotH / 2})`}>Events</text>
+
+                          {/* Stacked bars */}
+                          {chartKeys.map((k, i) => {
+                            const b = chartBuckets.get(k)!;
+                            const total = b.collision + b.conviction + b.inspection;
+                            const cx = M.left + slotW * i + slotW / 2;
+                            const x = cx - barW / 2;
+                            // Stack bottom→top: inspection (blue), conviction (amber), collision (red)
+                            const insY = yScale(b.inspection);
+                            const insH = (M.top + plotH) - insY;
+                            const conY = yScale(b.inspection + b.conviction);
+                            const conH = insY - conY;
+                            const colY = yScale(total);
+                            const colH = conY - colY;
+                            const showLabel = (i % xLabelEvery) === 0 || i === n - 1;
+                            return (
+                              <g key={k}>
+                                {b.inspection > 0 && (
+                                  <rect x={x} y={insY} width={barW} height={insH} fill="#60a5fa" rx={1}>
+                                    <title>{`${k} · Inspections: ${b.inspection}`}</title>
+                                  </rect>
+                                )}
+                                {b.conviction > 0 && (
+                                  <rect x={x} y={conY} width={barW} height={conH} fill="#fbbf24" rx={1}>
+                                    <title>{`${k} · Convictions: ${b.conviction}`}</title>
+                                  </rect>
+                                )}
+                                {b.collision > 0 && (
+                                  <rect x={x} y={colY} width={barW} height={colH} fill="#f87171" rx={1}>
+                                    <title>{`${k} · Collisions: ${b.collision}`}</title>
+                                  </rect>
+                                )}
+                                {/* Total label above bar */}
+                                {total > 0 && (
+                                  <text x={cx} y={colY - 4} textAnchor="middle" fontSize="10" fill="#0f172a" fontWeight="600">{total}</text>
+                                )}
+                                {/* X label */}
+                                {showLabel && (
+                                  <text
+                                    x={cx}
+                                    y={M.top + plotH + 14}
+                                    textAnchor="end"
+                                    fontSize="10"
+                                    fill="#64748b"
+                                    fontFamily="ui-monospace, monospace"
+                                    transform={`rotate(-45, ${cx}, ${M.top + plotH + 14})`}
+                                  >{k}</text>
+                                )}
+                              </g>
+                            );
+                          })}
+
+                          {/* X axis line */}
+                          <line x1={M.left} x2={VW - M.right} y1={M.top + plotH} y2={M.top + plotH} stroke="#cbd5e1" strokeWidth={1} />
+                          {/* X axis title */}
+                          <text x={M.left + plotW / 2} y={VH - 6} textAnchor="middle" fontSize="10" fill="#64748b" fontWeight="bold">Month</text>
+                        </svg>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Time Period + Custom Date Range + Type filter row */}
+                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/40 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Time Period</span>
+                      <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5 shadow-sm flex-wrap">
+                        {(['12M', '24M', '36M', 'ALL', 'CUSTOM'] as const).map(p => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setAllEventsTimePeriod(p)}
+                            className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all whitespace-nowrap ${
+                              allEventsTimePeriod === p ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >{p === 'ALL' ? 'All Time' : p === 'CUSTOM' ? 'Custom' : p}</button>
+                        ))}
+                      </div>
+                      <span className="h-4 w-px bg-slate-300 hidden sm:inline-block"/>
+                      <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                        <FileText size={12} className="text-slate-400" />
+                        <span className="font-semibold">Type:</span>
+                        <select
+                          value={allEventsType}
+                          onChange={(e) => setAllEventsType(e.target.value as typeof allEventsType)}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        >
+                          <option value="ALL">All Types</option>
+                          <option value="inspection">Inspection</option>
+                          <option value="collision">Collision</option>
+                          <option value="conviction">Conviction</option>
+                        </select>
+                      </label>
+                    </div>
+                    <span className="text-[11px] text-slate-500 whitespace-nowrap">
+                      <span className="hidden md:inline">{activeRangeLabel} · </span>
+                      Showing <span className="font-bold text-slate-800">{filteredEvents.length}</span> of <span className="font-bold text-slate-800">{timeFiltered.length}</span>
+                    </span>
+                  </div>
+                  {/* Custom date range row — only when Custom is active */}
+                  {allEventsTimePeriod === 'CUSTOM' && (
+                    <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-200/70">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Date Range</span>
+                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="font-semibold">From:</span>
+                        <input
+                          type="date"
+                          value={allEventsDateFrom}
+                          onChange={(e) => setAllEventsDateFrom(e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        />
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="font-semibold">To:</span>
+                        <input
+                          type="date"
+                          value={allEventsDateTo}
+                          onChange={(e) => setAllEventsDateTo(e.target.value)}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        />
+                      </label>
+                      {(allEventsDateFrom || allEventsDateTo) && (
+                        <button
+                          type="button"
+                          onClick={() => { setAllEventsDateFrom(''); setAllEventsDateTo(''); }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 shadow-sm"
+                        >
+                          <X size={10} /> Clear
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* KPI cards */}
+                {(() => {
+                  type Tone = 'rose' | 'emerald' | 'red' | 'orange' | 'blue' | 'purple' | 'yellow';
+                  const toneMap: Record<Tone, { iconBg: string; iconText: string; ring: string; valueText: string; activeBg: string }> = {
+                    rose:    { iconBg: 'bg-rose-100',    iconText: 'text-rose-600',    ring: 'ring-rose-300 border-rose-300',       valueText: 'text-rose-700',    activeBg: 'bg-rose-50/40' },
+                    emerald: { iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', ring: 'ring-emerald-300 border-emerald-300', valueText: 'text-emerald-700', activeBg: 'bg-emerald-50/40' },
+                    red:     { iconBg: 'bg-red-100',     iconText: 'text-red-600',     ring: 'ring-red-300 border-red-300',         valueText: 'text-red-700',     activeBg: 'bg-red-50/40' },
+                    orange:  { iconBg: 'bg-orange-100',  iconText: 'text-orange-600',  ring: 'ring-orange-300 border-orange-300',   valueText: 'text-orange-700',  activeBg: 'bg-orange-50/40' },
+                    blue:    { iconBg: 'bg-blue-100',    iconText: 'text-blue-600',    ring: 'ring-blue-300 border-blue-300',       valueText: 'text-blue-700',    activeBg: 'bg-blue-50/40' },
+                    purple:  { iconBg: 'bg-purple-100',  iconText: 'text-purple-600',  ring: 'ring-purple-300 border-purple-300',   valueText: 'text-purple-700',  activeBg: 'bg-purple-50/40' },
+                    yellow:  { iconBg: 'bg-yellow-100',  iconText: 'text-yellow-700',  ring: 'ring-yellow-300 border-yellow-300',   valueText: 'text-yellow-700',  activeBg: 'bg-yellow-50/40' },
+                  };
+                  type KpiDef = { id: typeof allEventsKpi; title: string; value: number; IconCmp: React.ComponentType<{ size?: number; className?: string }>; tone: Tone };
+                  const kpis: KpiDef[] = [
+                    { id: 'ALL',        title: 'All CVOR',    value: kpiCounts.all,       IconCmp: ClipboardCheck, tone: 'rose' },
+                    { id: 'CLEAN',      title: 'Clean',       value: kpiCounts.clean,     IconCmp: CheckCircle2,   tone: 'emerald' },
+                    { id: 'OOS',        title: 'OOS Flags',   value: kpiCounts.oos,       IconCmp: ShieldAlert,    tone: 'red' },
+                    { id: 'VEHICLE',    title: 'Veh. Issues', value: kpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
+                    { id: 'HOS_DRIVER', title: 'HOS/Driver',  value: kpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
+                    { id: 'SEVERE',     title: 'Severe (7+)', value: kpiCounts.severe,    IconCmp: AlertTriangle,  tone: 'purple' },
+                    { id: 'TICKETS',    title: 'Tickets',     value: kpiCounts.tickets,   IconCmp: Ticket,         tone: 'yellow' },
+                  ];
+                  return (
+                    <div className="px-5 pt-4 pb-3 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                      {kpis.map(k => {
+                        const t = toneMap[k.tone];
+                        const isActive = allEventsKpi === k.id;
+                        return (
+                          <button
+                            key={k.id}
+                            type="button"
+                            onClick={() => setAllEventsKpi(k.id)}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border bg-white text-left transition-all ${
+                              isActive
+                                ? `ring-2 ring-offset-1 ${t.ring} ${t.activeBg} shadow-sm`
+                                : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                            }`}
+                          >
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${t.iconBg}`}>
+                              <k.IconCmp size={16} className={t.iconText} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate leading-tight">{k.title}</div>
+                              <div className={`text-xl font-black tabular-nums leading-tight mt-0.5 ${isActive ? t.valueText : 'text-slate-900'}`}>{k.value}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Search + columns toolbar */}
+                <DataListToolbar
+                  searchValue={allEventsSearch}
+                  onSearchChange={setAllEventsSearch}
+                  searchPlaceholder="Search CVIR, ticket, driver, licence, location, vehicle, defect, pull..."
+                  columns={allEventsColumns}
+                  onToggleColumn={(id) => setAllEventsColumns(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c))}
+                  totalItems={sortedEvents.length}
+                  currentPage={safePage}
+                  rowsPerPage={allEventsRowsPerPage}
+                  onPageChange={setAllEventsPage}
+                  onRowsPerPageChange={setAllEventsRowsPerPage}
+                />
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-2 py-2.5 w-8" />
+                        {isVis('type')          && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('type')} className="inline-flex items-center gap-1 hover:text-slate-700">Type <SortIcon col="type"/></button></th>}
+                        {isVis('date')          && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('date')} className="inline-flex items-center gap-1 hover:text-slate-700">Date <SortIcon col="date"/></button></th>}
+                        {isVis('time')          && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('time')} className="inline-flex items-center gap-1 hover:text-slate-700">Time <SortIcon col="time"/></button></th>}
+                        {isVis('cvirOrTicket')  && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('cvirOrTicket')} className="inline-flex items-center gap-1 hover:text-slate-700">CVIR / Ticket <SortIcon col="cvirOrTicket"/></button></th>}
+                        {isVis('location')      && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('location')} className="inline-flex items-center gap-1 hover:text-slate-700">Location <SortIcon col="location"/></button></th>}
+                        {isVis('driver')        && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('driver')} className="inline-flex items-center gap-1 hover:text-slate-700">Driver <SortIcon col="driver"/></button></th>}
+                        {isVis('driverLicence') && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('driverLicence')} className="inline-flex items-center gap-1 hover:text-slate-700">Driver Licence <SortIcon col="driverLicence"/></button></th>}
+                        {isVis('vehicle1')      && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('vehicle1')} className="inline-flex items-center gap-1 hover:text-slate-700">Vehicle 1 <SortIcon col="vehicle1"/></button></th>}
+                        {isVis('vehicle2')      && <th className="px-3 py-2.5 text-left"><button type="button" onClick={() => onSort('vehicle2')} className="inline-flex items-center gap-1 hover:text-slate-700">Vehicle 2 <SortIcon col="vehicle2"/></button></th>}
+                        {isVis('level')         && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('level')} className="inline-flex items-center gap-1 hover:text-slate-700">Level <SortIcon col="level"/></button></th>}
+                        {isVis('vPts')          && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('vPts')} className="inline-flex items-center gap-1 hover:text-slate-700">V Pts <SortIcon col="vPts"/></button></th>}
+                        {isVis('dPts')          && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('dPts')} className="inline-flex items-center gap-1 hover:text-slate-700">D Pts <SortIcon col="dPts"/></button></th>}
+                        {isVis('oos')           && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('oos')} className="inline-flex items-center gap-1 hover:text-slate-700">OOS <SortIcon col="oos"/></button></th>}
+                        {isVis('defects')       && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('defects')} className="inline-flex items-center gap-1 hover:text-slate-700">Defects <SortIcon col="defects"/></button></th>}
+                        {isVis('charged')       && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('charged')} className="inline-flex items-center gap-1 hover:text-slate-700">Charged <SortIcon col="charged"/></button></th>}
+                        {isVis('sourcePulls')   && <th className="px-3 py-2.5 text-center"><button type="button" onClick={() => onSort('sourcePulls')} className="inline-flex items-center gap-1 hover:text-slate-700">Pull Coverage <SortIcon col="sourcePulls"/></button></th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pagedEvents.length === 0 ? (
+                        <tr>
+                          <td colSpan={visibleColCount} className="px-5 py-10 text-center text-sm text-slate-500">
+                            No events match the selected filters.
+                          </td>
+                        </tr>
+                      ) : pagedEvents.map(e => {
+                        const tb = typeBadge(e.type);
+                        const rowKey = e.id + '|' + e.date;
+                        const isOpen = allEventsExpanded === rowKey;
+                        const v1 = fmtVeh(e.vehicle1);
+                        const v2 = fmtVeh(e.vehicle2);
+                        const vPts = e.type === 'inspection' ? (e.vehiclePoints ?? 0) : 0;
+                        const dPts = e.type === 'inspection' ? (e.driverPoints ?? 0) : (e.pointsTotal ?? 0);
+                        const time = e.type === 'inspection'
+                          ? `${e.startTime ?? ''}${e.endTime ? '-' + e.endTime : ''}`
+                          : (e.time ?? '—');
+                        const charged = e.type === 'collision'
+                          ? (e.collision?.driverCharged === 'Y' ? 'Yes' : 'No')
+                          : e.type === 'inspection'
+                            ? (e.charged === 'Y' ? 'Yes' : 'No')
+                            : 'No';
+
+                        return (
+                          <Fragment key={rowKey}>
+                            <tr
+                              onClick={() => setAllEventsExpanded(isOpen ? null : rowKey)}
+                              className={`cursor-pointer transition-colors ${isOpen ? 'bg-blue-50/40' : 'hover:bg-slate-50/60'}`}
+                            >
+                              <td className="px-2 py-2.5 text-center">
+                                {isOpen ? <ChevronUp size={14} className="text-slate-400 inline" /> : <ChevronDown size={14} className="text-slate-400 inline" />}
+                              </td>
+                              {isVis('type') && (
+                                <td className="px-3 py-2.5">
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] font-bold ${tb.cls}`}>
+                                    <tb.IconCmp size={11} />
+                                    {tb.label}
+                                  </span>
+                                </td>
+                              )}
+                              {isVis('date')          && <td className="px-3 py-2.5 font-mono text-slate-700 tabular-nums">{e.date}</td>}
+                              {isVis('time')          && <td className="px-3 py-2.5 font-mono text-slate-600 tabular-nums">{time}</td>}
+                              {isVis('cvirOrTicket')  && <td className="px-3 py-2.5 font-mono text-slate-700">{e.cvir ?? e.ticket ?? '—'}</td>}
+                              {isVis('location')      && <td className="px-3 py-2.5 text-slate-700 max-w-[180px] truncate">{e.location ?? '—'}</td>}
+                              {isVis('driver')        && <td className="px-3 py-2.5 text-slate-700 font-medium max-w-[180px] truncate">{e.driverName ?? '—'}</td>}
+                              {isVis('driverLicence') && <td className="px-3 py-2.5 font-mono text-slate-600 max-w-[160px] truncate">{e.driverLicence ?? '—'}</td>}
+                              {isVis('vehicle1') && (
+                                <td className="px-3 py-2.5">
+                                  {typeof v1 === 'string'
+                                    ? <span className="text-slate-400">{v1}</span>
+                                    : <div><div className="font-bold text-slate-800">{v1.top}</div>{v1.plate && <div className="font-mono text-[10px] text-blue-600">{v1.plate}</div>}</div>}
+                                </td>
+                              )}
+                              {isVis('vehicle2') && (
+                                <td className="px-3 py-2.5">
+                                  {typeof v2 === 'string'
+                                    ? <span className="text-slate-400">{v2}</span>
+                                    : <div><div className="font-bold text-slate-800">{v2.top}</div>{v2.plate && <div className="font-mono text-[10px] text-blue-600">{v2.plate}</div>}</div>}
+                                </td>
+                              )}
+                              {isVis('level') && (
+                                <td className="px-3 py-2.5 text-center text-slate-700 tabular-nums">
+                                  {e.type === 'inspection' ? e.level : <span className="text-slate-400">—</span>}
+                                </td>
+                              )}
+                              {isVis('vPts') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  {e.type === 'inspection'
+                                    ? <span className={`inline-flex items-center justify-center min-w-[20px] px-1.5 rounded ${vPts > 0 ? 'bg-amber-50 text-amber-700 font-bold' : 'text-slate-400'}`}>{vPts}</span>
+                                    : <span className="text-slate-400">0</span>}
+                                </td>
+                              )}
+                              {isVis('dPts') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  <span className={`inline-flex items-center justify-center min-w-[20px] px-1.5 rounded ${dPts > 0 ? 'bg-red-50 text-red-700 font-bold' : 'text-slate-400'}`}>{dPts}</span>
+                                </td>
+                              )}
+                              {isVis('oos') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  {e.type === 'inspection' && (e.oosCount ?? 0) > 0
+                                    ? <span className="inline-flex items-center gap-1 px-1.5 rounded border bg-amber-50 text-amber-700 border-amber-200 font-bold"><AlertTriangle size={10} />{e.oosCount}</span>
+                                    : <span className="text-slate-400">—</span>}
+                                </td>
+                              )}
+                              {isVis('defects') && (
+                                <td className="px-3 py-2.5 text-center tabular-nums">
+                                  {e.type === 'inspection'
+                                    ? <span className={(e.totalDefects ?? 0) > 0 ? 'font-bold text-slate-800' : 'text-slate-400'}>{e.totalDefects ?? 0}</span>
+                                    : <span className="text-slate-400">—</span>}
+                                </td>
+                              )}
+                              {isVis('charged') && (
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${charged === 'Yes' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-slate-400'}`}>{charged}</span>
+                                </td>
+                              )}
+                              {isVis('sourcePulls') && (
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={e.sourcePulls.join(', ')}>
+                                    {e.sourcePulls.length} pull{e.sourcePulls.length === 1 ? '' : 's'}
+                                  </span>
+                                </td>
+                              )}
+                            </tr>
+                            {isOpen && (
+                              <tr>
+                                <td colSpan={visibleColCount} className="px-5 py-3 bg-slate-50/60 border-t border-slate-100">
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pull Coverage</div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {e.sourcePulls.map(label => (
+                                          <span key={label} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">{label}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                    {e.type === 'inspection' && (
+                                      <div className="bg-white rounded-lg border border-slate-200 p-3 md:col-span-2">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Inspection Detail</div>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                          <div className="flex justify-between"><span className="text-slate-500">Level</span><span className="font-bold text-slate-800">{e.level}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">CVIR #</span><span className="font-mono text-slate-700">{e.cvir ?? '—'}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Vehicle Pts</span><span className={`font-bold ${(e.vehiclePoints ?? 0) > 0 ? 'text-amber-700' : 'text-slate-700'}`}>{e.vehiclePoints ?? 0}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Driver Pts</span><span className={`font-bold ${(e.driverPoints ?? 0) > 0 ? 'text-red-700' : 'text-slate-700'}`}>{e.driverPoints ?? 0}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">OOS</span><span className={`font-bold ${(e.oosCount ?? 0) > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{e.oosCount ?? 0}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Total Defects</span><span className="font-bold text-slate-700">{e.totalDefects ?? 0}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Charged</span><span className={`font-bold ${e.charged === 'Y' ? 'text-red-700' : 'text-emerald-700'}`}>{e.charged ?? 'N'}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Co-Driver</span><span className="font-bold text-slate-700">{e.coDriver ?? 'N'}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {e.type === 'collision' && e.collision && (
+                                      <div className="bg-white rounded-lg border border-slate-200 p-3 md:col-span-2">
+                                        <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-2">Collision Detail</div>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                          <div className="flex justify-between"><span className="text-slate-500">Class</span><span className="font-bold text-slate-800">{e.collision.collisionClass}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Jurisdiction</span><span className="font-bold text-slate-800">{e.collision.jurisdiction}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Vehicle Action</span><span className="text-slate-700 text-[10px]">{e.collision.vehicleAction}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Driver Action</span><span className="text-slate-700 text-[10px]">{e.collision.driverAction}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Microfilm #</span><span className="font-mono text-slate-700">{e.collision.microfilm}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Driver Charged</span><span className={`font-bold ${e.collision.driverCharged === 'Y' ? 'text-red-700' : 'text-emerald-700'}`}>{e.collision.driverCharged}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Points</span><span className="font-bold text-red-700">{e.collision.points}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {e.type === 'conviction' && e.conviction && (
+                                      <div className="bg-white rounded-lg border border-slate-200 p-3 md:col-span-2">
+                                        <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-2">Conviction Detail</div>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                          <div className="flex justify-between"><span className="text-slate-500">Offence</span><span className="font-bold text-slate-800 text-[10px]">{e.conviction.offence}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Conviction Date</span><span className="font-mono text-slate-700">{e.conviction.convictionDate}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Jurisdiction</span><span className="font-bold text-slate-800">{e.conviction.jurisdiction}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Microfilm #</span><span className="font-mono text-slate-700">{e.conviction.microfilm}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Charged Carrier</span><span className="font-bold text-slate-800">{e.conviction.chargedCarrier}</span></div>
+                                          <div className="flex justify-between"><span className="text-slate-500">Points</span><span className="font-bold text-amber-700">{e.conviction.points}</span></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <PaginationBar
+                  totalItems={sortedEvents.length}
+                  currentPage={safePage}
+                  rowsPerPage={allEventsRowsPerPage}
+                  onPageChange={setAllEventsPage}
+                  onRowsPerPageChange={setAllEventsRowsPerPage}
+                />
+              </div>
+            );
+          })()}
 
         </div>
         );

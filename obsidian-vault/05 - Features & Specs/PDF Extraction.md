@@ -21,6 +21,8 @@ Extract structured data from uploaded compliance PDFs (registrations, permits, M
 - [[Compliance Documents]]
 - [[Safety Compliance Upload]]
 - [[Frontend Data Reference]]
+- [[CVOR Upload Reference]] — Ontario CVOR data model + PDF source pointers
+- [[CVOR PDF Extraction Map]] — page-by-page highlight guide for the CVOR PDF
 
 ## TODO
 

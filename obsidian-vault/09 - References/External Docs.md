@@ -22,8 +22,13 @@ tags: [reference, docs]
 - `parsed-cvor.json`, `raw-cvor.txt` — sample CVOR data
 - `git_history_nsc.txt` — preserved git log slice for the NSC chart work
 
+## CVOR (Ontario MTO) extraction
+
+- [[CVOR Upload Reference]] — field-by-field data model, with PDF source pointers for every field
+- [[CVOR PDF Extraction Map]] — page-by-page walkthrough of the source PDF with highlight legend (green / yellow / red)
+
 ## External references
 
 > Add links to official docs (FMCSA, CVOR, MTO/DOT) as you collect them.
 
-- _add as needed_
+- Ontario MTO CVOR guideline — https://www.mto.gov.on.ca/english/trucks/guideline/cvor.shtml

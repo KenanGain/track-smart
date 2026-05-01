@@ -1,0 +1,6 @@
+cvorNumber,parentCvirNumber,inspectionDate,ticketNumber,issueDate,chargedTo,offenceCode,offenceDescription,fineAmount,currency,status,courtDate
+138-903-258,ONCALGR11738,2026-01-30,C-2026-0142,2026-01-30,Driver,HTA s.128(1),Speeding 15+ km/h over posted limit,365,CAD,Pending,2026-04-22
+138-903-258,ONCALGR11738,2026-01-30,C-2026-0143,2026-01-30,Carrier,TDG s.7.1(1),Dangerous goods parked within 5m of travelled roadway,1210,CAD,Paid,
+138-903-258,ONTORON15003,2026-02-10,C-2026-0289,2026-02-10,Driver,HTA s.32(1),Operating CMV without valid licence class,730,CAD,Convicted,2026-03-18
+138-903-258,ONTORON15003,2026-02-10,C-2026-0290,2026-02-10,Driver,O.Reg.555/06 s.8(1),Exceed 13-hour daily driving time limit,425,CAD,Pending,2026-05-04
+138-903-258,ONTORON15003,2026-02-10,C-2026-0291,2026-02-10,Carrier,O.Reg.199/07 s.6(2),Defective brake performance — ≥20% below standard,2150,CAD,Pending,2026-05-12

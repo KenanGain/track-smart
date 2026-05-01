@@ -27,9 +27,6 @@ export type InventoryFormPayload = {
     recurrence: Recurrence;
     reminder: Reminder;
     status: InventoryStatus;
-    contactName?: string;
-    contactInfo?: string;
-    notes?: string;
     assignedTo?: Assignment;
 };
 
@@ -58,11 +55,6 @@ export function AddInventoryItemPage({ onNavigate }: Props) {
     const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>("cmv");
     const [targetId, setTargetId] = useState<string>("");
 
-    // §3 Contact / Notes
-    const [contactName, setContactName] = useState("");
-    const [contactInfo, setContactInfo] = useState("");
-    const [notes, setNotes] = useState("");
-
     const selectedVendor = useMemo(() => VENDORS.find((v) => v.id === vendorId), [vendorId]);
 
     const isValid =
@@ -74,9 +66,6 @@ export function AddInventoryItemPage({ onNavigate }: Props) {
             vendorId, serial, pin,
             issueDate, expiryDate,
             recurrence, reminder, status,
-            contactName: contactName || undefined,
-            contactInfo: contactInfo || undefined,
-            notes: notes || undefined,
             assignedTo: targetId ? { kind: assignmentKind, targetId } : undefined,
         };
         console.log("Inventory item saved:", payload);
@@ -238,26 +227,6 @@ export function AddInventoryItemPage({ onNavigate }: Props) {
                     </div>
                 </Section>
 
-                {/* §3 Contact & Notes */}
-                <Section number={3} title="Contact & Notes" subtitle="Optional contact and free-form notes.">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <Field label="Contact Name">
-                            <TextInput value={contactName} onChange={setContactName} placeholder="e.g. Jane Smith" />
-                        </Field>
-                        <Field label="Contact Information">
-                            <TextInput value={contactInfo} onChange={setContactInfo} placeholder="Phone or email" />
-                        </Field>
-                        <Field label="Notes" className="md:col-span-2">
-                            <textarea
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                rows={3}
-                                placeholder="Anything helpful about this item..."
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all resize-none"
-                            />
-                        </Field>
-                    </div>
-                </Section>
             </div>
         </div>
     );

@@ -11,6 +11,8 @@ interface DataListToolbarProps {
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
+  /** Hide the search input — useful when the section has no searchable data. */
+  hideSearch?: boolean;
   columns: ColumnDef[];
   onToggleColumn: (id: string) => void;
   totalItems: number;
@@ -24,6 +26,7 @@ export function DataListToolbar({
   searchValue,
   onSearchChange,
   searchPlaceholder = 'Search...',
+  hideSearch = false,
   columns,
   onToggleColumn,
   totalItems,
@@ -49,18 +52,20 @@ export function DataListToolbar({
   return (
     <>
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 border-b border-slate-200 bg-gradient-to-b from-slate-50/95 to-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className={`flex flex-col gap-3 border-b border-slate-200 bg-gradient-to-b from-slate-50/95 to-white px-4 py-3.5 sm:flex-row sm:items-center ${hideSearch ? 'sm:justify-end' : 'sm:justify-between'}`}>
         {/* Search */}
-        <div className="relative w-full sm:w-[23rem]">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder={searchPlaceholder}
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-          />
-        </div>
+        {!hideSearch && (
+          <div className="relative w-full sm:w-[23rem]">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={searchValue}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            />
+          </div>
+        )}
         <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
           {/* Record count */}
           <span className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm">
