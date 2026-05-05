@@ -2,13 +2,21 @@ import * as React from "react";
 import { Search, Bell, HelpCircle, ChevronDown, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ROLE_BADGE, ROLE_LABELS, type AppUser } from "@/data/users.data";
+import { ROLE_BADGE, ROLE_LABELS, getManagedAccountIds, type AppUser } from "@/data/users.data";
+import { ACCOUNTS_DB, type AccountRecord } from "@/pages/accounts/accounts.data";
+import { CarrierSwitcher } from "./CarrierSwitcher";
 
 type TopNavbarProps = {
     currentPath: string;
     user: AppUser;
     onSignOut: () => void;
     onNavigate?: (path: string) => void;
+    /** Currently-active carrier (the one whose data is rendered on
+     *  carrier-scoped pages like Safety and Compliance). */
+    selectedAccountId?: string;
+    /** Fired when a super-admin picks a different carrier from the
+     *  top-bar carrier switcher. */
+    onSelectAccount?: (account: AccountRecord) => void;
     className?: string;
 };
 
@@ -47,7 +55,15 @@ function getPageTitle(path: string): string {
     return "TrackSmart";
 }
 
-export function TopNavbar({ currentPath, user, onSignOut, onNavigate, className }: TopNavbarProps) {
+export function TopNavbar({
+    currentPath,
+    user,
+    onSignOut,
+    onNavigate,
+    selectedAccountId,
+    onSelectAccount,
+    className,
+}: TopNavbarProps) {
     const [menuOpen, setMenuOpen] = React.useState(false);
     const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -73,6 +89,43 @@ export function TopNavbar({ currentPath, user, onSignOut, onNavigate, className 
                 <h1 className="text-lg font-semibold text-slate-900 truncate">
                     {getPageTitle(currentPath)}
                 </h1>
+
+                {/* Carrier switcher pinned to the top-left so any page that
+                    scopes to a carrier (Safety and Compliance, Carrier Profile,
+                    Inventory, …) reflects the choice immediately.
+                      • super-admin → switch between every carrier in the system
+                      • admin       → switch between the carriers in their
+                                       managedAccountIds (the CarrierSwitcher
+                                       collapses to a static label when there
+                                       is only one)
+                    Plain users don't get the switcher — they're always scoped
+                    to their single carrier already. */}
+                {(user.role === "super-admin" || user.role === "admin") && onSelectAccount && (() => {
+                    const managed = getManagedAccountIds(user);
+                    // super-admin returns undefined (= "all"); for admins
+                    // restrict to their managed list.
+                    const accounts = managed
+                        ? ACCOUNTS_DB.filter((a) => managed.includes(a.id))
+                        : ACCOUNTS_DB;
+                    if (accounts.length === 0) return null;
+                    return (
+                        <CarrierSwitcher
+                            selectedAccountId={selectedAccountId}
+                            accounts={accounts.map((a) => ({
+                                id: a.id,
+                                legalName: a.legalName,
+                                dbaName: a.dbaName,
+                                dotNumber: a.dotNumber,
+                            }))}
+                            onSelect={(id) => {
+                                const next = ACCOUNTS_DB.find((a) => a.id === id);
+                                if (next) onSelectAccount(next);
+                            }}
+                            scopeLabel={user.role === "super-admin" ? "Super-admin" : "Admin"}
+                            className="hidden md:flex"
+                        />
+                    );
+                })()}
             </div>
 
             <div className="flex items-center gap-2">

@@ -1,0 +1,9 @@
+inspectionSeq,inspectionDate,category,kind,vehicleIndex,vehicleType,vehiclePlate,vehicleJur
+1,2018 DEC 12,9 - Lighting Devices (Part II Section 8 OOSC only),OOS,2,ST,N9446R,ON
+2,2018 NOV 27,2 - Hours Of Service,OOS,2,ST,M5787W,ON
+2,2018 NOV 27,1 - Driver Credentials,REQ,1,P,U04031,AB
+2,2018 NOV 27,18 - Dangerous Goods,REQ,2,ST,M5787W,ON
+3,2018 NOV 10,1 - Driver Credentials,OOS,2,P,E77384,AB
+8,2018 JUN 05,2 - Hours Of Service,REQ,2,ST,R8066J,ON
+9,2018 JUN 01,1 - Driver Credentials,REQ,2,ST,M1729S,ON
+9,2018 JUN 01,4 - Brake Systems,REQ,2,ST,M1729S,ON

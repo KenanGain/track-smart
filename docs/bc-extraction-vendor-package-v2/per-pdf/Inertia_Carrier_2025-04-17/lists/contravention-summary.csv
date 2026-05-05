@@ -1,0 +1,11 @@
+group,code,violations,violationsPct,activePoints,activePointsPct
+Speeding,0001-0099,0,,0,
+Stop Signs and Traffic Lights,0100-0199,1,4.76,4,16
+Driver's Liabilities,0200-0299,4,19.05,4,16
+Driving,0300-0399,4,19.05,7,28
+Hours of Service,0400-0499,0,,0,
+Trip Inspection,0500-0599,0,,0,
+Mechanical Defects,0600-0699,2,9.52,1,4
+Cargo Securement,0700-0799,1,4.76,0,
+Dangerous Goods,0800-0899,0,,0,
+Vehicle Insurance,0900-0999,0,,0,

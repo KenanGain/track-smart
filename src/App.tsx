@@ -288,7 +288,18 @@ function App() {
             return <AccidentsPage />
         }
         if (path === "/inspections") {
-            return <InspectionsPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <InspectionsPage
+                    currentUser={currentUser ?? undefined}
+                    accountId={account?.id}
+                    onSelectAccount={(id) => {
+                        const next = ACCOUNTS_DB.find((a) => a.id === id)
+                        if (next) setSelectedAccount(next)
+                    }}
+                />
+            )
         }
         if (path === "/violations") {
             return <ViolationsListPage />
@@ -371,7 +382,14 @@ function App() {
                 role={currentUser.role}
             />
             <div className="flex-1 flex flex-col min-w-0">
-                <TopNavbar currentPath={path} user={currentUser} onSignOut={handleSignOut} onNavigate={handleNavigate} />
+                <TopNavbar
+                    currentPath={path}
+                    user={currentUser}
+                    onSignOut={handleSignOut}
+                    onNavigate={handleNavigate}
+                    selectedAccountId={selectedAccount?.id}
+                    onSelectAccount={handleSelectAccount}
+                />
                 <main className="flex-1 overflow-auto">
                     {renderPage()}
                 </main>

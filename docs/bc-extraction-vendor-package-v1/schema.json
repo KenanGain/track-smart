@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart://schemas/bc-carrier-profile.v1.schema.json",
+  "title": "BC CVSE Carrier Profile Report Extraction (v1)",
+  "description": "Output shape for the BC Commercial Vehicle Safety and Enforcement (CVSE) National Safety Code Carrier Profile Report (CPODetailReport). Field names match the existing TrackSmart frontend (src/pages/inspections/NscBcCarrierProfile.tsx, NscBcPullByPull.tsx, NscBcPerformanceHistory.tsx).",
+  "type": "object",
+  "required": ["source", "carrier", "pull"],
+  "additionalProperties": false,
+  "properties": {
+
+    "warnings": {
+      "type": "array",
+      "description": "Soft validation issues (cross-field drift, OCR confidence, unknown form revision).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code":    { "type": "string" },
+          "message": { "type": "string" },
+          "field":   { "type": ["string", "null"] },
+          "page":    { "type": ["integer", "null"], "minimum": 1 }
+        }
+      }
+    },
+
+    "source": {
+      "type": "object",
+      "description": "PDF metadata. BC Carrier Profile Reports are text-PDFs (have an extractable text layer).",
+      "additionalProperties": false,
+      "required": ["fileName", "extractedAt"],
+      "properties": {
+        "fileName":              { "type": "string" },
+        "reportRunDate":         { "type": ["string", "null"], "description": "Cover/footer — 'Report Run Date: DD-MMM-YYYY'" },
+        "profileFrom":           { "type": ["string", "null"], "description": "Cover — 'From: DD-MMM-YYYY'" },
+        "profileTo":             { "type": ["string", "null"], "description": "Cover — 'To: DD-MMM-YYYY'" },
+        "profileRequestedBy":    { "type": ["string", "null"], "description": "Cover — 'Profile Requested By:'" },
+        "pageCount":             { "type": "integer", "minimum": 1 },
+        "formVersion":           { "type": ["string", "null"] },
+        "extractedAt":           { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "carrier": {
+      "type": "object",
+      "description": "Carrier identity from §1 Carrier Information. Maps to NscBcDemographics + NscBcCertificate on the frontend.",
+      "additionalProperties": false,
+      "required": ["nscNumber", "demographics", "certificate"],
+      "properties": {
+        "nscNumber":  { "type": "string", "pattern": "^\\d{3}-\\d{3}-\\d{3}$", "description": "Cover/§1 — 'NSC #' (e.g. '202-422-480')" },
+        "demographics": { "$ref": "#/$defs/demographics" },
+        "certificate":  { "$ref": "#/$defs/certificate" }
+      }
+    },
+
+    "pull": {
+      "type": "object",
+      "description": "Per-pull body (§§1-8). One Carrier Profile Report = one pull.",
+      "additionalProperties": false,
+      "required": [
+        "complianceReview", "thresholds", "interventions",
+        "monthlyScores", "activeFleet",
+        "contraventionSummary", "driverContraventions", "carrierContraventions",
+        "pendingDriverContraventions", "pendingCarrierContraventions",
+        "cvsa", "accidents", "auditSummary", "cvip"
+      ],
+      "properties": {
+        "asOfDate":            { "type": ["string", "null"], "description": "§1 'Profile Scores as of …' header date" },
+        "complianceReview":    { "$ref": "#/$defs/complianceReview" },
+        "thresholds":          { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/thresholdRange" } },
+        "interventions":       { "type": "array", "items": { "$ref": "#/$defs/intervention" } },
+
+        "monthlyScores":       { "type": "array", "description": "§2 Profile Scores month-by-month (24 rolling months, newest first).", "items": { "$ref": "#/$defs/monthRow" } },
+        "activeFleet":         { "type": "array", "description": "§3 Active Fleet — one row per vehicle.", "items": { "$ref": "#/$defs/fleetRow" } },
+
+        "contraventionSummary":{ "type": "array", "description": "§4 Summary table — group descriptions × counts/points.", "items": { "$ref": "#/$defs/contraventionGroupRow" } },
+        "driverContraventions":{ "type": "array", "description": "§4.1 Driver Contraventions (Guilty).", "items": { "$ref": "#/$defs/driverContraventionRow" } },
+        "carrierContraventions":{ "type": "array", "description": "§4.2 Carrier Contraventions (Guilty).", "items": { "$ref": "#/$defs/carrierContraventionRow" } },
+        "pendingDriverContraventions": { "type": "array", "description": "§4.3 Pending Driver Contraventions.", "items": { "$ref": "#/$defs/driverContraventionRow" } },
+        "pendingCarrierContraventions": { "type": "array", "description": "§4.4 Pending Carrier Contraventions.", "items": { "$ref": "#/$defs/carrierContraventionRow" } },
+
+        "cvsa":                { "$ref": "#/$defs/cvsaSection" },
+        "accidents":           { "type": "array", "description": "§6 Accident Information.", "items": { "$ref": "#/$defs/accidentRow" } },
+        "auditSummary":        { "type": "array", "description": "§7 Audit Summary. Empty when 'No Audits conducted for this carrier'.", "items": { "$ref": "#/$defs/auditRow" } },
+        "cvip":                { "type": "array", "description": "§8 CVIP Vehicle Inspection History.", "items": { "$ref": "#/$defs/cvipRow" } }
+      }
+    }
+  },
+
+  "$defs": {
+
+    "demographics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["carrierName", "jurisdiction", "nscNumber"],
+      "properties": {
+        "carrierName":              { "type": "string", "description": "§1 — 'Carrier Name'" },
+        "jurisdiction":             { "type": "string", "description": "§1 — 'Jurisdiction' (e.g. 'BC')" },
+        "primaryBusinessType":      { "type": ["string", "null"], "description": "§1 — 'Primary Types of Business'" },
+        "certificateIssueDate":     { "type": ["string", "null"], "description": "§1 — 'Certificate Issue Date' (DD-MMM-YYYY)" },
+        "extraProvincial":          { "type": ["boolean", "null"], "description": "§1 — 'Extra-Provincial' Yes/No" },
+        "mailingAddress":           { "type": ["string", "null"], "description": "§1 — 'Carrier Mailing Address' (joined into one string for the frontend)" },
+        "premiumCarrier":           { "type": ["boolean", "null"], "description": "§1 — 'Premium Carrier' Yes/No" },
+        "weigh2GoBC":               { "type": ["boolean", "null"], "description": "§1 — 'Weigh2GoBC' Yes/No" },
+        "preventativeMaintenance":  { "type": ["boolean", "null"], "description": "§1 — 'Preventative Maintenance' Yes/No" },
+        "numberOfLicensedVehicles": { "type": ["integer", "null"], "minimum": 0, "description": "§1 — 'Number of Currently Licensed Vehicles'" },
+        "nscNumber":                { "type": "string" },
+        "reportRunDate":            { "type": ["string", "null"] },
+        "profileFrom":              { "type": ["string", "null"] },
+        "profileTo":                { "type": ["string", "null"] }
+      }
+    },
+
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["certificateStatus", "safetyRating", "profileStatus", "auditStatus"],
+      "properties": {
+        "certificateStatus": { "type": "string", "enum": ["Active", "Suspended", "Cancelled", "Expired"], "description": "§1 — 'Certificate Status'" },
+        "safetyRating":      { "type": "string", "description": "§1 — 'Safety Rating' (e.g. 'Satisfactory - Unaudited')" },
+        "profileStatus":     { "type": "string", "enum": ["Satisfactory", "Conditional", "Unsatisfactory"], "description": "§1 — 'Profile Status'" },
+        "auditStatus":       { "type": "string", "description": "§1 — 'Audit Status' (e.g. 'Unaudited', 'Audited')" }
+      }
+    },
+
+    "complianceReview": {
+      "type": "object",
+      "description": "§1 'Current Profile Scores as of …' panel + the 'Total' synthesised total. Maps to NscBcComplianceReview.",
+      "additionalProperties": false,
+      "required": ["asOfDate", "averageFleetSize", "scores", "totalScore"],
+      "properties": {
+        "asOfDate":          { "type": "string", "description": "e.g. '31-Mar-2025'" },
+        "averageFleetSize":  { "type": "number", "description": "Computed by BC as Σ(Active Vehicle Days) ÷ Σ(Active Monthly Days)" },
+        "scores": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/profileScore" },
+          "description": "Three categories: Contraventions, CVSA (Out of Service), Accidents — in this order"
+        },
+        "totalScore":        { "type": "number", "description": "Σ scores. BC also prints this on the same row." }
+      }
+    },
+
+    "profileScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "score", "events"],
+      "properties": {
+        "category": { "type": "string", "enum": ["Contraventions", "CVSA (Out of Service)", "Accidents"] },
+        "score":    { "type": "number", "minimum": 0 },
+        "events":   { "type": "integer", "minimum": 0, "description": "Count of underlying events (driver+carrier contras, OOS inspections, accidents at fault)" }
+      }
+    },
+
+    "thresholdRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contraventions", "cvsa", "accidents", "total"],
+      "properties": {
+        "status":         { "type": "string", "enum": ["Satisfactory", "Conditional", "Unsatisfactory"] },
+        "contraventions": { "type": "string", "description": "e.g. '0.00 – 1.76' or '2.99+'" },
+        "cvsa":           { "type": "string" },
+        "accidents":      { "type": "string" },
+        "total":          { "type": "string" }
+      }
+    },
+
+    "intervention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "date"],
+      "properties": {
+        "type":        { "type": "string", "description": "e.g. 'Audit - Triggered', 'Letter - Warning'" },
+        "date":        { "type": "string" },
+        "description": { "type": ["string", "null"] }
+      }
+    },
+
+    "monthRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["month", "vd", "ad", "avg", "contra", "cvsa", "acc", "total"],
+      "properties": {
+        "month":  { "type": "string", "pattern": "^\\d{4}-\\d{2}$", "description": "YYYY-MM (newest first)" },
+        "vd":     { "type": "integer", "minimum": 0, "description": "Total Active Vehicle Days" },
+        "ad":     { "type": "integer", "minimum": 0, "description": "Active Monthly Days" },
+        "avg":    { "type": "number", "minimum": 0, "description": "Average Fleet Size = vd/ad" },
+        "contra": { "type": "number", "minimum": 0, "description": "Contraventions Score" },
+        "cvsa":   { "type": "number", "minimum": 0, "description": "CVSA (OOS) Score" },
+        "acc":    { "type": "number", "minimum": 0, "description": "Accident Score" },
+        "total":  { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "fleetRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regi", "year", "make"],
+      "properties": {
+        "regi":  { "type": "string", "description": "Registration #" },
+        "plate": { "type": ["string", "null"], "description": "Plate # (BC plates end with 'P' for power units)" },
+        "year":  { "type": "integer", "minimum": 1900, "maximum": 2100 },
+        "make":  { "type": "string", "description": "Make abbreviation as printed (e.g. 'VOLVO', 'FREIGHTLIN', 'KENWORTH')" },
+        "owner": { "type": ["string", "null"], "description": "Owner name (typically a leasing/finance company)" },
+        "gvw":   { "anyOf": [ { "type": "integer" }, { "type": "string", "enum": [""] } ], "description": "Gross Vehicle Weight in kg; empty string when not on file" }
+      }
+    },
+
+    "contraventionGroupRow": {
+      "type": "object",
+      "description": "§4 Summary — one row per CCMTA group (Speeding 0001-0099, etc.)",
+      "additionalProperties": false,
+      "required": ["group", "code", "violations", "violationsPct", "activePoints", "activePointsPct"],
+      "properties": {
+        "group":          { "type": "string", "description": "e.g. 'Speeding'" },
+        "code":           { "type": "string", "description": "e.g. '0001-0099'" },
+        "violations":     { "type": "integer", "minimum": 0 },
+        "violationsPct":  { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "activePoints":   { "type": "integer", "minimum": 0 },
+        "activePointsPct":{ "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+      }
+    },
+
+    "driverContraventionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "ticket", "plate", "plateJur", "act", "section", "desc", "equiv"],
+      "properties": {
+        "driverName": { "type": ["string", "null"], "description": "Empty when name not on file" },
+        "dl":         { "type": ["string", "null"] },
+        "dlJur":      { "type": ["string", "null"] },
+        "cls":        { "type": ["string", "null"], "description": "License class (e.g. '000', '100'). Pending rows only." },
+        "status":     { "type": ["string", "null"], "description": "Driver status code (e.g. 'NORMAL', 'HOLD'). Pending rows only." },
+        "date":       { "type": "string", "description": "Violation Date YYYY-MM-DD" },
+        "time":       { "type": ["string", "null"], "description": "HH:MM" },
+        "ticket":     { "type": "string" },
+        "plate":      { "type": "string" },
+        "plateJur":   { "type": "string" },
+        "location":   { "type": ["string", "null"] },
+        "juris":      { "type": ["string", "null"], "description": "Jurisdiction where issued" },
+        "dispDate":   { "type": ["string", "null"], "description": "Disposition Date — only present for guilty (non-pending) rows" },
+        "act":        { "type": "string" },
+        "section":    { "type": "string" },
+        "desc":       { "type": "string", "description": "Charge description as printed" },
+        "equiv":      { "type": "string", "description": "CCMTA equivalency code" },
+        "pts":        { "type": ["integer", "null"], "minimum": 0, "description": "Active points (null on pending rows that haven't been disposed yet)" }
+      }
+    },
+
+    "carrierContraventionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "ticket", "plate", "plateJur", "act", "section", "desc", "equiv"],
+      "properties": {
+        "status":   { "type": ["string", "null"], "description": "Pending rows only — e.g. 'NORMAL', 'HOLD'" },
+        "date":     { "type": "string" },
+        "time":     { "type": ["string", "null"] },
+        "ticket":   { "type": "string" },
+        "plate":    { "type": "string" },
+        "plateJur": { "type": "string" },
+        "location": { "type": ["string", "null"] },
+        "juris":    { "type": ["string", "null"] },
+        "dispDate": { "type": ["string", "null"] },
+        "act":      { "type": "string" },
+        "section":  { "type": "string" },
+        "desc":     { "type": "string" },
+        "equiv":    { "type": "string" },
+        "pts":      { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+
+    "cvsaSection": {
+      "type": "object",
+      "description": "§5 CVSA Inspection Results — summary tally + defect-type breakdown + per-inspection list.",
+      "additionalProperties": false,
+      "required": ["summary", "defectBreakdown", "list"],
+      "properties": {
+        "summary": {
+          "type": "array",
+          "description": "Inspection Type × OOS/Fail/Pass count",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["inspectionType", "count", "oos", "fail", "pass"],
+            "properties": {
+              "inspectionType": { "type": "string", "enum": ["Driver/Vehicle Inspections", "Vehicle Only Inspections", "Driver Only Inspections", "Total Inspections"] },
+              "count":          { "type": "integer", "minimum": 0 },
+              "oos":            { "type": "integer", "minimum": 0 },
+              "fail":           { "type": "integer", "minimum": 0 },
+              "pass":           { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "defectBreakdown": {
+          "type": "array",
+          "description": "Per-defect-type counts (e.g. '40 - Driver', '44 - Braking System')",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "label"],
+            "properties": {
+              "code":         { "type": "string", "description": "e.g. '40', '44', '45'" },
+              "label":        { "type": "string", "description": "e.g. 'Driver', 'Braking System', 'Brake Adjustment'" },
+              "oos":          { "type": ["integer", "null"], "minimum": 0 },
+              "oosPct":       { "type": ["number", "null"], "minimum": 0 },
+              "fail":         { "type": ["integer", "null"], "minimum": 0 },
+              "failPct":      { "type": ["number", "null"], "minimum": 0 },
+              "totalDefects": { "type": ["integer", "null"], "minimum": 0 },
+              "totalPct":     { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        },
+        "list": {
+          "type": "array",
+          "description": "Per-inspection records",
+          "items": { "$ref": "#/$defs/cvsaInspectionRec" }
+        }
+      }
+    },
+
+    "cvsaInspectionRec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "doc", "level", "result", "units"],
+      "properties": {
+        "date":        { "type": "string", "description": "YYYY-MM-DD" },
+        "time":        { "type": ["string", "null"] },
+        "doc":         { "type": "string", "description": "Document/Inspection #" },
+        "location":    { "type": ["string", "null"] },
+        "jur":         { "type": ["string", "null"] },
+        "level":       { "type": "integer", "minimum": 1, "maximum": 7, "description": "CVSA level 1-7 (or C/R for school bus — encoded as 0)" },
+        "result":      { "type": "string", "enum": ["Pass", "Fail", "OOS"] },
+        "pts":         { "type": ["integer", "null"], "description": "3 if result === 'OOS', else null/0" },
+        "driverName":  { "type": ["string", "null"] },
+        "dl":          { "type": ["string", "null"] },
+        "dlJur":       { "type": ["string", "null"] },
+        "units":       { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/cvsaUnit" } }
+      }
+    },
+
+    "cvsaUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "plate", "plateJur", "result"],
+      "properties": {
+        "kind":     { "type": "string", "description": "e.g. 'Power Unit', 'Semi-Trailer', 'Trailer 1', 'Bus'" },
+        "plate":    { "type": "string" },
+        "plateJur": { "type": "string" },
+        "regi":     { "type": ["string", "null"] },
+        "desc":     { "type": ["string", "null"], "description": "Vehicle description (year + make abbrev)" },
+        "result":   { "type": "string", "enum": ["Pass", "Fail", "OOS"] },
+        "defect":   { "type": ["string", "null"], "description": "Defect code(s) when result is OOS or Fail (e.g. '41', '40')" }
+      }
+    },
+
+    "accidentRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "report", "type", "fault", "pts"],
+      "properties": {
+        "date":       { "type": "string" },
+        "time":       { "type": ["string", "null"] },
+        "report":     { "type": "string" },
+        "location":   { "type": ["string", "null"] },
+        "jur":        { "type": ["string", "null"] },
+        "driverName": { "type": ["string", "null"] },
+        "dl":         { "type": ["string", "null"] },
+        "dlJur":      { "type": ["string", "null"] },
+        "plate":      { "type": ["string", "null"] },
+        "plateJur":   { "type": ["string", "null"] },
+        "regi":       { "type": ["string", "null"] },
+        "vehDesc":    { "type": ["string", "null"] },
+        "type":       { "type": "string", "enum": ["Property", "Injury", "Fatal"] },
+        "fault":      { "type": "string", "enum": ["At Fault", "No Fault", "Fault Unknown"] },
+        "charges":    { "type": ["string", "null"], "enum": ["Yes", "No", null] },
+        "pts":        { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "auditRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auditDate", "result"],
+      "properties": {
+        "auditDate":  { "type": "string" },
+        "result":     { "type": "string" },
+        "auditType":  { "type": ["string", "null"] }
+      }
+    },
+
+    "cvipRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regi", "date", "type", "result"],
+      "properties": {
+        "regi":         { "type": "string" },
+        "plate":        { "type": ["string", "null"] },
+        "vehicle":      { "type": ["string", "null"], "description": "Year + make abbrev, e.g. '2015 VOLVO'" },
+        "date":         { "type": "string" },
+        "type":         { "type": "string", "description": "e.g. 'CVIP', 'N&O' (New & Old)" },
+        "facility":     { "type": ["string", "null"] },
+        "confirmation": { "type": ["string", "null"] },
+        "decal":        { "type": ["string", "null"] },
+        "expiry":       { "type": ["string", "null"] },
+        "result":       { "type": "string" }
+      }
+    }
+  }
+}

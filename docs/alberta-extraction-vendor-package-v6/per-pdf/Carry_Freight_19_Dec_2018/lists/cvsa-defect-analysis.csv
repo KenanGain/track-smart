@@ -1,0 +1,20 @@
+code,label,oos,req,total,pctText
+1,Driver Credentials,1,2,3,37.5%
+2,Hours Of Service,1,1,2,25.0%
+3,Brake Adjustment,,,,
+4,Brake Systems,,1,1,12.5%
+5,Coupling Devices,,,,
+6,Exhaust Systems,,,,
+7,Frames,,,,
+8,Fuel Systems,,,,
+9,Lighting Devices (Part II Section 8 OOSC only),1,,1,12.5%
+10,Cargo Securement,,,,
+11,Steering Mechanisms,,,,
+12,Suspensions,,,,
+13,Tires,,,,
+14,Van/Open-top Trailer Bodies,,,,
+15,"Wheels, Rims & Hubs",,,,
+16,Windshield Wipers,,,,
+17,Emergency Exits/Wiring & Electrical Systems (Buses),,,,
+18,Dangerous Goods,,1,1,12.5%
+19,Driveline/Driveshaft,,,,

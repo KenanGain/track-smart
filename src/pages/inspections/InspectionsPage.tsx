@@ -22,7 +22,8 @@ import {
   Info,
   X,
   Building2,
-  MapPin
+  MapPin,
+  Settings
 } from 'lucide-react';
 import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode, cvorPeriodicReports } from './inspectionsData';
 import { cvorInterventionEvents, cvorTravelKm, CVOR_INTERVENTION_PERIOD, type CvorInterventionEvent } from './cvorInterventionEvents.data';
@@ -111,6 +112,17 @@ import { useAppData } from '@/context/AppDataContext';
 import { VIOLATION_DATA } from '@/data/violations.data';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { INITIAL_ASSETS } from '@/pages/assets/assets.data';
+import { ComplianceConfigureModal } from '@/components/compliance/ComplianceConfigureModal';
+import { RegimeGate } from '@/components/compliance/RegimeGate';
+import { useCarrierCompliance } from '@/data/useCarrierCompliance';
+import { type AppUser } from '@/data/users.data';
+import type { NscJurisdiction } from '@/data/carrier-compliance.data';
+import {
+  getNscAbProfileFor,
+  getNscBcProfileFor,
+  getNscPeProfileFor,
+  getNscNsProfileFor,
+} from '@/data/carrier-safety-data';
 import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 
 // --- REUSABLE COMPONENTS ---
@@ -187,7 +199,7 @@ const MiniKpiCard = ({ title, value, icon: Icon, active, onClick, color }: { tit
   );
 };
 
-const ALBERTA_NSC_PERFORMANCE_CARD: NscPerformanceCardProps = {
+export const ALBERTA_NSC_PERFORMANCE_CARD: NscPerformanceCardProps = {
   carrierName: 'VM Motors Inc.',
   profileDate: '2026 FEB 23',
   rFactor: 0.062,
@@ -227,7 +239,7 @@ const ALBERTA_NSC_PERFORMANCE_CARD: NscPerformanceCardProps = {
   },
 };
 
-const NOVA_SCOTIA_NSC_PROFILE = {
+export const NOVA_SCOTIA_NSC_PROFILE = {
   carrierName:           'MAPLE LEAF FORCE LIMITED',
   nscNumber:             'MAPLE739646000',
   profileAsOf:           '19/08/2022',
@@ -249,7 +261,7 @@ const NOVA_SCOTIA_NSC_PROFILE = {
   collisionScore:        0.0000,
 } as const;
 
-const PRINCE_EDWARD_ISLAND_NSC_PROFILE = {
+export const PRINCE_EDWARD_ISLAND_NSC_PROFILE = {
   jurisdiction: 'Prince Edward Island',
   profileAsOf: '2021/07/14',
   nscNumber: 'PE316583',
@@ -337,10 +349,6 @@ const BC_CONTRAVENTION_SECTIONS = [
     ],
   },
 ];
-
-function NscPerfomate() {
-  return <NscBcCarrierProfile {...INERTIA_CARRIER_BC_DATA} />;
-}
 
 export function BcProfileScoresContent() {
   const thresholdRows = [
@@ -2551,8 +2559,62 @@ const getPeriodLabel = (period: PeriodLabel) => (
 );
 
 // --- MAIN APP ---
-export function InspectionsPage() {
+export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
+  currentUser?: AppUser;
+  accountId?: string;
+  /** Fired when a super-admin picks a different carrier inside the
+   *  Configure modal — the parent should swap its `selectedAccount` so
+   *  the page re-renders with that carrier's tabs and data. */
+  onSelectAccount?: (accountId: string) => void;
+} = {}) {
+  // Per-carrier compliance enrollment. Defaults to acct-001 (Acme) so the
+  // existing rich mock data attaches cleanly when the page is rendered
+  // without an explicit carrier (preserves current behaviour).
+  const effectiveAccountId = accountId ?? 'acct-001';
+  const compliance = useCarrierCompliance(effectiveAccountId);
+  const [configureOpen, setConfigureOpen] = useState(false);
+
+  // Per-carrier safety/compliance data. Acme (acct-001) returns the
+  // hand-curated demo data attached to the page; every other carrier
+  // gets a deterministic generated record so each profile shows distinct
+  // numbers without us hand-authoring 30 fixtures.
+  const carrierAbProfile = useMemo(() => getNscAbProfileFor(effectiveAccountId), [effectiveAccountId]);
+  const carrierBcProfile = useMemo(() => getNscBcProfileFor(effectiveAccountId), [effectiveAccountId]);
+  const carrierPeProfile = useMemo(() => getNscPeProfileFor(effectiveAccountId), [effectiveAccountId]);
+  const carrierNsProfile = useMemo(() => getNscNsProfileFor(effectiveAccountId), [effectiveAccountId]);
+
+  // Map of tab id → (hasData, enabled) so we can hide / grey the right sections.
+  const TAB_REGIMES = useMemo(() => {
+    const nscMap = new Map<NscJurisdiction, { hasData: boolean; enabled: boolean }>();
+    (compliance?.nsc ?? []).forEach((n) =>
+      nscMap.set(n.jurisdiction, { hasData: n.hasData, enabled: n.enabled })
+    );
+    const nscFor = (j: NscJurisdiction) => nscMap.get(j) ?? { hasData: false, enabled: false };
+    return {
+      'sms':                 { hasData: !!compliance?.fmcsa.hasData, enabled: !!compliance?.fmcsa.enabled },
+      'cvor':                { hasData: !!compliance?.cvor.hasData,  enabled: !!compliance?.cvor.enabled  },
+      'carrier-profile-ab':  nscFor('AB'),
+      'carrier-profile-bc':  nscFor('BC'),
+      'carrier-profile-pe':  nscFor('PE'),
+      'carrier-profile-ns':  nscFor('NS'),
+    } as const;
+  }, [compliance]);
+
   const [activeMainTab, setActiveMainTab] = useState<'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc' | 'carrier-profile-pe' | 'carrier-profile-ns'>('sms');
+
+  // If the current carrier doesn't have data for the active tab, switch to
+  // the first tab that does. Without this, a carrier with no FMCSA enrolment
+  // would land on a hidden 'sms' tab and see nothing.
+  useEffect(() => {
+    if (!compliance) return;
+    const ids = ['sms', 'cvor', 'carrier-profile-ab', 'carrier-profile-bc', 'carrier-profile-pe', 'carrier-profile-ns'] as const;
+    if (!TAB_REGIMES[activeMainTab].hasData) {
+      const next = ids.find((id) => TAB_REGIMES[id].hasData);
+      if (next) setActiveMainTab(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveAccountId, compliance]);
+
   const [bcMainOpen, setBcMainOpen] = useState<Record<string, boolean>>({});
   const bcMainTog = (k: string) => setBcMainOpen(p => ({ ...p, [k]: !p[k] }));
   const [abMainOpen, setAbMainOpen] = useState<Record<string, boolean>>({});
@@ -3119,6 +3181,13 @@ export function InspectionsPage() {
           </div>
           <div className="flex gap-3">
             <button
+              onClick={() => setConfigureOpen(true)}
+              title="Configure FMCSA / CVOR / NSC enrollment for this carrier"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm"
+            >
+              <Settings size={16} /> Configure
+            </button>
+            <button
               onClick={() => setShowUploadModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm"
             >
@@ -3143,19 +3212,33 @@ export function InspectionsPage() {
               { id: 'carrier-profile-bc' as const, label: 'BC NSC' },
               { id: 'carrier-profile-pe' as const, label: 'PEI NSC' },
               { id: 'carrier-profile-ns' as const, label: 'Nova Scotia NSC' },
-            ].map(tab => (
+            ]
+              // Only show tabs whose regime has backing data for this carrier.
+              .filter(tab => TAB_REGIMES[tab.id].hasData)
+              .map(tab => {
+                const reg = TAB_REGIMES[tab.id];
+                const isActive = activeMainTab === tab.id;
+                const greyed = !reg.enabled;
+                return (
               <button
                 key={tab.id}
                 onClick={() => { setActiveMainTab(tab.id); setShowReport(false); }}
-                className={`px-5 py-2 text-sm font-semibold rounded-md transition-all ${
-                  activeMainTab === tab.id
+                title={greyed ? `${tab.label} — Not Enrolled (toggle on via Configure)` : tab.label}
+                className={`relative px-5 py-2 text-sm font-semibold rounded-md transition-all ${
+                  isActive
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
-                }`}
+                } ${greyed ? 'opacity-60' : ''}`}
               >
                 {tab.label}
+                {greyed && (
+                  <span className="ml-1.5 inline-block text-[8px] font-bold uppercase tracking-wider px-1 py-px rounded bg-slate-200 text-slate-500 align-middle">
+                    Off
+                  </span>
+                )}
               </button>
-            ))}
+                );
+              })}
           </div>
 
           {/* Report button - only for reportable tabs */}
@@ -3188,7 +3271,9 @@ export function InspectionsPage() {
       </div>
 
       {/* ===== TAB: SMS (FMCSA) ===== */}
-      {activeMainTab === 'sms' && (() => {
+      {activeMainTab === 'sms' && (
+        <RegimeGate hasData={TAB_REGIMES['sms'].hasData} enabled={TAB_REGIMES['sms'].enabled}>
+        {(() => {
         const smsInspections = inspectionsData.filter(i => getJurisdiction(i.state) === 'CSA');
         return (
         <div className="space-y-6">
@@ -4944,9 +5029,13 @@ export function InspectionsPage() {
         </div>
         );
       })()}
+        </RegimeGate>
+      )}
 
       {/* ===== TAB: CVOR (Canadian) ===== */}
-      {activeMainTab === 'cvor' && (() => {
+      {activeMainTab === 'cvor' && (
+        <RegimeGate hasData={TAB_REGIMES['cvor'].hasData} enabled={TAB_REGIMES['cvor'].enabled}>
+        {(() => {
         const cvorInspections = inspectionsData.filter(i => getJurisdiction(i.state) === 'CVOR');
         const cvorStats = {
           total: cvorInspections.length,
@@ -10217,9 +10306,12 @@ export function InspectionsPage() {
         </div>
         );
       })()}
+        </RegimeGate>
+      )}
 
       {/* ===== TAB: CARRIER PROFILE (NSC ALBERTA) ===== */}
       {activeMainTab === 'carrier-profile-ab' && (
+        <RegimeGate hasData={TAB_REGIMES['carrier-profile-ab'].hasData} enabled={TAB_REGIMES['carrier-profile-ab'].enabled}>
         <div className="space-y-6">
 
           {/* Last Updated + Last Uploaded banner */}
@@ -10347,7 +10439,7 @@ export function InspectionsPage() {
             </div>
           </div>
 
-          <NscPerformanceCard {...ALBERTA_NSC_PERFORMANCE_CARD} />
+          <NscPerformanceCard {...carrierAbProfile} />
 
           {/* ── Latest-pull data (inline, always visible) ── */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -10588,10 +10680,12 @@ export function InspectionsPage() {
           <NscAbPerformanceHistory />
 
         </div>
+        </RegimeGate>
       )}
 
       {/* ===== TAB: CARRIER PROFILE (NSC BC) ===== */}
       {activeMainTab === 'carrier-profile-bc' && (
+        <RegimeGate hasData={TAB_REGIMES['carrier-profile-bc'].hasData} enabled={TAB_REGIMES['carrier-profile-bc'].enabled}>
         <div className="space-y-6">
           <div className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-2">
             <div className="flex items-center gap-2 text-sm text-sky-700">
@@ -10606,7 +10700,7 @@ export function InspectionsPage() {
             </div>
           </div>
 
-          <NscPerfomate />
+          <NscBcCarrierProfile {...carrierBcProfile} />
 
           {/* ── Latest-pull data (Mar 2025) — shown inline on the main page ── */}
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -10621,7 +10715,7 @@ export function InspectionsPage() {
               title="Profile Scores as of Mar 2025"
               subtitle="14 monthly pulls · vehicle days, fleet size, contraventions/CVSA/accident scores"
               statLabel="Total Score"
-              statVal={INERTIA_CARRIER_BC_DATA.complianceReview.totalScore.toFixed(2)}
+              statVal={carrierBcProfile.complianceReview.totalScore.toFixed(2)}
               badge="14 MONTHS"
               badgeCls="bg-blue-50 text-blue-600 border-blue-200"
               open={!!bcMainOpen.profileScores}
@@ -10634,7 +10728,7 @@ export function InspectionsPage() {
               title="Active Fleet"
               subtitle="Apr 2024 → Mar 2025 · all commercial vehicles under this Safety Certificate"
               statLabel="Avg Fleet"
-              statVal={INERTIA_CARRIER_BC_DATA.complianceReview.averageFleetSize.toFixed(2)}
+              statVal={carrierBcProfile.complianceReview.averageFleetSize.toFixed(2)}
               badge="23 VEHICLES"
               badgeCls="bg-blue-50 text-blue-600 border-blue-200"
               open={!!bcMainOpen.activeFleet}
@@ -10742,26 +10836,30 @@ export function InspectionsPage() {
           <NscBcPerformanceHistory />
 
         </div>
+        </RegimeGate>
       )}
 
       {/* ===== TAB: CARRIER PROFILE (NSC PE) ===== */}
       {activeMainTab === 'carrier-profile-pe' && (
+        <RegimeGate hasData={TAB_REGIMES['carrier-profile-pe'].hasData} enabled={TAB_REGIMES['carrier-profile-pe'].enabled}>
         <div className="space-y-6">
           <NscPeiPerformanceCard data={{
-            carrierName:    'BUSINESS PORTERS INC.',
-            nscNumber:      PRINCE_EDWARD_ISLAND_NSC_PROFILE.nscNumber,
-            profileAsOf:    PRINCE_EDWARD_ISLAND_NSC_PROFILE.profileAsOf,
-            jurisdiction:   PRINCE_EDWARD_ISLAND_NSC_PROFILE.jurisdiction,
-            safetyRating:   PRINCE_EDWARD_ISLAND_NSC_PROFILE.safetyRating,
+            carrierName:    effectiveAccountId === 'acct-001'
+                              ? 'BUSINESS PORTERS INC.'
+                              : (carrierPeProfile as any).carrierName ?? 'CARRIER',
+            nscNumber:      carrierPeProfile.nscNumber,
+            profileAsOf:    carrierPeProfile.profileAsOf,
+            jurisdiction:   carrierPeProfile.jurisdiction,
+            safetyRating:   carrierPeProfile.safetyRating,
             certStatus:     'Active',
             auditStatus:    'Unaudited',
             phone:          '(902)932-7076',
             contactName:    'Same As Above Same As Above',
-            collisionPoints:  PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.collisionPoints,
-            convictionPoints: PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.convictionPoints,
-            inspectionPoints: PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.inspectionPoints,
-            currentActiveVehicles:                PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.currentActiveVehicles,
-            currentActiveVehiclesAtLastAssessment: PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.currentActiveVehiclesAtLastAssessment,
+            collisionPoints:  carrierPeProfile.summary.collisionPoints,
+            convictionPoints: carrierPeProfile.summary.convictionPoints,
+            inspectionPoints: carrierPeProfile.summary.inspectionPoints,
+            currentActiveVehicles:                carrierPeProfile.summary.currentActiveVehicles,
+            currentActiveVehiclesAtLastAssessment: carrierPeProfile.summary.currentActiveVehiclesAtLastAssessment,
             interventions: [
               { label: 'Conditional Rating - Issued', date: '14-Jul-2021', type: 'warning' },
             ],
@@ -10781,39 +10879,41 @@ export function InspectionsPage() {
 
           <NscGenericPerformanceBlock
             latestPullDate="14-Jul-2021"
-            collisionPoints={PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.collisionPoints}
-            convictionPoints={PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.convictionPoints}
-            inspectionPoints={PRINCE_EDWARD_ISLAND_NSC_PROFILE.summary.inspectionPoints}
+            collisionPoints={carrierPeProfile.summary.collisionPoints}
+            convictionPoints={carrierPeProfile.summary.convictionPoints}
+            inspectionPoints={carrierPeProfile.summary.inspectionPoints}
             maxPoints={55}
           />
 
           <NscPeiPerformanceHistory />
         </div>
+        </RegimeGate>
       )}
 
       {/* ===== TAB: CARRIER PROFILE (NSC NS) ===== */}
       {activeMainTab === 'carrier-profile-ns' && (
+        <RegimeGate hasData={TAB_REGIMES['carrier-profile-ns'].hasData} enabled={TAB_REGIMES['carrier-profile-ns'].enabled}>
         <div className="space-y-6">
           <NscNsPerformanceCard data={{
-            carrierName:          NOVA_SCOTIA_NSC_PROFILE.carrierName,
-            nscNumber:            NOVA_SCOTIA_NSC_PROFILE.nscNumber,
-            profileAsOf:          NOVA_SCOTIA_NSC_PROFILE.profileAsOf,
-            safetyRating:         NOVA_SCOTIA_NSC_PROFILE.safetyRating,
-            safetyRatingExpires:  NOVA_SCOTIA_NSC_PROFILE.safetyRatingExpires,
-            contactName:          NOVA_SCOTIA_NSC_PROFILE.contactName,
-            contactTitle:         NOVA_SCOTIA_NSC_PROFILE.contactTitle,
-            phone:                NOVA_SCOTIA_NSC_PROFILE.phone,
-            mailingAddress:       NOVA_SCOTIA_NSC_PROFILE.mailingAddress,
-            physicalAddress:      NOVA_SCOTIA_NSC_PROFILE.physicalAddress,
-            principalPlace:       NOVA_SCOTIA_NSC_PROFILE.principalPlace,
-            currentFleetSize:     NOVA_SCOTIA_NSC_PROFILE.currentFleetSize,
-            avgDailyFleetSize:    NOVA_SCOTIA_NSC_PROFILE.avgDailyFleetSize,
-            scoreLevel1:          NOVA_SCOTIA_NSC_PROFILE.scoreLevel1,
-            scoreLevel2:          NOVA_SCOTIA_NSC_PROFILE.scoreLevel2,
-            scoreLevel3:          NOVA_SCOTIA_NSC_PROFILE.scoreLevel3,
-            convictionScore:      NOVA_SCOTIA_NSC_PROFILE.convictionScore,
-            inspectionScore:      NOVA_SCOTIA_NSC_PROFILE.inspectionScore,
-            collisionScore:       NOVA_SCOTIA_NSC_PROFILE.collisionScore,
+            carrierName:          carrierNsProfile.carrierName,
+            nscNumber:            carrierNsProfile.nscNumber,
+            profileAsOf:          carrierNsProfile.profileAsOf,
+            safetyRating:         carrierNsProfile.safetyRating,
+            safetyRatingExpires:  carrierNsProfile.safetyRatingExpires,
+            contactName:          carrierNsProfile.contactName,
+            contactTitle:         carrierNsProfile.contactTitle,
+            phone:                carrierNsProfile.phone,
+            mailingAddress:       carrierNsProfile.mailingAddress,
+            physicalAddress:      carrierNsProfile.physicalAddress,
+            principalPlace:       carrierNsProfile.principalPlace,
+            currentFleetSize:     carrierNsProfile.currentFleetSize,
+            avgDailyFleetSize:    carrierNsProfile.avgDailyFleetSize,
+            scoreLevel1:          carrierNsProfile.scoreLevel1,
+            scoreLevel2:          carrierNsProfile.scoreLevel2,
+            scoreLevel3:          carrierNsProfile.scoreLevel3,
+            convictionScore:      carrierNsProfile.convictionScore,
+            inspectionScore:      carrierNsProfile.inspectionScore,
+            collisionScore:       carrierNsProfile.collisionScore,
             auditHistory:         [],
             interventions:        [],
             carrierInfo: {
@@ -10827,6 +10927,18 @@ export function InspectionsPage() {
 
           <NscNsPerformanceHistory />
         </div>
+        </RegimeGate>
+      )}
+
+      {/* ===== COMPLIANCE CONFIGURE MODAL ===== */}
+      {currentUser && configureOpen && (
+        <ComplianceConfigureModal
+          open={configureOpen}
+          onClose={() => setConfigureOpen(false)}
+          initialAccountId={effectiveAccountId}
+          currentUser={currentUser}
+          onAccountChange={onSelectAccount}
+        />
       )}
 
       {/* ===== UPLOAD MODAL ===== */}

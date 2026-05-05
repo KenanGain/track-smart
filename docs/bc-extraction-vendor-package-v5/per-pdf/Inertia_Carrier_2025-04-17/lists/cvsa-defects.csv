@@ -1,0 +1,16 @@
+code,label,oos,oosPct,fail,failPct,totalDefects,totalPct
+40,Driver,1,2.86,3,8.57,4,11.43
+41,Lighting Devices,,,,,,
+42,"Windshield, Wipers",1,2.86,,,1,2.86
+43,Steering,,,,,,
+44,Braking System,2,5.71,7,20,9,25.71
+45,Brake Adjustment,1,2.86,14,40,15,42.86
+46,Suspension,1,2.86,,,1,2.86
+47,"Tires, Wheels, Rims",2,5.71,,,2,5.71
+48,Fuel System,,,,,,
+49,Frame,,,,,,
+50,Cargo Securement,,,,,,
+51,Coupling Devices,,,,,,
+52,"Vehicle Body, Doors",,,,,,
+53,Other Vehicle Defects,,,,,,
+54,Hours of Service,,,3,8.57,3,8.57

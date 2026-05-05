@@ -124,11 +124,17 @@ export function LoginPage({ onSignIn }: Props) {
                                     <option value="">Select a user…</option>
                                     {grouped.map((g) => (
                                         <optgroup key={g.label} label={g.label}>
-                                            {g.users.map((u) => (
-                                                <option key={u.id} value={u.id}>
-                                                    {u.name} — {u.title} ({ROLE_LABELS[u.role]})
-                                                </option>
-                                            ))}
+                                            {g.users.map((u) => {
+                                                // Show the carrier the user belongs to so options like
+                                                // "Acme Demo Admin — … (Admin) · Acme Trucking Inc." are
+                                                // immediately findable in the dropdown.
+                                                const carrier = u.accountName ? ` · ${u.accountName}` : "";
+                                                return (
+                                                    <option key={u.id} value={u.id}>
+                                                        {u.name} — {u.title} ({ROLE_LABELS[u.role]}){carrier}
+                                                    </option>
+                                                );
+                                            })}
                                         </optgroup>
                                     ))}
                                 </select>

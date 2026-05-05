@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "tracksmart://schemas/pei-carrier-profile.v1.schema.json",
+  "title": "PEI Carrier Profile Extraction (v1)",
+  "description": "Output shape for the PEI National Safety Code Carrier Abstract Report. Field names match the existing TrackSmart frontend (src/pages/inspections/NscPeiPerformanceCard.tsx — PeiNscData; NscPeiPerformanceHistory.tsx — PeiPullRow). Schedule 3 thresholds (Advisory 25%, Warning 60%, Interview 85%, Sanction 100% of fleet-size max points) are derived in the frontend from `pull.currentActiveVehicles`, not stored here.",
+  "type": "object",
+  "required": ["source", "carrier", "pull"],
+  "additionalProperties": false,
+  "properties": {
+
+    "warnings": {
+      "type": "array",
+      "description": "Soft validation issues (cross-field drift, OCR confidence, unknown form revision).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code":    { "type": "string", "description": "Stable enum, e.g. POINTS_DRIFT, OCR_LOW_CONFIDENCE, FORM_VERSION_UNKNOWN" },
+          "message": { "type": "string" },
+          "field":   { "type": ["string", "null"] },
+          "page":    { "type": ["integer", "null"], "minimum": 1 }
+        }
+      }
+    },
+
+    "source": {
+      "type": "object",
+      "description": "PDF metadata. PEI Carrier Abstract Reports are scanned image-only PDFs — vendors will need an OCR pipeline (Tesseract / AWS Textract / Azure Form Recognizer) to extract values.",
+      "additionalProperties": false,
+      "required": ["fileName", "extractedAt"],
+      "properties": {
+        "fileName":     { "type": "string" },
+        "datePrinted":  { "type": ["string", "null"], "format": "date", "description": "Page header — 'YYYY/MM/DD' (PEI uses ISO date format)" },
+        "pageCount":    { "type": "integer", "minimum": 1 },
+        "formVersion":  { "type": ["string", "null"], "description": "Form revision identifier when present" },
+        "extractedAt":  { "type": "string", "format": "date-time" },
+        "ocrEngine":    { "type": ["string", "null"], "description": "OCR backend used (e.g. 'tesseract-5.3.0', 'textract', 'azure'). Null when hand-transcribed." }
+      }
+    },
+
+    "carrier": {
+      "type": "object",
+      "description": "Carrier identity from the 'Carrier Information:' block at the top of page 1.",
+      "additionalProperties": false,
+      "required": ["nscNumber", "legalName"],
+      "properties": {
+        "nscNumber":            { "type": "string", "pattern": "^PEI\\d{5}$", "description": "p.1 — 'NSC #' (e.g. 'PEI03660')" },
+        "legalName":            { "type": "string", "description": "p.1 — 'Company Name'" },
+        "address": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "street":     { "type": ["string", "null"], "description": "p.1 — 'Address' (line 1)" },
+            "street2":    { "type": ["string", "null"] },
+            "city":       { "type": ["string", "null"] },
+            "province":   { "type": ["string", "null"], "enum": ["PEI", "Prince Edward Island", null] },
+            "postalCode": { "type": ["string", "null"] },
+            "country":    { "type": ["string", "null"] }
+          }
+        },
+        "phone":                { "type": ["string", "null"], "description": "p.1 — 'Phone #'" },
+        "safetyRating":         { "type": "string", "enum": ["Satisfactory", "Satisfactory - Unaudited", "Conditional", "Unsatisfactory"], "description": "p.1 — 'Safety Rating'" },
+        "certificateStatus":    { "type": "string", "enum": ["Active", "Inactive", "Suspended", "Expired"], "default": "Active" },
+        "auditStatus":          { "type": "string", "description": "Free text; usually 'Unaudited' when no audit on file" },
+        "contactName":          { "type": ["string", "null"] }
+      }
+    },
+
+    "pull": {
+      "type": "object",
+      "description": "Per-pull record. One PEI Carrier Profile abstract = one entry in PEI_PULL_DATA.",
+      "additionalProperties": false,
+      "required": [
+        "reportDate",
+        "collisionPoints", "convictionPoints", "inspectionPoints",
+        "currentActiveVehicles", "currentActiveVehiclesAtLastAssessment",
+        "inspections", "collisions", "convictions"
+      ],
+      "properties": {
+        "reportDate":           { "type": "string", "format": "date", "description": "p.1 header — 'YYYY/MM/DD'. Frontend: profileAsOf / pullDate" },
+        "periodLabel":          { "type": ["string", "null"], "description": "Display label, e.g. 'Nov 18/20'. Derived from reportDate" },
+        "windowLabel":          { "type": ["string", "null"], "description": "e.g. 'Nov 2019 → Nov 2020'. Derived (24-month or 12-month rolling window)" },
+        "windowStart":          { "type": ["string", "null"], "format": "date" },
+        "windowEnd":            { "type": ["string", "null"], "format": "date" },
+
+        "collisionPoints":      { "type": "integer", "minimum": 0, "description": "p.1 SUMMARY — 'Collision Points' (sum of at-fault collision points: PD=2, Injury=4, Fatal=6)" },
+        "convictionPoints":     { "type": "integer", "minimum": 0, "description": "p.1 SUMMARY — 'Conviction Points'" },
+        "inspectionPoints":     { "type": "integer", "minimum": 0, "description": "p.1 SUMMARY — 'Inspection Points' (sum of OOS inspection penalty: each OOS = 3 pts, Pass/Warning = 0)" },
+
+        "currentActiveVehicles":            { "type": "integer", "minimum": 0, "description": "p.1 SUMMARY right column — 'Current Active Vehicles'" },
+        "currentActiveVehiclesAtLastAssessment": { "type": "integer", "minimum": 0, "description": "p.1 SUMMARY right column — 'Current Active Vehicles at Last Assessment'" },
+        "avgFleet":             { "type": ["number", "null"], "description": "Trailing average fleet size used for Schedule 3 max-points calculation; null when only the snapshot is available" },
+
+        "collisions": {
+          "type": "array",
+          "description": "p.1 'Collisions:' section. Empty when no collisions on file. Σ severity points should equal pull.collisionPoints.",
+          "items": { "$ref": "#/$defs/collisionRow" }
+        },
+        "convictions": {
+          "type": "array",
+          "description": "p.1 'Convictions:' section.",
+          "items": { "$ref": "#/$defs/convictionRow" }
+        },
+        "inspections": {
+          "type": "array",
+          "description": "p.1 (and continuation pages) 'Inspections:' section. Each row = one CVSA inspection.",
+          "items": { "$ref": "#/$defs/inspectionRow" }
+        },
+        "audits": {
+          "type": "array",
+          "description": "Audits section. Usually empty for unaudited carriers.",
+          "items": { "$ref": "#/$defs/auditRow" }
+        },
+
+        "interventions": {
+          "type": "array",
+          "description": "Frontend overlay — derived from points crossing zone thresholds (Advisory/Warning/Interview/Sanction). Optional in extraction; computed downstream.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "date", "type"],
+            "properties": {
+              "label": { "type": "string" },
+              "date":  { "type": "string" },
+              "type":  { "type": "string", "enum": ["info", "warning", "critical"] }
+            }
+          }
+        },
+
+        "carrierInfo": {
+          "type": "object",
+          "description": "Footer/header metadata block surfaced on the frontend's NSC card.",
+          "additionalProperties": false,
+          "properties": {
+            "primaryBusiness":  { "type": ["string", "null"] },
+            "extraProvincial":  { "type": ["boolean", "null"] },
+            "premiumCarrier":   { "type": ["boolean", "null"] },
+            "mailingAddress":   { "type": ["string", "null"] },
+            "licensedVehicles": { "type": ["integer", "null"] },
+            "certIssueDate":    { "type": ["string", "null"], "format": "date" },
+            "jurisdiction":     { "type": ["string", "null"] },
+            "reportFrom":       { "type": ["string", "null"] },
+            "reportTo":         { "type": ["string", "null"] },
+            "reportRun":        { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+
+    "inspectionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "inspectionDate", "cvsaLevel", "status"],
+      "properties": {
+        "seq":            { "type": "integer", "minimum": 1 },
+        "inspectionDate": { "type": "string", "description": "PDF prints 'YYYY/MM/DD'" },
+        "inspectionDateIso":{ "type": ["string", "null"], "format": "date" },
+        "cvsaLevel":      { "type": "integer", "minimum": 1, "maximum": 6, "description": "1-6 (CVSA inspection level)" },
+        "log":            { "type": ["string", "null"], "enum": ["Passed", "Warning", "Failed", "OOS", null] },
+        "tdg":            { "type": ["string", "null"], "enum": ["Passed", "Warning", "Failed", "OOS", "N/A", null], "description": "Transportation of Dangerous Goods" },
+        "loadSecurity":   { "type": ["string", "null"], "enum": ["Passed", "Warning", "Failed", "OOS", "N/A", null] },
+        "driverName":     { "type": ["string", "null"] },
+        "status":         { "type": "string", "enum": ["P", "W", "M", "OOS", "F"], "description": "Single-letter overall result code: P=Pass, W=Warning, M=Minor (OOS-related), F=Failed, OOS=Out of Service" },
+        "points":         { "type": ["integer", "null"], "minimum": 0, "description": "Penalty points contributed by this inspection (OOS = 3, otherwise 0)" }
+      }
+    },
+
+    "collisionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "collisionDate", "severity", "atFault", "points"],
+      "properties": {
+        "seq":           { "type": "integer", "minimum": 1 },
+        "collisionDate": { "type": "string" },
+        "collisionDateIso":{ "type": ["string", "null"], "format": "date" },
+        "severity":      { "type": "string", "enum": ["Property Damage", "Injury", "Fatal"] },
+        "fault":          { "type": "string", "enum": ["At Fault", "Not At Fault", "Unknown"] },
+        "atFault":       { "type": "boolean" },
+        "vehicles":      { "type": ["integer", "null"] },
+        "killed":        { "type": ["integer", "null"], "minimum": 0 },
+        "injured":       { "type": ["integer", "null"], "minimum": 0 },
+        "driverName":    { "type": ["string", "null"] },
+        "points":        { "type": "integer", "minimum": 0, "description": "0 (not at fault), 2 (PD), 4 (injury), 6 (fatal)" }
+      }
+    },
+
+    "convictionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "convictionDate", "charge", "points"],
+      "properties": {
+        "seq":            { "type": "integer", "minimum": 1 },
+        "convictionDate": { "type": "string" },
+        "convictionDateIso":{ "type": ["string", "null"], "format": "date" },
+        "charge":         { "type": "string" },
+        "driverName":     { "type": ["string", "null"] },
+        "points":         { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "auditRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auditDate", "result"],
+      "properties": {
+        "auditDate":   { "type": "string" },
+        "auditDateIso":{ "type": ["string", "null"], "format": "date" },
+        "result":      { "type": "string", "enum": ["Compliant", "Action Required", "Non-Compliant"] },
+        "auditType":   { "type": ["string", "null"] }
+      }
+    }
+  }
+}

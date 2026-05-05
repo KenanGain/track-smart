@@ -1,0 +1,338 @@
+{
+  "source": {
+    "fileName": "Carry_Freight_19_Dec_2018.pdf",
+    "datePrinted": "2018-12-19",
+    "profilePeriodStart": "2016-12-20",
+    "profilePeriodEnd": "2018-12-19",
+    "twelveMonthReportAs": "2018-11-30",
+    "formVersion": null,
+    "pageCount": 30,
+    "extractedAt": "2026-05-03T00:00:00Z"
+  },
+  "carrier": {
+    "nscNumber": "AB243-8992",
+    "mvidNumber": "0854-32599",
+    "legalName": "Carry Freight Ltd.",
+    "address": {
+      "street": "114 West Creek Springs",
+      "city": "Chestermere",
+      "province": "AB",
+      "postalCode": "T1X 1N7",
+      "country": "Canada"
+    },
+    "safetyFitnessRating": "Satisfactory Unaudited",
+    "operatingStatus": "Federal",
+    "fleetRange": "5-9",
+    "fleetType": "Truck"
+  },
+  "pull": {
+    "reportDate": "2018-12-19",
+    "periodLabel": "Dec 19/18",
+    "windowLabel": "Dec 2016 → Dec 2018",
+    "windowStart": "2016-12-20",
+    "windowEnd": "2018-12-19",
+    "rFactor": 0.468,
+    "contributions": { "conviction": 82.0, "inspection": 18.0, "collision": 0.0 },
+    "monitoringStage": null,
+    "carriersAtStageOrAbove": null,
+    "totalAlbertaNscCarriers": 24726,
+    "avgFleet": 7,
+    "currentFleet": 10,
+
+    "totalConvictions": 1,
+    "totalConvictionDocuments": 1,
+    "totalCvsaInspections": 9,
+    "totalCvsaDocuments": 9,
+    "totalCollisions": 0,
+    "totalViolations": 0,
+    "totalViolationDocuments": 0,
+
+    "convictionAnalysis": [
+      { "group": "Speeding",                                                  "count": 0, "pctText": null },
+      { "group": "Stop signs/Traffic lights",                                 "count": 0, "pctText": null },
+      { "group": "Driver Liabilities (Licence, Insurance, Seat Belts, etc.)", "count": 0, "pctText": null },
+      { "group": "Driving (Passing, Disobey Signs, Signals, etc.)",           "count": 0, "pctText": null },
+      { "group": "Hours of Service",                                          "count": 1, "pctText": "100.0%" },
+      { "group": "Trip Inspections",                                          "count": 0, "pctText": null },
+      { "group": "Brakes",                                                    "count": 0, "pctText": null },
+      { "group": "CVIP",                                                      "count": 0, "pctText": null },
+      { "group": "Mechanical Defects",                                        "count": 0, "pctText": null },
+      { "group": "Oversize/Overweight",                                       "count": 0, "pctText": null },
+      { "group": "Security of Loads",                                         "count": 0, "pctText": null },
+      { "group": "Dangerous Goods",                                           "count": 0, "pctText": null },
+      { "group": "Criminal Code",                                             "count": 0, "pctText": null },
+      { "group": "Permits",                                                   "count": 0, "pctText": null },
+      { "group": "Miscellaneous",                                             "count": 0, "pctText": null },
+      { "group": "Administrative Actions",                                    "count": 0, "pctText": null }
+    ],
+    "convictionSummary": [
+      {
+        "seq": 1,
+        "date": "2018 JUL 28",
+        "dateIso": "2018-07-28",
+        "document": "OPC ON86937174",
+        "docket": "86937174",
+        "jurisdiction": "ON",
+        "vehicle": "E65208 AB",
+        "driverName": "AMRINDER SINGH GILL",
+        "offence": "TWO LOGS OR FALSE LOGS",
+        "points": 3
+      }
+    ],
+    "convictionDetails": [
+      {
+        "seq": 1,
+        "date": "2018 JUL 28",
+        "dateIso": "2018-07-28",
+        "time": "08:18",
+        "document": "OPC ON86937174",
+        "docket": "86937174",
+        "jurisdiction": "Ontario",
+        "dateEntered": "2018 DEC 04",
+        "issuingAgency": null,
+        "location": "HWY 17, THUNDER BAY",
+        "driver": "AMRINDER SINGH GILL G43500408841006 ON",
+        "vehicle": "E65208 AB",
+        "commodity": null,
+        "actSection": null,
+        "offence": "TWO LOGS OR FALSE LOGS",
+        "ccmtaCode": "0402 TWO LOGS OR FALSE LOGS",
+        "convictionVehicle": "E65208 AB",
+        "convictionDate": "2018 NOV 20",
+        "activePoints": 3
+      }
+    ],
+
+    "cvsaDefectAnalysis": [
+      { "code": "1",  "label": "Driver Credentials",                                "oos": 1, "req": 2, "total": 3, "pctText": "37.5%" },
+      { "code": "2",  "label": "Hours Of Service",                                  "oos": 1, "req": 1, "total": 2, "pctText": "25.0%" },
+      { "code": "3",  "label": "Brake Adjustment",                                  "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "4",  "label": "Brake Systems",                                     "oos": null, "req": 1, "total": 1, "pctText": "12.5%" },
+      { "code": "5",  "label": "Coupling Devices",                                  "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "6",  "label": "Exhaust Systems",                                   "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "7",  "label": "Frames",                                            "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "8",  "label": "Fuel Systems",                                      "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "9",  "label": "Lighting Devices (Part II Section 8 OOSC only)",   "oos": 1, "req": null, "total": 1, "pctText": "12.5%" },
+      { "code": "10", "label": "Cargo Securement",                                  "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "11", "label": "Steering Mechanisms",                               "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "12", "label": "Suspensions",                                       "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "13", "label": "Tires",                                             "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "14", "label": "Van/Open-top Trailer Bodies",                       "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "15", "label": "Wheels, Rims & Hubs",                               "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "16", "label": "Windshield Wipers",                                 "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "17", "label": "Emergency Exits/Wiring & Electrical Systems (Buses)", "oos": null, "req": null, "total": null, "pctText": null },
+      { "code": "18", "label": "Dangerous Goods",                                   "oos": null, "req": 1, "total": 1, "pctText": "12.5%" },
+      { "code": "19", "label": "Driveline/Driveshaft",                              "oos": null, "req": null, "total": null, "pctText": null }
+    ],
+    "cvsaDefectTotals": { "oos": 3, "req": 5, "total": 8 },
+    "cvsaSummary": [
+      { "seq": 1, "date": "2018 DEC 12", "dateIso": "2018-12-12", "document": "OPI ONEA01273068", "jurisdiction": "ON", "agency": null, "plate": "U04031", "plateJur": "AB", "level": 2, "result": "Out of Service" },
+      { "seq": 2, "date": "2018 NOV 27", "dateIso": "2018-11-27", "document": "OPI ONEA01263997", "jurisdiction": "ON", "agency": null, "plate": "U04031", "plateJur": "AB", "level": 2, "result": "Out of Service" },
+      { "seq": 3, "date": "2018 NOV 10", "dateIso": "2018-11-10", "document": "OPI 8628393",      "jurisdiction": "BC", "agency": null, "plate": "N3759S", "plateJur": "ON", "level": 2, "result": "Out of Service" },
+      { "seq": 4, "date": "2018 OCT 17", "dateIso": "2018-10-17", "document": "OPI ONEA01251954", "jurisdiction": "ON", "agency": null, "plate": "E77384", "plateJur": "AB", "level": 2, "result": "Passed" },
+      { "seq": 5, "date": "2018 SEP 25", "dateIso": "2018-09-25", "document": "OPI ONEA01249644", "jurisdiction": "ON", "agency": null, "plate": "E80652", "plateJur": "AB", "level": 2, "result": "Passed" },
+      { "seq": 6, "date": "2018 AUG 16", "dateIso": "2018-08-16", "document": "OPI ONEA01237362", "jurisdiction": "ON", "agency": null, "plate": "E75062", "plateJur": "AB", "level": 2, "result": "Passed" },
+      { "seq": 7, "date": "2018 JUN 13", "dateIso": "2018-06-13", "document": "OPI ONEA01215795", "jurisdiction": "ON", "agency": null, "plate": "E65114", "plateJur": "AB", "level": 2, "result": "Passed" },
+      { "seq": 8, "date": "2018 JUN 05", "dateIso": "2018-06-05", "document": "OPI ONEA01219694", "jurisdiction": "ON", "agency": null, "plate": "E65208", "plateJur": "AB", "level": 1, "result": "Requires Attention" },
+      { "seq": 9, "date": "2018 JUN 01", "dateIso": "2018-06-01", "document": "OPI ONEA01211359", "jurisdiction": "ON", "agency": null, "plate": "E65114", "plateJur": "AB", "level": 2, "result": "Requires Attention" }
+    ],
+    "cvsaDetails": [
+      {
+        "seq": 1, "date": "2018 DEC 12", "dateIso": "2018-12-12", "time": "19:25", "document": "OPI ONEA01273068", "jurisdiction": "ON", "level": 2, "result": "Out of Service", "dateEntered": "2018 DEC 18",
+        "agency": null, "location": "HEYDEN TIS", "driver": "Gursharan Singh Grewal G73663088800917 ON",
+        "vehicles": [
+          { "type": "P",  "plate": "U04031", "jurisdiction": "AB", "vin": "4V4NC9EH9GN928469", "year": "2016", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "N9446R", "jurisdiction": "ON", "vin": null, "year": null, "make": "CIMC", "decal": null }
+        ],
+        "defects": [
+          { "category": "9 - Lighting Devices (Part II Section 8 OOSC only)", "vehicleIndex": 2, "kind": "OOS" }
+        ]
+      },
+      {
+        "seq": 2, "date": "2018 NOV 27", "dateIso": "2018-11-27", "time": "13:11", "document": "OPI ONEA01263997", "jurisdiction": "ON", "level": 2, "result": "Out of Service", "dateEntered": "2018 DEC 04",
+        "agency": null, "location": "HEYDEN TIS", "driver": "Gursharan Singh Grewal G73663088800917 ON",
+        "vehicles": [
+          { "type": "P",  "plate": "U04031", "jurisdiction": "AB", "vin": "4V4NC9EH9GN928469", "year": "2016", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "M5787W", "jurisdiction": "ON", "vin": null, "year": null, "make": "VANG", "decal": null }
+        ],
+        "defects": [
+          { "category": "2 - Hours Of Service",     "vehicleIndex": 2, "kind": "OOS" },
+          { "category": "1 - Driver Credentials",   "vehicleIndex": 1, "kind": "REQ" },
+          { "category": "18 - Dangerous Goods",     "vehicleIndex": 2, "kind": "REQ" }
+        ]
+      },
+      {
+        "seq": 3, "date": "2018 NOV 10", "dateIso": "2018-11-10", "time": "13:11", "document": "OPI 8628393", "jurisdiction": "BC", "level": 2, "result": "Out of Service", "dateEntered": "2018 NOV 13",
+        "agency": null, "location": "KAMLOOPS", "driver": "SIVALOGANATHAN NADESU 6550853 BC",
+        "vehicles": [
+          { "type": "ST", "plate": "N3759S", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",  "decal": null },
+          { "type": "P",  "plate": "E77384", "jurisdiction": "AB", "vin": "4V4NC9EH4GN929559",   "year": "2016", "make": "Volvo", "decal": null }
+        ],
+        "defects": [
+          { "category": "1 - Driver Credentials", "vehicleIndex": 2, "kind": "OOS" }
+        ]
+      },
+      {
+        "seq": 4, "date": "2018 OCT 17", "dateIso": "2018-10-17", "time": "12:40", "document": "OPI ONEA01251954", "jurisdiction": "ON", "level": 2, "result": "Passed", "dateEntered": "2018 OCT 23",
+        "agency": null, "location": "WASSI NORTH TIS", "driver": "SIVALOGANATHAN NADESU 6550853 BC",
+        "vehicles": [
+          { "type": "P",  "plate": "E77384", "jurisdiction": "AB", "vin": "4V4NC9EH4GN929559",   "year": "2016", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "R8098J", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",  "decal": null }
+        ],
+        "defects": []
+      },
+      {
+        "seq": 5, "date": "2018 SEP 25", "dateIso": "2018-09-25", "time": "13:56", "document": "OPI ONEA01249644", "jurisdiction": "ON", "level": 2, "result": "Passed", "dateEntered": "2018 OCT 02",
+        "agency": null, "location": "NEW LISKEARD TIS", "driver": "MOHAN SINGH M61600000720815 ON",
+        "vehicles": [
+          { "type": "P",  "plate": "E80652", "jurisdiction": "AB", "vin": "4V4NC9EH7EN152680",   "year": "2014", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "P8978W", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",  "decal": null }
+        ],
+        "defects": []
+      },
+      {
+        "seq": 6, "date": "2018 AUG 16", "dateIso": "2018-08-16", "time": "21:45", "document": "OPI ONEA01237362", "jurisdiction": "ON", "level": 2, "result": "Passed", "dateEntered": "2018 AUG 28",
+        "agency": null, "location": "GANANOQUE SOUTH TIS", "driver": "MIAN NISAR AHMED M500620055600 QC",
+        "vehicles": [
+          { "type": "P",  "plate": "E75062", "jurisdiction": "AB", "vin": "4V4NC9EH6DN133195",   "year": "2013", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "P6331S", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",  "decal": null }
+        ],
+        "defects": []
+      },
+      {
+        "seq": 7, "date": "2018 JUN 13", "dateIso": "2018-06-13", "time": "22:30", "document": "OPI ONEA01215795", "jurisdiction": "ON", "level": 2, "result": "Passed", "dateEntered": "2018 JUN 26",
+        "agency": null, "location": "WASSI SOUTH TIS", "driver": "Harjinder Singh Gill 168548-543 AB",
+        "vehicles": [
+          { "type": "P",  "plate": "E65114", "jurisdiction": "AB", "vin": "4V4NC9EJ7FN180094",   "year": "2015", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "P3361X", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",  "decal": null }
+        ],
+        "defects": []
+      },
+      {
+        "seq": 8, "date": "2018 JUN 05", "dateIso": "2018-06-05", "time": "08:50", "document": "OPI ONEA01219694", "jurisdiction": "ON", "level": 1, "result": "Requires Attention", "dateEntered": "2018 JUN 12",
+        "agency": null, "location": "COCHRANE TIS", "driver": "AMRINDER SINGH GILL G43500408841006 ON",
+        "vehicles": [
+          { "type": "P",  "plate": "E65208", "jurisdiction": "AB", "vin": "1XPXD49X1JD467897",   "year": "2018", "make": "Peterbilt", "decal": null },
+          { "type": "ST", "plate": "R8066J", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",      "decal": null }
+        ],
+        "defects": [
+          { "category": "2 - Hours Of Service", "vehicleIndex": 2, "kind": "REQ" }
+        ]
+      },
+      {
+        "seq": 9, "date": "2018 JUN 01", "dateIso": "2018-06-01", "time": "02:24", "document": "OPI ONEA01211359", "jurisdiction": "ON", "level": 2, "result": "Requires Attention", "dateEntered": "2018 JUN 12",
+        "agency": null, "location": "KENORA DISTRICT", "driver": ". Dilbag Singh 168893-048 AB",
+        "vehicles": [
+          { "type": "P",  "plate": "E65114", "jurisdiction": "AB", "vin": "4V4NC9EJ7FN180094",   "year": "2015", "make": "Volvo", "decal": null },
+          { "type": "ST", "plate": "M1729S", "jurisdiction": "ON", "vin": null,                  "year": null,   "make": "UTIL",  "decal": null }
+        ],
+        "defects": [
+          { "category": "1 - Driver Credentials", "vehicleIndex": 2, "kind": "REQ" },
+          { "category": "4 - Brake Systems",      "vehicleIndex": 2, "kind": "REQ" }
+        ]
+      }
+    ],
+
+    "collisionTotals": [
+      { "type": "Property Damage", "count": 0, "nonPreventable": 0, "preventableOrNotEvaluated": 0, "points": 0 },
+      { "type": "Injury",          "count": 0, "nonPreventable": 0, "preventableOrNotEvaluated": 0, "points": 0 },
+      { "type": "Fatal",           "count": 0, "nonPreventable": 0, "preventableOrNotEvaluated": 0, "points": 0 }
+    ],
+    "collisionSummary": [],
+    "collisionDetails": [],
+
+    "violationAnalysis": [
+      { "group": "Speeding",                                                  "count": 0, "pctText": null },
+      { "group": "Stop signs/Traffic lights",                                 "count": 0, "pctText": null },
+      { "group": "Driver Liabilities (Licence, Insurance, Seat Belts, etc.)", "count": 0, "pctText": null },
+      { "group": "Driving (Passing, Disobey Signs, Signals, etc.)",           "count": 0, "pctText": null },
+      { "group": "Hours of Service",                                          "count": 0, "pctText": null },
+      { "group": "Trip Inspections",                                          "count": 0, "pctText": null },
+      { "group": "Brakes",                                                    "count": 0, "pctText": null },
+      { "group": "CVIP",                                                      "count": 0, "pctText": null },
+      { "group": "Mechanical Defects",                                        "count": 0, "pctText": null },
+      { "group": "Oversize/Overweight",                                       "count": 0, "pctText": null },
+      { "group": "Security of Loads",                                         "count": 0, "pctText": null },
+      { "group": "Dangerous Goods",                                           "count": 0, "pctText": null },
+      { "group": "Criminal Code",                                             "count": 0, "pctText": null },
+      { "group": "Permits",                                                   "count": 0, "pctText": null },
+      { "group": "Miscellaneous",                                             "count": 0, "pctText": null },
+      { "group": "Administrative Actions",                                    "count": 0, "pctText": null }
+    ],
+    "violationSummary": [],
+    "violationDetails": [],
+
+    "monitoring": {
+      "industry": {
+        "asOf": "2018-11-30",
+        "fleetRange": "5-9",
+        "fleetType": "TRK",
+        "avgRFactor": 0.400,
+        "avgConvPts": 0.38,
+        "avgOosDef": 0.5,
+        "avgTotalDef": 1.6,
+        "avgOosVeh": 0.09,
+        "avgFailure": 0.055,
+        "avgCollPts": 0.08
+      },
+      "thresholds": [
+        { "stage": 1, "lowerBound": 1.830, "upperBound": 2.464, "label": "Stage 1", "rangeText": "1.830 - 2.464" },
+        { "stage": 2, "lowerBound": 2.465, "upperBound": 2.794, "label": "Stage 2", "rangeText": "2.465 - 2.794" },
+        { "stage": 3, "lowerBound": 2.795, "upperBound": 3.899, "label": "Stage 3", "rangeText": "2.795 - 3.899" },
+        { "stage": 4, "lowerBound": 3.900, "upperBound": null,  "label": "Stage 4", "rangeText": "3.900 and higher" }
+      ],
+      "summary": [
+        { "monthEnd": "2018 NOV", "monthEndIso": "2018-11-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 7,  "currentFleet": 10, "score": 0.046, "scoreText": "0.046",   "convPctText": "0.0%",  "inspPctText": "100.0%", "collPctText": "0.0%", "stage": null },
+        { "monthEnd": "2018 OCT", "monthEndIso": "2018-10-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 6,  "currentFleet": 10, "score": 0.018, "scoreText": "0.018",   "convPctText": "0.0%",  "inspPctText": "100.0%", "collPctText": "0.0%", "stage": null },
+        { "monthEnd": "2018 SEP", "monthEndIso": "2018-09-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 5,  "currentFleet": 8,  "score": 0.022, "scoreText": "0.022",   "convPctText": "0.0%",  "inspPctText": "100.0%", "collPctText": "0.0%", "stage": null },
+        { "monthEnd": "2018 AUG", "monthEndIso": "2018-08-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 5,  "currentFleet": 8,  "score": 0.027, "scoreText": "0.027",   "convPctText": "0.0%",  "inspPctText": "100.0%", "collPctText": "0.0%", "stage": null },
+        { "monthEnd": "2018 JUL", "monthEndIso": "2018-07-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 4,  "currentFleet": 7,  "score": 0.000, "scoreText": "0.000",   "convPctText": "0.0%",  "inspPctText": "0.0%",   "collPctText": "0.0%", "stage": null },
+        { "monthEnd": "2018 JUN", "monthEndIso": "2018-06-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 3,  "currentFleet": 5,  "score": 0.000, "scoreText": "0.000",   "convPctText": "0.0%",  "inspPctText": "0.0%",   "collPctText": "0.0%", "stage": null },
+        { "monthEnd": "2018 MAY", "monthEndIso": "2018-05-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 3,  "currentFleet": 4,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2018 APR", "monthEndIso": "2018-04-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 2,  "currentFleet": 2,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2018 MAR", "monthEndIso": "2018-03-01", "type": "TRK", "trkPct": "100%", "busPct": "0%", "avgFleet": 1,  "currentFleet": 1,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2018 FEB", "monthEndIso": "2018-02-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2018 JAN", "monthEndIso": "2018-01-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 DEC", "monthEndIso": "2017-12-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 NOV", "monthEndIso": "2017-11-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 OCT", "monthEndIso": "2017-10-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 SEP", "monthEndIso": "2017-09-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 AUG", "monthEndIso": "2017-08-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 JUL", "monthEndIso": "2017-07-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 JUN", "monthEndIso": "2017-06-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 MAY", "monthEndIso": "2017-05-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 APR", "monthEndIso": "2017-04-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 MAR", "monthEndIso": "2017-03-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 FEB", "monthEndIso": "2017-02-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2017 JAN", "monthEndIso": "2017-01-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null },
+        { "monthEnd": "2016 DEC", "monthEndIso": "2016-12-01", "type": "TRK", "trkPct": null,    "busPct": null,  "avgFleet": 0,  "currentFleet": 0,  "score": null,  "scoreText": "No Data", "convPctText": null,    "inspPctText": null,     "collPctText": null,    "stage": null }
+      ],
+      "details": [
+        { "monthEnd": "2018 NOV", "monthEndIso": "2018-11-01", "avgFleet": 7, "convPtsPerVeh": null, "totalInspections": 7, "oosDefPerInsp": 0.1, "totalDefPerInsp": 0.5, "oosPctText": "14%", "oosPerVeh": 0.14, "failureRate": 0.214, "collPtsPerVeh": null },
+        { "monthEnd": "2018 OCT", "monthEndIso": "2018-10-01", "avgFleet": 6, "convPtsPerVeh": null, "totalInspections": 6, "oosDefPerInsp": 0.0, "totalDefPerInsp": 0.5, "oosPctText": "0%",  "oosPerVeh": null, "failureRate": 0.083, "collPtsPerVeh": null },
+        { "monthEnd": "2018 SEP", "monthEndIso": "2018-09-01", "avgFleet": 5, "convPtsPerVeh": null, "totalInspections": 5, "oosDefPerInsp": 0.0, "totalDefPerInsp": 0.6, "oosPctText": "0%",  "oosPerVeh": null, "failureRate": 0.100, "collPtsPerVeh": null },
+        { "monthEnd": "2018 AUG", "monthEndIso": "2018-08-01", "avgFleet": 5, "convPtsPerVeh": null, "totalInspections": 4, "oosDefPerInsp": 0.0, "totalDefPerInsp": 0.7, "oosPctText": "0%",  "oosPerVeh": null, "failureRate": 0.125, "collPtsPerVeh": null },
+        { "monthEnd": "2018 JUL", "monthEndIso": "2018-07-01", "avgFleet": 4, "convPtsPerVeh": null, "totalInspections": 3, "oosDefPerInsp": 0.0, "totalDefPerInsp": 1.0, "oosPctText": "0%",  "oosPerVeh": null, "failureRate": 0.000, "collPtsPerVeh": null },
+        { "monthEnd": "2018 JUN", "monthEndIso": "2018-06-01", "avgFleet": 3, "convPtsPerVeh": null, "totalInspections": 3, "oosDefPerInsp": 0.0, "totalDefPerInsp": 1.0, "oosPctText": "0%",  "oosPerVeh": null, "failureRate": 0.000, "collPtsPerVeh": null },
+        { "monthEnd": "2018 MAY", "monthEndIso": "2018-05-01", "avgFleet": 3, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2018 APR", "monthEndIso": "2018-04-01", "avgFleet": 2, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2018 MAR", "monthEndIso": "2018-03-01", "avgFleet": 1, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2018 FEB", "monthEndIso": "2018-02-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2018 JAN", "monthEndIso": "2018-01-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 DEC", "monthEndIso": "2017-12-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 NOV", "monthEndIso": "2017-11-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 OCT", "monthEndIso": "2017-10-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 SEP", "monthEndIso": "2017-09-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 AUG", "monthEndIso": "2017-08-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 JUL", "monthEndIso": "2017-07-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 JUN", "monthEndIso": "2017-06-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 MAY", "monthEndIso": "2017-05-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 APR", "monthEndIso": "2017-04-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 MAR", "monthEndIso": "2017-03-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 FEB", "monthEndIso": "2017-02-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2017 JAN", "monthEndIso": "2017-01-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null },
+        { "monthEnd": "2016 DEC", "monthEndIso": "2016-12-01", "avgFleet": 0, "convPtsPerVeh": null, "totalInspections": null, "oosDefPerInsp": null, "totalDefPerInsp": null, "oosPctText": null, "oosPerVeh": null, "failureRate": null, "collPtsPerVeh": null }
+      ]
+    }
+  }
+}

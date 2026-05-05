@@ -1,0 +1,4 @@
+type,count,nonPreventable,preventableOrNotEvaluated,points
+Property Damage,1,0,1,2
+Injury,0,0,0,0
+Fatal,0,0,0,0

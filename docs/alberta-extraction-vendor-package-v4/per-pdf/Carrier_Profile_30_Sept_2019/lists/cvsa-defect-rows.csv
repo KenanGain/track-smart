@@ -1,0 +1,40 @@
+inspectionSeq,inspectionDate,category,kind,vehicleIndex,vehicleType,vehiclePlate,vehicleJur
+1,2019 SEP 12,13 - Tires,OOS,2,ST,5LX714,AB
+1,2019 SEP 12,9 - Lighting Devices (Part II Section 9 only),REQ,2,ST,5LX714,AB
+3,2019 AUG 21,"15 - Wheels, Rims & Hubs",OOS,2,ST,R8066J,ON
+3,2019 AUG 21,4 - Brake Systems,REQ,2,ST,R8066J,ON
+4,2019 AUG 20,4 - Brake Systems,REQ,1,P,E75062,AB
+4,2019 AUG 20,4 - Brake Systems,REQ,2,ST,S6294E,ON
+4,2019 AUG 20,16 - Windshield Wipers,REQ,1,P,E75062,AB
+6,2019 JUL 08,1 - Driver Credentials,REQ,2,P,E65208,AB
+6,2019 JUL 08,4 - Brake Systems,REQ,2,P,E65208,AB
+6,2019 JUL 08,9 - Lighting Devices (Part II Section 9 only),REQ,2,P,E65208,AB
+7,2019 JUN 20,2 - Hours Of Service,REQ,1,P,U11095,AB
+7,2019 JUN 20,2 - Hours Of Service,REQ,2,ST,M1695S,ON
+8,2019 JUN 18,2 - Hours Of Service,OOS,1,P,E65208,AB
+9,2019 JUN 05,4 - Brake Systems,REQ,1,P,U23906,AB
+9,2019 JUN 05,4 - Brake Systems,REQ,2,ST,S4831K,ON
+9,2019 JUN 05,9 - Lighting Devices (Part II Section 9 only),REQ,1,P,U23906,AB
+10,2019 MAY 02,18 - Dangerous Goods,OOS,2,ST,R6393B,ON
+11,2019 FEB 20,2 - Hours Of Service,OOS,1,P,E65166,AB
+12,2019 FEB 20,1 - Driver Credentials,REQ,1,P,E77384,AB
+12,2019 FEB 20,4 - Brake Systems,REQ,1,P,E77384,AB
+12,2019 FEB 20,4 - Brake Systems,REQ,2,ST,R8796V,ON
+12,2019 FEB 20,9 - Lighting Devices (Part II Section 8 OOSC only),REQ,1,P,E77384,AB
+13,2019 FEB 05,1 - Driver Credentials,OOS,1,P,U00291,AB
+13,2019 FEB 05,9 - Lighting Devices (Part II Section 8 OOSC only),REQ,1,P,U00291,AB
+13,2019 FEB 05,9 - Lighting Devices (Part II Section 8 OOSC only),REQ,2,ST,R2536X,ON
+13,2019 FEB 05,16 - Windshield Wipers,REQ,1,P,U00291,AB
+16,2018 DEC 12,9 - Lighting Devices (Part II Section 8 OOSC only),OOS,2,ST,N9446R,ON
+17,2018 NOV 27,2 - Hours Of Service,OOS,2,ST,M5787W,ON
+17,2018 NOV 27,1 - Driver Credentials,REQ,1,P,U04031,AB
+17,2018 NOV 27,18 - Dangerous Goods,REQ,2,ST,M5787W,ON
+18,2018 NOV 10,1 - Driver Credentials,OOS,2,P,E77384,AB
+22,2018 AUG 16,3 - Brake Adjustment,OOS,1,P,E80652,AB
+22,2018 AUG 16,1 - Driver Credentials,REQ,1,P,E80652,AB
+22,2018 AUG 16,4 - Brake Systems,REQ,2,ST,M1695S,ON
+22,2018 AUG 16,9 - Lighting Devices (Part II Section 8 OOSC only),REQ,1,P,E80652,AB
+22,2018 AUG 16,13 - Tires,REQ,2,ST,M1695S,ON
+24,2018 JUN 05,2 - Hours Of Service,REQ,2,ST,R8066J,ON
+25,2018 JUN 01,1 - Driver Credentials,REQ,2,ST,M1729S,ON
+25,2018 JUN 01,4 - Brake Systems,REQ,2,ST,M1729S,ON

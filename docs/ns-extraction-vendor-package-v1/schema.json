@@ -1,0 +1,221 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tracksmart.local/schemas/ns-carrier-profile-abstract/v1.json",
+  "title": "Nova Scotia NSC Carrier Profile Abstract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "carrier", "pull"],
+  "properties": {
+    "source": { "$ref": "#/$defs/source" },
+    "carrier": { "$ref": "#/$defs/carrier" },
+    "pull":   { "$ref": "#/$defs/pull" }
+  },
+
+  "$defs": {
+
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "reportRunDate", "profileAsOf", "pageCount", "extractedAt"],
+      "properties": {
+        "fileName":      { "type": "string", "description": "Original PDF filename" },
+        "reportRunDate": { "type": "string", "description": "Date printed at the very top of p1 (dd/mm/yyyy)" },
+        "profileAsOf":   { "type": "string", "description": "'Carrier Profile Abstract as of …' header date (dd/mm/yyyy)" },
+        "pageCount":     { "type": "integer", "minimum": 1 },
+        "formVersion":   { "type": ["string", "null"] },
+        "extractedAt":   { "type": "string", "description": "ISO-8601 timestamp from the extractor" }
+      }
+    },
+
+    "carrier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nscNumber", "demographics", "certificate"],
+      "properties": {
+        "nscNumber":     { "type": "string", "description": "Top-of-page NSC #, also printed in the footer banner '<nsc> Abstract'" },
+        "demographics":  { "$ref": "#/$defs/demographics" },
+        "certificate":   { "$ref": "#/$defs/certificate" }
+      }
+    },
+
+    "demographics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["carrierName", "currentFleetSize", "avgDailyFleetSize"],
+      "properties": {
+        "carrierName":          { "type": "string", "description": "p1 — 'Name:' (e.g. '9496971 CANADA INC')" },
+        "contactName":          { "type": ["string", "null"] },
+        "contactTitle":         { "type": ["string", "null"] },
+        "phone":                { "type": ["string", "null"] },
+        "mailingAddress":       { "type": ["string", "null"], "description": "Joined into one string for the frontend (e.g. '409 BLUEWATER RD, BEDFORD NS B4B1J7')" },
+        "physicalAddress":      { "type": ["string", "null"] },
+        "principalPlace":       { "type": ["string", "null"], "description": "p1 — 'Principal Place of Business'" },
+        "usDotNumber":          { "type": ["string", "null"], "description": "p1 — 'U.S. DOT#:' (often blank for NS-only carriers)" },
+        "irpNumber":            { "type": ["string", "null"], "description": "p1 — 'IRP #'" },
+        "mviStnNumber":         { "type": ["string", "null"], "description": "p1 — 'MVI Stn #'" },
+        "currentFleetSize":     { "type": "integer", "minimum": 0, "description": "p1 — 'Current Fleet Size'" },
+        "avgDailyFleetSize":    { "type": "number",  "minimum": 0, "description": "p1 — 'Avg. Daily Fleet Size'" }
+      }
+    },
+
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["safetyRating"],
+      "properties": {
+        "safetyRating":         { "type": "string", "description": "p1 — 'Safety Rating' (e.g. 'SATISFACTORY')" },
+        "safetyRatingExpires":  { "type": ["string", "null"], "description": "p1 — 'Expires' (e.g. '12/2024')" }
+      }
+    },
+
+    "pull": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asOfDate", "thresholds", "scores",
+        "auditHistory", "cvsaInspections", "cvsaTotals",
+        "convictions", "collisions",
+        "warningTickets", "warningTotals"
+      ],
+      "properties": {
+        "asOfDate":        { "type": "string", "description": "Same as source.profileAsOf" },
+        "thresholds":      { "$ref": "#/$defs/thresholds" },
+        "scores":          { "$ref": "#/$defs/scores" },
+        "auditHistory":    { "type": "array", "items": { "$ref": "#/$defs/auditRow" } },
+        "cvsaInspections": { "type": "array", "items": { "$ref": "#/$defs/cvsaRow" } },
+        "cvsaTotals":      { "$ref": "#/$defs/cvsaTotals" },
+        "convictions":     { "type": "array", "items": { "$ref": "#/$defs/convictionRow" } },
+        "collisions":      { "type": "array", "items": { "$ref": "#/$defs/collisionRow" } },
+        "warningTickets":  { "type": "array", "items": { "$ref": "#/$defs/warningRow" } },
+        "warningTotals":   { "$ref": "#/$defs/warningTotals" }
+      }
+    },
+
+    "thresholds": {
+      "type": "object",
+      "description": "p1 — 'Safety Rating Score' table (Level 1 / Level 2 / Level 3). Lower is better; carrier must stay below Level 1.",
+      "additionalProperties": false,
+      "required": ["level1", "level2", "level3"],
+      "properties": {
+        "level1": { "type": "number", "minimum": 0, "description": "Low → Moderate threshold" },
+        "level2": { "type": "number", "minimum": 0, "description": "Moderate → High threshold" },
+        "level3": { "type": "number", "minimum": 0, "description": "High → Critical threshold (practical max)" }
+      }
+    },
+
+    "scores": {
+      "type": "object",
+      "description": "p1 — Indexed Score area (Convictions / Inspections / Collisions / Total Demerit).",
+      "additionalProperties": false,
+      "required": ["convictions", "inspections", "collisions", "totalDemerit"],
+      "properties": {
+        "convictions":  { "type": "number", "minimum": 0 },
+        "inspections":  { "type": "number", "minimum": 0 },
+        "collisions":   { "type": "number", "minimum": 0 },
+        "totalDemerit": { "type": "number", "minimum": 0, "description": "Σ of the three component scores" }
+      }
+    },
+
+    "auditRow": {
+      "type": "object",
+      "description": "p1 — 'Audit History' row.",
+      "additionalProperties": false,
+      "required": ["date", "auditNum", "sequence", "result"],
+      "properties": {
+        "date":     { "type": "string", "description": "dd/mm/yyyy" },
+        "auditNum": { "type": "string", "description": "Audit #" },
+        "sequence": { "type": "string", "description": "Sequence # within the audit" },
+        "result":   { "type": "string", "description": "e.g. 'Compliant', 'Non-Compliant', 'Conditional'" }
+      }
+    },
+
+    "cvsaRow": {
+      "type": "object",
+      "description": "CVSA Inspection — one per row in the CVSA Inspection table that spans p1-p3.",
+      "additionalProperties": false,
+      "required": ["seq", "date", "cvsaNumber", "jur", "plates", "driverMaster", "result", "demeritPts"],
+      "properties": {
+        "seq":          { "type": "integer", "minimum": 1 },
+        "date":         { "type": "string", "description": "dd/mm/yyyy" },
+        "cvsaNumber":   { "type": "string" },
+        "jur":          { "type": "string", "description": "2-3 letter jurisdiction code (e.g. NB, ON, NS, ME, NY, DE)" },
+        "plates":       {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "description": "Each entry is '{plate} / {jur}' as printed" }
+        },
+        "driverMaster": { "type": "string", "description": "Driver Master No. with optional jurisdiction (e.g. 'A58340000770805 / ON')" },
+        "result":       { "type": "string", "enum": ["Passed", "Defect Noted", "Out-of-Service"] },
+        "demeritPts":   { "type": "integer", "minimum": 0, "description": "Per BC NS rule: 3 for Out-of-Service, 0 otherwise" }
+      }
+    },
+
+    "cvsaTotals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records", "demeritPts"],
+      "properties": {
+        "records":    { "type": "integer", "minimum": 0, "description": "Printed 'Totals' record count for CVSA section" },
+        "demeritPts": { "type": "integer", "minimum": 0, "description": "Printed 'Totals' demerit-points sum" }
+      }
+    },
+
+    "convictionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "offenceDate", "convDate", "ticket", "offence", "driverMaster", "sectionActReg", "pts"],
+      "properties": {
+        "seq":           { "type": "integer", "minimum": 1 },
+        "offenceDate":   { "type": "string", "description": "dd/mm/yyyy" },
+        "convDate":      { "type": "string", "description": "dd/mm/yyyy" },
+        "ticket":        { "type": "string" },
+        "offence":       { "type": "string", "description": "Free-text offence description" },
+        "driverMaster":  { "type": "string" },
+        "sectionActReg": { "type": "string", "description": "Section / Act / Reg as printed" },
+        "pts":           { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "collisionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "date", "severity", "location", "driverJur", "plate", "plateJur", "pts"],
+      "properties": {
+        "seq":          { "type": "integer", "minimum": 1 },
+        "date":         { "type": "string", "description": "dd/mm/yyyy" },
+        "severity":     { "type": "string", "description": "e.g. 'PROPERTY DAMAGE', 'INJURY', 'FATAL'" },
+        "location":     { "type": "string" },
+        "driverMaster": { "type": ["string", "null"] },
+        "driverJur":    { "type": "string" },
+        "plate":        { "type": "string" },
+        "plateJur":     { "type": "string" },
+        "pts":          { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "warningRow": {
+      "type": "object",
+      "description": "Traffic Offence Report (Warning Ticket).",
+      "additionalProperties": false,
+      "required": ["seq", "offenceDate", "plate", "driverMaster", "statute", "description"],
+      "properties": {
+        "seq":          { "type": "integer", "minimum": 1 },
+        "offenceDate":  { "type": "string", "description": "dd/mm/yyyy" },
+        "plate":        { "type": "string" },
+        "driverMaster": { "type": "string" },
+        "statute":      { "type": "string", "description": "Statute / Sect. Sub-Sect / Clause" },
+        "description":  { "type": "string" }
+      }
+    },
+
+    "warningTotals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records"],
+      "properties": {
+        "records": { "type": "integer", "minimum": 0 }
+      }
+    }
+
+  }
+}

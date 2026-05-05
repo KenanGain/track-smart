@@ -1,0 +1,724 @@
+{
+  "source": {
+    "fileName": "9496971_CANADA_INC_NS_Carrier_Profile.pdf",
+    "reportRunDate": "26/11/2024",
+    "profileAsOf": "26/11/2024",
+    "pageCount": 3,
+    "formVersion": null,
+    "extractedAt": "2026-05-04T19:00:20Z"
+  },
+  "carrier": {
+    "nscNumber": "ZZZZZ728361002",
+    "demographics": {
+      "carrierName": "HARSIMRAN SINGH",
+      "contactName": "HARSIMRAN SINGH",
+      "contactTitle": "DIRECTOR",
+      "phone": "902-440-0679",
+      "principalPlace": "409 BLUEWATER RD",
+      "usDotNumber": "IRP #:9110501",
+      "irpNumber": "9110501",
+      "mviStnNumber": "0",
+      "currentFleetSize": 7,
+      "avgDailyFleetSize": 7.15,
+      "mailingAddress": "409 BLUEWATER RD, BEDFORD NS, B4B1J7",
+      "physicalAddress": "409 BLUEWATER RD, BEDFORD NS, B4B1J7"
+    },
+    "certificate": {
+      "safetyRating": "SATISFACTORY",
+      "safetyRatingExpires": "12/2024"
+    }
+  },
+  "pull": {
+    "asOfDate": "26/11/2024",
+    "thresholds": {
+      "level1": 39.7531,
+      "level2": 45.9602,
+      "level3": 60.1836
+    },
+    "scores": {
+      "convictions": 0.0,
+      "inspections": 0.3411,
+      "collisions": 0.0,
+      "totalDemerit": 0.3411
+    },
+    "auditHistory": [
+      {
+        "date": "28/04/2023",
+        "auditNum": "34843",
+        "sequence": "1",
+        "result": "Compliant"
+      }
+    ],
+    "cvsaInspections": [
+      {
+        "seq": 1,
+        "date": "29/11/2022",
+        "cvsaNumber": "445131-1",
+        "jur": "NB",
+        "plates": [
+          "PR45273 / MB",
+          "PR45273 / NS"
+        ],
+        "driverMaster": "D4391-00009-90407 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 2,
+        "date": "11/12/2022",
+        "cvsaNumber": "449597",
+        "jur": "NB",
+        "plates": [
+          "PR49497 / ON",
+          "PR49497 / NS"
+        ],
+        "driverMaster": "3225823 / NB",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 3,
+        "date": "17/01/2023",
+        "cvsaNumber": "ONEA01539682",
+        "jur": "ON",
+        "plates": [
+          "PR48472 / NS",
+          "PR48472 / MB"
+        ],
+        "driverMaster": "175546217 / AB",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 4,
+        "date": "31/01/2023",
+        "cvsaNumber": "448208",
+        "jur": "NB",
+        "plates": [
+          "PR49497 / NS",
+          "PT82987 / NS"
+        ],
+        "driverMaster": "A58340000770805 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 5,
+        "date": "23/02/2023",
+        "cvsaNumber": "665463",
+        "jur": "NS",
+        "plates": [
+          "PR44654 / NS",
+          "T4357W / ON"
+        ],
+        "driverMaster": "SINGH210898005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 6,
+        "date": "16/03/2023",
+        "cvsaNumber": "666079",
+        "jur": "NS",
+        "plates": [
+          "PR49343 / NS",
+          "X5728P / ON"
+        ],
+        "driverMaster": "J64570000940315 / ON",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 7,
+        "date": "22/03/2023",
+        "cvsaNumber": "666292",
+        "jur": "NS",
+        "plates": [
+          "PR49497 / NS",
+          "TH9321 / MB"
+        ],
+        "driverMaster": "A58340000770805 / ON",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 8,
+        "date": "24/03/2023",
+        "cvsaNumber": "449276",
+        "jur": "NB",
+        "plates": [
+          "PT82569 / NS"
+        ],
+        "driverMaster": "A58340000770805 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 9,
+        "date": "28/03/2023",
+        "cvsaNumber": "666467",
+        "jur": "NS",
+        "plates": [
+          "PT82466 / NS",
+          "PR44654 / NS"
+        ],
+        "driverMaster": "SINGH210898005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 10,
+        "date": "12/04/2023",
+        "cvsaNumber": "ONEA01555539",
+        "jur": "ON",
+        "plates": [
+          "PR47116 / ON",
+          "PR47116 / NS"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 11,
+        "date": "13/04/2023",
+        "cvsaNumber": "ONEA01555996",
+        "jur": "ON",
+        "plates": [
+          "PR48472 / NS",
+          "PR48472 / MB"
+        ],
+        "driverMaster": "S44901690940101 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 12,
+        "date": "15/04/2023",
+        "cvsaNumber": "452679",
+        "jur": "NB",
+        "plates": [
+          "PR45276 / NS"
+        ],
+        "driverMaster": "D43910000990407 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 13,
+        "date": "25/04/2023",
+        "cvsaNumber": "667415",
+        "jur": "NS",
+        "plates": [
+          "TC1771 / MB",
+          "PR49497 / NS"
+        ],
+        "driverMaster": "SINGH210898005 / NS",
+        "result": "Out-of-Service",
+        "demeritPts": 3
+      },
+      {
+        "seq": 14,
+        "date": "19/05/2023",
+        "cvsaNumber": "668953",
+        "jur": "NS",
+        "plates": [
+          "PR45273 / NS",
+          "TC4581 / MB"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 15,
+        "date": "07/06/2023",
+        "cvsaNumber": "669542",
+        "jur": "NS",
+        "plates": [
+          "PT82947 / NS",
+          "PR45276 / NS"
+        ],
+        "driverMaster": "D43910000990407 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 16,
+        "date": "15/06/2023",
+        "cvsaNumber": "669846",
+        "jur": "NS",
+        "plates": [
+          "PR47116 / NS",
+          "T1087C / ON"
+        ],
+        "driverMaster": "SINGH210898005 / NS",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 17,
+        "date": "24/06/2023",
+        "cvsaNumber": "670266",
+        "jur": "NS",
+        "plates": [
+          "W7664P / ON",
+          "PR44654 / NS"
+        ],
+        "driverMaster": "A58340000770805 / ON",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 18,
+        "date": "30/06/2023",
+        "cvsaNumber": "ONEA01571114",
+        "jur": "ON",
+        "plates": [
+          "PT82489 / NS",
+          "PR45273 / NS"
+        ],
+        "driverMaster": "S04036398930615 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 19,
+        "date": "08/08/2023",
+        "cvsaNumber": "458845",
+        "jur": "NB",
+        "plates": [
+          "PT81049 / NS",
+          "PR45273 / NS"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 20,
+        "date": "17/08/2023",
+        "cvsaNumber": "456524",
+        "jur": "NB",
+        "plates": [
+          "PR49497 / NS",
+          "PT82947 / NS"
+        ],
+        "driverMaster": "S04036398930615 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 21,
+        "date": "29/08/2023",
+        "cvsaNumber": "672327",
+        "jur": "NS",
+        "plates": [
+          "PR45276 / NS",
+          "PT84215 / NS"
+        ],
+        "driverMaster": "J64570000940315 / ON",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 22,
+        "date": "30/08/2023",
+        "cvsaNumber": "459104",
+        "jur": "NB",
+        "plates": [
+          "PR48472 / NS",
+          "PR48472 / MB"
+        ],
+        "driverMaster": "S4490-16909-40101 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 23,
+        "date": "05/09/2023",
+        "cvsaNumber": "672518",
+        "jur": "NS",
+        "plates": [
+          "PR45273 / NS",
+          "PT82466 / NS"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 24,
+        "date": "09/09/2023",
+        "cvsaNumber": "457341",
+        "jur": "NB",
+        "plates": [
+          "PR46523 / NS"
+        ],
+        "driverMaster": "A58340000770805 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 25,
+        "date": "20/09/2023",
+        "cvsaNumber": "4468007075",
+        "jur": "ME",
+        "plates": [
+          "PT82569 / NS",
+          "PR45275 / NS"
+        ],
+        "driverMaster": "3233736 / NB",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 26,
+        "date": "30/09/2023",
+        "cvsaNumber": "ONEA01591843",
+        "jur": "ON",
+        "plates": [
+          "PR45273 / NS",
+          "PR45273 / QC"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Out-of-Service",
+        "demeritPts": 3
+      },
+      {
+        "seq": 27,
+        "date": "08/10/2023",
+        "cvsaNumber": "454857",
+        "jur": "NB",
+        "plates": [
+          "PR45275 / NS"
+        ],
+        "driverMaster": "3233736 / NB",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 28,
+        "date": "23/10/2023",
+        "cvsaNumber": "461615",
+        "jur": "NB",
+        "plates": [
+          "PR49497 / MB",
+          "PR49497 / NS"
+        ],
+        "driverMaster": "D4391-00009-90407 / ON",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 29,
+        "date": "23/10/2023",
+        "cvsaNumber": "ONEA01596889",
+        "jur": "ON",
+        "plates": [
+          "PR46523 / NS"
+        ],
+        "driverMaster": "S04036398930615 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 30,
+        "date": "31/10/2023",
+        "cvsaNumber": "1125000133",
+        "jur": "DE",
+        "plates": [
+          "PR45275 / MB",
+          "PR45275 / NS"
+        ],
+        "driverMaster": "3233736 / NB",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 31,
+        "date": "28/11/2023",
+        "cvsaNumber": "675535",
+        "jur": "NS",
+        "plates": [
+          "PR45273 / NS",
+          "PT84215 / NS"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 32,
+        "date": "05/12/2023",
+        "cvsaNumber": "3998011371",
+        "jur": "ME",
+        "plates": [
+          "PR45275 / ME",
+          "PR45275 / NS"
+        ],
+        "driverMaster": "3226062 / NB",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 33,
+        "date": "12/12/2023",
+        "cvsaNumber": "675910",
+        "jur": "NS",
+        "plates": [
+          "TE1393 / MB",
+          "PR45276 / NS"
+        ],
+        "driverMaster": "J64570000940315 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 34,
+        "date": "07/01/2024",
+        "cvsaNumber": "458554",
+        "jur": "NB",
+        "plates": [
+          "PR45273 / NS",
+          "PR45273 / MB"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 35,
+        "date": "15/01/2024",
+        "cvsaNumber": "462104",
+        "jur": "NB",
+        "plates": [
+          "PR45274 / NS",
+          "PR45274 / MB"
+        ],
+        "driverMaster": "TARUN140400002 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 36,
+        "date": "17/01/2024",
+        "cvsaNumber": "457942",
+        "jur": "NB",
+        "plates": [
+          "PR45274 / NS"
+        ],
+        "driverMaster": "D43410000990407 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 37,
+        "date": "02/02/2024",
+        "cvsaNumber": "461317",
+        "jur": "NB",
+        "plates": [
+          "PR48472 / NS"
+        ],
+        "driverMaster": "D435710000990407 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 38,
+        "date": "13/02/2024",
+        "cvsaNumber": "3998011682",
+        "jur": "ME",
+        "plates": [
+          "PR47116 / NS",
+          "PR47116 / MB"
+        ],
+        "driverMaster": "AMRIT050877000 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 39,
+        "date": "20/02/2024",
+        "cvsaNumber": "9450001572",
+        "jur": "ME",
+        "plates": [
+          "PR48472 / NS",
+          "PR48472 / MB"
+        ],
+        "driverMaster": "40649964 / SK",
+        "result": "Out-of-Service",
+        "demeritPts": 3
+      },
+      {
+        "seq": 40,
+        "date": "23/02/2024",
+        "cvsaNumber": "SPB0286516",
+        "jur": "NY",
+        "plates": [
+          "PR48472 / MB",
+          "PR48472 / NS"
+        ],
+        "driverMaster": "40649964 / SK",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 41,
+        "date": "06/03/2024",
+        "cvsaNumber": "D700300267",
+        "jur": "NY",
+        "plates": [
+          "PT82489 / NS",
+          "PR45273 / NS"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 42,
+        "date": "15/03/2024",
+        "cvsaNumber": "467311",
+        "jur": "NB",
+        "plates": [
+          "PR47116 / MB",
+          "PR47116 / NS"
+        ],
+        "driverMaster": "K3623-42480-00910 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 43,
+        "date": "17/03/2024",
+        "cvsaNumber": "678212",
+        "jur": "NS",
+        "plates": [
+          "PT84215 / NS",
+          "PR44654 / NS"
+        ],
+        "driverMaster": "NAVKI100701008 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 44,
+        "date": "25/03/2024",
+        "cvsaNumber": "678370",
+        "jur": "NS",
+        "plates": [
+          "PR45273 / NS",
+          "TA7225 / MB"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 45,
+        "date": "03/04/2024",
+        "cvsaNumber": "2211014116",
+        "jur": "ME",
+        "plates": [
+          "PR48472 / MB",
+          "PR48472 / NS"
+        ],
+        "driverMaster": "3240597 / NB",
+        "result": "Defect Noted",
+        "demeritPts": 0
+      },
+      {
+        "seq": 46,
+        "date": "24/04/2024",
+        "cvsaNumber": "D700300358",
+        "jur": "NY",
+        "plates": [
+          "PR48472 / NS",
+          "PR48472 / MB"
+        ],
+        "driverMaster": "3240597 / NB",
+        "result": "Out-of-Service",
+        "demeritPts": 3
+      },
+      {
+        "seq": 47,
+        "date": "27/06/2024",
+        "cvsaNumber": "SPWD031199",
+        "jur": "NY",
+        "plates": [
+          "PR45276 / ON",
+          "PR45276 / NS"
+        ],
+        "driverMaster": "T07080000000414 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 48,
+        "date": "10/07/2024",
+        "cvsaNumber": "2659001351",
+        "jur": "ME",
+        "plates": [
+          "PR48472 / NS",
+          "PR48472 / MB"
+        ],
+        "driverMaster": "SINGH120992005 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 49,
+        "date": "21/09/2024",
+        "cvsaNumber": "ONEA01668837",
+        "jur": "ON",
+        "plates": [
+          "PR48472 / NS"
+        ],
+        "driverMaster": "K36234248000910 / ON",
+        "result": "Passed",
+        "demeritPts": 0
+      },
+      {
+        "seq": 50,
+        "date": "11/10/2024",
+        "cvsaNumber": "SPD3080044",
+        "jur": "NY",
+        "plates": [
+          "PR45276 / NS",
+          "PR45276 / MB"
+        ],
+        "driverMaster": "SUKHA150598009 / NS",
+        "result": "Passed",
+        "demeritPts": 0
+      }
+    ],
+    "cvsaTotals": {
+      "records": 50,
+      "demeritPts": 12
+    },
+    "convictions": [],
+    "collisions": [],
+    "warningTickets": [
+      {
+        "seq": 1,
+        "offenceDate": "05/09/2023",
+        "plate": "PR45273",
+        "driverMaster": "SINGH120992005",
+        "statute": "CVDH 7 1 A",
+        "description": "FAILING TO TAKE 8 CONSECUTIVE OFF-DUTY HOURS AFTER 13 HOURS OF DRIVING TIME"
+      },
+      {
+        "seq": 2,
+        "offenceDate": "20/06/2024",
+        "plate": "PR45276",
+        "driverMaster": "S04036398930615",
+        "statute": "MVA 20 2",
+        "description": "LICENSE PLATE NOT CLEARLY LEGIBLE ( NUMBERS WEARING OFF )"
+      }
+    ],
+    "warningTotals": {
+      "records": 2
+    }
+  }
+}

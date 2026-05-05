@@ -1,0 +1,14 @@
+group,code,violations,violationsPct,activePoints,activePointsPct
+Speeding,0001-0099,3,27.27,4,17.39
+Stop Signs and Traffic Lights,0100-0199,0,,0,
+Driver's Liabilities,0200-0299,1,9.09,1,4.35
+Driving,0300-0399,4,36.36,11,47.83
+Hours of Service,0400-0499,1,9.09,3,13.04
+Trip Inspection,0500-0599,0,,0,
+Mechanical Defects,0600-0699,2,18.18,4,17.39
+Oversize & Overweight,0700-0799,0,,0,
+Security of Loads,0900-0999,0,,0,
+Dangerous Goods,1000,0,,0,
+Criminal Code,1100-1199,0,,0,
+Miscellaneous,1200-1299,0,,0,
+Totals,,11,100.0,23,100.0

@@ -1,0 +1,456 @@
+{
+  "source": {
+    "fileName": "Carrier_Profile_17_May_2023.pdf",
+    "datePrinted": null,
+    "profilePeriodStart": null,
+    "profilePeriodEnd": null,
+    "twelveMonthReportAs": null,
+    "formVersion": "older",
+    "pageCount": 36,
+    "extractedAt": "2026-05-04T00:57:56Z"
+  },
+  "carrier": {
+    "nscNumber": "AB000-0000",
+    "mvidNumber": null,
+    "legalName": "Unknown Carrier",
+    "address": {
+      "street": "Q63/3.^.//43/\u00066.\\\u0006/3iU3\\739\u0006.\u0006^<>>4\\4<G\u0006/3a43`\u0006.G9\u0006763\u0006^<>>4\\4<G\u0006`.\\\u00069373/S4G39\u00067<\u0006]3\u0006_\\URR</739_c\u0006763\u0006R<4G7\\\u0006",
+      "city": null,
+      "province": null,
+      "postalCode": "S4G4G5",
+      "country": "Canada"
+    },
+    "safetyFitnessRating": null,
+    "operatingStatus": null,
+    "fleetRange": null,
+    "fleetType": null,
+    "certificateNumber": null,
+    "certificateEffectiveDate": null,
+    "certificateExpiryDate": null
+  },
+  "pull": {
+    "reportDate": "1970-01-01",
+    "periodLabel": null,
+    "windowLabel": null,
+    "windowStart": null,
+    "windowEnd": null,
+    "rFactor": 0.0,
+    "contributions": {
+      "conviction": 0.0,
+      "inspection": 0.0,
+      "collision": 0.0
+    },
+    "monitoringStage": null,
+    "carriersAtStageOrAbove": null,
+    "totalAlbertaNscCarriers": null,
+    "avgFleet": 0,
+    "currentFleet": 0,
+    "totalConvictions": 0,
+    "totalConvictionDocuments": 0,
+    "totalCvsaInspections": 0,
+    "totalCvsaDocuments": 0,
+    "totalCollisions": 0,
+    "totalViolations": 0,
+    "totalViolationDocuments": null,
+    "convictionAnalysis": [
+      {
+        "group": "Speeding",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Stop signs/Traffic lights",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Driver Liabilities (Licence, Insurance, Seat Belts, etc.)",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Driving (Passing, Disobey Signs, Signals, etc.)",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Hours of Service",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Trip Inspections",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Brakes",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "CVIP",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Mechanical Defects",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Oversize/Overweight",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Security of Loads",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Dangerous Goods",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Criminal Code",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Permits",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Miscellaneous",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Administrative Actions",
+        "count": 0,
+        "pctText": null
+      }
+    ],
+    "convictionSummary": [],
+    "convictionDetails": [],
+    "cvsaDefectAnalysis": [
+      {
+        "code": "1",
+        "label": "Driver Credentials",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "2",
+        "label": "Hours Of Service",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "3",
+        "label": "Brake Adjustment",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "4",
+        "label": "Brake Systems",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "5",
+        "label": "Coupling Devices",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "6",
+        "label": "Exhaust Systems",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "7",
+        "label": "Frames",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "8",
+        "label": "Fuel Systems",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "9",
+        "label": "Lighting Devices (Part II Section 8 OOSC only)",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "10",
+        "label": "Cargo Securement",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "11",
+        "label": "Steering Mechanisms",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "12",
+        "label": "Suspensions",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "13",
+        "label": "Tires",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "14",
+        "label": "Van/Open-top Trailer Bodies",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "15",
+        "label": "Wheels, Rims & Hubs",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "16",
+        "label": "Windshield Wipers",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "17",
+        "label": "Emergency Exits/Wiring & Electrical Systems (Buses)",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "18",
+        "label": "Dangerous Goods",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      },
+      {
+        "code": "19",
+        "label": "Driveline/Driveshaft",
+        "oos": null,
+        "req": null,
+        "total": null,
+        "pctText": null
+      }
+    ],
+    "cvsaDefectTotals": {
+      "oos": 0,
+      "req": 0,
+      "total": 0
+    },
+    "cvsaSummary": [],
+    "cvsaDetails": [],
+    "collisionTotals": [
+      {
+        "type": "Property Damage",
+        "count": 0,
+        "nonPreventable": 0,
+        "preventableOrNotEvaluated": 0,
+        "points": 0
+      },
+      {
+        "type": "Injury",
+        "count": 0,
+        "nonPreventable": 0,
+        "preventableOrNotEvaluated": 0,
+        "points": 0
+      },
+      {
+        "type": "Fatal",
+        "count": 0,
+        "nonPreventable": 0,
+        "preventableOrNotEvaluated": 0,
+        "points": 0
+      }
+    ],
+    "collisionSummary": [],
+    "collisionDetails": [],
+    "violationAnalysis": [
+      {
+        "group": "Speeding",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Stop signs/Traffic lights",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Driver Liabilities (Licence, Insurance, Seat Belts, etc.)",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Driving (Passing, Disobey Signs, Signals, etc.)",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Hours of Service",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Trip Inspections",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Brakes",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "CVIP",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Mechanical Defects",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Oversize/Overweight",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Security of Loads",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Dangerous Goods",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Criminal Code",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Permits",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Miscellaneous",
+        "count": 0,
+        "pctText": null
+      },
+      {
+        "group": "Administrative Actions",
+        "count": 0,
+        "pctText": null
+      }
+    ],
+    "violationSummary": [],
+    "violationDetails": [],
+    "monitoring": {
+      "industry": {
+        "asOf": "1970-01-01",
+        "fleetRange": "0",
+        "fleetType": "TRK",
+        "avgRFactor": 0.0,
+        "avgConvPts": null,
+        "avgOosDef": null,
+        "avgTotalDef": null,
+        "avgOosVeh": null,
+        "avgFailure": null,
+        "avgCollPts": null
+      },
+      "thresholds": [
+        {
+          "stage": 1,
+          "lowerBound": 0.0,
+          "upperBound": null,
+          "label": "Stage 1",
+          "rangeText": "0.000 and higher"
+        },
+        {
+          "stage": 2,
+          "lowerBound": 0.0,
+          "upperBound": null,
+          "label": "Stage 2",
+          "rangeText": "0.000 and higher"
+        },
+        {
+          "stage": 3,
+          "lowerBound": 0.0,
+          "upperBound": null,
+          "label": "Stage 3",
+          "rangeText": "0.000 and higher"
+        },
+        {
+          "stage": 4,
+          "lowerBound": 0.0,
+          "upperBound": null,
+          "label": "Stage 4",
+          "rangeText": "0.000 and higher"
+        }
+      ],
+      "summary": [],
+      "details": []
+    }
+  }
+}

@@ -1,0 +1,762 @@
+[
+  {
+    "regi": "10988354",
+    "plate": "58226P",
+    "year": 2015,
+    "make": "VOLVO",
+    "owner": "BENNINGTON FINANCIAL CORP.",
+    "gvw": 47000
+  },
+  {
+    "regi": "11081163",
+    "plate": "",
+    "year": 2015,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "11848566",
+    "plate": "",
+    "year": 2016,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "12584392",
+    "plate": "79997P",
+    "year": 2018,
+    "make": "FREIGHTLIN",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "12593082",
+    "plate": "58284P",
+    "year": 2019,
+    "make": "VOLVO",
+    "owner": "TPINE LEASING CAPITAL CORPO",
+    "gvw": 47000
+  },
+  {
+    "regi": "12793166",
+    "plate": "60145P",
+    "year": 2018,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "12875630",
+    "plate": "49434P",
+    "year": 2013,
+    "make": "FREIGHTLIN",
+    "owner": "MITSUBISHI HC CAPITAL CANAD",
+    "gvw": 47000
+  },
+  {
+    "regi": "12995683",
+    "plate": "46314P",
+    "year": 2018,
+    "make": "FREIGHTLIN",
+    "owner": "TPINE LEASING CAPITAL CORPO",
+    "gvw": 47000
+  },
+  {
+    "regi": "13147505",
+    "plate": "",
+    "year": 2014,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "13155227",
+    "plate": "58857P",
+    "year": 2020,
+    "make": "VOLVO",
+    "owner": "MERCADO CAPITAL CORPORATION",
+    "gvw": 47000
+  },
+  {
+    "regi": "13155243",
+    "plate": "60938P",
+    "year": 2020,
+    "make": "VOLVO",
+    "owner": "MERCADO CAPITAL CORPORATION",
+    "gvw": 47000
+  },
+  {
+    "regi": "13280659",
+    "plate": "56267P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13283319",
+    "plate": "",
+    "year": 2019,
+    "make": "MACK",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "13322982",
+    "plate": "57382P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13322983",
+    "plate": "57381P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13322984",
+    "plate": "57380P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13339308",
+    "plate": "72075P",
+    "year": 2020,
+    "make": "FREIGHTLIN",
+    "owner": "ARUNDEL CAPITAL CORPORATION",
+    "gvw": 47000
+  },
+  {
+    "regi": "13365870",
+    "plate": "58006P",
+    "year": 2006,
+    "make": "PETERBILT",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13379226",
+    "plate": "66581P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13379227",
+    "plate": "74785P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "CWB NATIONAL LEASING INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13379228",
+    "plate": "74162P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "CWB NATIONAL LEASING INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13384125",
+    "plate": "58770P",
+    "year": 2016,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13399973",
+    "plate": "70362P",
+    "year": 2016,
+    "make": "VOLVO",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13406348",
+    "plate": "",
+    "year": 2018,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "13428536",
+    "plate": "58790P",
+    "year": 2020,
+    "make": "FREIGHTLIN",
+    "owner": "BENNINGTON FINANCIAL CORP.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13443253",
+    "plate": "58841P",
+    "year": 2018,
+    "make": "KENWORTH",
+    "owner": "PACCAR FINANCIAL SERVICES L",
+    "gvw": 47000
+  },
+  {
+    "regi": "13460240",
+    "plate": "60178P",
+    "year": 2019,
+    "make": "FREIGHTLIN",
+    "owner": "MERCEDES-BENZ FINANCIAL SER",
+    "gvw": 47000
+  },
+  {
+    "regi": "13546360",
+    "plate": "66618P",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13604070",
+    "plate": "66590P",
+    "year": 2022,
+    "make": "PETERBILT",
+    "owner": "DE LAGE LANDEN FINANCIAL SE",
+    "gvw": 47000
+  },
+  {
+    "regi": "13810162",
+    "plate": "66657P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "LBEL INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13822111",
+    "plate": "67992P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13822113",
+    "plate": "67993P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13822114",
+    "plate": "67994P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13842865",
+    "plate": "",
+    "year": 2016,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "13852245",
+    "plate": "68041P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13852246",
+    "plate": "68042P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13905135",
+    "plate": "67495P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13905136",
+    "plate": "67496P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13908502",
+    "plate": "69351P",
+    "year": 2019,
+    "make": "VOLVO",
+    "owner": "BENNINGTON FINANCIAL CORP.",
+    "gvw": 12546
+  },
+  {
+    "regi": "13916098",
+    "plate": "69077P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "HSBC BANK CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13916099",
+    "plate": "69078P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "HSBC BANK CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13916100",
+    "plate": "69076P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "HSBC BANK CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "13925304",
+    "plate": "69602P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13925305",
+    "plate": "",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "13925306",
+    "plate": "69603P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13933053",
+    "plate": "69732P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13948198",
+    "plate": "70365P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13948199",
+    "plate": "70364P",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13948200",
+    "plate": "",
+    "year": 2022,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "13954662",
+    "plate": "70413P",
+    "year": 2007,
+    "make": "KENWORTH",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "13975876",
+    "plate": "71164P",
+    "year": 2023,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "13985266",
+    "plate": "77517P",
+    "year": 2022,
+    "make": "FREIGHTLIN",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14005264",
+    "plate": "71908P",
+    "year": 2023,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "14037116",
+    "plate": "72843P",
+    "year": 2023,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "14037117",
+    "plate": "72842P",
+    "year": 2023,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "14039855",
+    "plate": "72870P",
+    "year": 2023,
+    "make": "FREIGHTLIN",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14099077",
+    "plate": "74164P",
+    "year": 2023,
+    "make": "VOLVO",
+    "owner": "ROYAL BANK OF CANADA",
+    "gvw": 47000
+  },
+  {
+    "regi": "14122819",
+    "plate": "",
+    "year": 2016,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14124468",
+    "plate": "",
+    "year": 2017,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14134447",
+    "plate": "",
+    "year": 2021,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14135245",
+    "plate": "",
+    "year": 2020,
+    "make": "INTERNATNA",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14154585",
+    "plate": "",
+    "year": 2021,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14175752",
+    "plate": "79903P",
+    "year": 2015,
+    "make": "VOLVO",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14177747",
+    "plate": "75162P",
+    "year": 2019,
+    "make": "VOLVO",
+    "owner": "DE LAGE LANDEN FINANCIAL SE",
+    "gvw": 12600
+  },
+  {
+    "regi": "14199433",
+    "plate": "76092P",
+    "year": 2015,
+    "make": "KENWORTH",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14239431",
+    "plate": "",
+    "year": 2019,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14243463",
+    "plate": "",
+    "year": 1998,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14263901",
+    "plate": "",
+    "year": 2018,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14266252",
+    "plate": "",
+    "year": 2018,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14385158",
+    "plate": "",
+    "year": 2024,
+    "make": "MACK",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14385234",
+    "plate": "80922P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "14385235",
+    "plate": "80921P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "14411651",
+    "plate": "",
+    "year": 2022,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14418391",
+    "plate": "81602P",
+    "year": 2018,
+    "make": "FREIGHTLIN",
+    "owner": "MITSUBISHI HC CAPITAL CANAD",
+    "gvw": 47000
+  },
+  {
+    "regi": "14423115",
+    "plate": "82078P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "CANADIAN WESTERN BANK LEASI",
+    "gvw": 47000
+  },
+  {
+    "regi": "14440590",
+    "plate": "81613P",
+    "year": 2019,
+    "make": "MACK",
+    "owner": "DAIMLER TRUCK FINANCIAL SER",
+    "gvw": 47000
+  },
+  {
+    "regi": "14440651",
+    "plate": "81614P",
+    "year": 2019,
+    "make": "VOLVO",
+    "owner": "TPINE LEASING CAPITAL CORPO",
+    "gvw": 47000
+  },
+  {
+    "regi": "14451489",
+    "plate": "",
+    "year": 2021,
+    "make": "FREIGHTLIN",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14452618",
+    "plate": "",
+    "year": 2019,
+    "make": "INTERNATNA",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14570070",
+    "plate": "85009P",
+    "year": 2023,
+    "make": "FREIGHTLIN",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14596660",
+    "plate": "85665P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14596661",
+    "plate": "85663P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14596662",
+    "plate": "85664P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14622020",
+    "plate": "85641P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14622021",
+    "plate": "85643P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14622022",
+    "plate": "85642P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14632306",
+    "plate": "86254P",
+    "year": 2025,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14632307",
+    "plate": "86140P",
+    "year": 2025,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14632308",
+    "plate": "86253P",
+    "year": 2025,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14632309",
+    "plate": "86141P",
+    "year": 2024,
+    "make": "VOLVO",
+    "owner": "VFS CANADA INC.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14658689",
+    "plate": "86827P",
+    "year": 2020,
+    "make": "VOLVO",
+    "owner": "BENNINGTON FINANCIAL CORP.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14684266",
+    "plate": "",
+    "year": 2019,
+    "make": "VOLVO",
+    "owner": "",
+    "gvw": ""
+  },
+  {
+    "regi": "14725500",
+    "plate": "86856P",
+    "year": 2017,
+    "make": "VOLVO",
+    "owner": "TFG FINANCIAL CORPORATION",
+    "gvw": 47000
+  },
+  {
+    "regi": "14812338",
+    "plate": "88275P",
+    "year": 2024,
+    "make": "FREIGHTLIN",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  },
+  {
+    "regi": "14818081",
+    "plate": "89234P",
+    "year": 2019,
+    "make": "FREIGHTLIN",
+    "owner": "INERTIA CARRIER LTD.",
+    "gvw": 47000
+  }
+]

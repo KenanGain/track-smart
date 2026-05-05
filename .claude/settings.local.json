@@ -7,7 +7,10 @@
       "Bash(grep -n \"CVOR.*tab\\\\|tab.*CVOR\\\\|cvorTab\\\\|activeTab\\\\|CVOR Canadian\\\\|= ''cvor''\" src/pages/inspections/InspectionsPage.tsx)",
       "Bash(python scripts/highlight_cvor_pdf.py)",
       "Bash(python \"C:/Users/kenan/Full prototpye code/scripts/highlight_cvor_pdf.py\")",
-      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/kenan/Full prototpye code/scripts/highlight_cvor_pdf.py\")"
+      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/kenan/Full prototpye code/scripts/highlight_cvor_pdf.py\")",
+      "Bash(python scripts/emit_csvs.py per-pdf/__TRACKED_VAR__)",
+      "Bash(python scripts/annotate_pdf.py raw-pdfs/__TRACKED_VAR__.pdf per-pdf/__TRACKED_VAR__)",
+      "Bash(npx vite *)"
     ]
   }
 }

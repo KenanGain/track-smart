@@ -16,24 +16,19 @@ interface AbPullRow {
   status: 'Ok' | 'Warning' | 'Critical';
 }
 
-// ─── Mock Data (15 pulls, newest first) ───────────────────────────────────────
-
+// ─── Carry Freight Ltd. (NSC AB243-8992) — pulls extracted from real Alberta
+// Carrier Profile PDFs in docs/alberta-extraction-vendor-package-v7/per-pdf/.
+// Newest first. inspections/convictions/coll/violations come from each pull's
+// extracted.json totals; rFactor is from Part 1 of the same PDF. Pulls older
+// than 2022 are the older multi-column Alberta format; 2022+ are the newer
+// "Page X of Y" layout that adds Part 3 — Administrative Penalty Information.
 export const AB_PULL_DATA: AbPullRow[] = [
-  { id:'2026-04', pullDate:'Apr 2/26',  windowLabel:'Apr 2024 → Apr 2026', inspections:43, convictions:12, adminPenalties:0, cvsaInspections:43, reportableCollisions:5,  rFactor:0.062, status:'Ok'       },
-  { id:'2026-02', pullDate:'Feb 2/26',  windowLabel:'Feb 2024 → Feb 2026', inspections:31, convictions:14, adminPenalties:1, cvsaInspections:31, reportableCollisions:7,  rFactor:0.074, status:'Critical'  },
-  { id:'2026-01', pullDate:'Jan 2/26',  windowLabel:'Jan 2024 → Jan 2026', inspections:25, convictions:11, adminPenalties:0, cvsaInspections:25, reportableCollisions:5,  rFactor:0.059, status:'Ok'       },
-  { id:'2025-10', pullDate:'Oct 22/25', windowLabel:'Oct 2023 → Oct 2025', inspections:18, convictions:13, adminPenalties:1, cvsaInspections:18, reportableCollisions:6,  rFactor:0.082, status:'Critical'  },
-  { id:'2025-08b', pullDate:'Aug 20/25', windowLabel:'Aug 2023 → Aug 2025', inspections:11, convictions:15, adminPenalties:2, cvsaInspections:11, reportableCollisions:8,  rFactor:0.091, status:'Critical'  },
-  { id:'2025-08a', pullDate:'Aug 19/25', windowLabel:'Aug 2023 → Aug 2025', inspections:11, convictions:14, adminPenalties:1, cvsaInspections:11, reportableCollisions:7,  rFactor:0.088, status:'Critical'  },
-  { id:'2025-07', pullDate:'Jul 13/25', windowLabel:'Jul 2023 → Jul 2025', inspections: 7, convictions:14, adminPenalties:2, cvsaInspections: 7, reportableCollisions:7,  rFactor:0.086, status:'Critical'  },
-  { id:'2025-06', pullDate:'Jun 2/25',  windowLabel:'Jun 2023 → Jun 2025', inspections: 3, convictions:15, adminPenalties:1, cvsaInspections: 3, reportableCollisions:7,  rFactor:0.079, status:'Warning'   },
-  { id:'2025-05', pullDate:'May 4/25',  windowLabel:'May 2023 → May 2025', inspections: 2, convictions:15, adminPenalties:2, cvsaInspections: 2, reportableCollisions:7,  rFactor:0.071, status:'Ok'       },
-  { id:'2025-02', pullDate:'Feb 11/25', windowLabel:'Feb 2023 → Feb 2025', inspections: 0, convictions:16, adminPenalties:2, cvsaInspections: 0, reportableCollisions:7,  rFactor:0.069, status:'Ok'       },
-  { id:'2024-11', pullDate:'Nov 5/24',  windowLabel:'Nov 2022 → Nov 2024', inspections: 0, convictions:17, adminPenalties:3, cvsaInspections: 0, reportableCollisions:8,  rFactor:0.078, status:'Warning'   },
-  { id:'2024-08', pullDate:'Aug 14/24', windowLabel:'Aug 2022 → Aug 2024', inspections: 0, convictions:18, adminPenalties:2, cvsaInspections: 0, reportableCollisions:9,  rFactor:0.085, status:'Critical'  },
-  { id:'2024-05', pullDate:'May 9/24',  windowLabel:'May 2022 → May 2024', inspections: 0, convictions:19, adminPenalties:3, cvsaInspections: 0, reportableCollisions:10, rFactor:0.094, status:'Critical'  },
-  { id:'2024-02', pullDate:'Feb 7/24',  windowLabel:'Feb 2022 → Feb 2024', inspections: 0, convictions:20, adminPenalties:2, cvsaInspections: 0, reportableCollisions:9,  rFactor:0.088, status:'Critical'  },
-  { id:'2023-11', pullDate:'Nov 2/23',  windowLabel:'Nov 2021 → Nov 2023', inspections: 0, convictions:21, adminPenalties:4, cvsaInspections: 0, reportableCollisions:11, rFactor:0.102, status:'Critical'  },
+  { id:'2022-09', pullDate:'Sep 6/22',  windowLabel:'Sep 2021 → Sep 2022', inspections: 0, convictions: 0, adminPenalties:0, cvsaInspections: 0, reportableCollisions:0, rFactor:0.448, status:'Critical' },
+  { id:'2022-05', pullDate:'May 3/22',  windowLabel:'May 2020 → May 2022', inspections: 0, convictions: 0, adminPenalties:0, cvsaInspections: 0, reportableCollisions:0, rFactor:0.640, status:'Critical' },
+  { id:'2021-01', pullDate:'Jan 4/21',  windowLabel:'Jan 2019 → Jan 2021', inspections: 0, convictions: 0, adminPenalties:0, cvsaInspections: 0, reportableCollisions:0, rFactor:1.575, status:'Critical' },
+  { id:'2020-01', pullDate:'Jan 9/20',  windowLabel:'Jan 2018 → Jan 2020', inspections: 0, convictions: 0, adminPenalties:0, cvsaInspections: 0, reportableCollisions:0, rFactor:0.364, status:'Critical' },
+  { id:'2019-09', pullDate:'Sep 30/19', windowLabel:'Oct 2017 → Sep 2019', inspections:25, convictions:13, adminPenalties:0, cvsaInspections:25, reportableCollisions:1, rFactor:2.559, status:'Critical' },
+  { id:'2018-12', pullDate:'Dec 19/18', windowLabel:'Dec 2016 → Dec 2018', inspections: 9, convictions: 1, adminPenalties:0, cvsaInspections: 9, reportableCollisions:0, rFactor:0.468, status:'Critical' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

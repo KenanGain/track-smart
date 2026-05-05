@@ -1,0 +1,3 @@
+seq,inspectionDate,inspectionDateIso,cvsaLevel,log,tdg,loadSecurity,driverName,status,points
+1,2022/11/22,2022-11-22,3,Passed,Passed,Passed,SINGH,P,0
+2,2022/10/07,2022-10-07,3,Warning,Passed,Passed,NAVJOT SINGH,W,0

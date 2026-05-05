@@ -1,0 +1,5233 @@
+{
+  "source": {
+    "fileName": "CPODetailReport_INERTIA_2025-04-17.pdf",
+    "reportRunDate": "17-Apr-2025",
+    "profileFrom": "17-Apr-2023",
+    "profileTo": "17-Apr-2025",
+    "profileRequestedBy": "inertia",
+    "pageCount": 37,
+    "formVersion": null,
+    "extractedAt": "2026-05-04T00:00:00Z"
+  },
+  "carrier": {
+    "nscNumber": "202-422-480",
+    "demographics": {
+      "carrierName": "INERTIA CARRIER LTD.",
+      "jurisdiction": "BC",
+      "primaryBusinessType": "General Freight",
+      "certificateIssueDate": "11-Jan-2016",
+      "extraProvincial": true,
+      "mailingAddress": "101-17564 56A AVE, SURREY BC V3S 1G3",
+      "premiumCarrier": false,
+      "weigh2GoBC": false,
+      "preventativeMaintenance": false,
+      "numberOfLicensedVehicles": 73,
+      "nscNumber": "202-422-480",
+      "reportRunDate": "17-Apr-2025",
+      "profileFrom": "17-Apr-2023",
+      "profileTo": "17-Apr-2025"
+    },
+    "certificate": {
+      "certificateStatus": "Active",
+      "safetyRating": "Satisfactory - Unaudited",
+      "profileStatus": "Satisfactory",
+      "auditStatus": "Unaudited"
+    }
+  },
+  "pull": {
+    "asOfDate": "31-Mar-2025",
+    "complianceReview": {
+      "asOfDate": "31-Mar-2025",
+      "averageFleetSize": 77.56,
+      "scores": [
+        {
+          "category": "Contraventions",
+          "score": 0.3,
+          "events": 21
+        },
+        {
+          "category": "CVSA (Out of Service)",
+          "score": 0.31,
+          "events": 2
+        },
+        {
+          "category": "Accidents",
+          "score": 0,
+          "events": 5
+        }
+      ],
+      "totalScore": 0.61
+    },
+    "thresholds": [
+      {
+        "status": "Satisfactory",
+        "contraventions": "0.00 - 1.76",
+        "cvsa": "0.00 - 0.93",
+        "accidents": "0.00 - 0.23",
+        "total": "0.00 - 2.13"
+      },
+      {
+        "status": "Conditional",
+        "contraventions": "1.77 - 2.98",
+        "cvsa": "0.94 - 1.08",
+        "accidents": "0.24 - 0.27",
+        "total": "2.14 - 3.64"
+      },
+      {
+        "status": "Unsatisfactory",
+        "contraventions": "2.99 and above",
+        "cvsa": "1.09 and above",
+        "accidents": "0.28 and above",
+        "total": "3.65 and above"
+      }
+    ],
+    "interventions": [
+      {
+        "type": "Audit - Triggered",
+        "date": "01-Jun-2023",
+        "description": "Triggered interventions occur due to the carrier's profile scores exceeding the thresholds set by the NSC program office in any one of the four categories."
+      }
+    ],
+    "monthlyScores": [
+      {
+        "month": "2025-03",
+        "vd": 28308,
+        "ad": 365,
+        "avg": 77.56,
+        "contra": 0.3,
+        "cvsa": 0.31,
+        "acc": 0,
+        "total": 0.61
+      },
+      {
+        "month": "2025-02",
+        "vd": 28186,
+        "ad": 365,
+        "avg": 77.22,
+        "contra": 0.3,
+        "cvsa": 0.31,
+        "acc": 0.05,
+        "total": 0.66
+      },
+      {
+        "month": "2025-01",
+        "vd": 28080,
+        "ad": 366,
+        "avg": 76.72,
+        "contra": 0.2,
+        "cvsa": 0.23,
+        "acc": 0.05,
+        "total": 0.48
+      },
+      {
+        "month": "2024-12",
+        "vd": 27815,
+        "ad": 366,
+        "avg": 76,
+        "contra": 0.17,
+        "cvsa": 0.24,
+        "acc": 0.05,
+        "total": 0.46
+      },
+      {
+        "month": "2024-11",
+        "vd": 27517,
+        "ad": 366,
+        "avg": 75.18,
+        "contra": 0.17,
+        "cvsa": 0.28,
+        "acc": 0.05,
+        "total": 0.5
+      },
+      {
+        "month": "2024-10",
+        "vd": 27229,
+        "ad": 366,
+        "avg": 74.4,
+        "contra": 0.16,
+        "cvsa": 0.32,
+        "acc": 0.05,
+        "total": 0.53
+      },
+      {
+        "month": "2024-09",
+        "vd": 26943,
+        "ad": 366,
+        "avg": 73.61,
+        "contra": 0.22,
+        "cvsa": 0.29,
+        "acc": 0.05,
+        "total": 0.56
+      },
+      {
+        "month": "2024-08",
+        "vd": 26644,
+        "ad": 366,
+        "avg": 72.8,
+        "contra": 0.34,
+        "cvsa": 0.29,
+        "acc": 0.05,
+        "total": 0.68
+      },
+      {
+        "month": "2024-07",
+        "vd": 26170,
+        "ad": 366,
+        "avg": 71.5,
+        "contra": 0.39,
+        "cvsa": 0.29,
+        "acc": 0.06,
+        "total": 0.74
+      },
+      {
+        "month": "2024-06",
+        "vd": 25647,
+        "ad": 366,
+        "avg": 70.07,
+        "contra": 0.37,
+        "cvsa": 0.26,
+        "acc": 0.06,
+        "total": 0.69
+      },
+      {
+        "month": "2024-05",
+        "vd": 25139,
+        "ad": 366,
+        "avg": 68.69,
+        "contra": 0.39,
+        "cvsa": 0.39,
+        "acc": 0.06,
+        "total": 0.84
+      },
+      {
+        "month": "2024-04",
+        "vd": 24638,
+        "ad": 366,
+        "avg": 67.32,
+        "contra": 0.45,
+        "cvsa": 0.45,
+        "acc": 0.06,
+        "total": 0.96
+      },
+      {
+        "month": "2024-03",
+        "vd": 24330,
+        "ad": 366,
+        "avg": 66.48,
+        "contra": 0.45,
+        "cvsa": 0.41,
+        "acc": 0.12,
+        "total": 0.98
+      },
+      {
+        "month": "2024-02",
+        "vd": 24249,
+        "ad": 366,
+        "avg": 66.25,
+        "contra": 0.63,
+        "cvsa": 0.36,
+        "acc": 0.09,
+        "total": 1.08
+      },
+      {
+        "month": "2024-01",
+        "vd": 24147,
+        "ad": 365,
+        "avg": 66.16,
+        "contra": 0.73,
+        "cvsa": 0.36,
+        "acc": 0.09,
+        "total": 1.18
+      },
+      {
+        "month": "2023-12",
+        "vd": 24071,
+        "ad": 365,
+        "avg": 65.95,
+        "contra": 0.83,
+        "cvsa": 0.36,
+        "acc": 0.09,
+        "total": 1.28
+      },
+      {
+        "month": "2023-11",
+        "vd": 23988,
+        "ad": 365,
+        "avg": 65.72,
+        "contra": 0.88,
+        "cvsa": 0.37,
+        "acc": 0.18,
+        "total": 1.43
+      },
+      {
+        "month": "2023-10",
+        "vd": 23768,
+        "ad": 365,
+        "avg": 65.12,
+        "contra": 0.81,
+        "cvsa": 0.32,
+        "acc": 0.21,
+        "total": 1.34
+      },
+      {
+        "month": "2023-09",
+        "vd": 23468,
+        "ad": 365,
+        "avg": 64.3,
+        "contra": 0.89,
+        "cvsa": 0.37,
+        "acc": 0.22,
+        "total": 1.48
+      },
+      {
+        "month": "2023-08",
+        "vd": 23140,
+        "ad": 365,
+        "avg": 63.4,
+        "contra": 0.87,
+        "cvsa": 0.33,
+        "acc": 0.22,
+        "total": 1.42
+      },
+      {
+        "month": "2023-07",
+        "vd": 22822,
+        "ad": 365,
+        "avg": 62.53,
+        "contra": 0.83,
+        "cvsa": 0.34,
+        "acc": 0.22,
+        "total": 1.39
+      },
+      {
+        "month": "2023-06",
+        "vd": 22473,
+        "ad": 365,
+        "avg": 61.57,
+        "contra": 0.8,
+        "cvsa": 0.34,
+        "acc": 0.23,
+        "total": 1.37
+      },
+      {
+        "month": "2023-05",
+        "vd": 22249,
+        "ad": 365,
+        "avg": 60.96,
+        "contra": 0.85,
+        "cvsa": 0.2,
+        "acc": 0.23,
+        "total": 1.28
+      },
+      {
+        "month": "2023-04",
+        "vd": 21914,
+        "ad": 365,
+        "avg": 60.04,
+        "contra": 0.98,
+        "cvsa": 0.15,
+        "acc": 0.23,
+        "total": 1.36
+      }
+    ],
+    "activeFleet": [
+      {
+        "regi": "10988354",
+        "plate": "58226P",
+        "year": 2015,
+        "make": "VOLVO",
+        "owner": "BENNINGTON FINANCIAL CORP.",
+        "gvw": 47000
+      },
+      {
+        "regi": "11081163",
+        "plate": "",
+        "year": 2015,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "11848566",
+        "plate": "",
+        "year": 2016,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "12584392",
+        "plate": "79997P",
+        "year": 2018,
+        "make": "FREIGHTLIN",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "12593082",
+        "plate": "58284P",
+        "year": 2019,
+        "make": "VOLVO",
+        "owner": "TPINE LEASING CAPITAL CORPO",
+        "gvw": 47000
+      },
+      {
+        "regi": "12793166",
+        "plate": "60145P",
+        "year": 2018,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "12875630",
+        "plate": "49434P",
+        "year": 2013,
+        "make": "FREIGHTLIN",
+        "owner": "MITSUBISHI HC CAPITAL CANAD",
+        "gvw": 47000
+      },
+      {
+        "regi": "12995683",
+        "plate": "46314P",
+        "year": 2018,
+        "make": "FREIGHTLIN",
+        "owner": "TPINE LEASING CAPITAL CORPO",
+        "gvw": 47000
+      },
+      {
+        "regi": "13147505",
+        "plate": "",
+        "year": 2014,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "13155227",
+        "plate": "58857P",
+        "year": 2020,
+        "make": "VOLVO",
+        "owner": "MERCADO CAPITAL CORPORATION",
+        "gvw": 47000
+      },
+      {
+        "regi": "13155243",
+        "plate": "60938P",
+        "year": 2020,
+        "make": "VOLVO",
+        "owner": "MERCADO CAPITAL CORPORATION",
+        "gvw": 47000
+      },
+      {
+        "regi": "13280659",
+        "plate": "56267P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13283319",
+        "plate": "",
+        "year": 2019,
+        "make": "MACK",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "13322982",
+        "plate": "57382P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13322983",
+        "plate": "57381P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13322984",
+        "plate": "57380P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13339308",
+        "plate": "72075P",
+        "year": 2020,
+        "make": "FREIGHTLIN",
+        "owner": "ARUNDEL CAPITAL CORPORATION",
+        "gvw": 47000
+      },
+      {
+        "regi": "13365870",
+        "plate": "58006P",
+        "year": 2006,
+        "make": "PETERBILT",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13379226",
+        "plate": "66581P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13379227",
+        "plate": "74785P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "CWB NATIONAL LEASING INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13379228",
+        "plate": "74162P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "CWB NATIONAL LEASING INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13384125",
+        "plate": "58770P",
+        "year": 2016,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13399973",
+        "plate": "70362P",
+        "year": 2016,
+        "make": "VOLVO",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13406348",
+        "plate": "",
+        "year": 2018,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "13428536",
+        "plate": "58790P",
+        "year": 2020,
+        "make": "FREIGHTLIN",
+        "owner": "BENNINGTON FINANCIAL CORP.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13443253",
+        "plate": "58841P",
+        "year": 2018,
+        "make": "KENWORTH",
+        "owner": "PACCAR FINANCIAL SERVICES L",
+        "gvw": 47000
+      },
+      {
+        "regi": "13460240",
+        "plate": "60178P",
+        "year": 2019,
+        "make": "FREIGHTLIN",
+        "owner": "MERCEDES-BENZ FINANCIAL SER",
+        "gvw": 47000
+      },
+      {
+        "regi": "13546360",
+        "plate": "66618P",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13604070",
+        "plate": "66590P",
+        "year": 2022,
+        "make": "PETERBILT",
+        "owner": "DE LAGE LANDEN FINANCIAL SE",
+        "gvw": 47000
+      },
+      {
+        "regi": "13810162",
+        "plate": "66657P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "LBEL INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13822111",
+        "plate": "67992P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13822113",
+        "plate": "67993P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13822114",
+        "plate": "67994P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13842865",
+        "plate": "",
+        "year": 2016,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "13852245",
+        "plate": "68041P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13852246",
+        "plate": "68042P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13905135",
+        "plate": "67495P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13905136",
+        "plate": "67496P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13908502",
+        "plate": "69351P",
+        "year": 2019,
+        "make": "VOLVO",
+        "owner": "BENNINGTON FINANCIAL CORP.",
+        "gvw": 12546
+      },
+      {
+        "regi": "13916098",
+        "plate": "69077P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "HSBC BANK CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13916099",
+        "plate": "69078P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "HSBC BANK CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13916100",
+        "plate": "69076P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "HSBC BANK CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "13925304",
+        "plate": "69602P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13925305",
+        "plate": "",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "13925306",
+        "plate": "69603P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13933053",
+        "plate": "69732P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13948198",
+        "plate": "70365P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13948199",
+        "plate": "70364P",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13948200",
+        "plate": "",
+        "year": 2022,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "13954662",
+        "plate": "70413P",
+        "year": 2007,
+        "make": "KENWORTH",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "13975876",
+        "plate": "71164P",
+        "year": 2023,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "13985266",
+        "plate": "77517P",
+        "year": 2022,
+        "make": "FREIGHTLIN",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14005264",
+        "plate": "71908P",
+        "year": 2023,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "14037116",
+        "plate": "72843P",
+        "year": 2023,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "14037117",
+        "plate": "72842P",
+        "year": 2023,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "14039855",
+        "plate": "72870P",
+        "year": 2023,
+        "make": "FREIGHTLIN",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14099077",
+        "plate": "74164P",
+        "year": 2023,
+        "make": "VOLVO",
+        "owner": "ROYAL BANK OF CANADA",
+        "gvw": 47000
+      },
+      {
+        "regi": "14122819",
+        "plate": "",
+        "year": 2016,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14124468",
+        "plate": "",
+        "year": 2017,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14134447",
+        "plate": "",
+        "year": 2021,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14135245",
+        "plate": "",
+        "year": 2020,
+        "make": "INTERNATNA",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14154585",
+        "plate": "",
+        "year": 2021,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14175752",
+        "plate": "79903P",
+        "year": 2015,
+        "make": "VOLVO",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14177747",
+        "plate": "75162P",
+        "year": 2019,
+        "make": "VOLVO",
+        "owner": "DE LAGE LANDEN FINANCIAL SE",
+        "gvw": 12600
+      },
+      {
+        "regi": "14199433",
+        "plate": "76092P",
+        "year": 2015,
+        "make": "KENWORTH",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14239431",
+        "plate": "",
+        "year": 2019,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14243463",
+        "plate": "",
+        "year": 1998,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14263901",
+        "plate": "",
+        "year": 2018,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14266252",
+        "plate": "",
+        "year": 2018,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14385158",
+        "plate": "",
+        "year": 2024,
+        "make": "MACK",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14385234",
+        "plate": "80922P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "14385235",
+        "plate": "80921P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "14411651",
+        "plate": "",
+        "year": 2022,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14418391",
+        "plate": "81602P",
+        "year": 2018,
+        "make": "FREIGHTLIN",
+        "owner": "MITSUBISHI HC CAPITAL CANAD",
+        "gvw": 47000
+      },
+      {
+        "regi": "14423115",
+        "plate": "82078P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "CANADIAN WESTERN BANK LEASI",
+        "gvw": 47000
+      },
+      {
+        "regi": "14440590",
+        "plate": "81613P",
+        "year": 2019,
+        "make": "MACK",
+        "owner": "DAIMLER TRUCK FINANCIAL SER",
+        "gvw": 47000
+      },
+      {
+        "regi": "14440651",
+        "plate": "81614P",
+        "year": 2019,
+        "make": "VOLVO",
+        "owner": "TPINE LEASING CAPITAL CORPO",
+        "gvw": 47000
+      },
+      {
+        "regi": "14451489",
+        "plate": "",
+        "year": 2021,
+        "make": "FREIGHTLIN",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14452618",
+        "plate": "",
+        "year": 2019,
+        "make": "INTERNATNA",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14570070",
+        "plate": "85009P",
+        "year": 2023,
+        "make": "FREIGHTLIN",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14596660",
+        "plate": "85665P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14596661",
+        "plate": "85663P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14596662",
+        "plate": "85664P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14622020",
+        "plate": "85641P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14622021",
+        "plate": "85643P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14622022",
+        "plate": "85642P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14632306",
+        "plate": "86254P",
+        "year": 2025,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14632307",
+        "plate": "86140P",
+        "year": 2025,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14632308",
+        "plate": "86253P",
+        "year": 2025,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14632309",
+        "plate": "86141P",
+        "year": 2024,
+        "make": "VOLVO",
+        "owner": "VFS CANADA INC.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14658689",
+        "plate": "86827P",
+        "year": 2020,
+        "make": "VOLVO",
+        "owner": "BENNINGTON FINANCIAL CORP.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14684266",
+        "plate": "",
+        "year": 2019,
+        "make": "VOLVO",
+        "owner": "",
+        "gvw": ""
+      },
+      {
+        "regi": "14725500",
+        "plate": "86856P",
+        "year": 2017,
+        "make": "VOLVO",
+        "owner": "TFG FINANCIAL CORPORATION",
+        "gvw": 47000
+      },
+      {
+        "regi": "14812338",
+        "plate": "88275P",
+        "year": 2024,
+        "make": "FREIGHTLIN",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      },
+      {
+        "regi": "14818081",
+        "plate": "89234P",
+        "year": 2019,
+        "make": "FREIGHTLIN",
+        "owner": "INERTIA CARRIER LTD.",
+        "gvw": 47000
+      }
+    ],
+    "contraventionSummary": [
+      {
+        "group": "Speeding",
+        "code": "0001-0099",
+        "violations": 3,
+        "violationsPct": 27.27,
+        "activePoints": 4,
+        "activePointsPct": 17.39
+      },
+      {
+        "group": "Stop Signs and Traffic Lights",
+        "code": "0100-0199",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Driver's Liabilities",
+        "code": "0200-0299",
+        "violations": 1,
+        "violationsPct": 9.09,
+        "activePoints": 1,
+        "activePointsPct": 4.35
+      },
+      {
+        "group": "Driving",
+        "code": "0300-0399",
+        "violations": 4,
+        "violationsPct": 36.36,
+        "activePoints": 11,
+        "activePointsPct": 47.83
+      },
+      {
+        "group": "Hours of Service",
+        "code": "0400-0499",
+        "violations": 1,
+        "violationsPct": 9.09,
+        "activePoints": 3,
+        "activePointsPct": 13.04
+      },
+      {
+        "group": "Trip Inspection",
+        "code": "0500-0599",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Mechanical Defects",
+        "code": "0600-0699",
+        "violations": 2,
+        "violationsPct": 18.18,
+        "activePoints": 4,
+        "activePointsPct": 17.39
+      },
+      {
+        "group": "Oversize & Overweight",
+        "code": "0700-0799",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Security of Loads",
+        "code": "0900-0999",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Dangerous Goods",
+        "code": "1000",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Criminal Code",
+        "code": "1100-1199",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Miscellaneous",
+        "code": "1200-1299",
+        "violations": 0,
+        "violationsPct": null,
+        "activePoints": 0,
+        "activePointsPct": null
+      },
+      {
+        "group": "Totals",
+        "code": "",
+        "violations": 11,
+        "violationsPct": 100.0,
+        "activePoints": 23,
+        "activePointsPct": 100.0,
+        "isTotal": true
+      }
+    ],
+    "driverContraventions": [
+      {
+        "date": "2024-01-03",
+        "time": "14:00",
+        "ticket": "EA601652661",
+        "plate": "68042P",
+        "plateJur": "BC",
+        "location": "FIELD",
+        "juris": "BC",
+        "dispDate": "2024-07-17",
+        "act": "MVA",
+        "section": "150.1",
+        "desc": "FAIL TO KEEP RIGHT",
+        "equiv": "0303",
+        "pts": 3,
+        "driverName": null,
+        "dl": "J31813088980916",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-06-13",
+        "time": "10:39",
+        "ticket": "AJ224046021",
+        "plate": "56267P",
+        "plateJur": "BC",
+        "location": "KAMLOOPS",
+        "juris": "BC",
+        "dispDate": "2023-07-14",
+        "act": "MVR",
+        "section": "4.173B",
+        "desc": "STOP LAMP IMPROPER LIGHTING",
+        "equiv": "0600",
+        "pts": null,
+        "driverName": null,
+        "dl": "I80575606810102",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2022-11-22",
+        "time": "16:59",
+        "ticket": "EA600878881",
+        "plate": "75520P",
+        "plateJur": "BC",
+        "location": "DONALD",
+        "juris": "BC",
+        "dispDate": "2023-09-06",
+        "act": "MVA",
+        "section": "144.1C",
+        "desc": "SPEED RELATIVE TO CONDITIONS",
+        "equiv": "0001",
+        "pts": null,
+        "driverName": null,
+        "dl": "B72070568940815",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-12-24",
+        "time": "00:00",
+        "ticket": "1333765",
+        "plate": "72843P",
+        "plateJur": "BC",
+        "location": "BALGONIE",
+        "juris": "SK",
+        "dispDate": "2025-01-16",
+        "act": "HT 6; b",
+        "section": "Improper or inappropriate use of lights or lighting devices",
+        "desc": "",
+        "equiv": "0323",
+        "pts": 2,
+        "driverName": "BAJWA, MANJOT",
+        "dl": "B0209516098126",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2025-01-26",
+        "time": "20:32",
+        "ticket": "2099880",
+        "plate": "72843P",
+        "plateJur": "BC",
+        "location": "SHERWOOD PARK",
+        "juris": "AB",
+        "dispDate": "2025-02-03",
+        "act": "122/0924(1)",
+        "section": "UNAUTHORIZED FLASHING LAMP ON",
+        "desc": "",
+        "equiv": "0610",
+        "pts": 1,
+        "driverName": "BHULLAR, GURWINDER SINGH",
+        "dl": "179420971",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2025-01-26",
+        "time": "20:32",
+        "ticket": "2099879",
+        "plate": "72843P",
+        "plateJur": "BC",
+        "location": "SHERWOOD PARK",
+        "juris": "AB",
+        "dispDate": "2025-02-03",
+        "act": "304/0255.2(1",
+        "section": ")",
+        "desc": "OPERATE VEHICLE WITH UNAUTHORIZED LAMP ALIGHT",
+        "equiv": "0323",
+        "pts": 2,
+        "driverName": "BHULLAR, GURWINDER SINGH",
+        "dl": "179420971",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-05-24",
+        "time": "00:00",
+        "ticket": "1433354",
+        "plate": "70365P",
+        "plateJur": "BC",
+        "location": "WPG - BROOKSIDE BV / NOTRE DAM",
+        "juris": "MB",
+        "dispDate": "2023-11-08",
+        "act": "HTA85OT",
+        "section": "MB ACT: HTA - SEC.: 85OT - TO WIT: DISOBEY TRAFFIC CONTROL",
+        "desc": "DEVICE NOT",
+        "equiv": "0317",
+        "pts": null,
+        "driverName": "DHALIWAL, TEJINDER SINGH",
+        "dl": "D31607328781228",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-10-27",
+        "time": "00:40",
+        "ticket": "2076387",
+        "plate": "67496P",
+        "plateJur": "BC",
+        "location": "MEDICINE HAT",
+        "juris": "AB",
+        "dispDate": "2023-11-16",
+        "act": "304/0244(N)",
+        "section": "PARK IN PROHIBITED AREA",
+        "desc": "",
+        "equiv": "0218",
+        "pts": null,
+        "driverName": "GURNEET SINGH, GURNEET",
+        "dl": "G93850000981103",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-07-21",
+        "time": "00:00",
+        "ticket": "1427937",
+        "plate": "57380P",
+        "plateJur": "BC",
+        "location": "ELTON (RM)",
+        "juris": "MB",
+        "dispDate": "2023-10-11",
+        "act": "HTA951C",
+        "section": "MB ACT: HTA - SEC.: 951C - TO WIT: SPEEDING",
+        "desc": "",
+        "equiv": "0004",
+        "pts": null,
+        "driverName": "GURNEET SINGH, GURNEET",
+        "dl": "G93850000981103",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-09-09",
+        "time": "00:00",
+        "ticket": "1431882",
+        "plate": "69077P",
+        "plateJur": "BC",
+        "location": "WINNIPEG (CITY)",
+        "juris": "MB",
+        "dispDate": "2023-11-01",
+        "act": "HTA1415",
+        "section": "MB ACT: HTA - SEC.: 1415 - TO WIT: PARK ON A PEDESTRIAN",
+        "desc": "CORRIDOR",
+        "equiv": "0218",
+        "pts": null,
+        "driverName": "GURWINDER, SINGH",
+        "dl": "G94190000000229",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2022-12-03",
+        "time": "21:49",
+        "ticket": "2066891",
+        "plate": "57380P",
+        "plateJur": "BC",
+        "location": "GLEICHEN",
+        "juris": "AB",
+        "dispDate": "2023-06-26",
+        "act": "DRIVE VEHICLE IN EXCESS OF SPEED",
+        "section": "0005",
+        "desc": "JASHANDEEP SINGH DL#/Jur:   J07360000991120 ON Class: Status:",
+        "equiv": "",
+        "pts": null,
+        "driverName": "HUSSEIN, HANAD ABDULQADI",
+        "dl": "173885906",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2022-09-14",
+        "time": "13:40",
+        "ticket": "6694567",
+        "plate": "72890P",
+        "plateJur": "BC",
+        "location": "HWY 11/17 TH BAY DIST",
+        "juris": "ON",
+        "dispDate": "2023-11-01",
+        "act": "HTA  128",
+        "section": "SPEEDING 110 KMH IN 090 KMH ZONE",
+        "desc": "",
+        "equiv": "0004",
+        "pts": null,
+        "driverName": "HUSSEIN, HANAD ABDULQADI",
+        "dl": "173885906",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-09-05",
+        "time": "00:00",
+        "ticket": "1337644",
+        "plate": "86141P",
+        "plateJur": "BC",
+        "location": "ERNFOLD",
+        "juris": "SK",
+        "dispDate": "2025-02-27",
+        "act": "TS 199;1 b",
+        "section": "Exceeding posted speed limit.",
+        "desc": "",
+        "equiv": "0004",
+        "pts": 1,
+        "driverName": "KAUR, GURJEET",
+        "dl": "K08903080906104",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-10-09",
+        "time": "08:30",
+        "ticket": "AJ223602682",
+        "plate": "74785P",
+        "plateJur": "BC",
+        "location": "KAMLOOPS",
+        "juris": "BC",
+        "dispDate": "2024-11-09",
+        "act": "MVR",
+        "section": "6.22B",
+        "desc": "IMPROPER BRAKE PERFORMANCE",
+        "equiv": "0601",
+        "pts": 3,
+        "driverName": "MAKHTAL, ABDULAHI HUS",
+        "dl": "162191795",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-10-09",
+        "time": "08:30",
+        "ticket": "AJ223602681",
+        "plate": "74785P",
+        "plateJur": "BC",
+        "location": "KAMLOOPS",
+        "juris": "BC",
+        "dispDate": "2024-11-09",
+        "act": "MVA",
+        "section": "161",
+        "desc": "DISOBEY TRAFFIC SIGN OR SIGNAL",
+        "equiv": "0317",
+        "pts": 4,
+        "driverName": "MAKHTAL, ABDULAHI HUS",
+        "dl": "162191795",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-01-04",
+        "time": "22:57",
+        "ticket": "2070995",
+        "plate": "66657P",
+        "plateJur": "BC",
+        "location": "STRATHMORE",
+        "juris": "AB",
+        "dispDate": "2023-08-28",
+        "act": "DRIVE VEHICLE IN EXCESS OF SPEED",
+        "section": "0007",
+        "desc": "MULTANI, LAKHWINDER SINGH DL#/Jur:   148806003 AB Class: Status:",
+        "equiv": "",
+        "pts": null,
+        "driverName": "MANDER, PAWANDEEP SINGH",
+        "dl": "176158046",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-01-06",
+        "time": "10:17",
+        "ticket": "2074963",
+        "plate": "58226P",
+        "plateJur": "BC",
+        "location": "STRATHMORE",
+        "juris": "AB",
+        "dispDate": "2023-10-23",
+        "act": "DRIVE VEHICLE IN EXCESS OF SPEED",
+        "section": "0007",
+        "desc": "PARKED DL#/Jur:    null Class: Status:",
+        "equiv": "",
+        "pts": null,
+        "driverName": "MANDER, PAWANDEEP SINGH",
+        "dl": "176158046",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-12-15",
+        "time": "13:20",
+        "ticket": "6811594",
+        "plate": "88275P",
+        "plateJur": "BC",
+        "location": "@BCHWY 11/17 TH BAY DIST",
+        "juris": "ON",
+        "dispDate": "2025-02-14",
+        "act": "HTA  190  6",
+        "section": "PERMIT OPERATION OF CMV NOT IN ACCORD WITH REGS",
+        "desc": "",
+        "equiv": "0403",
+        "pts": 3,
+        "driverName": "MANDER, PAWANDEEP SINGH",
+        "dl": "176158046",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-02-23",
+        "time": "00:23",
+        "ticket": "6679207",
+        "plate": "74752P",
+        "plateJur": "BC",
+        "location": "@BCHWY 401 SOUTH GLENGARRY",
+        "juris": "ON",
+        "dispDate": "2023-08-15",
+        "act": "HTA  107  3",
+        "section": "FAIL TO ENSURE PERFORMANCE STANDARDS MET",
+        "desc": "",
+        "equiv": "0500",
+        "pts": null,
+        "driverName": "MANDER, PAWANDEEP SINGH",
+        "dl": "176158046",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2022-07-12",
+        "time": "13:41",
+        "ticket": "6674223",
+        "plate": "58226P",
+        "plateJur": "BC",
+        "location": "@BCHWY 11-17 CITY/DIS TBAY",
+        "juris": "ON",
+        "dispDate": "2023-07-20",
+        "act": "HTA  106  1",
+        "section": "REMOVED/MODIFIED/INOPERATIVE SEAT BELT",
+        "desc": "",
+        "equiv": "0619",
+        "pts": null,
+        "driverName": "MANDER, PAWANDEEP SINGH",
+        "dl": "176158046",
+        "dlJur": "AB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-03-05",
+        "time": "00:00",
+        "ticket": "1284696",
+        "plate": "56267P",
+        "plateJur": "BC",
+        "location": "ERNFOLD",
+        "juris": "SK",
+        "dispDate": "2023-09-28",
+        "act": "TS 199;1 b",
+        "section": "Exceeding posted speed limit.",
+        "desc": "",
+        "equiv": "0004",
+        "pts": null,
+        "driverName": "SHAARIB, AXMED",
+        "dl": "S31240710860818",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2022-09-14",
+        "time": "14:15",
+        "ticket": "6694566",
+        "plate": "67994P",
+        "plateJur": "BC",
+        "location": "HWY 11/17 TH BAY DIST",
+        "juris": "ON",
+        "dispDate": "2023-11-01",
+        "act": "HTA  128",
+        "section": "SPEEDING 110 KMH IN 090 KMH ZONE",
+        "desc": "",
+        "equiv": "0004",
+        "pts": null,
+        "driverName": "SHAARIB, AXMED",
+        "dl": "S31240710860818",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2021-02-27",
+        "time": "12:49",
+        "ticket": "2065071",
+        "plate": "60145P",
+        "plateJur": "BC",
+        "location": "AIRDRIE",
+        "juris": "AB",
+        "dispDate": "2023-05-30",
+        "act": "317/0219",
+        "section": "FALSIFY/ENTER FALSE INFO INTO DAILY LOG",
+        "desc": "",
+        "equiv": "0402",
+        "pts": null,
+        "driverName": "SHAHBAZ, USMAN",
+        "dl": "SHAHBU136B9",
+        "dlJur": "MB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-01-26",
+        "time": "00:00",
+        "ticket": "1422063",
+        "plate": "72870P",
+        "plateJur": "BC",
+        "location": "OAK BLUFF",
+        "juris": "MB",
+        "dispDate": "2023-09-07",
+        "act": "HTA1882",
+        "section": "MB ACT: HTA - SEC.: 1882 - TO WIT: DRIVE CARELESSLY",
+        "desc": "",
+        "equiv": "0016",
+        "pts": null,
+        "driverName": "SIDHU, GURPREET SINGH",
+        "dl": "SIDHUGS154QK",
+        "dlJur": "MB",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-05-28",
+        "time": "16:32",
+        "ticket": "2100514",
+        "plate": "69076P",
+        "plateJur": "BC",
+        "location": "SIKSIKA NATION",
+        "juris": "AB",
+        "dispDate": "2025-02-19",
+        "act": "TSA115(2)(P) DRIVE VEHICLE IN EXCESS OF SPEED",
+        "section": "0006",
+        "desc": "1 SINGH, DAWINDER DL#/Jur:   S44901570011204 ON Class: Status:",
+        "equiv": "",
+        "pts": null,
+        "driverName": "SINGH, AMANDEED",
+        "dl": "AMAND100599009",
+        "dlJur": "NS",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-04-25",
+        "time": "00:00",
+        "ticket": "1533158",
+        "plate": "86140P",
+        "plateJur": "BC",
+        "location": "BRANDON (CITY)",
+        "juris": "MB",
+        "dispDate": "2024-11-20",
+        "act": "HTA1221OII",
+        "section": "MB ACT: HTA - SEC.: 1221OII - TO WIT: STOP, STAND OR PARK IN",
+        "desc": "CONTRAVEN",
+        "equiv": "0218",
+        "pts": 1,
+        "driverName": "SINGH, AMANDEED",
+        "dl": "AMAND100599009",
+        "dlJur": "NS",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2024-05-08",
+        "time": "00:00",
+        "ticket": "1315757",
+        "plate": "72843P",
+        "plateJur": "BC",
+        "location": "MORSE",
+        "juris": "SK",
+        "dispDate": "2024-07-25",
+        "act": "TS 205;1",
+        "section": "Exceed 60 km/hour when passing highway worker, emergency vehicle, and",
+        "desc": "",
+        "equiv": "0011",
+        "pts": 2,
+        "driverName": "SINGH, PRABHNAMAN",
+        "dl": "P71220000001129",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      },
+      {
+        "date": "2023-06-15",
+        "time": "00:00",
+        "ticket": "1284817",
+        "plate": "68042P",
+        "plateJur": "BC",
+        "location": "ERNFOLD",
+        "juris": "SK",
+        "dispDate": "2023-09-28",
+        "act": "TS 199;1 b",
+        "section": "Exceeding posted speed limit.",
+        "desc": "",
+        "equiv": "0004",
+        "pts": null,
+        "driverName": "SINGH, SUKHJOT",
+        "dl": "S91870000991122",
+        "dlJur": "ON",
+        "cls": null,
+        "status": null
+      }
+    ],
+    "carrierContraventions": [
+      {
+        "date": "2022-08-17",
+        "time": "09:01",
+        "ticket": "EA600704101",
+        "plate": "57382P",
+        "plateJur": "BC",
+        "location": "MERRITT",
+        "juris": "BC",
+        "dispDate": "2023-10-12",
+        "act": "MVA",
+        "section": "220.4",
+        "desc": "FAIL TO WEAR SEAT BELT",
+        "equiv": "0212",
+        "pts": null
+      }
+    ],
+    "pendingDriverContraventions": [
+      {
+        "date": "2024-01-31",
+        "time": "13:38",
+        "ticket": "EA601727601",
+        "plate": "72843P",
+        "plateJur": "BC",
+        "location": "LAC LE JEUNE",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVA",
+        "section": "214.21",
+        "desc": "USE ELECTRONIC DEVICE/DRIVING",
+        "equiv": "0226",
+        "pts": null,
+        "driverName": "LOVEDEEP SINGH",
+        "dl": "0197308",
+        "dlJur": "ON",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2024-10-09",
+        "time": "08:30",
+        "ticket": "AJ223602681",
+        "plate": "74785P",
+        "plateJur": "BC",
+        "location": "KAMLOOPS",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVA",
+        "section": "161",
+        "desc": "DISOBEY TRAFFIC SIGN OR SIGNAL",
+        "equiv": "0317",
+        "pts": null,
+        "driverName": "MAKHTAL, ABDULAHI HUSSEIN",
+        "dl": "4358228",
+        "dlJur": "AB",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2024-10-09",
+        "time": "08:30",
+        "ticket": "AJ223602682",
+        "plate": "74785P",
+        "plateJur": "BC",
+        "location": "KAMLOOPS",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVR",
+        "section": "6.22B",
+        "desc": "IMPROPER BRAKE PERFORMANCE",
+        "equiv": "0601",
+        "pts": null,
+        "driverName": "MAKHTAL, ABDULAHI HUSSEIN",
+        "dl": "4358228",
+        "dlJur": "AB",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2024-08-29",
+        "time": "09:15",
+        "ticket": "AJ223332571",
+        "plate": "85691P",
+        "plateJur": "BC",
+        "location": "MERRITT",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "DGR",
+        "section": "4.2",
+        "desc": "DSPLY MISLEADING SAFETY MARKS",
+        "equiv": "1000",
+        "pts": null,
+        "driverName": "SAHOTA, KULWINDER SINGH",
+        "dl": "9161893",
+        "dlJur": "QC",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2024-08-29",
+        "time": "09:15",
+        "ticket": "AJ223332572",
+        "plate": "85691P",
+        "plateJur": "BC",
+        "location": "MERRITT",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVA",
+        "section": "219.1",
+        "desc": "IMPROPERLY EQUIPPED M.V.",
+        "equiv": "0604",
+        "pts": null,
+        "driverName": "SAHOTA, KULWINDER SINGH",
+        "dl": "9161893",
+        "dlJur": "QC",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2025-04-02",
+        "time": "08:09",
+        "ticket": "EA602505831",
+        "plate": "91142P",
+        "plateJur": "BC",
+        "location": "GOLDEN",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVR",
+        "section": "7.1611B",
+        "desc": "DEFECTIVE TIRE TREAD",
+        "equiv": "0602",
+        "pts": null,
+        "driverName": "SARBJEET SINGH",
+        "dl": "0545363",
+        "dlJur": "ON",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2024-10-23",
+        "time": "11:24",
+        "ticket": "AJ256244891",
+        "plate": "85642P",
+        "plateJur": "BC",
+        "location": "MALAKWA",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVA",
+        "section": "140",
+        "desc": "DISOBEY CONSTRUCTION SIGNS",
+        "equiv": "0317",
+        "pts": null,
+        "driverName": "SINGH, ARSHPREET",
+        "dl": "0449870",
+        "dlJur": "ON",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2024-10-23",
+        "time": "11:24",
+        "ticket": "AJ256244893",
+        "plate": "85642P",
+        "plateJur": "BC",
+        "location": "MALAKWA",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVA",
+        "section": "73.1",
+        "desc": "FAIL TO STOP FOR POLICE",
+        "equiv": "0108",
+        "pts": null,
+        "driverName": "SINGH, ARSHPREET",
+        "dl": "0449870",
+        "dlJur": "ON",
+        "cls": "000",
+        "status": "NORMAL"
+      },
+      {
+        "date": "2025-01-29",
+        "time": "00:07",
+        "ticket": "AK002334531",
+        "plate": "89234P",
+        "plateJur": "BC",
+        "location": "SURREY",
+        "juris": "BC",
+        "dispDate": null,
+        "act": "MVA",
+        "section": "146.3",
+        "desc": "SPEED AGAINST HIGHWAY SIGN",
+        "equiv": "0004",
+        "pts": null,
+        "driverName": "SINGH, HARVIR",
+        "dl": "0520089",
+        "dlJur": "ON",
+        "cls": "000",
+        "status": "NORMAL"
+      }
+    ],
+    "pendingCarrierContraventions": [],
+    "cvsa": {
+      "summary": [
+        {
+          "inspectionType": "Driver/Vehicle Inspections",
+          "count": 40,
+          "oos": 7,
+          "fail": 10,
+          "pass": 23
+        },
+        {
+          "inspectionType": "Vehicle Only Inspections",
+          "count": 6,
+          "oos": 1,
+          "fail": 0,
+          "pass": 5
+        },
+        {
+          "inspectionType": "Driver Only Inspections",
+          "count": 4,
+          "oos": 0,
+          "fail": 0,
+          "pass": 4
+        },
+        {
+          "inspectionType": "Total Inspections",
+          "count": 50,
+          "oos": 8,
+          "fail": 10,
+          "pass": 32
+        }
+      ],
+      "defectBreakdown": [
+        {
+          "code": "40",
+          "label": "Driver",
+          "oos": 1,
+          "oosPct": 2.86,
+          "fail": 3,
+          "failPct": 8.57,
+          "totalDefects": 4,
+          "totalPct": 11.43
+        },
+        {
+          "code": "41",
+          "label": "Lighting Devices",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "42",
+          "label": "Windhield, Wipers",
+          "oos": 1,
+          "oosPct": 2.86,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": 1,
+          "totalPct": 2.86
+        },
+        {
+          "code": "43",
+          "label": "Steering",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "44",
+          "label": "Braking System",
+          "oos": 2,
+          "oosPct": 5.71,
+          "fail": 7,
+          "failPct": 20.0,
+          "totalDefects": 9,
+          "totalPct": 25.71
+        },
+        {
+          "code": "45",
+          "label": "Brake Adjustment",
+          "oos": 1,
+          "oosPct": 2.86,
+          "fail": 14,
+          "failPct": 40.0,
+          "totalDefects": 15,
+          "totalPct": 42.86
+        },
+        {
+          "code": "46",
+          "label": "Suspension",
+          "oos": 1,
+          "oosPct": 2.86,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": 1,
+          "totalPct": 2.86
+        },
+        {
+          "code": "47",
+          "label": "Tires, Wheels, Rims",
+          "oos": 2,
+          "oosPct": 5.71,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": 2,
+          "totalPct": 5.71
+        },
+        {
+          "code": "48",
+          "label": "Fuel System",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "49",
+          "label": "Exhaust System",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "50",
+          "label": "Coupling Devices",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "51",
+          "label": "Body, Frame",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "52",
+          "label": "Load Security",
+          "oos": 2,
+          "oosPct": 5.71,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": 2,
+          "totalPct": 5.71
+        },
+        {
+          "code": "53",
+          "label": "Emergency Exits",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "54",
+          "label": "Dangerous Goods",
+          "oos": null,
+          "oosPct": null,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": null,
+          "totalPct": null
+        },
+        {
+          "code": "55",
+          "label": "Miscellaneous",
+          "oos": 1,
+          "oosPct": 2.86,
+          "fail": null,
+          "failPct": null,
+          "totalDefects": 1,
+          "totalPct": 2.86
+        }
+      ],
+      "list": [
+        {
+          "date": "2025-04-10",
+          "time": "17:30",
+          "doc": "2111345",
+          "location": "DUNMORE - VIS",
+          "jur": "AB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": null,
+          "dl": null,
+          "dlJur": null,
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85641P",
+              "plateJur": "BC",
+              "regi": "14622020",
+              "desc": "VOLVO     N/A",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T6037E",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC     N/A",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-03-29",
+          "time": "12:45",
+          "doc": "9104503",
+          "location": "Kamloops",
+          "jur": "BC",
+          "level": 1,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "PRABHJIT SINGH",
+          "dl": "P71220000940801",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "89234P",
+              "plateJur": "BC",
+              "regi": "14818081",
+              "desc": "FREIGHTLIN",
+              "result": "OOS",
+              "defect": "44"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "V7596B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "OOS",
+              "defect": "47"
+            }
+          ]
+        },
+        {
+          "date": "2025-03-26",
+          "time": "12:13",
+          "doc": "6811185",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 4,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURU, JAI INDER PREET SIN",
+          "dl": "173370388",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80922P",
+              "plateJur": "BC",
+              "regi": "14385234",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T1895M",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-03-13",
+          "time": "10:45",
+          "doc": "6804084",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "JASHANPREET SINGH",
+          "dl": "J07360000000828",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "74164P",
+              "plateJur": "BC",
+              "regi": "14099077",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "S6294E",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-03-09",
+          "time": "14:30",
+          "doc": "6801397",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 4,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURPAL SINGH",
+          "dl": "G93960000960412",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70365P",
+              "plateJur": "BC",
+              "regi": "13948198",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V1409T",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-03-03",
+          "time": "17:55",
+          "doc": "6798024",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURWINDER SINGH",
+          "dl": "G94190000950102",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "66657P",
+              "plateJur": "BC",
+              "regi": "13810162",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7468C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-02-26",
+          "time": "11:14",
+          "doc": "6795441",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "TARANJEET SINGH",
+          "dl": "T05360000960624",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "82078P",
+              "plateJur": "BC",
+              "regi": "14423115",
+              "desc": "VOLV",
+              "result": "OOS",
+              "defect": "52"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W4166W",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-02-14",
+          "time": "08:45",
+          "doc": "6789348",
+          "location": "WASSI NORTH TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "HASSAN, NURADIN MOHAMED",
+          "dl": "146787403",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "88275P",
+              "plateJur": "BC",
+              "regi": "14812338",
+              "desc": "FRHT",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T1895M",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "OOS",
+              "defect": "46"
+            }
+          ]
+        },
+        {
+          "date": "2025-02-12",
+          "time": "16:30",
+          "doc": "6788599",
+          "location": "RUSH BAY TIS",
+          "jur": "ON",
+          "level": 4,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "BRAR, MANVIR SINGH",
+          "dl": "B72075178001222",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "68042P",
+              "plateJur": "BC",
+              "regi": "13852246",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "R8061J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-02-11",
+          "time": "12:53",
+          "doc": "6787968",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 4,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GILL, RAJINDER SINGH",
+          "dl": "G43506388780910",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72842P",
+              "plateJur": "BC",
+              "regi": "14037117",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V6360B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-02-05",
+          "time": "09:05",
+          "doc": "6784753",
+          "location": "SAULT STE. MARIE DISTRICT",
+          "jur": "ON",
+          "level": 4,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "ATWAL, JASWANT SINGH",
+          "dl": "A84263908781006",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "67994P",
+              "plateJur": "BC",
+              "regi": "13822114",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7746C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "OOS",
+              "defect": "52"
+            }
+          ]
+        },
+        {
+          "date": "2025-02-05",
+          "time": "04:44",
+          "doc": "1542369",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "SINGH, BHAGAT",
+          "dl": "S44900930770902",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80921P",
+              "plateJur": "BC",
+              "regi": "14385235",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "45"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Z1915J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOUGHTON",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-02-05",
+          "time": "04:44",
+          "doc": "1542370",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "KULAR, KAMALJEET SINGH",
+          "dl": "K91964248780208",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80921P",
+              "plateJur": "BC",
+              "regi": "14385235",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "45"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Z1915J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOUGHTON",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-02-05",
+          "time": "04:44",
+          "doc": "1542368",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "KULAR, KAMALJEET SINGH",
+          "dl": "K91964248780208",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80921P",
+              "plateJur": "BC",
+              "regi": "14385235",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "45"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Z1915J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOUGHTON",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-02-05",
+          "time": "04:44",
+          "doc": "1542371",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "SINGH, BHAGAT",
+          "dl": "S44900930770902",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80921P",
+              "plateJur": "BC",
+              "regi": "14385235",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "45"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Z1915J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOUGHTON",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-02-04",
+          "time": "12:47",
+          "doc": "1543470",
+          "location": "ROSSER HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, DAVINDER",
+          "dl": "SINGHD*S11L8",
+          "dlJur": "MB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "77517P",
+              "plateJur": "BC",
+              "regi": "13985266",
+              "desc": "FREIGHTLIN",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "P3382X",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-29",
+          "time": "09:47",
+          "doc": "1542742",
+          "location": "WEST HAWK LAKE HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "GILL, GURJEET SINGH",
+          "dl": "G43503088891223",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "86254P",
+              "plateJur": "BC",
+              "regi": "14632306",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V4143Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-01-29",
+          "time": "09:47",
+          "doc": "1542745",
+          "location": "WEST HAWK LAKE HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "JAIN, SUNIL KUMAR",
+          "dl": "J01837275870927",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "86254P",
+              "plateJur": "BC",
+              "regi": "14632306",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V4143Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-01-29",
+          "time": "09:47",
+          "doc": "1542744",
+          "location": "WEST HAWK LAKE HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "GILL, GURJEET SINGH",
+          "dl": "G43503088891223",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "86254P",
+              "plateJur": "BC",
+              "regi": "14632306",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V4143Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-01-29",
+          "time": "09:47",
+          "doc": "1542743",
+          "location": "WEST HAWK LAKE HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "JAIN, SUNIL KUMAR",
+          "dl": "J01837275870927",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "86254P",
+              "plateJur": "BC",
+              "regi": "14632306",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V4143Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2025-01-28",
+          "time": "11:30",
+          "doc": "6780835",
+          "location": "LANCASTER  TIS",
+          "jur": "ON",
+          "level": 4,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GILL, RAJINDER SINGH",
+          "dl": "G43506388780910",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72842P",
+              "plateJur": "BC",
+              "regi": "14037117",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "R8062J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-20",
+          "time": "13:50",
+          "doc": "6777125",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURPAL SINGH",
+          "dl": "G93960000960412",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70365P",
+              "plateJur": "BC",
+              "regi": "13948198",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8883L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-18",
+          "time": "07:45",
+          "doc": "6776012",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "BHANDAL, SUKHDEEP KAUR",
+          "dl": "B31807265935214",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85641P",
+              "plateJur": "BC",
+              "regi": "14622020",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Y7415F",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "GDAN",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-09",
+          "time": "13:44",
+          "doc": "1544746",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, SURAJPAL S",
+          "dl": "P93587278610315",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W4397L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-09",
+          "time": "13:44",
+          "doc": "1544747",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, MANJEET K",
+          "dl": "P93585165625620",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W4397L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-09",
+          "time": "13:44",
+          "doc": "1544748",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, SURAJPAL S",
+          "dl": "P93587278610315",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W4397L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2025-01-09",
+          "time": "13:44",
+          "doc": "1544745",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, MANJEET K",
+          "dl": "P93585165625620",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W4397L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-12-24",
+          "time": "08:38",
+          "doc": "0309567",
+          "location": "561306/5595533",
+          "jur": "SK",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "BAJWA, MANJOT",
+          "dl": "B02095160981126",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72843P",
+              "plateJur": "BC",
+              "regi": "14037116",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Y8544V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-12-15",
+          "time": "13:20",
+          "doc": "6770010",
+          "location": "THUNDER BAY EAST TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "MOHAMUD, MOHAMED MUSSE",
+          "dl": "159176692",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "88275P",
+              "plateJur": "BC",
+              "regi": "14812338",
+              "desc": "FRHT",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8870L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-10-23",
+          "time": "16:01",
+          "doc": "1542789",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "SEKHON, DILPREET SINGH",
+          "dl": "41634486",
+          "dlJur": "SK",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69602P",
+              "plateJur": "BC",
+              "regi": "13925304",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "45"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T6031E",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2024-10-21",
+          "time": "14:44",
+          "doc": "1541752",
+          "location": "44 BANGOR",
+          "jur": "MB",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GHUMAN, HARSIMRAN SINGH",
+          "dl": "175330703",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Truck",
+              "plate": "85664P",
+              "plateJur": "BC",
+              "regi": "14596662",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-10-13",
+          "time": "06:50",
+          "doc": "9089144",
+          "location": "Kamloops",
+          "jur": "BC",
+          "level": 1,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "BHANDAL, SUKHDEEP KAUR",
+          "dl": "B31807265935214",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85641P",
+              "plateJur": "BC",
+              "regi": "14622020",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "40,44"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "S4818K",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Fail",
+              "defect": "44"
+            }
+          ]
+        },
+        {
+          "date": "2024-10-09",
+          "time": "08:31",
+          "doc": "9088838",
+          "location": "Kamloops Junction",
+          "jur": "BC",
+          "level": 1,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "MAKHTAL, ADBULAHI,HUSSEIN",
+          "dl": "162191795",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "74785P",
+              "plateJur": "BC",
+              "regi": "13379227",
+              "desc": "VOLVO",
+              "result": "OOS",
+              "defect": "45"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "W4118R",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Fail",
+              "defect": "44"
+            }
+          ]
+        },
+        {
+          "date": "2024-09-25",
+          "time": "08:45",
+          "doc": "9087555",
+          "location": "Hope",
+          "jur": "BC",
+          "level": 2,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "RAHUL",
+          "dl": "R01740000931215",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70364P",
+              "plateJur": "BC",
+              "regi": "13948199",
+              "desc": "VOLVO",
+              "result": "OOS",
+              "defect": "47"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "W7742C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Fail",
+              "defect": "44"
+            }
+          ]
+        },
+        {
+          "date": "2024-09-23",
+          "time": "16:00",
+          "doc": "6754211",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "BHANDAL, TEJINDER SINGH",
+          "dl": "B31807328921210",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85641P",
+              "plateJur": "BC",
+              "regi": "14622020",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V6361B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-09-04",
+          "time": "17:28",
+          "doc": "6750151",
+          "location": "THUNDER BAY DISTRICT",
+          "jur": "ON",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "BHULLAR, YUVRAJ SINGH",
+          "dl": "B36887908001115",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "82078P",
+              "plateJur": "BC",
+              "regi": "14423115",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "R8062J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-08-15",
+          "time": "14:53",
+          "doc": "6745811",
+          "location": "NEW LISKEARD TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "TATHGAR, RANVIR SINGH",
+          "dl": "T08146418000106",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85665P",
+              "plateJur": "BC",
+              "regi": "14596660",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "P8490A",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-07-31",
+          "time": "11:30",
+          "doc": "6742740",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "BRAR, MANVIR SINGH",
+          "dl": "B72075178001222",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "68042P",
+              "plateJur": "BC",
+              "regi": "13852246",
+              "desc": "VOLV",
+              "result": "OOS",
+              "defect": "40"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "S4832K",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-07-18",
+          "time": "10:10",
+          "doc": "6740281",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SIDHU, SARBJIT SINGH",
+          "dl": "S41326928741110",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69601P",
+              "plateJur": "BC",
+              "regi": "13925305",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8879L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-07-14",
+          "time": "13:25",
+          "doc": "6739511",
+          "location": "THUNDER BAY DISTRICT",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, PRABHNAMAN",
+          "dl": "P71220000001129",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72843P",
+              "plateJur": "BC",
+              "regi": "14037116",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "X9955N",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-07-03",
+          "time": "14:58",
+          "doc": "6737469",
+          "location": "LANCASTER  TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURPINDER SINGH",
+          "dl": "G94010000010904",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "86140P",
+              "plateJur": "BC",
+              "regi": "14632307",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7753C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-06-21",
+          "time": "06:15",
+          "doc": "0035522",
+          "location": "DEERWOOD",
+          "jur": "NB",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "V27125600910615 ON",
+          "dl": null,
+          "dlJur": null,
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "66581P",
+              "plateJur": "BC",
+              "regi": "13379226",
+              "desc": "VOLVO     21",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-06-05",
+          "time": "11:01",
+          "doc": "6731960",
+          "location": "HWY 69",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, DAVINDER",
+          "dl": "S44901560971210",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72843P",
+              "plateJur": "BC",
+              "regi": "14037116",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8880L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-05-29",
+          "time": "16:20",
+          "doc": "6730737",
+          "location": "THUNDER BAY EAST TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "KAUR, GURJEET",
+          "dl": "K08903080906104",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "86141P",
+              "plateJur": "BC",
+              "regi": "14632309",
+              "desc": "FRHT",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "S4819K",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-05-14",
+          "time": "20:09",
+          "doc": "6727745",
+          "location": "THUNDER BAY EAST TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "JASHANDEEP SINGH",
+          "dl": "J07360000001027",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69602P",
+              "plateJur": "BC",
+              "regi": "13925304",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7689V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-05-14",
+          "time": "12:45",
+          "doc": "6727189",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, BHAGAT",
+          "dl": "S44900930770902",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80921P",
+              "plateJur": "BC",
+              "regi": "14385235",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8875L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-05-08",
+          "time": "15:10",
+          "doc": "0302442",
+          "location": "0 MARSHALL SCALE",
+          "jur": "SK",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "JOGA SINGH",
+          "dl": "J61390000000822",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "66657P",
+              "plateJur": "BC",
+              "regi": "13810162",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "S5895V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "1213 4603",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-04-25",
+          "time": "10:00",
+          "doc": "6723595",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "MANINDER PAL",
+          "dl": "M04330000920704",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "74750P",
+              "plateJur": "BC",
+              "regi": "14122819",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "Y7040M",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-04-24",
+          "time": "16:20",
+          "doc": "6723349",
+          "location": "THUNDER BAY DISTRICT",
+          "jur": "ON",
+          "level": 1,
+          "result": "OOS",
+          "pts": 3,
+          "driverName": "GURPREET SINGH",
+          "dl": "G94010000961125",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70364P",
+              "plateJur": "BC",
+              "regi": "13948199",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "70402J",
+              "plateJur": "BC",
+              "regi": "",
+              "desc": "GREA",
+              "result": "OOS",
+              "defect": "44"
+            }
+          ]
+        },
+        {
+          "date": "2024-04-21",
+          "time": "08:13",
+          "doc": "1491312",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, DAVINDER",
+          "dl": "S44901560971210",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72843P",
+              "plateJur": "BC",
+              "regi": "14037116",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W4125R",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-04-16",
+          "time": "10:25",
+          "doc": "1491326",
+          "location": "RICHER",
+          "jur": "MB",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "AULAKH, SUKHMAN SINGH",
+          "dl": "A91947260930115",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85643P",
+              "plateJur": "BC",
+              "regi": "14622021",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7743C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-03-29",
+          "time": "12:15",
+          "doc": "6718881",
+          "location": "WASSI SOUTH TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURMSAL SINGH",
+          "dl": "G93840000970805",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85665P",
+              "plateJur": "BC",
+              "regi": "14596660",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7743C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-03-19",
+          "time": "03:21",
+          "doc": "1483306",
+          "location": "HEADINGLEY HTIS",
+          "jur": "MB",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURPREET SINGH",
+          "dl": "G94010000961125",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70364P",
+              "plateJur": "BC",
+              "regi": "13948199",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V7595B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-03-05",
+          "time": "15:00",
+          "doc": "6714310",
+          "location": "407ETR DISTRICT",
+          "jur": "ON",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, AMANDEED",
+          "dl": "AMAND100599009",
+          "dlJur": "NS",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69076P",
+              "plateJur": "BC",
+              "regi": "13916100",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T2133M",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-03-04",
+          "time": "19:12",
+          "doc": "6714155",
+          "location": "THUNDER BAY DISTRICT",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "TAKHI, JASKARAN SINGH",
+          "dl": "T02213888930717",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69077P",
+              "plateJur": "BC",
+              "regi": "13916098",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V6367B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-03-02",
+          "time": "10:15",
+          "doc": "9067644",
+          "location": "Hope",
+          "jur": "BC",
+          "level": 2,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "SIDHU, ARJAN SINGH",
+          "dl": "S41320588960813",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69076P",
+              "plateJur": "BC",
+              "regi": "13916100",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "44"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "T2135M",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "OOS",
+              "defect": "41"
+            }
+          ]
+        },
+        {
+          "date": "2024-02-22",
+          "time": "12:40",
+          "doc": "6712454",
+          "location": "NEW LISKEARD TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "SANMEET SINGH",
+          "dl": "S04450000000706",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "85009P",
+              "plateJur": "BC",
+              "regi": "14570070",
+              "desc": "FRHT",
+              "result": "OOS",
+              "defect": "52"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "X9643R",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "CIMC",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-01-12",
+          "time": "14:39",
+          "doc": "6705345",
+          "location": "WASSI NORTH TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SANMEET SINGH",
+          "dl": "S04450000000706",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "67495P",
+              "plateJur": "BC",
+              "regi": "13905135",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8857L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-01-12",
+          "time": "01:03",
+          "doc": "1461760",
+          "location": "WEST HAWK LAKE HTIS",
+          "jur": "MB",
+          "level": 2,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "DHALIWAL, GURPREET S",
+          "dl": "DHALIGS242JC",
+          "dlJur": "MB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "77489P",
+              "plateJur": "BC",
+              "regi": "14239431",
+              "desc": "VOLVO     VNL64",
+              "result": "Fail",
+              "defect": "45"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "5GV883",
+              "plateJur": "AB",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-01-08",
+          "time": "10:30",
+          "doc": "6704313",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SANDHU, JUGRAJ SINGH",
+          "dl": "S04034198001210",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "60938P",
+              "plateJur": "BC",
+              "regi": "13155243",
+              "desc": "FRHT",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "S6860Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOU",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2024-01-02",
+          "time": "17:06",
+          "doc": "0299206",
+          "location": "0 SWIFT CURRENT SCALE",
+          "jur": "SK",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, SURAJPAL S",
+          "dl": "P93587278610315",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7751C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "701  4248",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-12-23",
+          "time": "09:07",
+          "doc": "6702936",
+          "location": "THUNDER BAY NORTH TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "MANINDER PAL",
+          "dl": "M04330000920704",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "74750P",
+              "plateJur": "BC",
+              "regi": "14122819",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "S4820K",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-12-16",
+          "time": "13:32",
+          "doc": "1441280",
+          "location": "PR#427 & HALL RD",
+          "jur": "MB",
+          "level": 2,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "RAGE, DADIR MOHAMUD",
+          "dl": "162992358",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72075P",
+              "plateJur": "BC",
+              "regi": "13339308",
+              "desc": "FREIGHTLIN",
+              "result": "OOS",
+              "defect": "41"
+            }
+          ]
+        },
+        {
+          "date": "2023-12-14",
+          "time": "12:27",
+          "doc": "1444125",
+          "location": "PTH 1 NEAR PR 302",
+          "jur": "MB",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "KHARA, SADHU SINGH",
+          "dl": "90806332",
+          "dlJur": "AB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72890P",
+              "plateJur": "BC",
+              "regi": "13406348",
+              "desc": "FREIGHTLIN",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7695V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANAC",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-12-13",
+          "time": "10:30",
+          "doc": "0298753",
+          "location": "0 SWIFT CURRENT SCALE",
+          "jur": "SK",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SANMEET SINGH",
+          "dl": "S04450000000706",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "57381P",
+              "plateJur": "BC",
+              "regi": "13322983",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T1897M",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "701  4248",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-11-28",
+          "time": "09:40",
+          "doc": "6698437",
+          "location": "TIMMINS DISTRICT",
+          "jur": "ON",
+          "level": 1,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "SIMRANPREET SINGH",
+          "dl": "S44500000000331",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69078P",
+              "plateJur": "BC",
+              "regi": "13916099",
+              "desc": "VOLV",
+              "result": "OOS",
+              "defect": "47"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "P4893T",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOU",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-11-27",
+          "time": "13:29",
+          "doc": "6698268",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "DHALIWAL, TEJINDER SINGH",
+          "dl": "D31607328781228",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70365P",
+              "plateJur": "BC",
+              "regi": "13948198",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "67337J",
+              "plateJur": "BC",
+              "regi": "",
+              "desc": "WABA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-11-26",
+          "time": "13:40",
+          "doc": "6698206",
+          "location": "THUNDER BAY NORTH TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "AULAKH, SUKHMAN SINGH",
+          "dl": "A91947260930115",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "67495P",
+              "plateJur": "BC",
+              "regi": "13905135",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V7597B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-11-15",
+          "time": "10:18",
+          "doc": "0027889",
+          "location": "SALISBURY",
+          "jur": "NB",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PARMAN, TAMIY",
+          "dl": "P06307320010922",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "66657P",
+              "plateJur": "BC",
+              "regi": "13810162",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V41534Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "VAN",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-11-10",
+          "time": "09:23",
+          "doc": "6695377",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SINGH, BHAGAT",
+          "dl": "S44900930770902",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "80921P",
+              "plateJur": "BC",
+              "regi": "14385235",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8851L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-11-08",
+          "time": "17:56",
+          "doc": "0297559",
+          "location": "0 SWIFT CURRENT SCALE",
+          "jur": "SK",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "TATHGAR, RANVIR SINGH",
+          "dl": "T08146418000106",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "67992P",
+              "plateJur": "BC",
+              "regi": "13822111",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V7598B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "701  4248",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-10-31",
+          "time": "18:06",
+          "doc": "0297269",
+          "location": "0 SWIFT CURRENT SCALE",
+          "jur": "SK",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "TATLAY, AMANDEEP SINGH",
+          "dl": "T08240368770101",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "67992P",
+              "plateJur": "BC",
+              "regi": "13822111",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V4149Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "701  4248",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-10-29",
+          "time": "19:50",
+          "doc": "6693371",
+          "location": "RUSH BAY TIS",
+          "jur": "ON",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "ALI, ABDIRIZAK ABDI",
+          "dl": "A53350021671221",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72075P",
+              "plateJur": "BC",
+              "regi": "13339308",
+              "desc": "FRHT",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8856L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-09-27",
+          "time": "09:53",
+          "doc": "6687226",
+          "location": "SUDBURY DISTRICT",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, SURAJPAL S",
+          "dl": "P93587278610315",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7465C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-09-21",
+          "time": "12:33",
+          "doc": "6686214",
+          "location": "BOWMANVILLE TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "PARAS",
+          "dl": "P05380000981009",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69076P",
+              "plateJur": "BC",
+              "regi": "13916100",
+              "desc": "VOLV",
+              "result": "OOS",
+              "defect": "47"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "L6307L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "VANG",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-09-16",
+          "time": "08:51",
+          "doc": "6685378",
+          "location": "SUDBURY DISTRICT",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "SURKAMAL SINGH",
+          "dl": "S93710000010824",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "57381P",
+              "plateJur": "BC",
+              "regi": "13322983",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "X6721J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-08-19",
+          "time": "09:37",
+          "doc": "9052440",
+          "location": "Kamloops",
+          "jur": "BC",
+          "level": 1,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "BALJINDER SINGH",
+          "dl": "B02820000970729",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "74785P",
+              "plateJur": "BC",
+              "regi": "13379227",
+              "desc": "VOLVO",
+              "result": "Fail",
+              "defect": "40,44"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "W7696V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Fail",
+              "defect": "44"
+            }
+          ]
+        },
+        {
+          "date": "2023-08-16",
+          "time": "13:56",
+          "doc": "6678662",
+          "location": "HEARST TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "NAVROSEDEEP SINGH",
+          "dl": "N09260000980228",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "57381P",
+              "plateJur": "BC",
+              "regi": "13322983",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V8863L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-07-26",
+          "time": "10:46",
+          "doc": "6674524",
+          "location": "HEYDEN TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PUREWAL, SURAJPAL S",
+          "dl": "P93587278610315",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70362P",
+              "plateJur": "BC",
+              "regi": "13399973",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7742C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-07-05",
+          "time": "11:24",
+          "doc": "6671313",
+          "location": "THUNDER BAY NORTH TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "PANWAR, MAKHINDER S",
+          "dl": "PANWAMS074WZ",
+          "dlJur": "MB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "72870P",
+              "plateJur": "BC",
+              "regi": "14039855",
+              "desc": "FRHT",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "R8799V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-06-30",
+          "time": "08:46",
+          "doc": "9047965",
+          "location": "Kamloops",
+          "jur": "BC",
+          "level": 1,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "SIDHU, GURBAX SINGH",
+          "dl": "SIOHUGS129CN",
+          "dlJur": "MB",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69603P",
+              "plateJur": "BC",
+              "regi": "13925306",
+              "desc": "VOLVO",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "V8860L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Fail",
+              "defect": "44,46"
+            }
+          ]
+        },
+        {
+          "date": "2023-06-29",
+          "time": "01:00",
+          "doc": "6669934",
+          "location": "LANCASTER  TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GURWINDER SINGH",
+          "dl": "G94190000940815",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70364P",
+              "plateJur": "BC",
+              "regi": "13948199",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "H4792B",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "GRED",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-06-27",
+          "time": "12:37",
+          "doc": "6757074",
+          "location": "GANANOQUE SOUTH TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "HARBIR SINGH",
+          "dl": "H05440000980716",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "68041P",
+              "plateJur": "BC",
+              "regi": "13852245",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "W7687V",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-06-22",
+          "time": "11:38",
+          "doc": "6668714",
+          "location": "CASSELMAN TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "GHAT, HARDEEP",
+          "dl": "G32503140951025",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "58857P",
+              "plateJur": "BC",
+              "regi": "13155227",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "V4147Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "MANA",
+              "result": "OOS",
+              "defect": "41"
+            }
+          ]
+        },
+        {
+          "date": "2023-06-13",
+          "time": "10:39",
+          "doc": "9046410",
+          "location": "Kamloops",
+          "jur": "BC",
+          "level": 1,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "ISSAK, MOHAMOUD MOHAME",
+          "dl": "I80575606810102",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "56267P",
+              "plateJur": "BC",
+              "regi": "13280659",
+              "desc": "VOLVO",
+              "result": "OOS",
+              "defect": "40"
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "S6864Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "STOU",
+              "result": "OOS",
+              "defect": "41"
+            }
+          ]
+        },
+        {
+          "date": "2023-06-09",
+          "time": "19:03",
+          "doc": "0293819",
+          "location": "0 SWIFT CURRENT SCALE",
+          "jur": "SK",
+          "level": 3,
+          "result": "Pass",
+          "pts": null,
+          "driverName": "GILL, VARINDER SINGH",
+          "dl": "G43507638741121",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "70365P",
+              "plateJur": "BC",
+              "regi": "13948198",
+              "desc": "1244 3815",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "T2635F",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "545  4596",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-06-01",
+          "time": "13:36",
+          "doc": "6665118",
+          "location": "BOWMANVILLE TIS",
+          "jur": "ON",
+          "level": 2,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "GHAT, HARDEEP",
+          "dl": "G32503140951025",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "58857P",
+              "plateJur": "BC",
+              "regi": "13155227",
+              "desc": "VOLV",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "P1728Y",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "OOS",
+              "defect": "41"
+            }
+          ]
+        },
+        {
+          "date": "2023-05-17",
+          "time": "12:11",
+          "doc": "9043794",
+          "location": "Kamloops",
+          "jur": "BC",
+          "level": 1,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "GILL, GURPREET SINGH",
+          "dl": "08135090",
+          "dlJur": "BC",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "57354P",
+              "plateJur": "BC",
+              "regi": "12584392",
+              "desc": "FREIGHTLIN",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Trailer 1",
+              "plate": "W4397L",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTILITY",
+              "result": "Fail",
+              "defect": "45"
+            }
+          ]
+        },
+        {
+          "date": "2023-05-17",
+          "time": "07:36",
+          "doc": "0293133",
+          "location": "0 MOOSOMIN SCALE",
+          "jur": "SK",
+          "level": 1,
+          "result": "Fail",
+          "pts": null,
+          "driverName": "SHAARIB, AXMED",
+          "dl": "Y95097320840101",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "60938P",
+              "plateJur": "BC",
+              "regi": "13155243",
+              "desc": "1244",
+              "result": "Pass",
+              "defect": null
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "R8063J",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "1213 4603",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        },
+        {
+          "date": "2023-05-10",
+          "time": "12:40",
+          "doc": "6659897",
+          "location": "GANANOQUE SOUTH TIS",
+          "jur": "ON",
+          "level": 1,
+          "result": "OOS",
+          "pts": null,
+          "driverName": "PARMAN, TAMIY",
+          "dl": "P06307320010922",
+          "dlJur": "ON",
+          "units": [
+            {
+              "kind": "Power Unit",
+              "plate": "69602P",
+              "plateJur": "BC",
+              "regi": "13925304",
+              "desc": "VOLV",
+              "result": "OOS",
+              "defect": "44"
+            },
+            {
+              "kind": "Semi-Trailer",
+              "plate": "X7387C",
+              "plateJur": "ON",
+              "regi": "",
+              "desc": "UTIL",
+              "result": "Pass",
+              "defect": null
+            }
+          ]
+        }
+      ]
+    },
+    "accidentSummary": [
+      {
+        "type": "Fatality",
+        "count": 0,
+        "atFault": 0,
+        "faultUnknown": 0,
+        "notAtFault": 0,
+        "activePoints": 0
+      },
+      {
+        "type": "Injury",
+        "count": 0,
+        "atFault": 0,
+        "faultUnknown": 0,
+        "notAtFault": 0,
+        "activePoints": 0
+      },
+      {
+        "type": "Property",
+        "count": 2,
+        "atFault": 0,
+        "faultUnknown": 0,
+        "notAtFault": 2,
+        "activePoints": 0
+      },
+      {
+        "type": "Total Accidents",
+        "count": 2,
+        "atFault": 0,
+        "faultUnknown": 0,
+        "notAtFault": 2,
+        "activePoints": 0,
+        "isTotal": true
+      }
+    ],
+    "accidents": [
+      {
+        "date": "2024-09-11",
+        "time": "17:42",
+        "report": "6752356",
+        "location": "GREENSTONE,11",
+        "jur": "ON",
+        "driverName": "BEANT SINGH",
+        "dl": "B20340000930307",
+        "dlJur": "ON",
+        "plate": "86140P",
+        "plateJur": "BC",
+        "regi": "14632307",
+        "vehDesc": null,
+        "type": "Property",
+        "fault": "No Fault",
+        "charges": "No",
+        "pts": 0
+      },
+      {
+        "date": "2024-04-04",
+        "time": "11:23",
+        "report": "0022747",
+        "location": "Ville de Mont-Saint-Hilaire",
+        "jur": "QC",
+        "driverName": "null null",
+        "dl": null,
+        "dlJur": null,
+        "plate": "56267P",
+        "plateJur": "BC",
+        "regi": "13280659",
+        "vehDesc": "VOLVO 2021",
+        "type": "Property",
+        "fault": "No Fault",
+        "charges": "No",
+        "pts": 0
+      },
+      {
+        "date": "2024-03-23",
+        "time": "16:00",
+        "report": "6723030",
+        "location": "TORONTO,MARKHAM RD",
+        "jur": "ON",
+        "driverName": "JASPREET KAUR",
+        "dl": "J07610000925516",
+        "dlJur": "ON",
+        "plate": "71164P",
+        "plateJur": "BC",
+        "regi": "13975876",
+        "vehDesc": null,
+        "type": "Injury",
+        "fault": "At Fault",
+        "charges": "No",
+        "pts": 0
+      },
+      {
+        "date": "2023-10-19",
+        "time": "00:17",
+        "report": "6695139",
+        "location": "SABLES-SPANISH RIVERS,17",
+        "jur": "ON",
+        "driverName": "SALHAN, JASPREET SINGH",
+        "dl": "S02773898000902",
+        "dlJur": "ON",
+        "plate": "69602P",
+        "plateJur": "BC",
+        "regi": "13925304",
+        "vehDesc": null,
+        "type": "Fatality",
+        "fault": "No Fault",
+        "charges": "No",
+        "pts": 0
+      },
+      {
+        "date": "2023-04-29",
+        "time": "13:00",
+        "report": "6664557",
+        "location": "NORTH BAY,11",
+        "jur": "ON",
+        "driverName": "KHARA, SADHU SINGH",
+        "dl": "90806332",
+        "dlJur": "AB",
+        "plate": "72890P",
+        "plateJur": "BC",
+        "regi": "13406348",
+        "vehDesc": null,
+        "type": "Property",
+        "fault": "At Fault",
+        "charges": "No",
+        "pts": 0
+      }
+    ],
+    "auditSummary": [],
+    "cvip": []
+  }
+}

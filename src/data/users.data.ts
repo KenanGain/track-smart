@@ -58,6 +58,20 @@ export const APP_USERS: AppUser[] = [
     },
     // ── Acme Trucking Inc. (acct-001) ────────────────────────────────────────
     {
+        id: "u-003",
+        name: "Acme Demo Admin",
+        email: "demo@acmetrucking.com",
+        role: "admin",
+        accountId: "acct-001",
+        accountName: "Acme Trucking Inc.",
+        managedAccountIds: ["acct-001"],
+        serviceProfileId: "svc-001",
+        status: "Active",
+        title: "Demo Admin (testing the Safety & Compliance page)",
+        initials: "AD",
+        avatarGradient: "from-blue-500 to-indigo-700",
+    },
+    {
         id: "u-004",
         name: "John Doe",
         email: "john.doe@acmetrucking.com",

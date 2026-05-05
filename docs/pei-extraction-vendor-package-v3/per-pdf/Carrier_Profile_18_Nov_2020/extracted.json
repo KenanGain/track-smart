@@ -1,0 +1,65 @@
+{
+  "source": {
+    "fileName": "Carrier_Profile_18_Nov_2020.pdf",
+    "datePrinted": "2020-11-18",
+    "pageCount": 3,
+    "formVersion": null,
+    "extractedAt": "2026-05-04T00:00:00Z",
+    "ocrEngine": null
+  },
+  "carrier": {
+    "nscNumber": "PEI03660",
+    "legalName": "BUSINESS PORTERS INC.",
+    "address": {
+      "street": "5 SUMMER ST UNIT A SUMMERSIDE",
+      "street2": "5 SUMMER ST UNIT A SUMMERSIDE",
+      "city": "Summerside",
+      "province": "Prince Edward Island",
+      "postalCode": "C1E 1J5",
+      "country": "Canada"
+    },
+    "phone": "(902)652-7575",
+    "safetyRating": "Satisfactory - Unaudited",
+    "certificateStatus": "Active",
+    "auditStatus": "Unaudited",
+    "contactName": null
+  },
+  "pull": {
+    "reportDate": "2020-11-18",
+    "periodLabel": "Nov 18/20",
+    "windowLabel": "Nov 2019 → Nov 2020",
+    "windowStart": "2019-11-18",
+    "windowEnd": "2020-11-18",
+    "collisionPoints": 0,
+    "convictionPoints": 0,
+    "inspectionPoints": 6,
+    "currentActiveVehicles": 7,
+    "currentActiveVehiclesAtLastAssessment": 7,
+    "avgFleet": 7.0,
+    "collisions": [],
+    "convictions": [],
+    "inspections": [
+      { "seq": 1, "inspectionDate": "2020/10/06", "inspectionDateIso": "2020-10-06", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "MEHRA P",     "status": "M", "points": 3 },
+      { "seq": 2, "inspectionDate": "2020/09/23", "inspectionDateIso": "2020-09-23", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "KINCH E",     "status": "P", "points": 0 },
+      { "seq": 3, "inspectionDate": "2020/08/27", "inspectionDateIso": "2020-08-27", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "GILL S",      "status": "P", "points": 0 },
+      { "seq": 4, "inspectionDate": "2020/06/29", "inspectionDateIso": "2020-06-29", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "INDERJEET",   "status": "P", "points": 0 },
+      { "seq": 5, "inspectionDate": "2020/05/26", "inspectionDateIso": "2020-05-26", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "SINGH",       "status": "M", "points": 3 },
+      { "seq": 6, "inspectionDate": "2020/06/19", "inspectionDateIso": "2020-06-19", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "KULWANT",     "status": "P", "points": 0 },
+      { "seq": 7, "inspectionDate": "2020/06/18", "inspectionDateIso": "2020-06-18", "cvsaLevel": 3, "log": "Passed", "tdg": "Passed", "loadSecurity": "Passed", "driverName": "RANDHAWA S",  "status": "P", "points": 0 }
+    ],
+    "audits": [],
+    "interventions": [],
+    "carrierInfo": {
+      "primaryBusiness": null,
+      "extraProvincial": null,
+      "premiumCarrier": null,
+      "mailingAddress": "5 SUMMER ST UNIT A SUMMERSIDE, Prince Edward Island, C1E 1J5",
+      "licensedVehicles": 7,
+      "certIssueDate": null,
+      "jurisdiction": "PEI",
+      "reportFrom": null,
+      "reportTo": null,
+      "reportRun": "2020-11-18"
+    }
+  }
+}
