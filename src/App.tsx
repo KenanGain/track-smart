@@ -45,8 +45,16 @@ import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
 import { FuelPage } from '@/pages/fuel/FuelPage'
 import { HoursOfServicePage } from '@/pages/hos/HoursOfServicePage'
 import { SafetyAnalysisPage } from '@/pages/safety-analysis/SafetyAnalysisPage'
+import { VendorWorkOrderFormPage } from '@/pages/vendor-portal/VendorWorkOrderFormPage'
+import { isVendorPortalUrl } from '@/pages/vendor-portal/vendorPortal.utils'
 
 function App() {
+    // Public vendor-portal route — renders the work-order form for an external
+    // mechanic and skips the authenticated app shell entirely.
+    if (typeof window !== 'undefined' && isVendorPortalUrl()) {
+        return <VendorWorkOrderFormPage />
+    }
+
     // Simple state for navigation simulation since we might not have a full router set up
     // or the user might want to test without it initially.
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
@@ -324,7 +332,9 @@ function App() {
             return <AssetDirectoryPage />
         }
         if (path === "/maintenance") {
-            return <AssetMaintenancePage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <AssetMaintenancePage account={account ?? undefined} />
         }
         if (path === "/paystubs") {
             return <PaystubsPage />

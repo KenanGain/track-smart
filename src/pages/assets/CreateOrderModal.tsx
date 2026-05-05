@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, X, Check, Trash2, Search, Wrench, Truck, Store, Calendar, FileText } from "lucide-react";
+import { Plus, X, Check, Trash2, Search, Wrench, Truck, Store, Calendar, FileText, Mail, Copy, ExternalLink } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INITIAL_ASSETS } from "./assets.data";
 import { INITIAL_SERVICE_TYPES } from "./maintenance.data";
 import type { MaintenanceTask } from "./maintenance.data";
 import { VENDOR_CATEGORIES, US_STATES, CA_PROVINCES, ADDRESS_COUNTRIES } from "@/pages/inventory/inventory.data";
+import {
+    buildVendorPortalUrl,
+    buildMailtoLink,
+    type VendorOrderPayload,
+} from "@/pages/vendor-portal/vendorPortal.utils";
 
 // --- Local UI Components (Copied for isolation/consistency) ---
 
@@ -34,33 +39,16 @@ const Label = ({ children, className = "" }: any) => (
     <label className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`}>{children}</label>
 );
 
-const Modal = ({ isOpen, onClose, title, subtitle, children, footer, size = "lg" }: any) => {
-    if (!isOpen) return null;
-    const widthClass = size === "xl" ? "max-w-3xl" : size === "2xl" ? "max-w-4xl" : "max-w-lg";
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className={`bg-white rounded-xl shadow-lg w-full ${widthClass} max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200`}>
-                <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-slate-100">
-                    <div>
-                        <h3 className="font-semibold text-lg text-slate-900">{title}</h3>
-                        {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
-                    </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 shrink-0"><X size={20} /></button>
-                </div>
-                <div className="p-6 flex-1 overflow-y-auto bg-slate-50/40">
-                    {children}
-                </div>
-                {footer && (
-                    <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-end gap-2">
-                        {footer}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
+// --- Create Order Page Component ---
 
-// --- Create Order Modal Component ---
+interface CarrierAccount {
+    id: string;
+    legalName: string;
+    dbaName?: string;
+    dotNumber?: string;
+    city?: string;
+    state?: string;
+}
 
 interface CreateOrderModalProps {
     isOpen: boolean;
@@ -71,9 +59,11 @@ interface CreateOrderModalProps {
     vendors: any[];
     onAddVendor: (vendor: any) => void;
     preSelectedAssetId?: string;
+    /** Active carrier — surfaced in the header, vendor portal, and email. */
+    account?: CarrierAccount;
 }
 
-export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, availableTasks, vendors, onAddVendor, preSelectedAssetId }: CreateOrderModalProps) => {
+export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, availableTasks, vendors, onAddVendor, preSelectedAssetId, account }: CreateOrderModalProps) => {
     const [vendorId, setVendorId] = useState("");
     const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState("");
@@ -110,6 +100,9 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     const [draftServiceIds, setDraftServiceIds] = useState<string[]>([]);
     const [serviceQuery, setServiceQuery] = useState("");
     const [serviceGroup, setServiceGroup] = useState<string>("All");
+    // Inline asset/maintenance picker is hidden by default; the user reveals it
+    // via "+ Add New Task" so the section above isn't crowded.
+    const [showInlinePicker, setShowInlinePicker] = useState(false);
 
     // Reset state when modal opens
     useEffect(() => {
@@ -123,9 +116,31 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
             setDraftServiceIds([]);
             setServiceQuery("");
             setServiceGroup("All");
+            setShowInlinePicker(false);
+            setSentOrder(null);
+            setCopyConfirm(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
+
+    // Vendor-portal email-send state. Populated after a successful create so the
+    // user can copy the link or fire the real Resend send without leaving the modal.
+    type SentOrderState = {
+        portalUrl: string;
+        vendorEmail: string;
+        vendorName: string;
+        workOrderNumber: string;
+        // Snapshot of the payload so we can re-send if needed without rebuilding.
+        payload: VendorOrderPayload;
+    };
+    const [sentOrder, setSentOrder] = useState<SentOrderState | null>(null);
+    const [copyConfirm, setCopyConfirm] = useState(false);
+    const [sendStatus, setSendStatus] = useState<
+        | { state: 'idle' }
+        | { state: 'sending' }
+        | { state: 'sent'; messageId?: string }
+        | { state: 'error'; message: string }
+    >({ state: 'idle' });
 
     const [localSelectedTaskIds, setLocalSelectedTaskIds] = useState<string[]>([]);
 
@@ -146,28 +161,98 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     const renderTasks = effectiveSelectedTasks;
     const uniqueAssetIds = [...new Set(renderTasks.map((t: any) => t.assetId))];
 
-    const handleCreate = () => {
+    // Build the self-contained URL payload for the vendor-portal flow.
+    // Encodes everything the vendor needs into the link itself — no backend
+    // required for the frontend-only test.
+    const buildPortalPayload = (orderId: string, finalVendorId: string): VendorOrderPayload | null => {
+        const vendor = vendors.find((v: any) => v.id === finalVendorId);
+        if (!vendor) return null;
+
+        // Tasks come from two sources: existing scheduled tasks the user picked,
+        // and inline directTasks. Flatten both into a per-asset structure.
+        const perAsset = new Map<string, { assetId: string; serviceTypeIds: Set<string> }>();
+        for (const t of effectiveSelectedTasks) {
+            const entry = perAsset.get(t.assetId) ?? { assetId: t.assetId, serviceTypeIds: new Set<string>() };
+            t.serviceTypeIds.forEach((sid: string) => entry.serviceTypeIds.add(sid));
+            perAsset.set(t.assetId, entry);
+        }
+        for (const dt of directTasks) {
+            const entry = perAsset.get(dt.assetId) ?? { assetId: dt.assetId, serviceTypeIds: new Set<string>() };
+            dt.serviceTypeIds.forEach(sid => entry.serviceTypeIds.add(sid));
+            perAsset.set(dt.assetId, entry);
+        }
+
+        const tasks = Array.from(perAsset.values()).map(({ assetId, serviceTypeIds }) => {
+            const asset = INITIAL_ASSETS.find(a => a.id === assetId);
+            return {
+                assetId,
+                unitNumber: asset?.unitNumber ?? assetId,
+                year: asset?.year,
+                make: asset?.make,
+                model: asset?.model,
+                vin: asset?.vin,
+                services: Array.from(serviceTypeIds).map(sid => {
+                    const s = INITIAL_SERVICE_TYPES.find(st => st.id === sid);
+                    return { id: sid, name: s?.name ?? sid, group: s?.group ?? "" };
+                }),
+            };
+        });
+
+        return {
+            orderId,
+            workOrderNumber: orderId.replace(/^ord_/, "").slice(0, 8).toUpperCase(),
+            createdBy: { name: account?.dbaName || account?.legalName || "TrackSmart Fleet" },
+            carrier: account ? {
+                id: account.id,
+                legalName: account.legalName,
+                dbaName: account.dbaName,
+                dotNumber: account.dotNumber,
+                city: account.city,
+                state: account.state,
+            } : undefined,
+            vendor: {
+                id: vendor.id,
+                name: vendor.name || vendor.companyName || "Vendor",
+                email: vendor.email,
+                companyName: vendor.companyName,
+            },
+            createDate,
+            dueDate: dueDate || undefined,
+            notes: remarks || undefined,
+            requirements: {
+                odometerRequired: requireOdometer,
+                odometerUnit,
+                engineHoursRequired: requireEngineHours,
+            },
+            tasks,
+        };
+    };
+
+    const validateAndResolveVendor = (): { ok: boolean; vendorId: string } => {
         if (effectiveSelectedTasks.length === 0 && directTasks.length === 0) {
             alert("Please select at least one task or add an asset/service manually");
-            return;
+            return { ok: false, vendorId: "" };
         }
-
         if (!vendorId && !isAddingVendor) {
             alert("Please select a vendor");
-            return;
+            return { ok: false, vendorId: "" };
         }
-
         let finalVendorId = vendorId;
-
         if (isAddingVendor) {
             if (!newVendor.name) {
                 alert("Please enter a vendor name");
-                return;
+                return { ok: false, vendorId: "" };
             }
             const createdVendor = buildInventoryVendor(newVendor);
             onAddVendor(createdVendor);
             finalVendorId = createdVendor.id;
         }
+        return { ok: true, vendorId: finalVendorId };
+    };
+
+    const handleCreate = () => {
+        const { ok, vendorId: finalVendorId } = validateAndResolveVendor();
+        if (!ok) return;
 
         onCreate({
             taskIds: effectiveSelectedTasks.map(t => t.id),
@@ -182,6 +267,124 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
             },
             notes: remarks
         });
+    };
+
+    // Create + generate vendor-portal link, then show the email panel.
+    // Same payload that gets passed to onCreate is also used to build the link.
+    const handleCreateAndSend = () => {
+        const { ok, vendorId: finalVendorId } = validateAndResolveVendor();
+        if (!ok) return;
+
+        const orderId = `ord_${Math.random().toString(36).slice(2, 11)}`;
+        const payload = buildPortalPayload(orderId, finalVendorId);
+        if (!payload) {
+            alert("Could not resolve vendor. Please reselect and try again.");
+            return;
+        }
+        const portalUrl = buildVendorPortalUrl(payload);
+
+        onCreate({
+            id: orderId,
+            taskIds: effectiveSelectedTasks.map(t => t.id),
+            directTasks: directTasks.map(({ assetId, serviceTypeIds }) => ({ assetId, serviceTypeIds })),
+            vendorId: finalVendorId,
+            createDate,
+            dueDate,
+            meta: {
+                odometerRequired: requireOdometer,
+                odometerUnit,
+                engineHoursRequired: requireEngineHours
+            },
+            notes: remarks,
+            portalUrl,
+        });
+
+        setSentOrder({
+            portalUrl,
+            vendorEmail: payload.vendor.email || "",
+            vendorName: payload.vendor.name,
+            workOrderNumber: payload.workOrderNumber,
+            payload,
+        });
+        setCopyConfirm(false);
+        setSendStatus({ state: 'idle' });
+    };
+
+    // Real send via the /api/send-vendor-email endpoint (Resend in prod,
+    // dev-API plugin during `npm run dev`). Falls back to a mailto: link if
+    // the API request fails so the user can still ship the link manually.
+    const sendByApi = async () => {
+        if (!sentOrder) return;
+        if (!sentOrder.vendorEmail) {
+            alert("This vendor has no email on file. Add one and try again.");
+            return;
+        }
+        const p = sentOrder.payload;
+        setSendStatus({ state: 'sending' });
+        try {
+            const resp = await fetch('/api/send-vendor-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: sentOrder.vendorEmail,
+                    workOrderNumber: sentOrder.workOrderNumber,
+                    portalUrl: sentOrder.portalUrl,
+                    carrier: p.carrier,
+                    vendor: {
+                        name: p.vendor.name,
+                        companyName: p.vendor.companyName,
+                        contactName: undefined,
+                    },
+                    createDate: p.createDate,
+                    dueDate: p.dueDate,
+                    notes: p.notes,
+                    requirements: p.requirements,
+                    tasks: p.tasks.map(t => ({
+                        unitNumber: t.unitNumber,
+                        year: t.year,
+                        make: t.make,
+                        model: t.model,
+                        vin: t.vin,
+                        services: t.services.map(s => ({ name: s.name, group: s.group })),
+                    })),
+                    senderName: p.carrier?.dbaName || p.carrier?.legalName || 'TrackSmart Fleet',
+                }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data?.ok) {
+                const msg = data?.error || `Send failed (HTTP ${resp.status})`;
+                setSendStatus({ state: 'error', message: msg });
+                return;
+            }
+            setSendStatus({ state: 'sent', messageId: data.id });
+        } catch (err) {
+            setSendStatus({
+                state: 'error',
+                message: err instanceof Error ? err.message : 'Network error',
+            });
+        }
+    };
+
+    const openMailtoFallback = () => {
+        if (!sentOrder?.vendorEmail) return;
+        const link = buildMailtoLink({
+            to: sentOrder.vendorEmail,
+            workOrderNumber: sentOrder.workOrderNumber,
+            portalUrl: sentOrder.portalUrl,
+        });
+        window.location.href = link;
+    };
+
+    const copyPortalUrl = async () => {
+        if (!sentOrder) return;
+        try {
+            await navigator.clipboard.writeText(sentOrder.portalUrl);
+            setCopyConfirm(true);
+            setTimeout(() => setCopyConfirm(false), 1800);
+        } catch {
+            // Clipboard API can fail in non-secure contexts; fall back to a prompt.
+            window.prompt("Copy this link:", sentOrder.portalUrl);
+        }
     };
 
     const handleSaveNewVendor = () => {
@@ -201,6 +404,9 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         ]);
         setDraftAssetId("");
         setDraftServiceIds([]);
+        setServiceQuery("");
+        setServiceGroup("All");
+        setShowInlinePicker(false);
     };
 
     const removeDirectTask = (id: string) => {
@@ -230,20 +436,149 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
 
     if (!isOpen) return null;
 
+    const pageTitle = preSelectedAssetId ? "Log Maintenance" : "Create Task Order";
+    const pageSubtitle = "Bundle one or more maintenance items into a single work order for a vendor.";
+
     return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            size="xl"
-            title={preSelectedAssetId ? "Log Maintenance" : "Create Task Order"}
-            subtitle="Bundle one or more maintenance items into a single work order for a vendor."
-            footer={
-                <>
-                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleCreate}>Create Order</Button>
-                </>
-            }
-        >
+        <div className="flex-1 min-h-screen bg-slate-50 flex flex-col">
+            {/* Page header — sticky at top so it stays visible while scrolling */}
+            <header className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
+                <div className="max-w-5xl mx-auto px-6 py-4 flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 min-w-0">
+                        <button
+                            onClick={onClose}
+                            className="mt-0.5 inline-flex items-center justify-center h-8 w-8 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
+                            aria-label="Back"
+                            type="button"
+                        >
+                            <X size={18} />
+                        </button>
+                        <div className="min-w-0">
+                            <h1 className="text-xl font-semibold text-slate-900 truncate">{pageTitle}</h1>
+                            <p className="text-sm text-slate-500 mt-0.5">{pageSubtitle}</p>
+                        </div>
+                    </div>
+                    {/* Active carrier indicator — makes it explicit which carrier
+                        the vendor list and outgoing email are scoped to. */}
+                    {account && (
+                        <div className="hidden md:flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-md px-3 py-1.5 shrink-0">
+                            <div className="w-7 h-7 rounded-md bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+                                {(account.dbaName || account.legalName).slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="text-xs leading-tight">
+                                <div className="text-[10px] uppercase tracking-wider text-blue-700 font-semibold">Carrier</div>
+                                <div className="font-semibold text-slate-900">{account.dbaName || account.legalName}</div>
+                                {account.dotNumber && (
+                                    <div className="text-[10px] text-slate-500">DOT #{account.dotNumber}</div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </header>
+
+            {/* Body */}
+            <main className="flex-1 px-6 py-6 pb-28">
+                <div className="max-w-5xl mx-auto">
+            {sentOrder ? (
+                /* Post-create view: show the generated link + mailto launcher.
+                   Real production would call a backend send endpoint here instead. */
+                <div className="space-y-5">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                            <Check size={16} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="font-semibold text-emerald-900 text-sm">
+                                Work Order #{sentOrder.workOrderNumber} created
+                            </div>
+                            <div className="text-xs text-emerald-700 mt-0.5">
+                                Send the link below to <span className="font-medium">{sentOrder.vendorName}</span>
+                                {sentOrder.vendorEmail && <> at <span className="font-medium">{sentOrder.vendorEmail}</span></>}.
+                            </div>
+                        </div>
+                    </div>
+
+                    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+                        <div>
+                            <Label className="mb-1.5 block text-xs text-slate-500 uppercase tracking-wider">
+                                Vendor portal link
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    readOnly
+                                    value={sentOrder.portalUrl}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    className="flex-1 h-9 rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                                />
+                                <Button variant="secondary" size="sm" onClick={copyPortalUrl} className="gap-1">
+                                    <Copy size={12} />
+                                    {copyConfirm ? "Copied" : "Copy"}
+                                </Button>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-1.5">
+                                The full work order is encoded into this URL — no backend lookup needed for testing.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Button
+                                onClick={sendByApi}
+                                disabled={!sentOrder.vendorEmail || sendStatus.state === 'sending' || sendStatus.state === 'sent'}
+                                className="gap-1.5"
+                            >
+                                <Mail size={14} />
+                                {sendStatus.state === 'sending'
+                                    ? 'Sending…'
+                                    : sendStatus.state === 'sent'
+                                    ? 'Email Sent'
+                                    : 'Send Email to Vendor'}
+                            </Button>
+                            <Button
+                                variant="secondary"
+                                onClick={() => window.open(sentOrder.portalUrl, "_blank", "noopener")}
+                                className="gap-1.5"
+                            >
+                                <ExternalLink size={14} /> Preview as Vendor
+                            </Button>
+                        </div>
+
+                        {sendStatus.state === 'sent' && (
+                            <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 flex items-start gap-2">
+                                <Check size={14} className="text-emerald-600 mt-0.5 shrink-0" />
+                                <div>
+                                    Email delivered to <span className="font-medium">{sentOrder.vendorEmail}</span>
+                                    {sendStatus.messageId && (
+                                        <> · <span className="font-mono text-emerald-700">{sendStatus.messageId.slice(0, 8)}…</span></>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {sendStatus.state === 'error' && (
+                            <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-md px-3 py-2 space-y-2">
+                                <div>
+                                    <span className="font-semibold">Send failed:</span> {sendStatus.message}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={openMailtoFallback}
+                                    className="text-red-700 underline hover:text-red-900"
+                                >
+                                    Open in your local mail client instead
+                                </button>
+                            </div>
+                        )}
+
+                        {!sentOrder.vendorEmail && (
+                            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                                This vendor has no email on file. Use the copy button to share the link manually,
+                                or edit the vendor record to add an email.
+                            </div>
+                        )}
+                    </section>
+                </div>
+            ) : (
             <div className="space-y-5">
                 {/* Section 1: Tasks in Order */}
                 <Section number={1} title="Tasks in Order" subtitle="Pick existing scheduled tasks or add an asset + maintenance type directly." icon={Wrench}>
@@ -302,7 +637,18 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                     {/* C) Selectable existing tasks (when none preselected) */}
                     {(!selectedTasks || selectedTasks.length === 0) && availableTasks && availableTasks.length > 0 && (
                         <div className="mb-4">
-                            <Label className="mb-2 block text-xs uppercase tracking-wider text-slate-500 font-semibold">Available Scheduled Tasks</Label>
+                            <div className="flex items-center justify-between mb-2">
+                                <Label className="block text-xs uppercase tracking-wider text-slate-500 font-semibold">Available Scheduled Tasks</Label>
+                                {!showInlinePicker && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowInlinePicker(true)}
+                                        className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1"
+                                    >
+                                        <Plus size={12} /> Add New Task
+                                    </button>
+                                )}
+                            </div>
                             <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1 border border-slate-200 rounded-md bg-white p-2">
                                 {availableTasks.map(task => {
                                     const asset = INITIAL_ASSETS.find(a => a.id === task.assetId);
@@ -335,15 +681,53 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                     )}
 
                     {/* Empty hint */}
-                    {uniqueAssetIds.length === 0 && directTasks.length === 0 && (!availableTasks || availableTasks.length === 0) && (
-                        <div className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 mb-4">
-                            No scheduled tasks yet — add an asset and maintenance type below to create this order without a schedule.
+                    {uniqueAssetIds.length === 0 && directTasks.length === 0 && (!availableTasks || availableTasks.length === 0) && !showInlinePicker && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-md px-3 py-2.5 mb-4 flex items-center justify-between gap-3">
+                            <span className="text-xs text-slate-600">
+                                No scheduled tasks yet — add an asset and maintenance type to create this order without a schedule.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setShowInlinePicker(true)}
+                                className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1 shrink-0"
+                            >
+                                <Plus size={12} /> Add New Task
+                            </button>
                         </div>
                     )}
 
-                    {/* D) Inline picker — Add Asset & Maintenance Type */}
-                    <div className="bg-white border border-slate-200 rounded-md p-4">
-                        <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-3">Add Asset & Maintenance Type</div>
+                    {/* "Add New Task" button when there are pre-selected tasks but no available list shown */}
+                    {!showInlinePicker && uniqueAssetIds.length > 0 && (!availableTasks || availableTasks.length === 0) && (
+                        <div className="mb-4">
+                            <button
+                                type="button"
+                                onClick={() => setShowInlinePicker(true)}
+                                className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1"
+                            >
+                                <Plus size={12} /> Add New Task
+                            </button>
+                        </div>
+                    )}
+
+                    {/* D) Inline picker — Add Asset & Maintenance Type (revealed by "Add New Task") */}
+                    {showInlinePicker && (
+                    <div className="bg-white border border-slate-200 rounded-md p-4 animate-in fade-in slide-in-from-top-2 duration-150">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Add Asset &amp; Maintenance Type</div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowInlinePicker(false);
+                                    setDraftAssetId("");
+                                    setDraftServiceIds([]);
+                                    setServiceQuery("");
+                                    setServiceGroup("All");
+                                }}
+                                className="text-xs text-slate-500 hover:text-slate-700"
+                            >
+                                Cancel
+                            </button>
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Asset */}
@@ -441,6 +825,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                             </div>
                         </div>
                     </div>
+                    )}
                 </Section>
 
                 {/* Section 2: Vendor */}
@@ -689,7 +1074,27 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                     />
                 </Section>
             </div>
-        </Modal>
+            )}
+                </div>
+            </main>
+
+            {/* Sticky action footer */}
+            <footer className="sticky bottom-0 bg-white border-t border-slate-200 shadow-[0_-1px_3px_rgba(15,23,42,0.04)]">
+                <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-end gap-2">
+                    {sentOrder ? (
+                        <Button variant="ghost" onClick={() => { setSentOrder(null); onClose(); }}>Done</Button>
+                    ) : (
+                        <>
+                            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                            <Button variant="secondary" onClick={handleCreate}>Create Order</Button>
+                            <Button onClick={handleCreateAndSend} className="gap-1.5">
+                                <Mail size={14} /> Create &amp; Send to Vendor
+                            </Button>
+                        </>
+                    )}
+                </div>
+            </footer>
+        </div>
     );
 };
 

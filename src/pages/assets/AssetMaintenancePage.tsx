@@ -653,12 +653,23 @@ const CompleteOrderModal = ({ isOpen, onClose, onComplete, order, tasks }: any) 
 };
 
 // --- Main Page Component ---
-export function AssetMaintenancePage() {
+export function AssetMaintenancePage({ account }: { account?: { id: string; legalName: string; dbaName?: string; dotNumber?: string; city?: string; state?: string } }) {
     const [activeTab, setActiveTab] = useState<"tasks" | "orders">("tasks");
     const [tasks, setTasks] = useState<MaintenanceTask[]>(INITIAL_TASKS);
     const [orders, setOrders] = useState<TaskOrder[]>(INITIAL_ORDERS);
-    // Manage vendors list state
-    const [vendors, setVendors] = useState<any[]>(INVENTORY_VENDORS);
+    // Vendors are scoped per carrier — derive from the active account.
+    // Newly added vendors stay in this carrier's list (added via handleAddVendor).
+    const [vendors, setVendors] = useState<any[]>(() =>
+        account?.id ? INVENTORY_VENDORS.filter((v) => v.accountId === account.id) : INVENTORY_VENDORS
+    );
+
+    // When the super-admin switches carriers in the TopNavbar, refresh the
+    // vendor list to match the newly active account.
+    useEffect(() => {
+        if (account?.id) {
+            setVendors(INVENTORY_VENDORS.filter((v) => v.accountId === account.id));
+        }
+    }, [account?.id]);
     const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
     const [statusFilter, setStatusFilter] = useState("All");
     const [assetFilter, setAssetFilter] = useState<"all" | "cmv" | "non_cmv">("all");
@@ -852,7 +863,10 @@ export function AssetMaintenancePage() {
     };
 
     const handleAddVendor = (newVendor: any) => {
-        setVendors((prev) => [...prev, newVendor]);
+        // Tag the new vendor with the active carrier so it appears only in this
+        // carrier's vendor list when the super-admin switches accounts.
+        const tagged = { ...newVendor, accountId: newVendor.accountId ?? account?.id };
+        setVendors((prev) => [...prev, tagged]);
     };
 
     // Calculate derived status for orders
@@ -962,6 +976,23 @@ export function AssetMaintenancePage() {
             setSelectedTaskIds([]);
         }
     };
+
+    // When the work-order form is open it takes over the whole content area
+    // (full page, not a modal) — render it instead of the list.
+    if (isCreateOrderModalOpen) {
+        return (
+            <CreateOrderModal
+                isOpen={isCreateOrderModalOpen}
+                onClose={() => setIsCreateOrderModalOpen(false)}
+                onCreate={handleCreateOrder}
+                selectedTasks={tasks.filter(t => selectedTaskIds.includes(t.id))}
+                availableTasks={tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && !orders.some(o => o.taskIds.includes(t.id)))}
+                vendors={vendors}
+                onAddVendor={handleAddVendor}
+                account={account}
+            />
+        );
+    }
 
     return (
         <div className="flex flex-col h-full bg-white">
@@ -1337,17 +1368,6 @@ export function AssetMaintenancePage() {
                 isOpen={isSkipModalOpen}
                 onClose={() => { setIsSkipModalOpen(false); setTaskToSkip(null); }}
                 onConfirm={handleConfirmSkip}
-            />
-
-            {/* Create Order Modal */}
-            < CreateOrderModal
-                isOpen={isCreateOrderModalOpen}
-                onClose={() => setIsCreateOrderModalOpen(false)}
-                onCreate={handleCreateOrder}
-                selectedTasks={tasks.filter(t => selectedTaskIds.includes(t.id))}
-                availableTasks={tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && !orders.some(o => o.taskIds.includes(t.id)))}
-                vendors={vendors}
-                onAddVendor={handleAddVendor}
             />
 
             {/* Complete Order Modal */}
