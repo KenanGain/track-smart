@@ -25,8 +25,20 @@ import {
   MapPin,
   Settings
 } from 'lucide-react';
-import { SUMMARY_CATEGORIES, carrierProfile, inspectionsData, getJurisdiction, getEquivalentCode, cvorPeriodicReports } from './inspectionsData';
-import { cvorInterventionEvents, cvorTravelKm, CVOR_INTERVENTION_PERIOD, type CvorInterventionEvent } from './cvorInterventionEvents.data';
+import {
+  SUMMARY_CATEGORIES,
+  carrierProfile as _ACME_CARRIER_PROFILE,
+  inspectionsData as _ACME_INSPECTIONS,
+  getJurisdiction,
+  getEquivalentCode,
+  cvorPeriodicReports as _ACME_CVOR_PERIODIC_REPORTS,
+} from './inspectionsData';
+import {
+  cvorInterventionEvents as _ACME_CVOR_INTERVENTION_EVENTS,
+  cvorTravelKm as _ACME_CVOR_TRAVEL_KM,
+  CVOR_INTERVENTION_PERIOD as _ACME_CVOR_INTERVENTION_PERIOD,
+  type CvorInterventionEvent,
+} from './cvorInterventionEvents.data';
 import { NscPerformanceCard, type NscPerformanceCardProps } from './NscPerformanceCard';
 import { InspectionReportPanel } from './InspectionReportPanel';
 import { NscBcCarrierProfile, INERTIA_CARRIER_BC_DATA } from './NscBcCarrierProfile';
@@ -122,6 +134,12 @@ import {
   getNscBcProfileFor,
   getNscPeProfileFor,
   getNscNsProfileFor,
+  getCarrierProfileFor,
+  getInspectionsFor,
+  getCvorPeriodicReportsFor,
+  getCvorInterventionEventsFor,
+  getCvorTravelKmFor,
+  getCvorInterventionPeriodFor,
 } from '@/data/carrier-safety-data';
 import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from '@/data/geo-data';
 
@@ -2582,6 +2600,22 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
   const carrierBcProfile = useMemo(() => getNscBcProfileFor(effectiveAccountId), [effectiveAccountId]);
   const carrierPeProfile = useMemo(() => getNscPeProfileFor(effectiveAccountId), [effectiveAccountId]);
   const carrierNsProfile = useMemo(() => getNscNsProfileFor(effectiveAccountId), [effectiveAccountId]);
+
+  // FMCSA + CVOR shared data. We re-bind the original names that the rest
+  // of the page already references (`carrierProfile`, `inspectionsData`,
+  // `cvorPeriodicReports`, `cvorInterventionEvents`, `cvorTravelKm`,
+  // `CVOR_INTERVENTION_PERIOD`) so the ~60 existing JSX references pick up
+  // the per-carrier data with zero edits.
+  const carrierProfile          = useMemo(() => getCarrierProfileFor(effectiveAccountId), [effectiveAccountId]);
+  const inspectionsData         = useMemo(() => getInspectionsFor(effectiveAccountId), [effectiveAccountId]);
+  const cvorPeriodicReports     = useMemo(() => getCvorPeriodicReportsFor(effectiveAccountId), [effectiveAccountId]);
+  const cvorInterventionEvents  = useMemo(() => getCvorInterventionEventsFor(effectiveAccountId), [effectiveAccountId]);
+  const cvorTravelKm            = useMemo(() => getCvorTravelKmFor(effectiveAccountId), [effectiveAccountId]);
+  const CVOR_INTERVENTION_PERIOD = useMemo(() => getCvorInterventionPeriodFor(effectiveAccountId), [effectiveAccountId]);
+  // Suppress unused-import warnings for the Acme aliases — they're still
+  // referenced by the helpers/tests that operate on the master dataset.
+  void _ACME_CARRIER_PROFILE; void _ACME_INSPECTIONS; void _ACME_CVOR_PERIODIC_REPORTS;
+  void _ACME_CVOR_INTERVENTION_EVENTS; void _ACME_CVOR_TRAVEL_KM; void _ACME_CVOR_INTERVENTION_PERIOD;
 
   // Map of tab id → (hasData, enabled) so we can hide / grey the right sections.
   const TAB_REGIMES = useMemo(() => {

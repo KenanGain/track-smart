@@ -39,6 +39,16 @@ import {
     NOVA_SCOTIA_NSC_PROFILE,
     PRINCE_EDWARD_ISLAND_NSC_PROFILE,
 } from "@/pages/inspections/InspectionsPage";
+import {
+    carrierProfile as ACME_CARRIER_PROFILE,
+    inspectionsData as ACME_INSPECTIONS,
+    cvorPeriodicReports as ACME_CVOR_PERIODIC_REPORTS,
+} from "@/pages/inspections/inspectionsData";
+import {
+    CVOR_INTERVENTION_PERIOD as ACME_CVOR_INTERVENTION_PERIOD,
+    cvorInterventionEvents as ACME_CVOR_INTERVENTION_EVENTS,
+    cvorTravelKm as ACME_CVOR_TRAVEL_KM,
+} from "@/pages/inspections/cvorInterventionEvents.data";
 
 // ── Deterministic RNG seeded by accountId ────────────────────────────
 
@@ -303,3 +313,215 @@ export function getNscNsProfileFor(accountId: string): {
         collisionScore:        collision,
     };
 }
+
+// ── FMCSA + CVOR — full carrierProfile shape ─────────────────────────
+
+type CarrierProfile = typeof ACME_CARRIER_PROFILE;
+
+/**
+ * Returns a full `carrierProfile` object for the given carrier. Acme returns
+ * the hand-curated demo data unchanged; every other carrier gets a
+ * deterministically-generated profile that uses Acme's structure as a
+ * template and tweaks the leaf values (carrier name, scores, ratings,
+ * counts, miles) so the FMCSA SMS BASIC and Ontario CVOR tabs render
+ * carrier-specific numbers.
+ */
+export function getCarrierProfileFor(accountId: string): CarrierProfile {
+    if (accountId === ACME_ID) return ACME_CARRIER_PROFILE;
+    const acct = ACCOUNTS_DB.find((a) => a.id === accountId);
+    if (!acct) return ACME_CARRIER_PROFILE;
+
+    const r = rng(`carrierProfile:${accountId}`);
+    const fleet = Math.max(1, acct.drivers || Math.floor(r() * 60) + 5);
+    const drivers = Math.max(1, acct.drivers || fleet);
+    const dotNumber = acct.dotNumber || String(Math.floor(r() * 9_000_000) + 1_000_000);
+    const cvorNumber = acct.cvorNumber || `${Math.floor(r() * 9_000_000) + 1_000_000}-ON`;
+
+    // FMCSA SMS BASIC — randomize percentile + measure per category.
+    const basicCats = [
+        { category: "Unsafe Driving",                base: 1.4 },
+        { category: "Crash Indicator",               base: 0.2 },
+        { category: "Hours-of-service Compliance",   base: 0.9 },
+        { category: "Vehicle Maintenance",           base: 22  },
+        { category: "Controlled Substances",         base: 0   },
+        { category: "Hazmat compliance",             base: 0   },
+        { category: "Driver Fitness",                base: 0   },
+        { category: "Others",                        base: 0   },
+    ];
+    const basicStatus = basicCats.map((c) => {
+        const measure = +(c.base * (0.4 + r() * 1.6)).toFixed(2);
+        const pct = Math.floor(r() * 100);
+        const alert = pct >= 65;
+        return {
+            category: c.category,
+            measure: String(measure),
+            percentile: c.base === 0 && r() < 0.5 ? "0%" : `${pct}%`,
+            alert,
+            details: alert
+                ? `${1 + Math.floor(r() * 7)} inspections with violations`
+                : "No violations",
+        };
+    });
+
+    // CVOR — derive percentages and counts.
+    const collisionsPct = +(r() * 35).toFixed(2);
+    const convictionsPct = +(r() * 40).toFixed(2);
+    const inspectionsPct = +(r() * 30).toFixed(2);
+    const rating = +(collisionsPct + convictionsPct + inspectionsPct).toFixed(2);
+    const collisionsCount = Math.floor(r() * 14);
+    const convictionsCount = Math.floor(r() * 25);
+    const oosOverall = +(r() * 45).toFixed(2);
+    const trucks = fleet;
+    const onMiles = Math.floor(r() * 18_000_000) + 2_000_000;
+    const canadaMiles = Math.floor(r() * 1_500_000) + 100_000;
+    const totalCanadaMiles = onMiles + canadaMiles;
+    const miMiles = Math.floor(r() * 4_000_000);
+    const nyMiles = Math.floor(r() * 2_000_000);
+    const paMiles = Math.floor(r() * 1_500_000);
+    const ohMiles = Math.floor(r() * 1_500_000);
+    const totalUSMiles = miMiles + nyMiles + paMiles + ohMiles;
+    const totalMiles = totalCanadaMiles + totalUSMiles;
+    const scaleMiles = (frac: number) => ({
+        onMiles:           Math.floor(onMiles * frac),
+        canadaMiles:       Math.floor(canadaMiles * frac),
+        totalCanadaMiles:  Math.floor(totalCanadaMiles * frac),
+        miMiles:           Math.floor(miMiles * frac),
+        nyMiles:           Math.floor(nyMiles * frac),
+        paMiles:           Math.floor(paMiles * frac),
+        ohMiles:           Math.floor(ohMiles * frac),
+        totalUSMiles:      Math.floor(totalUSMiles * frac),
+        totalMiles:        Math.floor(totalMiles * frac),
+    });
+
+    return {
+        id: dotNumber,
+        cvor: cvorNumber,
+        name: acct.legalName.toUpperCase(),
+        address: `${acct.city || "—"}, ${acct.state}${acct.country === "CA" ? ", Canada" : ", USA"}`,
+        vehicles: trucks,
+        drivers,
+        rating: pick(r, ["Satisfactory", "Conditional", "Not Rated"] as const),
+        oosRates: {
+            vehicle: { carrier: `${(r() * 50).toFixed(1)}%`, national: "23.2%" },
+            driver:  { carrier: `${(r() * 12).toFixed(1)}%`, national: "6.4%" },
+            hazmat:  { carrier: r() < 0.7 ? "N/A" : `${(r() * 10).toFixed(1)}%`, national: "4.4%" },
+        },
+        licensing: {
+            property:  { active: "Yes", mc: `MC${dotNumber}` },
+            passenger: { active: "No",  mc: "-" },
+            household: { active: "No",  mc: "-" },
+            broker:    { active: r() < 0.3 ? "Yes" : "No",  mc: r() < 0.3 ? `MC${dotNumber}B` : "-" },
+        },
+        basicStatus,
+        cvorAnalysis: {
+            rating,
+            collisions:  { percentage: collisionsPct,  weight: 40 },
+            convictions: { percentage: convictionsPct, weight: 40 },
+            inspections: { percentage: inspectionsPct, weight: 20 },
+            counts: {
+                collisions:    collisionsCount,
+                convictions:   convictionsCount,
+                oosOverall,
+                oosVehicle:   +(oosOverall * 1.2).toFixed(2),
+                oosDriver:    +(oosOverall * 0.15).toFixed(2),
+                trucks,
+                onMiles,
+                canadaMiles,
+                totalCanadaMiles,
+                miMiles, nyMiles, paMiles, ohMiles,
+                totalUSMiles,
+                totalMiles,
+                milesByPeriod: {
+                    "1M":  scaleMiles(0.04),
+                    "3M":  scaleMiles(0.12),
+                    "6M":  scaleMiles(0.25),
+                    "12M": scaleMiles(0.50),
+                    "24M": scaleMiles(1.00),
+                },
+                collisionPointsWithPoints: collisionsCount,
+                collisionPointsWithoutPoints: 0,
+                totalCollisionPoints: collisionsCount * 2,
+                convictionPoints: convictionsCount * (1 + Math.floor(r() * 3)),
+            },
+            collisionDetails: {
+                fromDate: "2024-01-27",
+                toDate: "2026-01-26",
+                monthsLabel: "24 Months",
+                withPoints: collisionsCount + Math.floor(r() * 3),
+                fatal: r() < 0.05 ? 1 : 0,
+                personalInjury: Math.floor(r() * 4),
+                propertyDamage: collisionsCount,
+                notPointed: Math.floor(r() * 6),
+                total: collisionsCount + Math.floor(r() * 8),
+            },
+            convictionDetails: {
+                fromDate: "2024-01-27",
+                toDate: "2026-01-26",
+                monthsLabel: "24 Months",
+                withPoints: convictionsCount,
+                driver:  Math.floor(convictionsCount * 0.55),
+                vehicle: Math.floor(convictionsCount * 0.25),
+                load:    Math.floor(convictionsCount * 0.15),
+                other:   Math.floor(convictionsCount * 0.05),
+                notPointed: Math.floor(r() * 6),
+                total: convictionsCount + Math.floor(r() * 8),
+            },
+        },
+    };
+}
+
+// ── Inspection arrays (sliced subsets of Acme's data) ────────────────
+
+/** Returns a deterministic per-carrier slice of the master inspection list.
+ *  Different carriers see different subsets and different counts (12-95% of
+ *  Acme's, depending on accountId). Acme returns the full array unchanged. */
+export function getInspectionsFor(accountId: string): typeof ACME_INSPECTIONS {
+    if (accountId === ACME_ID) return ACME_INSPECTIONS;
+    const r = rng(`inspections:${accountId}`);
+    const fraction = 0.12 + r() * 0.83;
+    const len = Math.max(3, Math.floor(ACME_INSPECTIONS.length * fraction));
+    // Deterministic shuffle by sort-key derived from RNG so each carrier sees
+    // a different selection. Slice to `len`.
+    const tagged = ACME_INSPECTIONS.map((insp, idx) => ({
+        insp,
+        key: rng(`inspections:${accountId}:${idx}`)(),
+    }));
+    tagged.sort((a, b) => a.key - b.key);
+    return tagged.slice(0, len).map((t) => t.insp);
+}
+
+export function getCvorPeriodicReportsFor(accountId: string): typeof ACME_CVOR_PERIODIC_REPORTS {
+    if (accountId === ACME_ID) return ACME_CVOR_PERIODIC_REPORTS;
+    const r = rng(`cvorReports:${accountId}`);
+    const len = Math.max(3, Math.floor(ACME_CVOR_PERIODIC_REPORTS.length * (0.4 + r() * 0.6)));
+    return ACME_CVOR_PERIODIC_REPORTS.slice(0, len);
+}
+
+export function getCvorInterventionEventsFor(accountId: string): typeof ACME_CVOR_INTERVENTION_EVENTS {
+    if (accountId === ACME_ID) return ACME_CVOR_INTERVENTION_EVENTS;
+    const r = rng(`cvorEvents:${accountId}`);
+    const fraction = 0.2 + r() * 0.8;
+    const len = Math.max(3, Math.floor(ACME_CVOR_INTERVENTION_EVENTS.length * fraction));
+    const tagged = ACME_CVOR_INTERVENTION_EVENTS.map((e, idx) => ({
+        e,
+        key: rng(`cvorEvents:${accountId}:${idx}`)(),
+    }));
+    tagged.sort((a, b) => a.key - b.key);
+    return tagged.slice(0, len).map((t) => t.e);
+}
+
+export function getCvorTravelKmFor(accountId: string): typeof ACME_CVOR_TRAVEL_KM {
+    if (accountId === ACME_ID) return ACME_CVOR_TRAVEL_KM;
+    const r = rng(`cvorKm:${accountId}`);
+    const len = Math.max(2, Math.floor(ACME_CVOR_TRAVEL_KM.length * (0.4 + r() * 0.6)));
+    return ACME_CVOR_TRAVEL_KM.slice(0, len);
+}
+
+export function getCvorInterventionPeriodFor(accountId: string): typeof ACME_CVOR_INTERVENTION_PERIOD {
+    // Period boundaries are universal — same 24-month sliding window per
+    // CVOR program rules — so don't randomise. Returning the same constant
+    // keeps the carrier's CVOR view consistent with regulatory expectations.
+    void accountId;
+    return ACME_CVOR_INTERVENTION_PERIOD;
+}
+
