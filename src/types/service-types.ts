@@ -6,9 +6,9 @@ export interface ServiceType {
     id: string;
     name: string; // "Maintenance Type"
     category: ServiceCategory; // "Applicability"
-    group: string; // "Maintenance Class"
-    complexity: ServiceComplexity;
-    description: string;
+    group: string; // "Maintenance Class" — one of the 7 ServiceGroup values
+    complexity?: ServiceComplexity;
+    description?: string;
 }
 
 export const CATEGORY_LABELS: Record<ServiceCategory, string> = {

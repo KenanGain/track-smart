@@ -155,6 +155,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Admin",
         icon: UserCog,
         children: [
+            { key: "admin-dashboard", label: "Super Admin Dashboard", icon: LayoutDashboard, path: "/admin/dashboard" },
             { key: "accounts", label: "Accounts", icon: Users, path: "/accounts" },
             { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
             { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },

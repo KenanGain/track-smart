@@ -13,20 +13,37 @@ Every UI page in the app, grouped by area. Routes are the `path` strings handled
 
 - `/dashboard` — placeholder, "coming soon" panel
 
-## Account & Profile
+## Auth
+
+- `(no path — gates the app)` → `LoginPage` (`src/pages/auth/LoginPage.tsx`). Quick-login dropdown grouped by service profile.
+
+## Profile
+
+- `/profile/me` → `MyProfilePage` (`src/pages/profile/MyProfilePage.tsx`)
+
+## Account & Service
 
 - `/account/profile` → [[Carrier Profile]]
 - `/account/locations` → [[Locations]]
+- `/service-profile` → `ServiceProfilePage` (`src/pages/service/ServiceProfilePage.tsx`); empty state via `EmptyServiceProfile`
 
 ## Accounts (multi-tenant)
 
-- `/accounts` → [[Accounts List]]
+- `/accounts` → [[Accounts List]] (renders `AccountsTabsPage`)
 - `/accounts/new` → [[Add Account]]
+- `/accounts/services/new` → `AddServiceProfilePage`
+
+## Admin
+
+- `/admin/users` → `UsersListPage` (`src/pages/admin/UsersListPage.tsx`)
+- `/admin/users/new` → `AddUserPage`
 
 ## Inventory
 
-- `/inventory/assets` → [[Inventory Assets]]
-- `/inventory/drivers` → [[Inventory Drivers]]
+- `/inventory` → `InventoryListPage`
+- `/inventory/items/new` → `AddInventoryItemPage`
+- `/inventory/vendors` → `VendorsListPage`
+- `/inventory/vendors/new` → `AddVendorPage`
 
 ## Compliance
 
@@ -65,6 +82,10 @@ Every UI page in the app, grouped by area. Routes are the `path` strings handled
 - `/settings/trainings` → [[Settings — Trainings]]
 - `/settings/safety` → [[Settings — Safety]]
 - `/settings/fuel` → [[Settings — Fuel]]
+
+## Vendor portal (public)
+
+- `#/vendor/work-order?d=<base64url>` → `VendorWorkOrderFormPage` (`src/pages/vendor-portal/VendorWorkOrderFormPage.tsx`). Renders before the auth shell — see [[Architecture]] § "Vendor-portal short-circuit".
 
 ## Pattern
 

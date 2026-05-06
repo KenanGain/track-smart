@@ -29,7 +29,12 @@ tags: [overview, stack]
 ## Data / Files
 
 - **xlsx** + **xlsx-js-style** — spreadsheet import/export
+- **jspdf** + **html2canvas** — PDF report generation (FMCSA / CVOR / NSC inspection reports — currently in flight)
 - **vite-plugin-node-polyfills** — for browser Node-shim needs
+
+## Backend (single endpoint)
+
+- **resend** — sends the vendor work-order email from `api/send-vendor-email.ts`. See [[Backend]] · [[API Routes]].
 
 ## Tooling
 

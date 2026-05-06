@@ -25,6 +25,7 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
     const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
     const [serviceSearchQuery, setServiceSearchQuery] = useState("");
     const [activeServiceGroup, setActiveServiceGroup] = useState<string>("All");
+    const [scheduleRemarks, setScheduleRemarks] = useState("");
 
     // Section 2: Assets
     const [applyToAll, setApplyToAll] = useState(false);
@@ -115,6 +116,7 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
             entityCategory: entityType,
             name: scheduleName,
             serviceTypeIds: selectedServiceIds,
+            remarks: scheduleRemarks.trim() || undefined,
             assignment: {
                 applyToAll,
                 entityIds: applyToAll ? availableAssets.map(a => a.id) : assignedAssetIds
@@ -208,20 +210,37 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                 />
                             </div>
 
-                            {/* Group Tabs */}
-                            <div className="flex border-b border-slate-200 mb-3 overflow-x-auto">
-                                {['All', 'Safety Inspection', 'Intermediate Service', 'Comprehensive Service', 'Major Overhaul', 'Other'].map((group) => (
-                                    <button
-                                        key={group}
-                                        onClick={() => setActiveServiceGroup(group)}
-                                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeServiceGroup === group
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                            {/* Group Tabs — same 7-category structure used by
+                                the Create Task Order → New Task picker, so both
+                                forms feel identical. */}
+                            <div className="flex flex-wrap gap-1.5 mb-3">
+                                {[
+                                    'All',
+                                    'Engine',
+                                    'Brakes',
+                                    'Tires & Wheels',
+                                    'Suspension & Steering',
+                                    'Body & Coupling',
+                                    'Lamps & Electrical',
+                                    'Inspections',
+                                    'Other',
+                                ].map((group) => {
+                                    const isActive = activeServiceGroup === group;
+                                    return (
+                                        <button
+                                            key={group}
+                                            type="button"
+                                            onClick={() => setActiveServiceGroup(group)}
+                                            className={`inline-flex items-center h-7 px-3 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap leading-none ${
+                                                isActive
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                                             }`}
-                                    >
-                                        {group}
-                                    </button>
-                                ))}
+                                        >
+                                            {group}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {/* Service List */}
@@ -256,7 +275,25 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                             </div>
                         </div>
 
-
+                        {/* Remarks — same UX as the Create Task Order modal's
+                            per-task Remarks input. Captures any notes a manager
+                            wants attached to every task spawned from this
+                            schedule (e.g. "always use synthetic 5W-40 oil"). */}
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                Remarks <span className="text-slate-400 font-normal">(optional)</span>
+                            </label>
+                            <textarea
+                                rows={3}
+                                value={scheduleRemarks}
+                                onChange={(e) => setScheduleRemarks(e.target.value)}
+                                placeholder="e.g. Use synthetic 5W-40 oil only. Driver reports squealing under heavy braking — investigate during this service."
+                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            />
+                            <p className="mt-1 text-[11px] text-slate-500">
+                                These remarks attach to every task this schedule generates — visible to the vendor on the work order.
+                            </p>
+                        </div>
 
                     </div>
                 </section>

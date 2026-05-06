@@ -39,6 +39,8 @@ import {
   CVOR_INTERVENTION_PERIOD as _ACME_CVOR_INTERVENTION_PERIOD,
   type CvorInterventionEvent,
 } from './cvorInterventionEvents.data';
+import type { FmcsaPdfReportProps } from './FmcsaPdfReport';
+import type { NscPdfReportProps } from './NscPdfReport';
 import { NscPerformanceCard, type NscPerformanceCardProps } from './NscPerformanceCard';
 import { InspectionReportPanel } from './InspectionReportPanel';
 import { NscBcCarrierProfile, INERTIA_CARRIER_BC_DATA } from './NscBcCarrierProfile';
@@ -2634,6 +2636,14 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
     } as const;
   }, [compliance]);
 
+  // True when at least one regime is currently enrolled (any toggle on).
+  const hasAnyEnrolled = useMemo(() => {
+    if (!compliance) return false;
+    if (compliance.fmcsa.enabled) return true;
+    if (compliance.cvor.enabled) return true;
+    return compliance.nsc.some((n) => n.enabled);
+  }, [compliance]);
+
   const [activeMainTab, setActiveMainTab] = useState<'sms' | 'cvor' | 'carrier-profile-ab' | 'carrier-profile-bc' | 'carrier-profile-pe' | 'carrier-profile-ns'>('sms');
 
   // If the current carrier doesn't have data for the active tab, switch to
@@ -2654,6 +2664,7 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
   const [abMainOpen, setAbMainOpen] = useState<Record<string, boolean>>({});
   const abMainTog = (k: string) => setAbMainOpen(p => ({ ...p, [k]: !p[k] }));
   const [showReport, setShowReport] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [smsPeriod, setSmsPeriod] = useState<'1M' | '3M' | '6M' | '12M' | '24M' | 'Monthly' | 'Quarterly' | 'Semi-Annual' | 'Annual' | 'All'>('All');
   const smsBasicCategory = 'All';
   const [smsTopViolSort, setSmsTopViolSort] = useState<'POINTS' | 'COUNT'>('POINTS');
@@ -3204,11 +3215,19 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
   void pagedData;
 
   return (
-    <div className="min-h-screen text-slate-900 p-4 md:p-6 pb-20 relative">
-      <div className="w-full space-y-6">
-        
+    <div className="h-full flex flex-col text-slate-900 relative">
+
+      {/* ===== PINNED HEADER + TABS ──────────────────────────────────
+           Flex-column layout — this header is `flex-shrink-0` so it
+           never scrolls, while the content area below is the only
+           scrollable region (`flex-1 overflow-y-auto`). The title,
+           action buttons, and tab switcher stay perfectly still while
+           the user scrolls FMCSA / CVOR / NSC content underneath. */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)] z-10">
+        <div className="px-4 md:px-6 pt-4 md:pt-5 pb-3 space-y-3">
+
         {/* ===== TOP HEADER & ACTIONS ===== */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Safety and Compliance</h1>
             <p className="text-sm text-gray-500">Track and manage roadside inspections, carrier profiles, and safety events.</p>
@@ -3227,17 +3246,38 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
             >
               <Upload size={16} /> Export
             </button>
-            <button
-              onClick={openAddModal}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm shadow-blue-200"
-            >
-              <Plus size={16} /> Add Compliance
-            </button>
+            {(() => {
+              // Disable when the active tab's regime is "Not Enrolled" (toggle
+              // off) — adding a record under a regime the carrier isn't
+              // enrolled in doesn't make sense. Falls back to "any enrolled"
+              // when the tab itself has no data.
+              const activeReg = TAB_REGIMES[activeMainTab];
+              const activeEnrolled = activeReg?.enabled ?? false;
+              const enabled = activeEnrolled || (!activeReg?.hasData && hasAnyEnrolled);
+              return (
+                <button
+                  onClick={openAddModal}
+                  disabled={!enabled}
+                  title={
+                    enabled
+                      ? "Add a compliance record"
+                      : "This regime is Not Enrolled — turn it on in Configure first"
+                  }
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold shadow-sm ${
+                    enabled
+                      ? "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  <Plus size={16} /> Add Compliance
+                </button>
+              );
+            })()}
           </div>
         </div>
 
         {/* ===== MAIN TAB NAVIGATION ===== */}
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="inline-flex items-center bg-slate-100 rounded-lg p-1 gap-1">
             {[
               { id: 'sms' as const, label: 'FMCSA' },
@@ -3275,19 +3315,187 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
               })}
           </div>
 
-          {/* Report button - only for reportable tabs */}
-          <button
-            onClick={() => setShowReport(p => !p)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
-              showReport
-                ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
-                : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-            }`}
-          >
-            <FileText size={14} />
-            {showReport ? 'Close Report' : 'Generate Report'}
-          </button>
+          {/* Report button — FMCSA & CVOR tabs download a multi-page PDF;
+              other tabs keep the in-page panel toggle. */}
+          {activeMainTab === 'sms' ? (
+            <button
+              onClick={async () => {
+                if (isGeneratingPdf) return;
+                setIsGeneratingPdf(true);
+                try {
+                  const { generateFmcsaPdf } = await import('./generateFmcsaPdf');
+                  const fmcsaInspections: FmcsaPdfReportProps['inspections'] = inspectionsData
+                    .filter(i => getJurisdiction(i.state) === 'CSA')
+                    .map(i => ({
+                      id: i.id,
+                      date: i.date,
+                      state: i.state,
+                      location: i.location,
+                      level: i.level,
+                      isClean: i.isClean,
+                      hasOOS: i.hasOOS,
+                      severityRate: i.severityRate ?? undefined,
+                      smsPoints: i.smsPoints,
+                      violations: i.violations?.map(v => ({
+                        code: v.code,
+                        category: v.category,
+                        description: v.description,
+                        subDescription: v.subDescription,
+                        severity: v.severity,
+                        oos: v.oos,
+                        points: v.points,
+                      })),
+                      oosSummary: i.oosSummary,
+                      violationSummary: Object.fromEntries(
+                        Object.entries(i.violationSummary ?? {}).filter((entry): entry is [string, number] => typeof entry[1] === 'number'),
+                      ),
+                    }));
+                  await generateFmcsaPdf({
+                    carrierProfile,
+                    basicOverview: computedBasicOverview,
+                    csaThresholds,
+                    inspections: fmcsaInspections,
+                    reportDate: new Date(),
+                    generatedBy: currentUser?.name || currentUser?.email,
+                  });
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error('FMCSA PDF generation failed:', err);
+                  alert('Could not generate the FMCSA PDF report. See console for details.');
+                } finally {
+                  setIsGeneratingPdf(false);
+                }
+              }}
+              disabled={isGeneratingPdf}
+              title="Download a multi-page FMCSA PDF report"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
+                isGeneratingPdf
+                  ? 'bg-indigo-300 text-white border-indigo-300 cursor-wait'
+                  : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              <FileText size={14} />
+              {isGeneratingPdf ? 'Generating PDF…' : 'Generate Report'}
+            </button>
+          ) : activeMainTab === 'cvor' ? (
+            <button
+              onClick={async () => {
+                if (isGeneratingPdf) return;
+                setIsGeneratingPdf(true);
+                try {
+                  const { generateCvorPdf } = await import('./generateCvorPdf');
+                  await generateCvorPdf({
+                    carrierProfile,
+                    cvorThresholds,
+                    cvorOosThresholds,
+                    cvorPeriodicReports,
+                    cvorTravelKm,
+                    interventionPeriod: CVOR_INTERVENTION_PERIOD,
+                    reportDate: new Date(),
+                  });
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error('CVOR PDF generation failed:', err);
+                  alert('Could not generate the CVOR PDF report. See console for details.');
+                } finally {
+                  setIsGeneratingPdf(false);
+                }
+              }}
+              disabled={isGeneratingPdf}
+              title="Download a multi-page CVOR PDF report"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
+                isGeneratingPdf
+                  ? 'bg-indigo-300 text-white border-indigo-300 cursor-wait'
+                  : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              <FileText size={14} />
+              {isGeneratingPdf ? 'Generating PDF…' : 'Generate Report'}
+            </button>
+          ) : (activeMainTab === 'carrier-profile-ab' ||
+               activeMainTab === 'carrier-profile-bc' ||
+               activeMainTab === 'carrier-profile-pe' ||
+               activeMainTab === 'carrier-profile-ns') ? (
+            <button
+              onClick={async () => {
+                if (isGeneratingPdf) return;
+                setIsGeneratingPdf(true);
+                try {
+                  const { generateNscPdf } = await import('./generateNscPdf');
+                  const j: 'AB' | 'BC' | 'PE' | 'NS' =
+                    activeMainTab === 'carrier-profile-ab' ? 'AB'
+                    : activeMainTab === 'carrier-profile-bc' ? 'BC'
+                    : activeMainTab === 'carrier-profile-pe' ? 'PE'
+                    : 'NS';
+                  const bcProfileForPdf: NscPdfReportProps['bcProfile'] | undefined = j === 'BC'
+                    ? {
+                        ...carrierBcProfile,
+                        interventions: carrierBcProfile.interventions.map(iv => ({
+                          ...iv,
+                          description: iv.description ?? '',
+                        })),
+                      }
+                    : undefined;
+                  await generateNscPdf({
+                    jurisdiction: j,
+                    carrierProfile: {
+                      id: carrierProfile.id,
+                      name: carrierProfile.name,
+                      address: carrierProfile.address,
+                      vehicles: carrierProfile.vehicles,
+                      drivers: carrierProfile.drivers,
+                    },
+                    abProfile: j === 'AB' ? carrierAbProfile : undefined,
+                    bcProfile: bcProfileForPdf,
+                    peProfile: j === 'PE' ? carrierPeProfile : undefined,
+                    nsProfile: j === 'NS' ? carrierNsProfile : undefined,
+                    reportDate: new Date(),
+                  });
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error('NSC PDF generation failed:', err);
+                  alert('Could not generate the NSC PDF report. See console for details.');
+                } finally {
+                  setIsGeneratingPdf(false);
+                }
+              }}
+              disabled={isGeneratingPdf}
+              title="Download a multi-page NSC PDF report"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
+                isGeneratingPdf
+                  ? 'bg-indigo-300 text-white border-indigo-300 cursor-wait'
+                  : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              <FileText size={14} />
+              {isGeneratingPdf ? 'Generating PDF…' : 'Generate Report'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowReport(p => !p)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border transition-all shadow-sm ${
+                showReport
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                  : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+              }`}
+            >
+              <FileText size={14} />
+              {showReport ? 'Close Report' : 'Generate Report'}
+            </button>
+          )}
         </div>
+
+        </div>
+      </div>
+      {/* ===== /PINNED HEADER + TABS ===== */}
+
+      {/* ===== SCROLLABLE CONTENT AREA ─────────────────────────────
+           The only scrolling region on the page. Holds the optional
+           Report Panel and the active tab's content (FMCSA / CVOR /
+           NSC). Modals are siblings (outside this region) so they
+           overlay the entire page. */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 md:p-6 pb-20 space-y-6">
 
         {/* ===== REPORT PANEL ===== */}
         {showReport && (
@@ -3300,9 +3508,6 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
             carrierProfile={carrierProfile}
           />
         )}
-
-
-      </div>
 
       {/* ===== TAB: SMS (FMCSA) ===== */}
       {activeMainTab === 'sms' && (
@@ -6600,14 +6805,23 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
             const hasTicket = (e: CvorInterventionEvent) =>
               !!e.ticket || e.charged === 'Y' || e.collision?.driverCharged === 'Y';
 
+            const matchesType = (e: CvorInterventionEvent) =>
+              cvorEventTypeFilter === 'ALL' ? true : e.type === cvorEventTypeFilter;
+
+            // KPI counts honour the active "Filter by type" — switching to
+            // Inspection/Collision/Conviction recomputes every card's count
+            // against just that subset, so the cards always reflect the
+            // population the user is currently looking at.
+            const typeScopedEvents = allEvents.filter(matchesType);
+
             const kpiCounts = {
-              all:        allEvents.length,
-              clean:      allEvents.filter(isClean).length,
-              oos:        allEvents.filter(hasOos).length,
-              vehicle:    allEvents.filter(hasVehIssue).length,
-              hosDriver:  allEvents.filter(hasDriverIssue).length,
-              severe:     allEvents.filter(isSevere).length,
-              tickets:    allEvents.filter(hasTicket).length,
+              all:        typeScopedEvents.length,
+              clean:      typeScopedEvents.filter(isClean).length,
+              oos:        typeScopedEvents.filter(hasOos).length,
+              vehicle:    typeScopedEvents.filter(hasVehIssue).length,
+              hosDriver:  typeScopedEvents.filter(hasDriverIssue).length,
+              severe:     typeScopedEvents.filter(isSevere).length,
+              tickets:    typeScopedEvents.filter(hasTicket).length,
             };
 
             const matchesKpi = (e: CvorInterventionEvent) => {
@@ -6637,10 +6851,9 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
               return haystack.includes(q);
             };
 
-            const matchesType = (e: CvorInterventionEvent) =>
-              cvorEventTypeFilter === 'ALL' ? true : e.type === cvorEventTypeFilter;
-
-            const filtered = allEvents.filter(e => matchesKpi(e) && matchesType(e) && matchesSearch(e));
+            // Type filter is already applied via typeScopedEvents — only KPI
+            // category + free-text search remain for the row-level filter.
+            const filtered = typeScopedEvents.filter(e => matchesKpi(e) && matchesSearch(e));
 
             // Sorting
             const getSortVal = (r: CvorInterventionEvent): string | number => {
@@ -6713,154 +6926,189 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
               return { top: top || '—', plate: v.plate || '' };
             };
 
+            // Unified expansion layout used for ALL event types (Inspection,
+            // Collision, Conviction). Each row, when expanded, shows:
+            //   1. Summary card  — type-aware list of label/value rows
+            //   2. Driver & Vehicles card — uniform across types
+            //   3. Optional third card — type-specific extras (Defects list
+            //      for Inspection, Vehicle/Driver Action for Collision,
+            //      Offence detail for Conviction)
+            //
+            // Building a row collection per type keeps the JSX layout itself
+            // consistent — easier to scan and maintain than three diverging
+            // markup blocks.
+            type SummaryRow = { label: string; value: React.ReactNode; valueClass?: string };
+
+            const renderSummaryCard = (label: string, labelColor: string, rows: SummaryRow[]) => (
+              <div className="bg-white rounded-lg border border-slate-200 p-3">
+                <div className={`text-[10px] font-bold ${labelColor} uppercase tracking-wider mb-2`}>{label}</div>
+                <div className="text-xs space-y-1.5">
+                  {rows.map((r, i) => (
+                    <div key={i} className="flex justify-between gap-2">
+                      <span className="text-slate-500">{r.label}</span>
+                      <span className={r.valueClass ?? 'font-bold text-slate-800'}>{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+
+            const renderDriverVehiclesCard = (e: CvorInterventionEvent) => (
+              <div className="bg-white rounded-lg border border-slate-200 p-3">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Driver &amp; Vehicles</div>
+                <div className="text-xs space-y-2">
+                  <div>
+                    <div className="text-slate-500">Driver</div>
+                    <div className="font-bold text-slate-800">{e.driverName ?? '—'}</div>
+                    <div className="font-mono text-slate-600 text-[11px]">
+                      {e.driverLicence ?? '—'} <span className="text-slate-400">({e.driverLicenceJurisdiction ?? '—'})</span>
+                    </div>
+                  </div>
+                  {e.vehicle1 && (e.vehicle1.make || e.vehicle1.unit || e.vehicle1.plate) && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-slate-500">Vehicle 1</div>
+                      <div className="font-bold text-slate-800">{[e.vehicle1.make, e.vehicle1.unit].filter(Boolean).join(' ') || '—'}</div>
+                      <div className="font-mono text-slate-600 text-[11px]">
+                        {e.vehicle1.plate || '—'} <span className="text-slate-400">({e.vehicle1.jurisdiction || '—'})</span>
+                      </div>
+                    </div>
+                  )}
+                  {e.vehicle2 && (e.vehicle2.make || e.vehicle2.unit || e.vehicle2.plate) && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <div className="text-slate-500">Vehicle 2</div>
+                      <div className="font-bold text-slate-800">{[e.vehicle2.make, e.vehicle2.unit].filter(Boolean).join(' ') || '—'}</div>
+                      <div className="font-mono text-slate-600 text-[11px]">
+                        {e.vehicle2.plate || '—'} <span className="text-slate-400">({e.vehicle2.jurisdiction || '—'})</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+
             const renderExpand = (e: CvorInterventionEvent) => {
+              let summaryLabel = '';
+              let summaryColor = 'text-slate-400';
+              let summaryRows: SummaryRow[] = [];
+              let thirdCard: React.ReactNode = null;
+
               if (e.type === 'inspection') {
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Inspection Summary</div>
-                      <div className="text-xs space-y-1.5">
-                        <div className="flex justify-between"><span className="text-slate-500">CVIR #</span><span className="font-mono font-bold text-slate-800">{e.cvir ?? '—'}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Date</span><span className="font-mono text-slate-700">{e.date}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Time</span><span className="font-mono text-slate-700">{e.startTime} - {e.endTime}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Level</span><span className="font-bold text-slate-800">{e.level}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500"># of Vehicles</span><span className="font-bold text-slate-800">{e.numVehicles}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Co-Driver</span><span className="font-bold text-slate-800">{e.coDriver}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Impoundment</span><span className="font-bold text-slate-800">{e.impoundment}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Charged</span><span className={`font-bold ${e.charged === 'Y' ? 'text-red-600' : 'text-emerald-600'}`}>{e.charged}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Categories OOS*</span><span className={`font-bold ${(e.oosCount ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{e.oosCount ?? 0}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Total Defects</span><span className={`font-bold ${(e.totalDefects ?? 0) > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{e.totalDefects ?? 0}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Vehicle Points</span><span className={`font-bold ${(e.vehiclePoints ?? 0) > 0 ? 'text-amber-600' : 'text-slate-800'}`}>{e.vehiclePoints ?? 0}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Driver Points</span><span className={`font-bold ${(e.driverPoints ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{e.driverPoints ?? 0}</span></div>
+                summaryLabel = 'Inspection Summary';
+                summaryRows = [
+                  { label: 'CVIR #',          value: e.cvir ?? '—',        valueClass: 'font-mono font-bold text-slate-800' },
+                  { label: 'Date',            value: e.date,               valueClass: 'font-mono text-slate-700' },
+                  { label: 'Time',            value: `${e.startTime ?? '—'} - ${e.endTime ?? '—'}`, valueClass: 'font-mono text-slate-700' },
+                  { label: 'Level',           value: e.level ?? '—' },
+                  { label: '# of Vehicles',   value: e.numVehicles ?? '—' },
+                  { label: 'Co-Driver',       value: e.coDriver ?? '—' },
+                  { label: 'Impoundment',     value: e.impoundment ?? '—' },
+                  { label: 'Charged',         value: e.charged ?? '—', valueClass: `font-bold ${e.charged === 'Y' ? 'text-red-600' : 'text-emerald-600'}` },
+                  { label: 'Categories OOS*', value: e.oosCount ?? 0,  valueClass: `font-bold ${(e.oosCount ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}` },
+                  { label: 'Total Defects',   value: e.totalDefects ?? 0, valueClass: `font-bold ${(e.totalDefects ?? 0) > 0 ? 'text-amber-600' : 'text-slate-800'}` },
+                  { label: 'Vehicle Points',  value: e.vehiclePoints ?? 0, valueClass: `font-bold ${(e.vehiclePoints ?? 0) > 0 ? 'text-amber-600' : 'text-slate-800'}` },
+                  { label: 'Driver Points',   value: e.driverPoints ?? 0,  valueClass: `font-bold ${(e.driverPoints ?? 0) > 0 ? 'text-red-600' : 'text-slate-800'}` },
+                ];
+                thirdCard = (
+                  <div className="bg-white rounded-lg border border-slate-200 p-3">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Defects ({e.defects?.length ?? 0})</div>
+                    {e.defects && e.defects.length > 0 ? (
+                      <ul className="space-y-1.5 text-xs">
+                        {e.defects.map((d, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            {d.oos
+                              ? <span className="mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">OOS</span>
+                              : <span className="mt-1 w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />}
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{d.category}</div>
+                              <div className={`text-[12px] font-medium ${d.oos ? 'text-red-700' : 'text-slate-700'}`}>{d.defect}</div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="text-xs text-slate-500 italic">No defects recorded.</div>
+                    )}
+                  </div>
+                );
+              } else if (e.type === 'collision' && e.collision) {
+                const c = e.collision;
+                summaryLabel = 'Collision Summary';
+                summaryColor = 'text-red-500';
+                summaryRows = [
+                  { label: 'Incident Date',  value: e.date,                valueClass: 'font-mono text-slate-700' },
+                  { label: 'Incident Time',  value: e.time ?? '—',         valueClass: 'font-mono text-slate-700' },
+                  { label: 'Class',          value: c.collisionClass ?? '—' },
+                  { label: 'Jurisdiction',   value: c.jurisdiction ?? '—' },
+                  { label: 'Location',       value: e.location ?? '—',     valueClass: 'font-bold text-slate-800 text-right max-w-[60%] truncate' },
+                  { label: 'Ticket #',       value: e.ticket ?? '—',       valueClass: 'font-mono text-slate-700' },
+                  { label: 'Microfilm #',    value: c.microfilm ?? '—',    valueClass: 'font-mono text-slate-700' },
+                  { label: 'Driver Charged', value: c.driverCharged ?? '—', valueClass: `font-bold ${c.driverCharged === 'Y' ? 'text-red-600' : 'text-emerald-600'}` },
+                  { label: 'Points',         value: c.points ?? 0,         valueClass: 'font-bold text-red-600' },
+                ];
+                thirdCard = (
+                  <div className="bg-white rounded-lg border border-slate-200 p-3">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vehicle &amp; Driver Action</div>
+                    <div className="text-xs space-y-2">
+                      <div>
+                        <div className="text-slate-500">Vehicle Action</div>
+                        <div className="text-slate-700">{c.vehicleAction ?? '—'}</div>
+                        <div className="text-slate-500 text-[11px]">{c.vehicleCondition ?? '—'}</div>
+                      </div>
+                      <div className="pt-2 border-t border-slate-100">
+                        <div className="text-slate-500">Driver Action</div>
+                        <div className="text-slate-700">{c.driverAction ?? '—'}</div>
+                        <div className="text-slate-500 text-[11px]">{c.driverCondition ?? '—'}</div>
                       </div>
                     </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Driver &amp; Vehicles</div>
-                      <div className="text-xs space-y-2">
-                        <div>
-                          <div className="text-slate-500">Driver</div>
-                          <div className="font-bold text-slate-800">{e.driverName ?? '—'}</div>
-                          <div className="font-mono text-slate-600 text-[11px]">{e.driverLicence ?? '—'} <span className="text-slate-400">({e.driverLicenceJurisdiction ?? '—'})</span></div>
+                  </div>
+                );
+              } else if (e.type === 'conviction' && e.conviction) {
+                const c = e.conviction;
+                summaryLabel = 'Conviction Summary';
+                summaryColor = 'text-amber-600';
+                summaryRows = [
+                  { label: 'Event Date',      value: e.date,                  valueClass: 'font-mono text-slate-700' },
+                  { label: 'Event Time',      value: e.time ?? '—',           valueClass: 'font-mono text-slate-700' },
+                  { label: 'Conviction Date', value: c.convictionDate ?? '—', valueClass: 'font-mono text-slate-700' },
+                  { label: 'Jurisdiction',    value: c.jurisdiction ?? '—' },
+                  { label: 'Ticket #',        value: e.ticket ?? '—',         valueClass: 'font-mono text-slate-700' },
+                  { label: 'Microfilm #',     value: c.microfilm ?? '—',      valueClass: 'font-mono text-slate-700' },
+                  { label: 'Charged Carrier', value: c.chargedCarrier ?? '—' },
+                  { label: 'Points',          value: c.points ?? 0,           valueClass: 'font-bold text-amber-600' },
+                ];
+                thirdCard = (
+                  <div className="bg-white rounded-lg border border-slate-200 p-3">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Offence Detail</div>
+                    <div className="text-xs space-y-2">
+                      <div>
+                        <div className="text-slate-500">Offence</div>
+                        <div className="font-bold text-slate-800">{c.offence ?? '—'}</div>
+                        {c.ccmtaEquivalency && (
+                          <div className="text-slate-500 text-[11px] mt-0.5">
+                            <span className="font-semibold">CCMTA:</span> {c.ccmtaEquivalency}
+                          </div>
+                        )}
+                      </div>
+                      {c.offenceLocation && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <div className="text-slate-500">Offence Location</div>
+                          <div className="text-slate-700">{c.offenceLocation}</div>
                         </div>
-                        {e.vehicle1 && (
-                          <div className="pt-2 border-t border-slate-100">
-                            <div className="text-slate-500">Vehicle 1</div>
-                            <div className="font-bold text-slate-800">{e.vehicle1.make} {e.vehicle1.unit}</div>
-                            <div className="font-mono text-slate-600 text-[11px]">{e.vehicle1.plate} <span className="text-slate-400">({e.vehicle1.jurisdiction})</span></div>
-                          </div>
-                        )}
-                        {e.vehicle2 && (e.vehicle2.make || e.vehicle2.unit || e.vehicle2.plate) && (
-                          <div className="pt-2 border-t border-slate-100">
-                            <div className="text-slate-500">Vehicle 2</div>
-                            <div className="font-bold text-slate-800">{e.vehicle2.make} {e.vehicle2.unit}</div>
-                            <div className="font-mono text-slate-600 text-[11px]">{e.vehicle2.plate} <span className="text-slate-400">({e.vehicle2.jurisdiction})</span></div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Defects ({e.defects?.length ?? 0})</div>
-                      {e.defects && e.defects.length > 0 ? (
-                        <ul className="space-y-1.5 text-xs">
-                          {e.defects.map((d, i) => (
-                            <li key={i} className="flex items-start gap-2">
-                              {d.oos
-                                ? <span className="mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">OOS</span>
-                                : <span className="mt-1 w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />}
-                              <div className="min-w-0">
-                                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{d.category}</div>
-                                <div className={`text-[12px] font-medium ${d.oos ? 'text-red-700' : 'text-slate-700'}`}>{d.defect}</div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="text-xs text-slate-500 italic">No defects recorded.</div>
                       )}
                     </div>
                   </div>
                 );
+              } else {
+                return null;
               }
-              if (e.type === 'collision' && e.collision) {
-                const c = e.collision;
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-2">Collision Details</div>
-                      <div className="text-xs space-y-1.5">
-                        <div className="flex justify-between"><span className="text-slate-500">Incident Date</span><span className="font-mono text-slate-700">{e.date}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Incident Time</span><span className="font-mono text-slate-700">{e.time}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Class</span><span className="font-bold text-slate-800">{c.collisionClass}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Jurisdiction</span><span className="font-bold text-slate-800">{c.jurisdiction}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Location</span><span className="font-bold text-slate-800 text-right max-w-[60%] truncate">{e.location ?? '—'}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Ticket #</span><span className="font-mono text-slate-700">{e.ticket ?? '—'}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Microfilm #</span><span className="font-mono text-slate-700">{c.microfilm}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Driver Charged</span><span className={`font-bold ${c.driverCharged === 'Y' ? 'text-red-600' : 'text-emerald-600'}`}>{c.driverCharged}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Points</span><span className="font-bold text-red-600">{c.points}</span></div>
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vehicle &amp; Driver Action</div>
-                      <div className="text-xs space-y-2">
-                        <div>
-                          <div className="text-slate-500">Vehicle</div>
-                          <div className="font-mono text-slate-700">{e.vehicle1?.plate ?? '—'} <span className="text-slate-400">({e.vehicle1?.jurisdiction ?? '—'})</span></div>
-                          <div className="text-slate-700">{c.vehicleAction}</div>
-                          <div className="text-slate-500 text-[11px]">{c.vehicleCondition}</div>
-                        </div>
-                        <div className="pt-2 border-t border-slate-100">
-                          <div className="text-slate-500">Driver</div>
-                          <div className="font-bold text-slate-800">{e.driverName ?? '—'}</div>
-                          <div className="font-mono text-slate-600 text-[11px]">{e.driverLicence ?? '—'} <span className="text-slate-400">({e.driverLicenceJurisdiction ?? '—'})</span></div>
-                          <div className="text-slate-700 mt-1">{c.driverAction}</div>
-                          <div className="text-slate-500 text-[11px]">{c.driverCondition}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              if (e.type === 'conviction' && e.conviction) {
-                const c = e.conviction;
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-2">Conviction Details</div>
-                      <div className="text-xs space-y-1.5">
-                        <div className="flex justify-between"><span className="text-slate-500">Event Date</span><span className="font-mono text-slate-700">{e.date}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Event Time</span><span className="font-mono text-slate-700">{e.time ?? '—'}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Conviction Date</span><span className="font-mono text-slate-700">{c.convictionDate}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Jurisdiction</span><span className="font-bold text-slate-800">{c.jurisdiction}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Ticket #</span><span className="font-mono text-slate-700">{e.ticket ?? '—'}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Microfilm #</span><span className="font-mono text-slate-700">{c.microfilm}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Charged Carrier</span><span className="font-bold text-slate-800">{c.chargedCarrier}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-500">Points</span><span className="font-bold text-amber-600">{c.points}</span></div>
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border border-slate-200 p-3">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Offence &amp; Vehicle</div>
-                      <div className="text-xs space-y-2">
-                        <div>
-                          <div className="text-slate-500">Vehicle Plate</div>
-                          <div className="font-mono text-slate-700">{e.vehicle1?.plate ?? '—'} <span className="text-slate-400">({e.vehicle1?.jurisdiction ?? '—'})</span></div>
-                        </div>
-                        <div className="pt-2 border-t border-slate-100">
-                          <div className="text-slate-500">Offence</div>
-                          <div className="font-bold text-slate-800">{c.offence}</div>
-                          {c.ccmtaEquivalency && <div className="text-slate-500 text-[11px] mt-0.5"><span className="font-semibold">CCMTA:</span> {c.ccmtaEquivalency}</div>}
-                        </div>
-                        {c.offenceLocation && (
-                          <div className="pt-2 border-t border-slate-100">
-                            <div className="text-slate-500">Offence Location</div>
-                            <div className="text-slate-700">{c.offenceLocation}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              return null;
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {renderSummaryCard(summaryLabel, summaryColor, summaryRows)}
+                  {renderDriverVehiclesCard(e)}
+                  {thirdCard}
+                </div>
+              );
             };
 
             const visibleColCount = cvorEventColumns.filter(c => c.visible).length + 1; // +1 for chevron col
@@ -10963,6 +11211,10 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
         </div>
         </RegimeGate>
       )}
+
+        </div>
+      </div>
+      {/* ===== /SCROLLABLE CONTENT AREA ===== */}
 
       {/* ===== COMPLIANCE CONFIGURE MODAL ===== */}
       {currentUser && configureOpen && (

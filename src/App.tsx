@@ -5,6 +5,7 @@ import { LoginPage } from '@/pages/auth/LoginPage'
 import { MyProfilePage } from '@/pages/profile/MyProfilePage'
 import { UsersListPage } from '@/pages/admin/UsersListPage'
 import { AddUserPage } from '@/pages/admin/AddUserPage'
+import { SuperAdminDashboardPage } from '@/pages/admin/SuperAdminDashboardPage'
 import { findUserById, type AppUser } from '@/data/users.data'
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data'
 import { EmptyCarrierProfile } from '@/pages/account/EmptyCarrierProfile'
@@ -174,6 +175,9 @@ function App() {
     const renderPage = () => {
         if (path === "/profile/me" && currentUser) {
             return <MyProfilePage user={currentUser} />
+        }
+        if (path === "/admin/dashboard" && currentUser) {
+            return <SuperAdminDashboardPage currentUser={currentUser} />
         }
         if (path === "/admin/users" && currentUser) {
             return <UsersListPage currentUser={currentUser} onNavigate={handleNavigate} />

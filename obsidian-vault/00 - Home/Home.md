@@ -11,15 +11,15 @@ Welcome. This vault is the second brain for the **TrackSmart Dashboard** — a f
 
 ## Quick Links
 
-- [[Project Summary]]
-- [[Tech Stack]]
-- [[Architecture]]
-- [[Pages Index]]
-- [[Data Index]]
-- [[Components Index]]
-- [[Active Tasks]]
-- [[Decisions Index]]
-- [[CVOR Upload Reference]] · [[CVOR PDF Extraction Map]]
+- [[Project Dashboard]] — single-page index of all numbered topics
+- [[Project Summary]] · [[Tech Stack]] · [[Architecture]]
+- [[Frontend]] · [[Backend]] · [[API Routes]] · [[Database and Storage]]
+- [[Environment Variables]] · [[Setup and Run Guide]] · [[Input Output Flow]]
+- [[Design System]] · [[Current Features]]
+- [[Pages Index]] · [[Data Index]] · [[Components Index]]
+- [[Active Tasks]] · [[Backlog]] · [[Done]] · [[Known Issues]] · [[Next Steps]]
+- [[Agent Instructions]] · [[Vault Changelog]]
+- [[Decisions Index]] · [[CVOR Upload Reference]] · [[CVOR PDF Extraction Map]]
 
 ## Sections
 

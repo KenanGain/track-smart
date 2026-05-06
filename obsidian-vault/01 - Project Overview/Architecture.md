@@ -9,8 +9,12 @@ tags: [overview, architecture]
 
 ## Entry point
 
-- `index.html` → `src/main.tsx` → `<App />`
-- `src/App.tsx` is the orchestrator: holds `path` state, renders `<AppSidebar />` + the active page in a flex layout.
+- `index.html` → `src/main.tsx` → `<AppDataProvider>` → `<App />`.
+- `src/App.tsx` is the orchestrator: holds `path`, `currentUser`, `selectedAccount`, `selectedServiceProfileId`. Renders `<AppSidebar>` + `<TopNavbar>` + `<main>` running `renderPage()`.
+
+## Vendor-portal short-circuit
+
+`App()` checks `isVendorPortalUrl()` first. If the URL hash starts with `#/vendor/work-order?d=`, it renders `<VendorWorkOrderFormPage />` and skips the entire authenticated shell. This is the only "public" route. Removing or moving this check breaks the vendor link flow.
 
 ## Navigation
 
@@ -41,17 +45,27 @@ src/
 
 ## State
 
-- Mock data lives in `src/data/*.data.ts` and is consumed directly by pages or via [[AppDataContext]].
-- No backend, no fetch layer. Persistence is in-memory only.
+- Mock data lives in `src/data/*.data.ts` and `src/pages/<area>/*.data.ts`, consumed directly by pages or via [[AppDataContext]].
+- No fetch layer. Persistence is in-memory + two `localStorage` keys (`app_current_user_id`, `tracksmart_vendor_responses`) — see [[Database and Storage]].
+
+## Backend surface
+
+- `api/send-vendor-email.ts` — `POST` endpoint that sends a vendor work-order email through Resend.
+- `api/_emailTemplate.ts` — shared HTML renderer (underscore prefix means *not* an endpoint).
+- `src/server/devApi.ts` — Vite plugin that serves `/api/*.ts` files in dev. In production, Vercel auto-deploys them.
+- See [[API Routes]] · [[Backend]] · [[Environment Variables]].
 
 ## Build
 
 - TS strict (`tsc -b`) before Vite bundling.
+- `nodePolyfills({ include: ['buffer','stream','process','events','util'] })` shims Node globals for browser bundles.
 - Output to `dist/`.
 
 ## Related
 
 - [[Tech Stack]]
+- [[Frontend]] · [[Backend]] · [[API Routes]] · [[Database and Storage]]
 - [[Pages Index]]
 - [[Data Index]]
 - [[Components Index]]
+- [[Setup and Run Guide]]

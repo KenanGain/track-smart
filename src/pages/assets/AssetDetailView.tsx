@@ -2792,12 +2792,24 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
         getDocumentTypeById={getDocumentTypeById}
       />
 
-      {/* Create Order Modal */}
-      <CreateOrderModal 
+      {/* Create Order Modal — opened from this asset's detail page, so we
+          lock the modal to this asset (`preSelectedAssetId`) and feed the
+          full pickable task list via `availableTasks`. Leaving
+          `selectedTasks` empty means the user starts with a clean order
+          and ticks any tasks they want included from the asset's "Existing
+          Scheduled Tasks" panel inside the modal. */}
+      <CreateOrderModal
         isOpen={isCreateOrderModalOpen}
         onClose={() => setIsCreateOrderModalOpen(false)}
         onCreate={handleCreateOrder}
-        selectedTasks={assetTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')}
+        preSelectedAssetId={asset.id}
+        selectedTasks={[]}
+        availableTasks={assetTasks.filter(
+          (t) =>
+            t.status !== 'completed' &&
+            t.status !== 'cancelled' &&
+            !assetOrders.some((o) => o.taskIds.includes(t.id))
+        )}
         vendors={vendors}
         onAddVendor={handleAddVendor}
       />

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, X, Check, Trash2, Search, Wrench, Truck, Store, Calendar, FileText, Mail, Copy, ExternalLink } from "lucide-react";
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Plus, X, Check, Trash2, Search, Wrench, Truck, Store, Calendar, FileText, Mail, Copy, ExternalLink, ListChecks } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INITIAL_ASSETS } from "./assets.data";
-import { INITIAL_SERVICE_TYPES } from "./maintenance.data";
+import { INITIAL_SERVICE_TYPES, INITIAL_TASKS, INITIAL_ORDERS } from "./maintenance.data";
 import type { MaintenanceTask } from "./maintenance.data";
 import { VENDOR_CATEGORIES, US_STATES, CA_PROVINCES, ADDRESS_COUNTRIES } from "@/pages/inventory/inventory.data";
 import {
@@ -10,6 +10,7 @@ import {
     buildMailtoLink,
     type VendorOrderPayload,
 } from "@/pages/vendor-portal/vendorPortal.utils";
+import { cn } from "@/lib/utils";
 
 // --- Local UI Components (Copied for isolation/consistency) ---
 
@@ -93,16 +94,22 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     };
     const [newVendor, setNewVendor] = useState(emptyVendor);
 
-    // Direct (no-schedule) task entries — added inline when no existing tasks are selected
-    type DirectTaskDraft = { id: string; assetId: string; serviceTypeIds: string[] };
+    // Section 1 follows a four-step flow:
+    //   1) Pick asset class (CMV vs Non-CMV)            → `assetClass`
+    //   2) Pick the asset itself                         → `focusAssetId`
+    //   3) Toggle on any existing scheduled tasks        → handled via
+    //      `localSelectedTaskIds` filtered to focusAsset
+    //   4) Optionally add a fresh task with maintenance  → `directTasks`
+    //      type + per-task remarks (no schedule needed)
+    type DirectTaskDraft = { id: string; assetId: string; serviceTypeIds: string[]; remarks?: string };
+    const [assetClass, setAssetClass] = useState<"CMV" | "Non-CMV">("CMV");
+    const [focusAssetId, setFocusAssetId] = useState("");
     const [directTasks, setDirectTasks] = useState<DirectTaskDraft[]>([]);
-    const [draftAssetId, setDraftAssetId] = useState("");
+    // Per-task draft state (for the "Add new task" sub-card)
     const [draftServiceIds, setDraftServiceIds] = useState<string[]>([]);
+    const [draftRemarks, setDraftRemarks] = useState("");
     const [serviceQuery, setServiceQuery] = useState("");
     const [serviceGroup, setServiceGroup] = useState<string>("All");
-    // Inline asset/maintenance picker is hidden by default; the user reveals it
-    // via "+ Add New Task" so the section above isn't crowded.
-    const [showInlinePicker, setShowInlinePicker] = useState(false);
 
     // Reset state when modal opens
     useEffect(() => {
@@ -112,13 +119,28 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
             setIsAddingVendor(false);
             setNewVendor(emptyVendor);
             setDirectTasks([]);
-            setDraftAssetId("");
             setDraftServiceIds([]);
+            setDraftRemarks("");
+            setScheduledTaskRemarks({});
             setServiceQuery("");
             setServiceGroup("All");
-            setShowInlinePicker(false);
             setSentOrder(null);
             setCopyConfirm(false);
+            // If a preselected asset was passed in, lock the flow to that asset
+            // and infer its class. Otherwise start the user at the CMV toggle.
+            if (preSelectedAssetId) {
+                const pre = INITIAL_ASSETS.find(a => a.id === preSelectedAssetId);
+                if (pre) {
+                    setAssetClass(pre.assetCategory);
+                    setFocusAssetId(pre.id);
+                } else {
+                    setAssetClass("CMV");
+                    setFocusAssetId("");
+                }
+            } else {
+                setAssetClass("CMV");
+                setFocusAssetId("");
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
@@ -143,6 +165,54 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     >({ state: 'idle' });
 
     const [localSelectedTaskIds, setLocalSelectedTaskIds] = useState<string[]>([]);
+    /** Remarks the user types when ticking an existing scheduled task. Same
+     *  free-text shape as `draftRemarks` on a New Task — the two inputs
+     *  share the "Remarks for this task" label and render side-by-side
+     *  consistently. Cleared whenever the modal re-opens. */
+    const [scheduledTaskRemarks, setScheduledTaskRemarks] = useState<Record<string, string>>({});
+
+    // Side-nav sections — same shape as AddAccountPage so the layout/feel
+    // matches the rest of the app's "dedicated page with side nav" pattern.
+    const SECTIONS = [
+        { id: 'asset',     label: 'Asset & Tasks',       icon: Truck      },
+        { id: 'newtask',   label: 'New Task',            icon: Plus       },
+        { id: 'vendor',    label: 'Vendor',              icon: Store      },
+        { id: 'schedule',  label: 'Schedule',            icon: Calendar   },
+        { id: 'reqs',      label: 'Completion Reqs',     icon: ListChecks },
+        { id: 'comments',  label: 'Additional Comments', icon: FileText   },
+    ] as const;
+    type SectionId = typeof SECTIONS[number]['id'];
+
+    const [activeSection, setActiveSection] = useState<SectionId>('asset');
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+
+    // Scroll-spy: highlight the section currently in view as the user
+    // scrolls through the form.
+    useEffect(() => {
+        const container = scrollRef.current;
+        if (!container) return;
+        const onScroll = () => {
+            const top = container.scrollTop + 120;
+            let current: SectionId = SECTIONS[0].id;
+            for (const s of SECTIONS) {
+                const el = sectionRefs.current[s.id];
+                if (el && el.offsetTop <= top) current = s.id as SectionId;
+            }
+            setActiveSection(current);
+        };
+        container.addEventListener('scroll', onScroll);
+        return () => container.removeEventListener('scroll', onScroll);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
+
+    const scrollToSection = (id: SectionId) => {
+        const el = sectionRefs.current[id];
+        const container = scrollRef.current;
+        if (el && container) {
+            container.scrollTo({ top: el.offsetTop - 16, behavior: 'smooth' });
+        }
+    };
 
     useEffect(() => {
         if (selectedTasks && selectedTasks.length > 0) {
@@ -256,7 +326,13 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
 
         onCreate({
             taskIds: effectiveSelectedTasks.map(t => t.id),
-            directTasks: directTasks.map(({ assetId, serviceTypeIds }) => ({ assetId, serviceTypeIds })),
+            // Per-task remarks for the existing scheduled tasks the user
+            // ticked — keyed by task id so the parent can attach them to the
+            // matching task on the order.
+            taskRemarks: Object.fromEntries(
+                Object.entries(scheduledTaskRemarks).filter(([, v]) => v.trim().length > 0)
+            ),
+            directTasks: directTasks.map(({ assetId, serviceTypeIds, remarks }) => ({ assetId, serviceTypeIds, remarks })),
             vendorId: finalVendorId,
             createDate,
             dueDate,
@@ -397,16 +473,22 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     };
 
     const addDirectTask = () => {
-        if (!draftAssetId || draftServiceIds.length === 0) return;
+        if (!focusAssetId || draftServiceIds.length === 0) return;
         setDirectTasks(prev => [
             ...prev,
-            { id: `dt_${Math.random().toString(36).substr(2, 9)}`, assetId: draftAssetId, serviceTypeIds: draftServiceIds },
+            {
+                id: `dt_${Math.random().toString(36).substr(2, 9)}`,
+                assetId: focusAssetId,
+                serviceTypeIds: draftServiceIds,
+                remarks: draftRemarks.trim() || undefined,
+            },
         ]);
-        setDraftAssetId("");
+        // Keep the focus asset; reset only the per-task fields so the user
+        // can quickly add another task to the same asset.
         setDraftServiceIds([]);
+        setDraftRemarks("");
         setServiceQuery("");
         setServiceGroup("All");
-        setShowInlinePicker(false);
     };
 
     const removeDirectTask = (id: string) => {
@@ -417,22 +499,107 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
         setDraftServiceIds(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
     };
 
-    const draftAsset = INITIAL_ASSETS.find(a => a.id === draftAssetId);
+    // Assets filtered by the chosen class — drives the asset dropdown.
+    const assetsInClass = useMemo(
+        () => INITIAL_ASSETS.filter(a => a.assetCategory === assetClass),
+        [assetClass]
+    );
+    const focusAsset = INITIAL_ASSETS.find(a => a.id === focusAssetId);
+
+    // Existing scheduled tasks for the focused asset.
+    //
+    // Visible = the task is OPEN (not completed/cancelled) AND it isn't
+    // attached to a closed work order. Anything that's been worked on or
+    // dropped is filtered out — the panel only ever shows live tasks
+    // the user can act on. We compute it straight from the seed so the
+    // panel populates the moment an asset is picked.
+    const closedOrderTaskIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const o of INITIAL_ORDERS) {
+            if (o.status === 'completed' || o.status === 'cancelled') {
+                o.taskIds.forEach(id => ids.add(id));
+            }
+        }
+        return ids;
+    }, []);
+
+    const scheduledTasksForFocusAsset = useMemo(() => {
+        if (!focusAssetId) return [] as MaintenanceTask[];
+        return INITIAL_TASKS.filter(
+            t => t.assetId === focusAssetId
+                && t.status !== 'completed'
+                && t.status !== 'cancelled'
+                && !closedOrderTaskIds.has(t.id)
+        );
+    }, [focusAssetId, closedOrderTaskIds]);
+
+    // 8 category pills for the New Task picker.
+    const SERVICE_GROUPS = [
+        'Engine',
+        'Brakes',
+        'Tires & Wheels',
+        'Suspension & Steering',
+        'Body & Coupling',
+        'Lamps & Electrical',
+        'Inspections',
+        'Other',
+    ] as const;
+
+    // Count of services per category for the chosen asset class — used as a
+    // badge on each pill so the user knows "Brakes (23)" before they click.
+    const servicesByClass = useMemo(() => {
+        const isCmv = assetClass === "CMV";
+        return INITIAL_SERVICE_TYPES.filter(s => {
+            if (isCmv && s.category === "non_cmv_only") return false;
+            if (!isCmv && s.category === "cmv_only") return false;
+            return true;
+        });
+    }, [assetClass]);
+    const serviceCountByGroup = useMemo(() => {
+        const counts: Record<string, number> = { All: servicesByClass.length };
+        for (const g of SERVICE_GROUPS) counts[g] = 0;
+        for (const s of servicesByClass) counts[s.group] = (counts[s.group] ?? 0) + 1;
+        return counts;
+    // SERVICE_GROUPS is module-stable — no need to add it as a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [servicesByClass]);
 
     const filteredServices = useMemo(() => {
         const q = serviceQuery.trim().toLowerCase();
         return INITIAL_SERVICE_TYPES.filter(s => {
-            // Filter by asset class if asset selected
-            if (draftAsset) {
-                const isCmv = draftAsset.assetCategory === "CMV";
-                if (isCmv && s.category === "non_cmv_only") return false;
-                if (!isCmv && s.category === "cmv_only") return false;
-            }
+            // Filter by the user's class choice (class is always set in the
+            // new flow so we don't fall back to "any").
+            const isCmv = assetClass === "CMV";
+            if (isCmv && s.category === "non_cmv_only") return false;
+            if (!isCmv && s.category === "cmv_only") return false;
             if (serviceGroup !== "All" && s.group !== serviceGroup) return false;
             if (q && !s.name.toLowerCase().includes(q)) return false;
             return true;
         });
-    }, [serviceQuery, serviceGroup, draftAsset]);
+    }, [serviceQuery, serviceGroup, assetClass]);
+
+    // For the sidebar nav: returns 0 (untouched), or a positive count
+    // (filled / number of items) so we can show a check + count badge.
+    const completionFor = (id: SectionId): number => {
+        switch (id) {
+            case 'asset':
+                // Filled when an asset is in focus, or when there are
+                // pre-selected scheduled tasks already in the order.
+                return (focusAssetId ? 1 : 0) + uniqueAssetIds.length + localSelectedTaskIds.length;
+            case 'newtask':
+                return directTasks.length;
+            case 'vendor':
+                return vendorId || (isAddingVendor && newVendor.name) ? 1 : 0;
+            case 'schedule':
+                return (createDate ? 1 : 0) + (dueDate ? 1 : 0);
+            case 'reqs':
+                return (requireOdometer ? 1 : 0) + (requireEngineHours ? 1 : 0);
+            case 'comments':
+                return remarks.trim() ? 1 : 0;
+            default:
+                return 0;
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -477,9 +644,69 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                 </div>
             </header>
 
-            {/* Body */}
-            <main className="flex-1 px-6 py-6 pb-28">
-                <div className="max-w-5xl mx-auto">
+            {/* Two-pane Body — left aside is the section nav (mirrors
+                AddAccountPage / AddServiceProfilePage), right pane is the
+                scrollable form. The sentOrder post-create view collapses
+                the aside since there are no sections to navigate. */}
+            <main className="flex-1 flex overflow-hidden">
+                {/* Side navigation — section list with progress markers */}
+                {!sentOrder && (
+                    <aside className="w-64 shrink-0 border-r border-slate-200 bg-white hidden md:flex flex-col">
+                        <div className="px-5 py-4 border-b border-slate-100">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Order Builder</p>
+                            <p className="text-sm font-semibold text-slate-700 mt-0.5">Step through each section</p>
+                        </div>
+                        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+                            {SECTIONS.map((s, idx) => {
+                                const Icon = s.icon;
+                                const isActive = activeSection === s.id;
+                                const count = completionFor(s.id);
+                                return (
+                                    <button
+                                        key={s.id}
+                                        type="button"
+                                        onClick={() => scrollToSection(s.id)}
+                                        className={cn(
+                                            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all group',
+                                            isActive
+                                                ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-500/30'
+                                                : 'text-slate-600 hover:bg-slate-50'
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+                                                isActive
+                                                    ? 'bg-blue-600 text-white'
+                                                    : count > 0
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-slate-100 text-slate-500'
+                                            )}
+                                        >
+                                            {count > 0 && !isActive ? <Check className="w-3.5 h-3.5" /> : idx + 1}
+                                        </span>
+                                        <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-blue-600' : 'text-slate-400')} />
+                                        <span className="flex-1 text-sm font-semibold">{s.label}</span>
+                                        {count > 0 && (
+                                            <span
+                                                className={cn(
+                                                    'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                                                    isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                                                )}
+                                            >
+                                                {count}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    </aside>
+                )}
+
+                {/* Main content — scrollable pane */}
+                <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6 pb-28">
+                <div className="max-w-3xl mx-auto">
             {sentOrder ? (
                 /* Post-create view: show the generated link + mailto launcher.
                    Real production would call a backend send endpoint here instead. */
@@ -580,99 +807,378 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                 </div>
             ) : (
             <div className="space-y-5">
-                {/* Section 1: Tasks in Order */}
-                <Section number={1} title="Tasks in Order" subtitle="Pick existing scheduled tasks or add an asset + maintenance type directly." icon={Wrench}>
-                    {/* A) Selected / preselected tasks */}
-                    {uniqueAssetIds.length > 0 && (
-                        <div className="space-y-2 mb-4">
-                            {uniqueAssetIds.map(((assetId: any) => {
-                                const asset = INITIAL_ASSETS.find(a => a.id === assetId);
-                                const tasksForAsset = renderTasks.filter((t: any) => t.assetId === assetId);
-                                const serviceNames = tasksForAsset.map((t: any) =>
-                                    t.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).join(", ")
-                                ).join(", ");
+                {/* Section 1: Asset & Existing Tasks
+                    Step-by-step: pick CMV vs Non-CMV → pick the asset →
+                    toggle on any existing scheduled tasks for that asset.
+                    Adding fresh tasks lives in Section 2 below. */}
+                <div ref={(el) => { sectionRefs.current['asset'] = el; }}>
+                <Section number={1} title="Asset & Existing Tasks" subtitle="Pick the vehicle and tick any scheduled tasks to include." icon={Truck}>
 
-                                return (
-                                    <div key={assetId} className="flex items-start gap-3 bg-white border border-slate-200 rounded-md p-3">
-                                        <div className="h-9 w-9 bg-slate-50 border border-slate-200 rounded-md flex items-center justify-center text-sm font-bold text-slate-700 shrink-0">
-                                            {tasksForAsset.length}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="font-bold text-slate-900 text-sm truncate">{asset?.unitNumber}</div>
-                                            <div className="text-xs text-slate-500 truncate">{serviceNames}</div>
-                                        </div>
-                                    </div>
-                                );
-                            }))}
+                    {/* A) Asset class — CMV vs Non-CMV pill toggle */}
+                    <div className="mb-5">
+                        <Label className="mb-2 block text-xs uppercase tracking-wider text-slate-500 font-semibold">Asset Class</Label>
+                        <div className="inline-flex bg-slate-100 rounded-md p-1 gap-1">
+                            {(["CMV", "Non-CMV"] as const).map(cls => (
+                                <button
+                                    key={cls}
+                                    type="button"
+                                    disabled={!!preSelectedAssetId}
+                                    onClick={() => {
+                                        if (preSelectedAssetId) return;
+                                        setAssetClass(cls);
+                                        // Clear the focus asset whenever class changes so the
+                                        // user picks one that matches the new class.
+                                        setFocusAssetId("");
+                                        setDraftServiceIds([]);
+                                        setDraftRemarks("");
+                                    }}
+                                    className={`px-4 py-1.5 text-sm font-semibold rounded transition-all ${assetClass === cls ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${preSelectedAssetId ? 'cursor-not-allowed opacity-60' : ''}`}
+                                >
+                                    {cls === "CMV" ? "CMV (Commercial)" : "Non-CMV"}
+                                </button>
+                            ))}
                         </div>
-                    )}
+                        <p className="mt-1.5 text-[11px] text-slate-500">
+                            {assetClass === "CMV"
+                                ? "Power units, trailers, and other commercial motor vehicles."
+                                : "Yard equipment, light-duty pickups, and other non-CMV assets."}
+                        </p>
+                    </div>
 
-                    {/* B) Direct (no-schedule) entries */}
-                    {directTasks.length > 0 && (
-                        <div className="space-y-2 mb-4">
-                            {directTasks.map(dt => {
-                                const asset = INITIAL_ASSETS.find(a => a.id === dt.assetId);
-                                const serviceNames = dt.serviceTypeIds.map(sid => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
-                                return (
-                                    <div key={dt.id} className="flex items-start gap-3 bg-blue-50/40 border border-blue-100 rounded-md p-3">
-                                        <div className="h-9 w-9 bg-blue-100 text-blue-600 rounded-md flex items-center justify-center shrink-0">
-                                            <Plus size={14} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <div className="font-bold text-slate-900 text-sm truncate">{asset?.unitNumber}</div>
-                                                <span className="text-[10px] uppercase tracking-wider font-bold text-blue-600 bg-white border border-blue-100 rounded px-1.5 py-0.5">Direct</span>
-                                            </div>
-                                            <div className="text-xs text-slate-500 truncate mt-0.5">{serviceNames}</div>
-                                        </div>
-                                        <button onClick={() => removeDirectTask(dt.id)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Remove">
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {/* C) Selectable existing tasks (when none preselected) */}
-                    {(!selectedTasks || selectedTasks.length === 0) && availableTasks && availableTasks.length > 0 && (
-                        <div className="mb-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <Label className="block text-xs uppercase tracking-wider text-slate-500 font-semibold">Available Scheduled Tasks</Label>
-                                {!showInlinePicker && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowInlinePicker(true)}
-                                        className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1"
-                                    >
-                                        <Plus size={12} /> Add New Task
-                                    </button>
+                    {/* B) Asset selector (filtered by class) */}
+                    <div className="mb-5">
+                        <Label className="mb-1.5 block text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                            Select Asset <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                            value={focusAssetId}
+                            onValueChange={(val) => {
+                                if (preSelectedAssetId) return;
+                                setFocusAssetId(val);
+                                setDraftServiceIds([]);
+                                setDraftRemarks("");
+                            }}
+                        >
+                            <SelectTrigger className={`bg-white h-9 ${preSelectedAssetId ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                <SelectValue placeholder={`Select ${assetClass} asset…`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {assetsInClass.map(a => (
+                                    <SelectItem key={a.id} value={a.id}>
+                                        {a.unitNumber} — {a.year} {a.make} {a.model}
+                                    </SelectItem>
+                                ))}
+                                {assetsInClass.length === 0 && (
+                                    <div className="px-3 py-2 text-xs text-slate-500 italic">No {assetClass} assets in fleet.</div>
                                 )}
+                            </SelectContent>
+                        </Select>
+                        {focusAsset && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                                <Truck size={12} className="text-slate-400" />
+                                <span className="font-mono">{focusAsset.unitNumber}</span>
+                                <span>·</span>
+                                <span>{focusAsset.year} {focusAsset.make} {focusAsset.model}</span>
+                                <span>·</span>
+                                <span>VIN •••{focusAsset.vin.slice(-4)}</span>
+                                <span className="ml-auto inline-flex items-center text-[10px] uppercase tracking-wider font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                                    {focusAsset.assetCategory}
+                                </span>
                             </div>
-                            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1 border border-slate-200 rounded-md bg-white p-2">
-                                {availableTasks.map(task => {
-                                    const asset = INITIAL_ASSETS.find(a => a.id === task.assetId);
-                                    const serviceNames = task.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).join(", ");
-                                    const isSelected = localSelectedTaskIds.includes(task.id);
+                        )}
+                    </div>
+
+                    {/* C) Existing scheduled tasks for the focused asset */}
+                    {focusAssetId && (
+                        <div className="mb-5">
+                            <Label className="mb-1.5 block text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                                Existing Scheduled Tasks
+                                <span className="ml-2 normal-case font-normal text-slate-400">
+                                    {scheduledTasksForFocusAsset.length === 0
+                                        ? "(none on schedule)"
+                                        : `(${scheduledTasksForFocusAsset.length} on schedule — tick to include)`}
+                                </span>
+                            </Label>
+                            {scheduledTasksForFocusAsset.length === 0 ? (
+                                <div className="bg-slate-50 border border-slate-200 rounded-md px-3 py-3 text-xs text-slate-500 italic">
+                                    This asset has no scheduled maintenance tasks. Add one in the next block.
+                                </div>
+                            ) : (
+                                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1 border border-slate-200 rounded-md bg-white p-2">
+                                    {scheduledTasksForFocusAsset.map(task => {
+                                        const serviceNames = task.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                        const isSelected = localSelectedTaskIds.includes(task.id);
+                                        const statusBadgeCls =
+                                            task.status === 'overdue'      ? 'bg-red-100 text-red-700 border-red-200' :
+                                            task.status === 'due'          ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                            task.status === 'in_progress'  ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                                                              'bg-slate-100 text-slate-600 border-slate-200';
+                                        return (
+                                            <div key={task.id}
+                                                className={`rounded-md border transition-colors ${
+                                                    isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <div className="flex items-center p-2 cursor-pointer"
+                                                    onClick={() => {
+                                                        setLocalSelectedTaskIds(prev =>
+                                                            prev.includes(task.id) ? prev.filter(id => id !== task.id) : [...prev, task.id]
+                                                        );
+                                                    }}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center mr-3 shrink-0 ${
+                                                        isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'
+                                                    }`}>
+                                                        {isSelected && <Check size={12} className="text-white" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex justify-between gap-2 items-center">
+                                                            <span className="font-semibold text-sm text-slate-900 truncate">{serviceNames || "Maintenance"}</span>
+                                                            <span className="text-[10px] uppercase tracking-wider text-slate-400 shrink-0">
+                                                                {task.dueRule?.dueAtDate ? `Due ${new Date(task.dueRule.dueAtDate).toLocaleDateString()}` : `Created ${new Date(task.createdAt).toLocaleDateString()}`}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                                                            <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{focusAsset?.unitNumber}</span></span>
+                                                            <span className="text-slate-300">·</span>
+                                                            <span className={`text-[9px] uppercase tracking-wider font-bold border rounded px-1.5 py-px ${statusBadgeCls}`}>
+                                                                {task.status.replace(/_/g, ' ')}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Per-task remarks — same shape + label as the New Task
+                                                    Remarks input below. Only shown when the task is
+                                                    ticked so the panel stays compact. */}
+                                                {isSelected && (
+                                                    <div className="px-3 pb-2.5 pt-0.5">
+                                                        <Label className="mb-1 block text-[10px] text-slate-500 uppercase tracking-wider">
+                                                            Remarks for this task <span className="text-slate-400 font-normal normal-case">(optional)</span>
+                                                        </Label>
+                                                        <textarea
+                                                            rows={2}
+                                                            value={scheduledTaskRemarks[task.id] ?? ""}
+                                                            onChange={(e) => setScheduledTaskRemarks(prev => ({ ...prev, [task.id]: e.target.value }))}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            placeholder="e.g. driver reported squealing during morning brake check"
+                                                            className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Empty hint for Section 1 when nothing yet */}
+                    {!focusAssetId && uniqueAssetIds.length === 0 && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-md px-3 py-2.5 text-xs text-slate-600">
+                            Pick the asset class and a vehicle above to see existing tasks.
+                        </div>
+                    )}
+                </Section>
+                </div>
+
+                {/* Section 2: New Task — add a fresh maintenance task for the
+                    focused asset (maintenance type + per-task remarks).
+                    The staged list at the bottom shows everything in the order
+                    so the user can confirm before moving on. */}
+                <div ref={(el) => { sectionRefs.current['newtask'] = el; }}>
+                <Section number={2} title="New Task" subtitle="Add a fresh task for the selected asset. The list below combines existing + new tasks." icon={Plus}>
+                    {!focusAssetId ? (
+                        <div className="bg-amber-50 border border-amber-100 rounded-md px-3 py-2.5 text-xs text-slate-600">
+                            Select an asset in Section 1 first — new tasks are added against the focused asset.
+                        </div>
+                    ) : (
+                        <div className="bg-blue-50/40 border border-blue-100 rounded-md p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Truck size={14} className="text-blue-600" />
+                                <span className="text-xs uppercase tracking-wider text-blue-700 font-semibold">
+                                    Adding to <span className="font-mono">{focusAsset?.unitNumber}</span> · {focusAsset?.assetCategory}
+                                </span>
+                            </div>
+
+                            {/* Maintenance Type picker */}
+                            <div>
+                                <Label className="mb-1.5 block text-xs text-slate-600">Maintenance Type <span className="text-red-500">*</span></Label>
+
+                                <div className="relative mb-3">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                    <input
+                                        type="text"
+                                        value={serviceQuery}
+                                        onChange={(e) => setServiceQuery(e.target.value)}
+                                        placeholder="Search services…"
+                                        className="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+
+                                {/* Category pills — every group visible at once
+                                    (wraps to a 2nd row on narrow widths), with a
+                                    count badge on each so the user can see at a
+                                    glance how many services live in each. */}
+                                <div className="mb-3">
+                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                        Filter by category
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(['All', ...SERVICE_GROUPS] as readonly string[]).map(g => {
+                                            const isActive = serviceGroup === g;
+                                            const count = serviceCountByGroup[g] ?? 0;
+                                            return (
+                                                <button
+                                                    key={g}
+                                                    type="button"
+                                                    onClick={() => setServiceGroup(g)}
+                                                    disabled={count === 0 && g !== 'All'}
+                                                    className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap leading-none ${
+                                                        isActive
+                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                            : count === 0 && g !== 'All'
+                                                                ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
+                                                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    <span>{g}</span>
+                                                    <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-4 text-[10px] font-bold rounded-full px-1 ${
+                                                        isActive ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                        {count}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="border border-slate-200 bg-white rounded-md max-h-56 overflow-y-auto p-1.5 space-y-1">
+                                    {filteredServices.length > 0 ? filteredServices.map(s => {
+                                        const checked = draftServiceIds.includes(s.id);
+                                        return (
+                                            <div
+                                                key={s.id}
+                                                onClick={() => toggleDraftService(s.id)}
+                                                className={`flex items-center px-2.5 py-2 rounded cursor-pointer text-sm border ${checked ? 'bg-blue-50 text-blue-900 border-blue-200' : 'hover:bg-slate-50 text-slate-700 border-transparent'}`}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2.5 shrink-0 ${checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                                                    {checked && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="font-medium truncate">{s.name}</div>
+                                                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">{s.group}</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }) : (
+                                        <div className="py-6 text-center text-xs text-slate-400">
+                                            No services match {serviceQuery ? `"${serviceQuery}"` : 'this filter'}.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Per-task remarks */}
+                            <div className="mt-3">
+                                <Label className="mb-1.5 block text-xs text-slate-600">Remarks for this task <span className="text-slate-400 font-normal">(optional)</span></Label>
+                                <textarea
+                                    rows={2}
+                                    value={draftRemarks}
+                                    onChange={(e) => setDraftRemarks(e.target.value)}
+                                    placeholder="e.g. driver reported squealing during morning brake check"
+                                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                />
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between">
+                                <div className="text-xs text-slate-500">
+                                    <span className="font-semibold">{draftServiceIds.length}</span> service{draftServiceIds.length === 1 ? '' : 's'} selected
+                                </div>
+                                <Button
+                                    size="sm"
+                                    onClick={addDirectTask}
+                                    disabled={!focusAssetId || draftServiceIds.length === 0}
+                                    className="gap-1.5"
+                                >
+                                    <Plus size={14} /> Add Task to Order
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Staged tasks list — proper task name, asset name, maintenance type, remarks */}
+                    {(uniqueAssetIds.length > 0 || directTasks.length > 0) && (
+                        <div className="mt-5">
+                            <Label className="mb-2 block text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                                Tasks in this Order
+                                <span className="ml-2 normal-case font-normal text-slate-400">
+                                    ({renderTasks.length + directTasks.length} task{renderTasks.length + directTasks.length === 1 ? '' : 's'})
+                                </span>
+                            </Label>
+                            <div className="space-y-2">
+                                {/* Scheduled tasks (from props selection) */}
+                                {renderTasks.map((t: any) => {
+                                    const asset = INITIAL_ASSETS.find(a => a.id === t.assetId);
+                                    const serviceNames = t.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                    const remarkText = scheduledTaskRemarks[t.id]?.trim();
                                     return (
-                                        <div key={task.id}
-                                            className={`flex items-center p-2 rounded-md border cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100 hover:bg-slate-50'}`}
-                                            onClick={() => {
-                                                setLocalSelectedTaskIds(prev =>
-                                                    prev.includes(task.id) ? prev.filter(id => id !== task.id) : [...prev, task.id]
-                                                );
-                                            }}
-                                        >
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center mr-3 shrink-0 ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
-                                                {isSelected && <Check size={12} className="text-white" />}
+                                        <div key={`s-${t.id}`} className="flex items-start gap-3 bg-white border border-slate-200 rounded-md p-3">
+                                            <div className="h-9 w-9 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                                                <Wrench size={14} />
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between gap-2">
-                                                    <span className="font-medium text-sm text-slate-900 truncate">{asset?.unitNumber}</span>
-                                                    <span className="text-xs text-slate-500 shrink-0">{new Date(task.dueRule?.dueAtDate || task.createdAt).toLocaleDateString()}</span>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-bold text-slate-900 text-sm truncate">{serviceNames || "Maintenance"}</span>
+                                                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">Scheduled</span>
                                                 </div>
-                                                <div className="text-xs text-slate-500 truncate" title={serviceNames}>{serviceNames}</div>
+                                                <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                                                    <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{asset?.unitNumber}</span></span>
+                                                    {asset && <><span className="text-slate-300">·</span><span>{asset.assetCategory}</span></>}
+                                                    <span className="text-slate-300">·</span>
+                                                    <span className="capitalize">{(t as any).status?.replace(/_/g, ' ') ?? "scheduled"}</span>
+                                                </div>
+                                                {remarkText && (
+                                                    <div className="mt-2 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 whitespace-pre-wrap">
+                                                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">Remarks:</span>
+                                                        {remarkText}
+                                                    </div>
+                                                )}
                                             </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Direct (just-added) tasks with remarks */}
+                                {directTasks.map(dt => {
+                                    const asset = INITIAL_ASSETS.find(a => a.id === dt.assetId);
+                                    const serviceNames = dt.serviceTypeIds.map(sid => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                    return (
+                                        <div key={`d-${dt.id}`} className="flex items-start gap-3 bg-blue-50/40 border border-blue-100 rounded-md p-3">
+                                            <div className="h-9 w-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                                                <Plus size={14} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-bold text-slate-900 text-sm truncate">{serviceNames || "Maintenance"}</span>
+                                                    <span className="text-[10px] uppercase tracking-wider font-bold text-blue-600 bg-white border border-blue-100 rounded px-1.5 py-0.5">New</span>
+                                                </div>
+                                                <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                                                    <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{asset?.unitNumber}</span></span>
+                                                    {asset && <><span className="text-slate-300">·</span><span>{asset.assetCategory}</span></>}
+                                                </div>
+                                                {dt.remarks && (
+                                                    <div className="mt-2 text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5 whitespace-pre-wrap">
+                                                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">Remarks:</span>
+                                                        {dt.remarks}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button onClick={() => removeDirectTask(dt.id)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Remove">
+                                                <Trash2 size={14} />
+                                            </button>
                                         </div>
                                     );
                                 })}
@@ -680,156 +1186,12 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                         </div>
                     )}
 
-                    {/* Empty hint */}
-                    {uniqueAssetIds.length === 0 && directTasks.length === 0 && (!availableTasks || availableTasks.length === 0) && !showInlinePicker && (
-                        <div className="bg-amber-50 border border-amber-100 rounded-md px-3 py-2.5 mb-4 flex items-center justify-between gap-3">
-                            <span className="text-xs text-slate-600">
-                                No scheduled tasks yet — add an asset and maintenance type to create this order without a schedule.
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setShowInlinePicker(true)}
-                                className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1 shrink-0"
-                            >
-                                <Plus size={12} /> Add New Task
-                            </button>
-                        </div>
-                    )}
-
-                    {/* "Add New Task" button when there are pre-selected tasks but no available list shown */}
-                    {!showInlinePicker && uniqueAssetIds.length > 0 && (!availableTasks || availableTasks.length === 0) && (
-                        <div className="mb-4">
-                            <button
-                                type="button"
-                                onClick={() => setShowInlinePicker(true)}
-                                className="text-xs text-blue-600 font-medium hover:text-blue-700 hover:underline flex items-center gap-1"
-                            >
-                                <Plus size={12} /> Add New Task
-                            </button>
-                        </div>
-                    )}
-
-                    {/* D) Inline picker — Add Asset & Maintenance Type (revealed by "Add New Task") */}
-                    {showInlinePicker && (
-                    <div className="bg-white border border-slate-200 rounded-md p-4 animate-in fade-in slide-in-from-top-2 duration-150">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Add Asset &amp; Maintenance Type</div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setShowInlinePicker(false);
-                                    setDraftAssetId("");
-                                    setDraftServiceIds([]);
-                                    setServiceQuery("");
-                                    setServiceGroup("All");
-                                }}
-                                className="text-xs text-slate-500 hover:text-slate-700"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Asset */}
-                            <div>
-                                <Label className="mb-1.5 block text-xs text-slate-600">Asset <span className="text-red-500">*</span></Label>
-                                <Select value={draftAssetId} onValueChange={setDraftAssetId}>
-                                    <SelectTrigger className="bg-white h-9">
-                                        <SelectValue placeholder="Select asset…" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {INITIAL_ASSETS.map(a => (
-                                            <SelectItem key={a.id} value={a.id}>
-                                                {a.unitNumber} — {a.assetCategory}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {draftAsset && (
-                                    <div className="mt-1.5 text-xs text-slate-500">
-                                        {draftAsset.year} {draftAsset.make} {draftAsset.model} · VIN •••{draftAsset.vin.slice(-4)}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Selected count */}
-                            <div>
-                                <Label className="mb-1.5 block text-xs text-slate-600">Selected Services</Label>
-                                <div className="h-9 px-3 inline-flex items-center bg-slate-50 border border-slate-200 rounded-md text-sm text-slate-700 w-full">
-                                    <span className="font-semibold">{draftServiceIds.length}</span>
-                                    <span className="ml-1 text-slate-500">selected</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Maintenance Type picker */}
-                        <div className="mt-4">
-                            <Label className="mb-1.5 block text-xs text-slate-600">Maintenance Type <span className="text-red-500">*</span></Label>
-
-                            <div className="relative mb-2">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                <input
-                                    type="text"
-                                    value={serviceQuery}
-                                    onChange={(e) => setServiceQuery(e.target.value)}
-                                    placeholder="Search services…"
-                                    className="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                                />
-                            </div>
-
-                            <div className="flex border-b border-slate-200 mb-2 overflow-x-auto">
-                                {['All', 'Engine', 'Tires & Brakes', 'Inspections', 'General'].map(g => (
-                                    <button
-                                        key={g}
-                                        type="button"
-                                        onClick={() => setServiceGroup(g)}
-                                        className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${serviceGroup === g ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
-                                    >
-                                        {g}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="border border-slate-200 bg-white rounded-md max-h-48 overflow-y-auto p-1.5 space-y-1">
-                                {filteredServices.length > 0 ? filteredServices.map(s => {
-                                    const checked = draftServiceIds.includes(s.id);
-                                    return (
-                                        <div
-                                            key={s.id}
-                                            onClick={() => toggleDraftService(s.id)}
-                                            className={`flex items-center px-2.5 py-2 rounded cursor-pointer text-sm border ${checked ? 'bg-blue-50 text-blue-900 border-blue-200' : 'hover:bg-slate-50 text-slate-700 border-transparent'}`}
-                                        >
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2.5 shrink-0 ${checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
-                                                {checked && <Check size={11} className="text-white" strokeWidth={3} />}
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="font-medium truncate">{s.name}</div>
-                                                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{s.group}</div>
-                                            </div>
-                                        </div>
-                                    );
-                                }) : (
-                                    <div className="py-6 text-center text-xs text-slate-400">No services match this filter.</div>
-                                )}
-                            </div>
-
-                            <div className="mt-3 flex justify-end">
-                                <Button
-                                    size="sm"
-                                    onClick={addDirectTask}
-                                    disabled={!draftAssetId || draftServiceIds.length === 0}
-                                    className="gap-1.5"
-                                >
-                                    <Plus size={14} /> Add to Order
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                    )}
                 </Section>
+                </div>
 
-                {/* Section 2: Vendor */}
-                <Section number={2} title="Vendor" subtitle="Pick from your saved vendors or add a new one." icon={Store}>
+                {/* Section 3: Vendor */}
+                <div ref={(el) => { sectionRefs.current['vendor'] = el; }}>
+                <Section number={3} title="Vendor" subtitle="Pick from your saved vendors or add a new one." icon={Store}>
                     <div className="flex items-center justify-between mb-2">
                         <Label>Assign Vendor <span className="text-red-500">*</span></Label>
                         {!isAddingVendor && (
@@ -994,9 +1356,11 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                         </Select>
                     )}
                 </Section>
+                </div>
 
-                {/* Section 3: Schedule */}
-                <Section number={3} title="Schedule" subtitle="When to start the order and when it's due." icon={Calendar}>
+                {/* Section 4: Schedule */}
+                <div ref={(el) => { sectionRefs.current['schedule'] = el; }}>
+                <Section number={4} title="Schedule" subtitle="When to start the order and when it's due." icon={Calendar}>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label className="mb-1.5 block text-xs text-slate-600">Create Date</Label>
@@ -1016,9 +1380,11 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                         </div>
                     </div>
                 </Section>
+                </div>
 
-                {/* Section 4: Requirements */}
-                <Section number={4} title="Completion Requirements" subtitle="What the vendor must record when closing the order." icon={Truck}>
+                {/* Section 5: Completion Requirements */}
+                <div ref={(el) => { sectionRefs.current['reqs'] = el; }}>
+                <Section number={5} title="Completion Requirements" subtitle="What the vendor must record when closing the order." icon={ListChecks}>
                     <div className="space-y-3">
                         <div className="flex items-center justify-between bg-white border border-slate-200 rounded-md px-3 py-2.5">
                             <Label>Require Odometer Reading?</Label>
@@ -1063,18 +1429,22 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                         </div>
                     </div>
                 </Section>
+                </div>
 
-                {/* Section 5: Remarks */}
-                <Section number={5} title="Remarks" subtitle="Notes for the vendor (optional)." icon={FileText}>
+                {/* Section 6: Additional Comments — order-level notes for the vendor */}
+                <div ref={(el) => { sectionRefs.current['comments'] = el; }}>
+                <Section number={6} title="Additional Comments" subtitle="Order-level notes for the vendor (optional). Per-task remarks live on each task above." icon={FileText}>
                     <textarea
                         className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 h-24 resize-none"
-                        placeholder="e.g. Please call the driver before pickup..."
+                        placeholder="e.g. Please call the driver before pickup, gate code 1234, parts already shipped to the shop..."
                         value={remarks}
                         onChange={(e) => setRemarks(e.target.value)}
                     />
                 </Section>
+                </div>
             </div>
             )}
+                </div>
                 </div>
             </main>
 
