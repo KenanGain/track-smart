@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import {
     Columns,
@@ -43,7 +44,10 @@ import {
     UserCheck,
     UserMinus,
     UserX,
-    Download
+    Download,
+    ArrowUp,
+    ArrowDown,
+    ArrowUpDown,
 } from 'lucide-react';
 import { StatusSelect } from '@/pages/accounts/AddAccountPage';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
@@ -59,14 +63,13 @@ import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
 import { DriverForm } from './DriverForm';
-import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
-import { getManagedAccountIds, ROLE_LABELS } from '@/data/users.data';
-import { CarrierSwitcher } from '@/components/layout/CarrierSwitcher';
 
 
 
 import { LocationsPage } from '@/pages/account/LocationsPage';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
+import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
+import { PaginationBar } from '@/components/ui/DataListToolbar';
 
 
 // --- HELPER COMPONENTS ---
@@ -75,6 +78,50 @@ const DynamicIcon = ({ name, className }: { name: string; className?: string }) 
     const IconMap: Record<string, any> = { MapPin, CheckSquare, Bell, FileText, FileDown, Building2, Truck, Mail, ShieldCheck, BadgeCheck, Globe, Users, FileKey, Package, Phone, Calendar, CalendarX, Shield, Hash, FileUp, StickyNote, UploadCloud, Plus, AlertTriangle, Clock, AlertCircle, FileWarning };
     const IconComponent = IconMap[name] || FileText;
     return <IconComponent className={className} />;
+};
+
+const DriverFilterChip = ({ label, onClear }: { label: string; onClear: () => void }) => (
+    <span className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-medium">
+        {label}
+        <button
+            type="button"
+            onClick={onClear}
+            className="p-0.5 rounded hover:bg-blue-100 transition-colors"
+            aria-label={`Clear filter: ${label}`}
+        >
+            <X size={11} />
+        </button>
+    </span>
+);
+
+const DriverSortTH = ({
+    id, label, current, dir, onClick, className,
+}: {
+    id: string;
+    label: string;
+    current: string;
+    dir: 'asc' | 'desc';
+    onClick: (id: string) => void;
+    className?: string;
+}) => {
+    const active = current === id;
+    return (
+        <th
+            onClick={() => onClick(id)}
+            className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors ${active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'} ${className ?? ''}`}
+        >
+            <span className="inline-flex items-center gap-1.5">
+                {label}
+                {active ? (
+                    dir === 'asc'
+                        ? <ArrowUp size={11} className="text-blue-600" />
+                        : <ArrowDown size={11} className="text-blue-600" />
+                ) : (
+                    <ArrowUpDown size={11} className="text-slate-300" />
+                )}
+            </span>
+        </th>
+    );
 };
 
 const Badge = ({ text, tone, className = "" }: { text: string; tone: string; className?: string }) => {
@@ -509,7 +556,7 @@ const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
 
 // Key Number Add/Edit Modal
 
-export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: {
+export function CarrierProfilePage({ accountId, currentUser: _currentUser, onSelectAccount: _onSelectAccount }: {
     accountId?: string;
     currentUser?: import('@/data/users.data').AppUser;
     onSelectAccount?: (account: import('@/pages/accounts/accounts.data').AccountRecord) => void;
@@ -521,6 +568,10 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
     const [toast, setToast] = useState({ visible: false, message: "" });
     const [activeTab, setActiveTab] = useState("fleet");
     const [viewingDriverId, setViewingDriverId] = useState<string | null>(null);
+    // True while AssetDirectoryPage is showing AssetDetailView. Used to hide
+    // the carrier breadcrumb/dropdown/tabs so the asset detail page reads
+    // cleanly with only its own breadcrumb + back button.
+    const [isAssetDetailActive, setIsAssetDetailActive] = useState(false);
     const [selectedDriverData, setSelectedDriverData] = useState<any>(null); // State to hold detailed driver data
     const [isAddingDriver, setIsAddingDriver] = useState(false);
     const [editingDriverData, setEditingDriverData] = useState<any>(null);
@@ -571,6 +622,14 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
     // Driver List State
     const [driverSearch, setDriverSearch] = useState('');
     const [driverStatusFilter, setDriverStatusFilter] = useState('All');
+    const [driverPage, setDriverPage] = useState(1);
+    const [driverRowsPerPage, setDriverRowsPerPage] = useState(10);
+    const [driverSortKey, setDriverSortKey] = useState<string>('name');
+    const [driverSortDir, setDriverSortDir] = useState<'asc' | 'desc'>('asc');
+    const handleDriverSort = (k: string) => {
+        if (driverSortKey === k) setDriverSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        else { setDriverSortKey(k); setDriverSortDir('asc'); }
+    };
 
     const showToast = (msg: string) => {
         setToast({ visible: true, message: msg });
@@ -828,17 +887,50 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
     // --- DRIVER LIST LOGIC ---
     const [drivers, setDrivers] = useState(profileBundle?.drivers ?? MOCK_DRIVERS);
 
+    // Reset to page 1 whenever filters change so the user lands on visible results.
+    useEffect(() => {
+        setDriverPage(1);
+    }, [driverSearch, driverStatusFilter, driverRowsPerPage]);
+
     const filteredDrivers = useMemo(() => {
-        return drivers.filter(driver => {
-            const matchesSearch = (
-                driver.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
-                driver.id.toLowerCase().includes(driverSearch.toLowerCase()) ||
-                driver.email.toLowerCase().includes(driverSearch.toLowerCase())
-            );
+        const s = driverSearch.toLowerCase();
+        const filtered = drivers.filter(driver => {
+            const matchesSearch = !s || [
+                driver.name, driver.id, driver.email,
+                (driver as any).phone,
+                (driver as any).licenseNumber,
+                (driver as any).licenseState,
+            ].some((v) => (v ?? '').toString().toLowerCase().includes(s));
             const matchesStatus = driverStatusFilter === 'All' || driver.status === driverStatusFilter;
             return matchesSearch && matchesStatus;
         });
-    }, [driverSearch, driverStatusFilter, drivers]);
+
+        if (!driverSortKey) return filtered;
+        const dir = driverSortDir === 'asc' ? 1 : -1;
+        const valueOf = (d: any, k: string): string | number => {
+            switch (k) {
+                case 'name':       return (d.name || '').toLowerCase();
+                case 'id':         return (d.id || '').toLowerCase();
+                case 'status':     return (d.status || '').toLowerCase();
+                case 'license':    return (d.licenseNumber || '').toLowerCase();
+                case 'hired':      return d.hiredDate || '';
+                default:           return '';
+            }
+        };
+        return [...filtered].sort((a, b) => {
+            const av = valueOf(a, driverSortKey);
+            const bv = valueOf(b, driverSortKey);
+            if (av < bv) return -1 * dir;
+            if (av > bv) return 1 * dir;
+            return 0;
+        });
+    }, [driverSearch, driverStatusFilter, drivers, driverSortKey, driverSortDir]);
+
+    const driverHasActiveFilters = driverSearch.length > 0 || driverStatusFilter !== 'All';
+    const clearDriverFilters = () => {
+        setDriverSearch('');
+        setDriverStatusFilter('All');
+    };
 
     const driverStats = useMemo(() => {
         return {
@@ -849,6 +941,17 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
             onLeave: drivers.filter(d => d.status === 'On Leave').length
         };
     }, [drivers]);
+
+    const driversPaginated = useMemo(() => {
+        const start = (driverPage - 1) * driverRowsPerPage;
+        return filteredDrivers.slice(start, start + driverRowsPerPage);
+    }, [filteredDrivers, driverPage, driverRowsPerPage]);
+
+    // Clamp page if filters cut the list shorter than the current page.
+    useEffect(() => {
+        const max = Math.max(1, Math.ceil(filteredDrivers.length / driverRowsPerPage));
+        if (driverPage > max) setDriverPage(max);
+    }, [filteredDrivers.length, driverRowsPerPage, driverPage]);
 
     const handleDriverClick = (driverId: string) => {
         setViewingDriverId(driverId);
@@ -884,10 +987,10 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
     };
 
     if (viewingDriverId && !isAddingDriver) {
-        return <DriverProfileView 
-            driverId={viewingDriverId} 
-            onBack={handleBackFromDriver} 
-            initialDriverData={selectedDriverData || MOCK_DRIVER_DETAILED_TEMPLATE} 
+        return <DriverProfileView
+            driverId={viewingDriverId}
+            onBack={handleBackFromDriver}
+            initialDriverData={selectedDriverData || MOCK_DRIVER_DETAILED_TEMPLATE}
             onEditProfile={handleEditProfileInit}
             onUpdate={handleDriverUpdate}
         />;
@@ -923,78 +1026,52 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
         />;
     }
 
-    const tabs = [
-        { id: 'fleet', label: 'Fleet Overview' },
-        { id: 'locations', label: 'Yard Terminals' },
-        { id: 'assets', label: 'Assets' },
-        { id: 'drivers', label: 'Drivers' }
+    const tabs: SubTab<string>[] = [
+        { id: 'fleet', label: 'Fleet Overview', icon: Building2 },
+        { id: 'locations', label: 'Yard Terminals', icon: MapPin },
+        { id: 'assets', label: 'Assets', icon: Truck, count: profileBundle?.assets?.length ?? INITIAL_ASSETS.length },
+        { id: 'drivers', label: 'Drivers', icon: Users, count: drivers.length },
     ];
 
-    // Carriers visible to the current user (super admin → all; admin → managed; user → just their own)
-    const availableCarriers = (() => {
-        if (!currentUser) return [] as typeof ACCOUNTS_DB;
-        const managed = getManagedAccountIds(currentUser);
-        if (managed === undefined) return ACCOUNTS_DB; // super admin
-        return ACCOUNTS_DB.filter((a) => managed.includes(a.id));
-    })();
-
-    const activeAccountId = accountId ?? availableCarriers[0]?.id;
-
     return (
-        <div className="flex-1 p-4 lg:p-6 overflow-x-hidden bg-slate-50 min-h-screen">
-            {/* Header Area */}
-            <div className="mb-6 flex items-center justify-between gap-4 flex-wrap min-h-[36px]">
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <Building2 className="w-4 h-4" />
-                    <span>{viewData.page.breadcrumb[0]}</span>
-                    <span className="text-slate-300">/</span>
-                    <span className="font-semibold text-slate-900">{viewData.page.breadcrumb[1]}</span>
+        <div
+            className={cn(
+                "flex-1 overflow-x-hidden bg-slate-50 min-h-screen",
+                // Drop the outer page padding while reading an asset detail
+                // so the detail header can extend edge-to-edge (the detail
+                // page provides its own px-8 inner padding).
+                isAssetDetailActive ? "" : "p-4 lg:p-6"
+            )}
+        >
+            {/* Header Area — hidden while reading a single asset so the
+                detail page's own breadcrumb + back button is the only
+                navigational element on screen. The carrier-switcher in
+                the top navbar is the single carrier-pick surface; we no
+                longer render a duplicate one here. */}
+            {!isAssetDetailActive && (
+                <div className="mb-6 flex items-center gap-4 flex-wrap min-h-[36px]">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Building2 className="w-4 h-4" />
+                        <span>{viewData.page.breadcrumb[0]}</span>
+                        <span className="text-slate-300">/</span>
+                        <span className="font-semibold text-slate-900">{viewData.page.breadcrumb[1]}</span>
+                    </div>
                 </div>
+            )}
 
-                {currentUser && availableCarriers.length > 0 && (
-                    <CarrierSwitcher
-                        selectedAccountId={activeAccountId}
-                        accounts={availableCarriers.map((a) => ({
-                            id: a.id,
-                            legalName: a.legalName,
-                            dbaName: a.dbaName,
-                            dotNumber: a.dotNumber,
-                        }))}
-                        onSelect={(id) => {
-                            const acct = ACCOUNTS_DB.find((a) => a.id === id);
-                            if (acct) onSelectAccount?.(acct);
-                        }}
-                        scopeLabel={
-                            currentUser.role === "super-admin"
-                                ? `${ROLE_LABELS[currentUser.role]} · All carriers`
-                                : `${ROLE_LABELS[currentUser.role]} · ${availableCarriers.length} carrier${availableCarriers.length === 1 ? "" : "s"}`
-                        }
-                    />
-                )}
-            </div>
+            {/* Tab Navigation — same hide-on-detail rule as the breadcrumb. */}
+            {!isAssetDetailActive && (
+                <SubTabs
+                    tabs={tabs}
+                    activeId={activeTab}
+                    onChange={setActiveTab}
+                    className="mb-6"
+                />
+            )}
 
-            {/* Tab Navigation (Moved Up) */}
-            <div className="border-b border-slate-200 mb-6 overflow-x-auto scrollbar-hide">
-                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`
-                                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
-                                ${activeTab === tab.id
-                                    ? 'border-blue-600 text-blue-600'
-                                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}
-                            `}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </nav>
-            </div>
-
-            {/* Tab Content */}
-            <div className="mt-6">
+            {/* Tab Content — drop the top margin while reading an asset
+                detail so the detail page sits flush with the top edge. */}
+            <div className={isAssetDetailActive ? "" : "mt-6"}>
 
 
                 {activeTab === 'fleet' && (
@@ -1339,100 +1416,138 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
 
                 {activeTab === 'assets' && (
                     <div className="w-full">
-                        <AssetDirectoryPage isEmbedded={true} assets={profileBundle?.assets} />
+                        <AssetDirectoryPage
+                            isEmbedded={true}
+                            assets={profileBundle?.assets}
+                            onDetailViewChange={setIsAssetDetailActive}
+                        />
                     </div>
                 )}
 
                 {activeTab === 'drivers' && (
-                    <div className="w-full space-y-6">
-                        {/* DRIVER STATUS CARDS */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                            <button onClick={() => setDriverStatusFilter('All')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'All' ? 'ring-1 ring-blue-500 border-l-blue-500' : 'border-l-blue-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-full bg-blue-50 text-blue-600"><Users className="w-4 h-4" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Drivers</span>
-                                </div>
-                                <div className="text-xl font-bold text-slate-900">{driverStats.total}</div>
-                            </button>
-                            <button onClick={() => setDriverStatusFilter('Active')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Active' ? 'ring-1 ring-emerald-500 border-l-emerald-500' : 'border-l-emerald-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-full bg-emerald-50 text-emerald-600"><UserCheck className="w-4 h-4" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Active<br />Drivers</span>
-                                </div>
-                                <div className="text-xl font-bold text-slate-900">{driverStats.active}</div>
-                            </button>
-                            <button onClick={() => setDriverStatusFilter('Inactive')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Inactive' ? 'ring-1 ring-slate-500 border-l-slate-500' : 'border-l-slate-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-full bg-slate-100 text-slate-600"><UserMinus className="w-4 h-4" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Inactive<br />Drivers</span>
-                                </div>
-                                <div className="text-xl font-bold text-slate-900">{driverStats.inactive}</div>
-                            </button>
-                            <button onClick={() => setDriverStatusFilter('On Leave')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'On Leave' ? 'ring-1 ring-amber-500 border-l-amber-500' : 'border-l-amber-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-full bg-amber-50 text-amber-600"><Clock className="w-4 h-4" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">On<br />Leave</span>
-                                </div>
-                                <div className="text-xl font-bold text-slate-900">{driverStats.onLeave}</div>
-                            </button>
-                            <button onClick={() => setDriverStatusFilter('Terminated')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${driverStatusFilter === 'Terminated' ? 'ring-1 ring-red-500 border-l-red-500' : 'border-l-red-500 border-slate-200'}`}>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-full bg-red-50 text-red-600"><UserX className="w-4 h-4" /></div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Terminated<br />Drivers</span>
-                                </div>
-                                <div className="text-xl font-bold text-slate-900">{driverStats.terminated}</div>
-                            </button>
+                    <div className="w-full space-y-5">
+                        {/* DRIVER STATUS CARDS — single-line labels, accent bar, refined active state */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                            {[
+                                { id: 'All',        label: 'Total',      value: driverStats.total,      Icon: Users,     accent: 'blue'    },
+                                { id: 'Active',     label: 'Active',     value: driverStats.active,     Icon: UserCheck, accent: 'emerald' },
+                                { id: 'Inactive',   label: 'Inactive',   value: driverStats.inactive,   Icon: UserMinus, accent: 'slate'   },
+                                { id: 'On Leave',   label: 'On Leave',   value: driverStats.onLeave,    Icon: Clock,     accent: 'amber'   },
+                                { id: 'Terminated', label: 'Terminated', value: driverStats.terminated, Icon: UserX,     accent: 'red'     },
+                            ].map((card) => {
+                                const active = driverStatusFilter === card.id;
+                                const tones: Record<string, { iconBg: string; iconFg: string; bar: string; ring: string }> = {
+                                    blue:    { iconBg: 'bg-blue-50',    iconFg: 'text-blue-600',    bar: 'bg-blue-500',    ring: 'ring-blue-500/30' },
+                                    emerald: { iconBg: 'bg-emerald-50', iconFg: 'text-emerald-600', bar: 'bg-emerald-500', ring: 'ring-emerald-500/30' },
+                                    slate:   { iconBg: 'bg-slate-100',  iconFg: 'text-slate-600',   bar: 'bg-slate-500',   ring: 'ring-slate-500/30' },
+                                    amber:   { iconBg: 'bg-amber-50',   iconFg: 'text-amber-600',   bar: 'bg-amber-500',   ring: 'ring-amber-500/30' },
+                                    red:     { iconBg: 'bg-red-50',     iconFg: 'text-red-600',     bar: 'bg-red-500',     ring: 'ring-red-500/30' },
+                                };
+                                const t = tones[card.accent];
+                                return (
+                                    <button
+                                        key={card.id}
+                                        onClick={() => setDriverStatusFilter(card.id)}
+                                        className={`relative flex items-center justify-between gap-2 px-3 py-2 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden text-left transition-all hover:shadow hover:border-slate-300 ${active ? `ring-2 ${t.ring} border-transparent` : ''}`}
+                                    >
+                                        <span className={`absolute left-0 top-0 bottom-0 w-0.5 transition-all ${t.bar} ${active ? 'opacity-100' : 'opacity-30'}`} />
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${t.iconBg} ${t.iconFg}`}>
+                                                <card.Icon className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 truncate">{card.label}</span>
+                                        </div>
+                                        <div className="text-lg font-bold text-slate-900 tabular-nums shrink-0">{card.value}</div>
+                                    </button>
+                                );
+                            })}
                         </div>
 
-                        {/* TOOLBAR */}
-                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-                            {/* LEFT SIDE: SEARCH */}
-                            <div className="relative w-full sm:max-w-md shrink-0">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        {/* TOOLBAR — search (with clear) + actions, wraps cleanly on small screens */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full">
+                            <div className="relative flex-1 min-w-0">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                                 <input
                                     type="text"
-                                    placeholder="Search drivers by name, ID, or email..."
+                                    placeholder="Search by name, ID, email, phone, license…"
                                     value={driverSearch}
                                     onChange={(e) => setDriverSearch(e.target.value)}
-                                    className="pl-10 h-10 w-full rounded-lg border border-slate-200 text-[13px] focus:outline-none focus:ring-4 focus:ring-blue-500/5 focus:border-blue-500 transition-all shadow-sm"
+                                    className="pl-10 pr-10 h-10 w-full rounded-lg border border-slate-200 text-[13px] focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all shadow-sm"
                                 />
+                                {driverSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setDriverSearch('')}
+                                        aria-label="Clear search"
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
                             </div>
-                            
-                            {/* RIGHT SIDE (SPACING ONLY) / ACTIONS ALIGN TO RIGHT */}
-                            <div className="flex-1"></div>
 
                             {/* ACTIONS */}
-                            <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-end">
-                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center justify-center gap-2 flex-1 sm:flex-none">
-                                    <Columns size={14} className="text-slate-500" /> Columns <ChevronDown size={14} className="ml-0.5 -mr-1 text-slate-400" />
+                            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 flex-wrap sm:flex-nowrap">
+                                <button className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
+                                    <Columns size={14} className="text-slate-500" /><span className="hidden sm:inline">Columns</span> <ChevronDown size={13} className="text-slate-400" />
                                 </button>
-                                <button className="h-10 px-4 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors flex items-center justify-center gap-2 flex-1 sm:flex-none">
-                                    <Download size={14} className="text-slate-500" /> Export
+                                <button className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
+                                    <Download size={14} className="text-slate-500" /><span className="hidden sm:inline">Export</span>
                                 </button>
-                                <button onClick={handleAddDriver} className="h-10 px-5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none">
-                                    <Plus className="w-4 h-4" /> Add Driver
+                                <button onClick={handleAddDriver} className="h-10 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
+                                    <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Driver</span><span className="sm:hidden">Add</span>
                                 </button>
                             </div>
                         </div>
+
+                        {/* ACTIVE FILTER CHIPS */}
+                        {driverHasActiveFilters && (
+                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                                <Search size={13} className="text-slate-400 shrink-0" />
+                                <span className="text-slate-500 font-medium shrink-0">Active filters:</span>
+                                {driverStatusFilter !== 'All' && (
+                                    <DriverFilterChip
+                                        label={`Status: ${driverStatusFilter}`}
+                                        onClear={() => setDriverStatusFilter('All')}
+                                    />
+                                )}
+                                {driverSearch && (
+                                    <DriverFilterChip
+                                        label={`Search: "${driverSearch}"`}
+                                        onClear={() => setDriverSearch('')}
+                                    />
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={clearDriverFilters}
+                                    className="ml-1 text-blue-600 hover:text-blue-800 font-semibold"
+                                >
+                                    Clear all
+                                </button>
+                                <span className="text-slate-400 ml-auto">
+                                    {filteredDrivers.length} match{filteredDrivers.length === 1 ? '' : 'es'}
+                                </span>
+                            </div>
+                        )}
 
                         {/* DRIVER TABLE */}
                         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left text-sm whitespace-nowrap">
-                                    <thead className="bg-slate-50/80 border-b border-slate-200">
+                                    <thead className="bg-slate-50/80 border-b border-slate-200 sticky top-0 z-10">
                                         <tr>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider pl-6">Driver Name</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">ID / Details</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                            <DriverSortTH id="name"    label="Driver Name" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} className="pl-6" />
+                                            <DriverSortTH id="id"      label="ID / Details" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
+                                            <DriverSortTH id="status"  label="Status"      current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
                                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>
-                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">License</th>
+                                            <DriverSortTH id="license" label="License"     current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
                                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         {filteredDrivers.length > 0 ? (
-                                            filteredDrivers.map((driver) => {
+                                            driversPaginated.map((driver) => {
                                                 const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
                                                 const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
                                                 const isCompliant = totalIssues === 0 && stats.expiring === 0;
@@ -1514,15 +1629,28 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
                                             })
                                         ) : (
                                             <tr>
-                                                <td colSpan={7} className="py-20 text-center">
+                                                <td colSpan={7} className="py-20 text-center bg-slate-50/30">
                                                     <div className="flex flex-col items-center gap-3">
-                                                        <div className="p-4 bg-slate-50 rounded-full text-slate-300">
-                                                            <Search className="w-8 h-8" />
+                                                        <div className="p-5 bg-white rounded-full shadow-sm border border-slate-100 text-slate-300">
+                                                            <Search size={40} strokeWidth={1.25} />
                                                         </div>
-                                                        <p className="text-slate-500 font-medium">No drivers found matching your filter</p>
-                                                        <button onClick={() => { setDriverSearch(''); setDriverStatusFilter('All'); }} className="text-sm text-blue-600 hover:underline">
-                                                            Clear filters
-                                                        </button>
+                                                        <div>
+                                                            <p className="text-base font-bold text-slate-900 tracking-tight">No drivers found</p>
+                                                            <p className="text-sm text-slate-500 mt-1">
+                                                                {driverHasActiveFilters
+                                                                    ? 'Try clearing some filters or adjusting your search.'
+                                                                    : 'Add a driver to get started.'}
+                                                            </p>
+                                                        </div>
+                                                        {driverHasActiveFilters && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={clearDriverFilters}
+                                                                className="mt-1 text-sm font-semibold text-blue-600 hover:text-blue-800"
+                                                            >
+                                                                Clear all filters
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1530,15 +1658,16 @@ export function CarrierProfilePage({ accountId, currentUser, onSelectAccount }: 
                                     </tbody>
                                 </table>
                             </div>
-                            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
-                                <div className="text-xs text-slate-500">
-                                    Showing <span className="font-medium text-slate-900">{filteredDrivers.length}</span> of <span className="font-medium text-slate-900">{drivers.length}</span> drivers
-                                </div>
-                                <div className="flex gap-2">
-                                    <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Previous</button>
-                                    <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Next</button>
-                                </div>
-                            </div>
+                            <PaginationBar
+                                totalItems={filteredDrivers.length}
+                                currentPage={driverPage}
+                                rowsPerPage={driverRowsPerPage}
+                                onPageChange={setDriverPage}
+                                onRowsPerPageChange={(rows) => {
+                                    setDriverRowsPerPage(rows);
+                                    setDriverPage(1);
+                                }}
+                            />
                         </div>
                     </div>
                 )}

@@ -9,7 +9,8 @@ import { CreateScheduleForm } from "./CreateScheduleForm";
 import { VENDORS as INVENTORY_VENDORS } from "@/pages/inventory/inventory.data";
 
 import { 
-    INITIAL_SERVICE_TYPES, INITIAL_TASKS, INITIAL_ORDERS
+    INITIAL_SERVICE_TYPES, INITIAL_TASKS, INITIAL_ORDERS,
+    getTasksForCarrier, getOrdersForCarrier
 } from "./maintenance.data";
 import type { 
     MaintenanceTask, TaskOrder, OrderCompletionEvent, 
@@ -655,8 +656,17 @@ const CompleteOrderModal = ({ isOpen, onClose, onComplete, order, tasks }: any) 
 // --- Main Page Component ---
 export function AssetMaintenancePage({ account }: { account?: { id: string; legalName: string; dbaName?: string; dotNumber?: string; city?: string; state?: string } }) {
     const [activeTab, setActiveTab] = useState<"tasks" | "orders">("tasks");
-    const [tasks, setTasks] = useState<MaintenanceTask[]>(INITIAL_TASKS);
-    const [orders, setOrders] = useState<TaskOrder[]>(INITIAL_ORDERS);
+
+    // Tasks + orders are scoped to the currently selected carrier.
+    // Without an active account (rare) we fall back to the full unfiltered
+    // arrays so super-admin first-mount still shows something.
+    const [tasks, setTasks] = useState<MaintenanceTask[]>(() =>
+        account?.id ? getTasksForCarrier(account.id) : INITIAL_TASKS
+    );
+    const [orders, setOrders] = useState<TaskOrder[]>(() =>
+        account?.id ? getOrdersForCarrier(account.id) : INITIAL_ORDERS
+    );
+
     // Vendors are scoped per carrier — derive from the active account.
     // Newly added vendors stay in this carrier's list (added via handleAddVendor).
     const [vendors, setVendors] = useState<any[]>(() =>
@@ -664,9 +674,11 @@ export function AssetMaintenancePage({ account }: { account?: { id: string; lega
     );
 
     // When the super-admin switches carriers in the TopNavbar, refresh the
-    // vendor list to match the newly active account.
+    // tasks / orders / vendor lists to match the newly active account.
     useEffect(() => {
         if (account?.id) {
+            setTasks(getTasksForCarrier(account.id));
+            setOrders(getOrdersForCarrier(account.id));
             setVendors(INVENTORY_VENDORS.filter((v) => v.accountId === account.id));
         }
     }, [account?.id]);

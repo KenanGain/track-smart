@@ -1,4 +1,9 @@
 
+// --- Imports ---
+// Per-carrier generated tasks + orders are appended at the bottom of this file
+// to the canonical INITIAL_TASKS / INITIAL_ORDERS exports so the existing
+// maintenance UI sees them without any frontend changes.
+
 // --- Types & Interfaces ---
 
 export type ServiceCategory = "cmv_only" | "non_cmv_only" | "both_cmv_and_non_cmv";
@@ -346,7 +351,7 @@ export const INITIAL_SERVICE_TYPES: ServiceType[] = [
 //  a6  TR-6001  CMV truck                              ▸ 3 tasks
 //  a7  TR-7044  CMV truck                              ▸ 3 tasks
 //
-export const INITIAL_TASKS: MaintenanceTask[] = [
+const ACME_INITIAL_TASKS: MaintenanceTask[] = [
     // ── a1 — TR-1049 (Freightliner Cascadia, CMV, 245k mi) ─────────
     {
         id: "task_a1_oil",
@@ -749,7 +754,7 @@ export const INITIAL_TASKS: MaintenanceTask[] = [
 // Per-Acme-asset task orders. Mix of open (in flight with vendors) and
 // completed (with full cost breakdowns so the expenses tab has data).
 // Every taskIds[] entry references a task in INITIAL_TASKS above.
-export const INITIAL_ORDERS: TaskOrder[] = [
+const ACME_INITIAL_ORDERS: TaskOrder[] = [
     // ── Open: a1 TR-1049 — bundled tire-rotation + overdue brake job ──
     {
         id: "wo_a1_open",
@@ -887,3 +892,41 @@ export const INITIAL_ORDERS: TaskOrder[] = [
         }],
     },
 ];
+
+// ── Final exports — Acme's hand-curated tasks/orders + per-carrier generated ─
+// Tasks reference real per-carrier asset ids (CARRIER_ASSETS); orders
+// reference real per-carrier vendor ids (VENDORS). See the generator at
+// `src/pages/assets/carrier-work-orders.data.ts`.
+
+import {
+    CARRIER_GENERATED_TASKS,
+    CARRIER_GENERATED_ORDERS,
+    CARRIER_WORK_ORDERS_BY_CARRIER,
+} from "./carrier-work-orders.data";
+
+export const INITIAL_TASKS: MaintenanceTask[] = [
+    ...ACME_INITIAL_TASKS,
+    ...CARRIER_GENERATED_TASKS,
+];
+
+export const INITIAL_ORDERS: TaskOrder[] = [
+    ...ACME_INITIAL_ORDERS,
+    ...CARRIER_GENERATED_ORDERS,
+];
+
+const ACME_ID = "acct-001";
+
+/** Returns the maintenance tasks scoped to a single carrier. Acme keeps its
+ *  hand-curated demo rows and also receives generated rows for real asset ids. */
+export function getTasksForCarrier(accountId: string): MaintenanceTask[] {
+    const generated = CARRIER_WORK_ORDERS_BY_CARRIER[accountId]?.tasks ?? [];
+    if (accountId === ACME_ID) return [...ACME_INITIAL_TASKS, ...generated];
+    return generated;
+}
+
+/** Returns the work orders scoped to a single carrier. Mirrors getTasksForCarrier. */
+export function getOrdersForCarrier(accountId: string): TaskOrder[] {
+    const generated = CARRIER_WORK_ORDERS_BY_CARRIER[accountId]?.orders ?? [];
+    if (accountId === ACME_ID) return [...ACME_INITIAL_ORDERS, ...generated];
+    return generated;
+}

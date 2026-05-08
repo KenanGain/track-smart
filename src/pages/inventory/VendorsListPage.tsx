@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Building2, Mail, Phone, MapPin, Tag } from "lucide-react";
 import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
 import { VendorCategoriesModal } from "./VendorCategoriesModal";
@@ -15,6 +15,11 @@ import { cn } from "@/lib/utils";
 
 type Props = {
     onNavigate: (path: string) => void;
+    /** Active carrier — vendor list is filtered to this carrier's vendors. */
+    accountId?: string;
+    /** Display name for the breadcrumb / title block. Falls back to the
+     *  hard-coded ACME label so existing call-sites continue to work. */
+    accountName?: string;
 };
 
 const ALL_COLUMNS: ColumnDef[] = [
@@ -34,14 +39,26 @@ const TD = ({ children, className }: { children?: React.ReactNode; className?: s
     <td className={cn("px-4 py-3 text-sm align-middle", className)}>{children}</td>
 );
 
-export function VendorsListPage({ onNavigate }: Props) {
+export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
     const [search, setSearch] = useState("");
     const [columns, setColumns] = useState<ColumnDef[]>(ALL_COLUMNS);
     const [page, setPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(25);
-    const [vendors] = useState<Vendor[]>(VENDORS);
+    // Vendors list is scoped to the active carrier. Falls back to the full
+    // global list if no accountId is provided so super-admin first-mount
+    // (no carrier picked) still shows something useful.
+    const [vendors, setVendors] = useState<Vendor[]>(() =>
+        accountId ? VENDORS.filter((v) => v.accountId === accountId) : VENDORS
+    );
     const [categories, setCategories] = useState<VendorCategory[]>(VENDOR_CATEGORIES);
     const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
+
+    // Refresh when the active carrier changes (super-admin switching via the
+    // top navbar). Reset to page 1 so we don't land on an empty page.
+    useEffect(() => {
+        setVendors(accountId ? VENDORS.filter((v) => v.accountId === accountId) : VENDORS);
+        setPage(1);
+    }, [accountId]);
 
     const colVisible = useMemo(() => Object.fromEntries(columns.map((c) => [c.id, c.visible])), [columns]);
     const toggleColumn = (id: string) =>
@@ -74,7 +91,7 @@ export function VendorsListPage({ onNavigate }: Props) {
                 <div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
                         <Building2 size={14} />
-                        <span className="font-medium">{CARRIER_NAME}</span>
+                        <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
                         <span>/</span>
                         <span>Inventory</span>
                         <span>/</span>

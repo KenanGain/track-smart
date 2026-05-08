@@ -29,6 +29,7 @@
 // across reloads — the same carrier always renders the same values.
 
 import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
+import { getInspectionsForCarrier } from "./carrier-inspections.data";
 import type { NscPerformanceCardProps } from "@/pages/inspections/NscPerformanceCard";
 import type {
     NscBcCarrierProfileProps,
@@ -318,6 +319,159 @@ export function getNscNsProfileFor(accountId: string): {
 
 type CarrierProfile = typeof ACME_CARRIER_PROFILE;
 
+// Hand-curated leaf-value overrides for specific carriers. The override
+// shallow-merges over the generator output for the matching accountId. Use
+// this when a carrier needs realistic, non-randomised numbers (e.g. demo
+// playthroughs, screenshots).
+//
+// Pattern:
+//   - top-level scalars (rating, address, etc.) override directly
+//   - `oosRates`, `licensing`, `basicStatus` override entirely when present
+//   - `cvorAnalysis` and its nested `counts`/`collisionDetails`/`convictionDetails`
+//     each shallow-merge so partial overrides are safe
+type CarrierProfileOverride = {
+    rating?: CarrierProfile["rating"];
+    oosRates?: CarrierProfile["oosRates"];
+    licensing?: CarrierProfile["licensing"];
+    basicStatus?: CarrierProfile["basicStatus"];
+    cvorAnalysis?: {
+        rating?: number;
+        collisions?:  CarrierProfile["cvorAnalysis"]["collisions"];
+        convictions?: CarrierProfile["cvorAnalysis"]["convictions"];
+        inspections?: CarrierProfile["cvorAnalysis"]["inspections"];
+        counts?:           Partial<CarrierProfile["cvorAnalysis"]["counts"]>;
+        collisionDetails?: Partial<NonNullable<CarrierProfile["cvorAnalysis"]["collisionDetails"]>>;
+        convictionDetails?: Partial<NonNullable<CarrierProfile["cvorAnalysis"]["convictionDetails"]>>;
+    };
+};
+
+const CARRIER_PROFILE_OVERRIDES: Record<string, CarrierProfileOverride> = {
+    // ── acct-002 — Cascade Freight Systems LLC (Portland, OR · FMCSA) ──────
+    // 52 power units / 86 drivers. Hand-curated FMCSA SMS BASIC scores —
+    // satisfactory carrier with one alert in Vehicle Maintenance.
+    "acct-002": {
+        rating: "Satisfactory",
+        oosRates: {
+            vehicle: { carrier: "18.6%", national: "23.2%" },
+            driver:  { carrier: "4.1%",  national: "6.4%" },
+            hazmat:  { carrier: "N/A",   national: "4.4%" },
+        },
+        licensing: {
+            property:  { active: "Yes", mc: "MC2891034" },
+            passenger: { active: "No",  mc: "-" },
+            household: { active: "No",  mc: "-" },
+            broker:    { active: "No",  mc: "-" },
+        },
+        basicStatus: [
+            { category: "Unsafe Driving",                measure: "1.12", percentile: "32%", alert: false, details: "No violations" },
+            { category: "Crash Indicator",               measure: "0.18", percentile: "21%", alert: false, details: "No violations" },
+            { category: "Hours-of-service Compliance",   measure: "0.74", percentile: "44%", alert: false, details: "1 inspection with violations" },
+            { category: "Vehicle Maintenance",           measure: "23.10",percentile: "67%", alert: true,  details: "4 inspections with violations" },
+            { category: "Controlled Substances",         measure: "0",    percentile: "0%",  alert: false, details: "No violations" },
+            { category: "Hazmat compliance",             measure: "0",    percentile: "0%",  alert: false, details: "No violations" },
+            { category: "Driver Fitness",                measure: "0",    percentile: "0%",  alert: false, details: "No violations" },
+            { category: "Others",                        measure: "0",    percentile: "0%",  alert: false, details: "No violations" },
+        ],
+    },
+
+    // ── acct-003 — Northern Lights Transport Ltd. (Mississauga, ON · CVOR) ─
+    // 128 power units / 212 drivers. Hand-curated Ontario CVOR profile.
+    // Sub-warning rating; satisfactory across the board.
+    "acct-003": {
+        rating: "Satisfactory",
+        oosRates: {
+            vehicle: { carrier: "21.4%", national: "23.2%" },
+            driver:  { carrier: "5.2%",  national: "6.4%" },
+            hazmat:  { carrier: "N/A",   national: "4.4%" },
+        },
+        licensing: {
+            property:  { active: "Yes", mc: "-" },
+            passenger: { active: "No",  mc: "-" },
+            household: { active: "No",  mc: "-" },
+            broker:    { active: "No",  mc: "-" },
+        },
+        cvorAnalysis: {
+            rating: 23.4,
+            collisions:  { percentage: 8.2,  weight: 40 },
+            convictions: { percentage: 11.7, weight: 40 },
+            inspections: { percentage: 3.5,  weight: 20 },
+            counts: {
+                collisions:    4,
+                convictions:   12,
+                oosOverall:    21.4,
+                oosVehicle:    24.1,
+                oosDriver:     5.2,
+                trucks:        128,
+                onMiles:       12_400_000,
+                canadaMiles:    1_650_000,
+                totalCanadaMiles: 14_050_000,
+                miMiles:        2_100_000,
+                nyMiles:        1_080_000,
+                paMiles:          720_000,
+                ohMiles:          560_000,
+                totalUSMiles:   4_460_000,
+                totalMiles:    18_510_000,
+                collisionPointsWithPoints: 4,
+                collisionPointsWithoutPoints: 1,
+                totalCollisionPoints: 9,
+                convictionPoints: 22,
+            },
+            collisionDetails: {
+                fromDate: "2024-01-27",
+                toDate: "2026-01-26",
+                monthsLabel: "24 Months",
+                withPoints: 4,
+                fatal: 0,
+                personalInjury: 1,
+                propertyDamage: 3,
+                notPointed: 1,
+                total: 5,
+            },
+            convictionDetails: {
+                fromDate: "2024-01-27",
+                toDate: "2026-01-26",
+                monthsLabel: "24 Months",
+                withPoints: 12,
+                driver:  7,
+                vehicle: 3,
+                load:    1,
+                other:   1,
+                notPointed: 2,
+                total: 14,
+            },
+        },
+    },
+};
+
+function applyCarrierProfileOverride(
+    base: CarrierProfile,
+    o: CarrierProfileOverride,
+): CarrierProfile {
+    return {
+        ...base,
+        rating:      o.rating ?? base.rating,
+        oosRates:    o.oosRates ?? base.oosRates,
+        licensing:   o.licensing ?? base.licensing,
+        basicStatus: o.basicStatus ?? base.basicStatus,
+        cvorAnalysis: o.cvorAnalysis
+            ? {
+                ...base.cvorAnalysis,
+                rating:      o.cvorAnalysis.rating ?? base.cvorAnalysis.rating,
+                collisions:  o.cvorAnalysis.collisions  ?? base.cvorAnalysis.collisions,
+                convictions: o.cvorAnalysis.convictions ?? base.cvorAnalysis.convictions,
+                inspections: o.cvorAnalysis.inspections ?? base.cvorAnalysis.inspections,
+                counts: { ...base.cvorAnalysis.counts, ...(o.cvorAnalysis.counts ?? {}) },
+                collisionDetails: o.cvorAnalysis.collisionDetails
+                    ? { ...(base.cvorAnalysis.collisionDetails ?? {}), ...o.cvorAnalysis.collisionDetails }
+                    : base.cvorAnalysis.collisionDetails,
+                convictionDetails: o.cvorAnalysis.convictionDetails
+                    ? { ...(base.cvorAnalysis.convictionDetails ?? {}), ...o.cvorAnalysis.convictionDetails }
+                    : base.cvorAnalysis.convictionDetails,
+            }
+            : base.cvorAnalysis,
+    };
+}
+
 /**
  * Returns a full `carrierProfile` object for the given carrier. Acme returns
  * the hand-curated demo data unchanged; every other carrier gets a
@@ -393,7 +547,7 @@ export function getCarrierProfileFor(accountId: string): CarrierProfile {
         totalMiles:        Math.floor(totalMiles * frac),
     });
 
-    return {
+    const generated: CarrierProfile = {
         id: dotNumber,
         cvor: cvorNumber,
         name: acct.legalName.toUpperCase(),
@@ -468,14 +622,25 @@ export function getCarrierProfileFor(accountId: string): CarrierProfile {
             },
         },
     };
+
+    const override = CARRIER_PROFILE_OVERRIDES[accountId];
+    return override ? applyCarrierProfileOverride(generated, override) : generated;
 }
 
 // ── Inspection arrays (sliced subsets of Acme's data) ────────────────
 
 /** Returns a deterministic per-carrier slice of the master inspection list.
- *  Different carriers see different subsets and different counts (12-95% of
- *  Acme's, depending on accountId). Acme returns the full array unchanged. */
+ *  Order of preference:
+ *    1. Hand-curated per-carrier inspections from `carrier-inspections.data.ts`
+ *       (driver IDs / asset IDs / plates / VINs are wired to the carrier's
+ *       actual roster — see SAFETY_COMPLIANCE_DATA_PLAN.md).
+ *    2. Acme returns the full hand-curated Acme array.
+ *    3. Anything else falls back to a deterministic slice of Acme's data so
+ *       at least *something* renders.
+ */
 export function getInspectionsFor(accountId: string): typeof ACME_INSPECTIONS {
+    const curated = getInspectionsForCarrier(accountId);
+    if (curated) return curated as unknown as typeof ACME_INSPECTIONS;
     if (accountId === ACME_ID) return ACME_INSPECTIONS;
     const r = rng(`inspections:${accountId}`);
     const fraction = 0.12 + r() * 0.83;

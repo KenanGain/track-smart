@@ -222,7 +222,7 @@ function Page({
                     </div>
                     <div style={{ textAlign: "right" }}>
                         <div style={{ fontSize: 8.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 1.4 }}>
-                            Subject Carrier
+                            Carrier
                         </div>
                         <div style={{ fontSize: 10.5, fontWeight: 700, color: C.ink, marginTop: 1 }}>
                             {carrierName}
@@ -632,7 +632,7 @@ function CoverPage({
                             textTransform: "uppercase", letterSpacing: 2,
                         }}
                     >
-                        Subject Carrier
+                        Carrier
                     </div>
                     <div
                         style={{

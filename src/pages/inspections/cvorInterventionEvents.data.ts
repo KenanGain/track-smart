@@ -2,6 +2,10 @@
 // Source: CVOR PDF (SR-LV-029A) - "Intervention and Event Details" section
 // Each row is one event: an inspection, collision, or conviction.
 
+import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
+import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-drivers.data';
+import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
+
 export type CvorEventType = 'inspection' | 'collision' | 'conviction';
 
 export type VehicleRef = {
@@ -45,6 +49,12 @@ export type ConvictionExtras = {
 
 export type CvorInterventionEvent = {
   id: string;
+  /** Internal asset/driver IDs — set when the event was generated from a
+   *  carrier's seed fleet/roster. Used by the safety-records resolver to
+   *  link the event to *exactly that* vehicle / driver without ambiguous
+   *  plate / unit / name matching. */
+  assetId?: string;
+  driverId?: string;
   type: CvorEventType;
   date: string;          // YYYY-MM-DD
   startTime?: string;    // HH:MM (inspections)
@@ -459,3 +469,164 @@ export const cvorInterventionEvents: CvorInterventionEvent[] = [
     ],
   },
 ];
+
+// ── Per-carrier CVOR intervention extension ───────────────────────────────
+//
+// The hand-curated rows above are lifted directly from real test PDFs and
+// reference plates / driver licences specific to those PDFs — they don't
+// link to any generated carrier asset. To make every carrier's assets and
+// drivers show CVOR records in the per-entity tabs, this block walks the
+// carrier seed data and appends deterministic events using each carrier's
+// real assets / drivers.
+{
+    type AnyAsset = { id: string; unitNumber: string; plateNumber?: string; vin?: string; make?: string };
+    type AnyDriver = { id: string; firstName?: string; lastName?: string; licenseNumber?: string };
+    type AnyAccount = { id: string; country?: string };
+    const _h = (s: string): number => {
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    };
+    const _r = (seed: number) => {
+        let a = seed >>> 0;
+        return () => {
+            a |= 0; a = (a + 0x6D2B79F5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    };
+    const _pick = <T,>(rng: () => number, arr: T[]) => arr[Math.floor(rng() * arr.length) % arr.length];
+    const _today = new Date();
+    const _daysAgo = (n: number) => { const d = new Date(_today); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+    const _time = (rng: () => number) => `${Math.floor(rng() * 24).toString().padStart(2, '0')}:${Math.floor(rng() * 60).toString().padStart(2, '0')}`;
+
+    const LOCATIONS = ['Toronto, ON', 'Mississauga, ON', 'Brampton, ON', 'Hamilton, ON', 'Ottawa, ON', 'Windsor, ON', 'London, ON', 'Sudbury, ON', 'Vineland TIS', 'Putnam TIS'];
+    const DEFECT_BANK: Array<{ category: string; defects: string[] }> = [
+        { category: 'BRAKE SYSTEM',     defects: ['BRAKES — out of adjustment', 'BRAKES — air leak', 'BRAKES — broken hose', 'BRAKES — slack adjuster'] },
+        { category: 'WHEELS/RIMS',      defects: ['WHEEL FASTENER — missing', 'WHEEL FASTENER — loose', 'TIRE — flat', 'TIRE — sidewall damage'] },
+        { category: 'COUPLING DEVICES', defects: ['FIFTH WHEEL — improperly mounted', 'KING PIN — worn', 'COUPLING — missing pin'] },
+        { category: 'BODY',             defects: ['MIRRORS — broken', 'MUDFLAPS — missing', 'WINDSHIELD — cracked'] },
+        { category: 'LOAD SECURITY',    defects: ['LOAD — improperly secured', 'TIE-DOWN — missing', 'TIE-DOWN — defective'] },
+        { category: 'REGISTRATION',     defects: ['REGISTRATION — expired', 'PLATE — illegible'] },
+        { category: 'HOURS OF SERVICE', defects: ['LOG — false', 'LOG — incomplete'] },
+        { category: 'DRIVERS LICENCES', defects: ['LICENCE — expired', 'LICENCE — wrong class', 'MEDICAL — expired'] },
+        { category: 'TRIP INSPECTION',  defects: ['DVIR — missing', 'DVIR — incomplete'] },
+    ];
+
+    const COLLISION_CLASSES = ['Property Damage Only', 'Personal Injury', 'Reportable'];
+    const VEH_ACTIONS = ['Going Ahead', 'Turning Left', 'Turning Right', 'Stopped', 'Changing Lanes', 'Reversing'];
+    const DRV_ACTIONS = ['Driving Properly', 'Following Too Close', 'Improper Turn', 'Speed Too Fast'];
+    const CONDITIONS  = ['Apparently Normal', 'Fatigued', 'Inattentive', 'Defective Brakes', 'No Defect'];
+    const OFFENCES = [
+        'Speeding — exceed posted limit',
+        'Failed to obey traffic signal',
+        'Operate commercial vehicle without certificate',
+        'Unsafe lane change',
+        'Hours-of-service — exceed daily limit',
+        'Improper load — inadequate securement',
+    ];
+
+    for (const account of ACCOUNTS_DB as AnyAccount[]) {
+        const assets = (CARRIER_ASSETS as Record<string, AnyAsset[]>)[account.id] ?? [];
+        const drivers = (CARRIER_DRIVERS as Record<string, AnyDriver[]>)[account.id] ?? [];
+        if (assets.length === 0 || drivers.length === 0) continue;
+        const baseR = _r(_h(`cvor-extension:${account.id}`));
+        // CA-based carriers get more CVOR records than US-only.
+        const count = account.country === 'CA' ? 5 + Math.floor(baseR() * 5) : 2 + Math.floor(baseR() * 3);
+
+        for (let i = 0; i < count; i++) {
+            const r = _r(_h(`cvor-extension:${account.id}:${i}`));
+            const asset = assets[i % assets.length];
+            const driver = drivers[Math.floor(r() * drivers.length)];
+            const date = _daysAgo(Math.floor(r() * 540));
+            const kindRoll = r();
+            const kind: CvorEventType = kindRoll < 0.65 ? 'inspection' : kindRoll < 0.85 ? 'conviction' : 'collision';
+            const driverName = `${(driver.lastName ?? '').toUpperCase()}, ${(driver.firstName ?? '').toUpperCase()}`.trim() || 'Unknown';
+            const cvirOrTicket = kind === 'inspection'
+                ? `ONEA${(10000000 + Math.floor(r() * 89999999)).toString()}`
+                : (Math.floor(r() * 999999999)).toString();
+
+            const base: CvorInterventionEvent = {
+                id: `CVOR-${account.id.slice(-3)}-${asset.id.slice(-4)}-${i}`,
+                assetId: asset.id,
+                driverId: driver.id,
+                type: kind,
+                date,
+                location: _pick(r, LOCATIONS),
+                driverName,
+                driverLicence: driver.licenseNumber,
+                driverLicenceJurisdiction: 'CAON',
+                vehicle1: {
+                    make: asset.make ?? 'FRHT',
+                    unit: asset.unitNumber,
+                    plate: asset.plateNumber ?? '',
+                    jurisdiction: 'CAON',
+                },
+            };
+
+            if (kind === 'inspection') {
+                const oosCount = r() < 0.22 ? 1 + Math.floor(r() * 2) : 0;
+                const defectCount = oosCount + Math.floor(r() * 4);
+                const defects = [];
+                for (let d = 0; d < defectCount; d++) {
+                    const cat = _pick(r, DEFECT_BANK);
+                    defects.push({ category: cat.category, defect: _pick(r, cat.defects), oos: d < oosCount });
+                }
+                cvorInterventionEvents.push({
+                    ...base,
+                    cvir: cvirOrTicket,
+                    startTime: _time(r),
+                    endTime: _time(r),
+                    level: 1 + Math.floor(r() * 3),
+                    numVehicles: 1 + Math.floor(r() * 2),
+                    vehiclePoints: oosCount > 0 ? 2 + Math.floor(r() * 4) : 0,
+                    driverPoints: r() < 0.3 ? 1 + Math.floor(r() * 3) : 0,
+                    oosCount,
+                    totalDefects: defects.length,
+                    charged: oosCount > 0 && r() < 0.4 ? 'Y' : 'N',
+                    coDriver: r() < 0.15 ? 'Y' : 'N',
+                    impoundment: oosCount > 1 && r() < 0.2 ? 'Y' : 'N',
+                    defects,
+                });
+            } else if (kind === 'collision') {
+                const points = 4 + Math.floor(r() * 8);
+                cvorInterventionEvents.push({
+                    ...base,
+                    ticket: cvirOrTicket,
+                    time: _time(r),
+                    pointsTotal: points,
+                    collision: {
+                        collisionClass: _pick(r, COLLISION_CLASSES),
+                        jurisdiction: 'CAON',
+                        microfilm: `MF${(100000 + Math.floor(r() * 899999)).toString()}`,
+                        driverCharged: r() < 0.55 ? 'Y' : 'N',
+                        points,
+                        vehicleAction: _pick(r, VEH_ACTIONS),
+                        vehicleCondition: _pick(r, CONDITIONS),
+                        driverAction: _pick(r, DRV_ACTIONS),
+                        driverCondition: _pick(r, CONDITIONS),
+                    },
+                });
+            } else {
+                const points = 2 + Math.floor(r() * 5);
+                cvorInterventionEvents.push({
+                    ...base,
+                    ticket: cvirOrTicket,
+                    time: _time(r),
+                    pointsTotal: points,
+                    conviction: {
+                        offence: _pick(r, OFFENCES),
+                        convictionDate: _daysAgo(Math.floor(r() * 540) - 30),
+                        jurisdiction: 'CAON',
+                        microfilm: `MF${(100000 + Math.floor(r() * 899999)).toString()}`,
+                        chargedCarrier: r() < 0.3 ? 'Y' : 'N',
+                        ccmtaEquivalency: _pick(r, ['CCMTA-100', 'CCMTA-115', 'CCMTA-200', 'CCMTA-300']),
+                        offenceLocation: _pick(r, LOCATIONS),
+                        points,
+                    },
+                });
+            }
+        }
+    }
+}

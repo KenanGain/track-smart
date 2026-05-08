@@ -20,10 +20,12 @@ import {
 } from "@/components/ui/select";
 
 import { Label } from "@/components/ui/label";
-import { INITIAL_SERVICE_TYPES } from "@/data/service-types.data";
+import { useServiceTypes, serviceTypesStore } from "@/data/serviceTypesStore";
 import { type ServiceType, type ServiceCategory, type ServiceComplexity, CATEGORY_LABELS } from "@/types/service-types";
 
-import { type Vendor, INITIAL_VENDORS } from "@/data/vendors.data";
+import { type Vendor } from "@/pages/inventory/inventory.data";
+import { useVendorsForAccount, vendorsStore } from "@/data/vendorsStore";
+import type { AccountRecord } from "@/pages/accounts/accounts.data";
 
 // US States for dropdown
 export const US_STATES = [
@@ -46,12 +48,14 @@ export const CA_PROVINCES = [
 const MAINTENANCE_CLASSES = ["Safety Inspection", "Intermediate Service", "Comprehensive Service", "Major Overhaul", "Other"];
 const COMPLEXITY_LEVELS: ServiceComplexity[] = ["Basic", "Moderate", "Extensive", "Intensive"];
 
-export function MaintenancePage() {
+export function MaintenancePage({ account }: { account?: AccountRecord }) {
     // Active section tab
     const [activeSection, setActiveSection] = useState<"services" | "vendors">("services");
 
-    // Service Types State
-    const [serviceTypes, setServiceTypes] = useState<ServiceType[]>(INITIAL_SERVICE_TYPES);
+    // Service Types — live store. Add/update/delete dispatch through
+    // serviceTypesStore so CreateOrderModal, CreateScheduleForm, and
+    // AssetMaintenancePage all see the change immediately.
+    const serviceTypes = useServiceTypes();
     const [searchQuery, setSearchQuery] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingService, setEditingService] = useState<ServiceType | null>(null);
@@ -72,25 +76,31 @@ export function MaintenancePage() {
     const [filterApplicability, setFilterApplicability] = useState<ServiceCategory | "all">("all");
     const [filterComplexity, setFilterComplexity] = useState<ServiceComplexity | "all">("all");
 
-    // Vendor State
-    const [vendors, setVendors] = useState<Vendor[]>(INITIAL_VENDORS);
+    // Vendor State — live store, scoped to the active carrier so the
+    // super-admin sees only this carrier's vendors and any add/edit done
+    // here flows back into CreateOrderModal's vendor dropdown.
+    const vendors = useVendorsForAccount(account?.id);
     const [vendorSearchQuery, setVendorSearchQuery] = useState("");
     const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
     const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
-    const [vendorFormData, setVendorFormData] = useState<Partial<Vendor>>({
+    const emptyVendorForm: Partial<Vendor> = {
+        name: "",
         companyName: "",
+        categoryId: "cat-repair-maintenance",
         address: {
-            country: "USA",
-            unit: "",
+            country: "United States",
+            apt: "",
             street: "",
             city: "",
-            stateProvince: "",
-            postalCode: ""
+            state: "",
+            zip: ""
         },
         email: "",
         phone: "",
-        contactName: ""
-    });
+        contactName: "",
+        status: "Active",
+    };
+    const [vendorFormData, setVendorFormData] = useState<Partial<Vendor>>(emptyVendorForm);
 
     // Helper to reset pagination when filters change
     const handleFilterChange = (setter: (value: any) => void, value: any) => {
@@ -118,11 +128,15 @@ export function MaintenancePage() {
         currentPage * itemsPerPage
     );
 
-    // Vendor Filtering
-    const filteredVendors = vendors.filter((vendor) =>
-        vendor.companyName.toLowerCase().includes(vendorSearchQuery.toLowerCase()) ||
-        vendor.email.toLowerCase().includes(vendorSearchQuery.toLowerCase())
-    );
+    // Vendor Filtering — vendor.name is required, companyName/email optional.
+    const filteredVendors = vendors.filter((vendor) => {
+        const q = vendorSearchQuery.toLowerCase();
+        return (
+            vendor.name.toLowerCase().includes(q) ||
+            (vendor.companyName ?? "").toLowerCase().includes(q) ||
+            (vendor.email ?? "").toLowerCase().includes(q)
+        );
+    });
 
     // Service Type Handlers
     const handleOpenDialog = (service?: ServiceType) => {
@@ -152,20 +166,14 @@ export function MaintenancePage() {
         if (!formData.name || !formData.category || !formData.group || !formData.complexity) return;
 
         if (editingService) {
-            setServiceTypes(
-                serviceTypes.map((s) =>
-                    s.id === editingService.id
-                        ? { 
-                            ...s, 
-                            name: formData.name!, 
-                            category: formData.category as ServiceCategory, 
-                            group: formData.group!,
-                            complexity: formData.complexity as ServiceComplexity,
-                            description: formData.description || ""
-                          }
-                        : s
-                )
-            );
+            serviceTypesStore.update({
+                ...editingService,
+                name: formData.name!,
+                category: formData.category as ServiceCategory,
+                group: formData.group!,
+                complexity: formData.complexity as ServiceComplexity,
+                description: formData.description || "",
+            });
         } else {
             const newService: ServiceType = {
                 id: crypto.randomUUID(),
@@ -175,83 +183,82 @@ export function MaintenancePage() {
                 complexity: formData.complexity as ServiceComplexity,
                 description: formData.description || ""
             };
-            setServiceTypes([...serviceTypes, newService]);
+            serviceTypesStore.add(newService);
         }
         setIsDialogOpen(false);
     };
 
     const handleDelete = (id: string) => {
         if (confirm("Are you sure you want to delete this service type?")) {
-            setServiceTypes(serviceTypes.filter((s) => s.id !== id));
+            serviceTypesStore.remove(id);
         }
     };
 
-    // Vendor Handlers (unchanged)
+    // Vendor Handlers — dispatch through vendorsStore so adds/edits flow
+    // back into CreateOrderModal and any other consumer in real time.
     const handleOpenVendorDialog = (vendor?: Vendor) => {
         if (vendor) {
             setEditingVendor(vendor);
             setVendorFormData({
-                companyName: vendor.companyName,
+                name: vendor.name,
+                companyName: vendor.companyName ?? "",
+                categoryId: vendor.categoryId,
                 address: { ...vendor.address },
-                email: vendor.email,
-                phone: vendor.phone,
-                contactName: vendor.contactName
+                email: vendor.email ?? "",
+                phone: vendor.phone ?? "",
+                contactName: vendor.contactName ?? "",
+                contactInfo: vendor.contactInfo ?? "",
+                status: vendor.status,
             });
         } else {
             setEditingVendor(null);
-            setVendorFormData({
-                companyName: "",
-                address: {
-                    country: "USA",
-                    unit: "",
-                    street: "",
-                    city: "",
-                    stateProvince: "",
-                    postalCode: ""
-                },
-                email: "",
-                phone: "",
-                contactName: ""
-            });
+            setVendorFormData(emptyVendorForm);
         }
         setIsVendorDialogOpen(true);
     };
 
     const handleSaveVendor = () => {
-        if (!vendorFormData.companyName) return;
+        // Vendor "display name" can come from either field; require at least one.
+        const displayName = vendorFormData.name || vendorFormData.companyName;
+        if (!displayName) return;
 
         if (editingVendor) {
-            setVendors(
-                vendors.map((v) =>
-                    v.id === editingVendor.id
-                        ? {
-                            ...v,
-                            companyName: vendorFormData.companyName!,
-                            address: vendorFormData.address!,
-                            email: vendorFormData.email!,
-                            phone: vendorFormData.phone!,
-                            contactName: vendorFormData.contactName || ""
-                        }
-                        : v
-                )
-            );
+            vendorsStore.update({
+                ...editingVendor,
+                name: vendorFormData.name || editingVendor.name,
+                companyName: vendorFormData.companyName || undefined,
+                categoryId: vendorFormData.categoryId || editingVendor.categoryId,
+                address: vendorFormData.address,
+                email: vendorFormData.email || undefined,
+                phone: vendorFormData.phone || undefined,
+                contactName: vendorFormData.contactName || undefined,
+                contactInfo: vendorFormData.contactInfo || undefined,
+                status: vendorFormData.status || "Active",
+            });
         } else {
             const newVendor: Vendor = {
-                id: crypto.randomUUID(),
-                companyName: vendorFormData.companyName!,
-                address: vendorFormData.address!,
-                email: vendorFormData.email || "",
-                phone: vendorFormData.phone || "",
-                contactName: vendorFormData.contactName || ""
+                id: `v_${crypto.randomUUID().slice(0, 8)}`,
+                name: vendorFormData.name || vendorFormData.companyName!,
+                companyName: vendorFormData.companyName || undefined,
+                categoryId: vendorFormData.categoryId || "cat-repair-maintenance",
+                // Tag with active carrier so this vendor lands in the right
+                // carrier's vendor list (super-admin scoping).
+                accountId: account?.id ?? "",
+                address: vendorFormData.address,
+                email: vendorFormData.email || undefined,
+                phone: vendorFormData.phone || undefined,
+                contactName: vendorFormData.contactName || undefined,
+                contactInfo: vendorFormData.contactInfo || undefined,
+                status: vendorFormData.status || "Active",
             };
-            setVendors([...vendors, newVendor]);
+            vendorsStore.add(newVendor);
         }
         setIsVendorDialogOpen(false);
     };
 
     const handleDeleteVendor = (id: string) => {
         if (confirm("Are you sure you want to delete this vendor?")) {
-            setVendors(vendors.filter((v) => v.id !== id));
+            vendorsStore.remove(id);
         }
     };
 
@@ -557,7 +564,7 @@ export function MaintenancePage() {
                                                 <td className="px-6 py-4 align-middle">
                                                     <div className="flex items-center gap-2 text-sm text-slate-600">
                                                         <MapPin className="h-4 w-4 text-slate-400" />
-                                                        <span>{vendor.address.city}, {vendor.address.stateProvince}</span>
+                                                        <span>{vendor.address?.city}, {vendor.address?.state}</span>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 align-middle">
@@ -790,7 +797,7 @@ export function MaintenancePage() {
                                             onValueChange={(value) =>
                                                 setVendorFormData({
                                                     ...vendorFormData,
-                                                    address: { ...vendorFormData.address!, country: value, stateProvince: "" }
+                                                    address: { ...vendorFormData.address!, country: value as "United States" | "Canada", state: "" }
                                                 })
                                             }
                                         >
@@ -807,10 +814,10 @@ export function MaintenancePage() {
                                         <Label htmlFor="unit">Unit / Suite</Label>
                                         <Input
                                             id="unit"
-                                            value={vendorFormData.address?.unit}
+                                            value={vendorFormData.address?.apt ?? ""}
                                             onChange={(e) => setVendorFormData({
                                                 ...vendorFormData,
-                                                address: { ...vendorFormData.address!, unit: e.target.value }
+                                                address: { ...vendorFormData.address!, apt: e.target.value }
                                             })}
                                             placeholder="Suite 100"
                                         />
@@ -844,15 +851,15 @@ export function MaintenancePage() {
                                         />
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label htmlFor="stateProvince">
+                                        <Label htmlFor="state">
                                             {vendorFormData.address?.country === "Canada" ? "Province" : "State"}
                                         </Label>
                                         <Select
-                                            value={vendorFormData.address?.stateProvince}
+                                            value={vendorFormData.address?.state ?? ""}
                                             onValueChange={(value) =>
                                                 setVendorFormData({
                                                     ...vendorFormData,
-                                                    address: { ...vendorFormData.address!, stateProvince: value }
+                                                    address: { ...vendorFormData.address!, state: value }
                                                 })
                                             }
                                         >
@@ -867,15 +874,15 @@ export function MaintenancePage() {
                                         </Select>
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label htmlFor="postalCode">
+                                        <Label htmlFor="zip">
                                             {vendorFormData.address?.country === "Canada" ? "Postal Code" : "ZIP Code"}
                                         </Label>
                                         <Input
-                                            id="postalCode"
-                                            value={vendorFormData.address?.postalCode}
+                                            id="zip"
+                                            value={vendorFormData.address?.zip ?? ""}
                                             onChange={(e) => setVendorFormData({
                                                 ...vendorFormData,
-                                                address: { ...vendorFormData.address!, postalCode: e.target.value }
+                                                address: { ...vendorFormData.address!, zip: e.target.value }
                                             })}
                                             placeholder={vendorFormData.address?.country === "Canada" ? "A1A 1A1" : "12345"}
                                         />

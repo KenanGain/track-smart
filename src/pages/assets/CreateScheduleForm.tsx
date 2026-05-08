@@ -3,7 +3,8 @@ import {
     Check, X, Search, Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { INITIAL_SERVICE_TYPES } from '@/data/service-types.data';
+// Live service-types store — picks up Settings → Maintenance edits.
+import { useServiceTypes } from '@/data/serviceTypesStore';
 
 import { INITIAL_ASSETS } from '../assets/assets.data';
 
@@ -17,6 +18,7 @@ interface CreateScheduleFormProps {
 }
 
 export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEntityType }: CreateScheduleFormProps) {
+    const SERVICE_TYPES = useServiceTypes();
     // --- State ---
 
     // Section 1: Schedule
@@ -25,7 +27,10 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
     const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
     const [serviceSearchQuery, setServiceSearchQuery] = useState("");
     const [activeServiceGroup, setActiveServiceGroup] = useState<string>("All");
-    const [scheduleRemarks, setScheduleRemarks] = useState("");
+    // Per-service inline remarks — same pattern as the Create Task Order
+    // picker. Keyed by service-type id; only entries for currently-checked
+    // services are persisted.
+    const [serviceRemarks, setServiceRemarks] = useState<Record<string, string>>({});
 
     // Section 2: Assets
     const [applyToAll, setApplyToAll] = useState(false);
@@ -35,7 +40,7 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
 
     // Filter Services based on Entity Type and Group
     const availableServices = useMemo(() => {
-        return INITIAL_SERVICE_TYPES.filter(service => {
+        return SERVICE_TYPES.filter(service => {
             // 1. Filter by Entity Type
             let matchesEntity = false;
             // console.log("Filtering:", entityType, service.category); // Debug logging
@@ -85,11 +90,21 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
         setApplyToAll(false);      // Reset Apply to All
     };
 
-    // Toggle Service Selection
+    // Toggle Service Selection — unchecking also drops any remarks the user
+    // typed for that service so re-checking starts fresh.
     const toggleService = (id: string) => {
-        setSelectedServiceIds(prev =>
-            prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
-        );
+        setSelectedServiceIds(prev => {
+            if (prev.includes(id)) {
+                setServiceRemarks(r => {
+                    if (!(id in r)) return r;
+                    const next = { ...r };
+                    delete next[id];
+                    return next;
+                });
+                return prev.filter(sid => sid !== id);
+            }
+            return [...prev, id];
+        });
     };
 
     // Toggle Asset Selection
@@ -111,12 +126,20 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
     const handleSave = () => {
         if (!isValid) return;
 
+        // Snapshot per-service remarks for currently-selected services only,
+        // dropping empty strings.
+        const remarksByService: Record<string, string> = {};
+        for (const sid of selectedServiceIds) {
+            const text = (serviceRemarks[sid] ?? "").trim();
+            if (text) remarksByService[sid] = text;
+        }
+
         const schedule = {
             id: `sch_${Math.random().toString(36).substr(2, 9)}`,
             entityCategory: entityType,
             name: scheduleName,
             serviceTypeIds: selectedServiceIds,
-            remarks: scheduleRemarks.trim() || undefined,
+            remarksByService: Object.keys(remarksByService).length > 0 ? remarksByService : undefined,
             assignment: {
                 applyToAll,
                 entityIds: applyToAll ? availableAssets.map(a => a.id) : assignedAssetIds
@@ -243,27 +266,50 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                 })}
                             </div>
 
-                            {/* Service List */}
-                            <div className="h-64 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
+                            {/* Service List — selecting a row reveals an inline
+                                "Remarks for this task" textarea, mirroring the
+                                Create Task Order picker so both flows feel
+                                identical. */}
+                            <div className="h-72 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
                                 {availableServices.length > 0 ? availableServices.map(service => {
                                     const isSelected = selectedServiceIds.includes(service.id);
                                     return (
                                         <div
                                             key={service.id}
-                                            onClick={() => toggleService(service.id)}
-                                            className={`flex items-center p-3 rounded-md cursor-pointer transition-all border ${isSelected
+                                            className={`rounded-md transition-all border ${isSelected
                                                 ? 'bg-blue-50 border-blue-500 shadow-sm'
                                                 : 'bg-white border-transparent hover:border-slate-300'
                                                 }`}
                                         >
-                                            <div className={`w-5 h-5 rounded border flex items-center justify-center mr-3 transition-colors ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
-                                                }`}>
-                                                {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
+                                            <div
+                                                onClick={() => toggleService(service.id)}
+                                                className="flex items-center p-3 cursor-pointer"
+                                            >
+                                                <div className={`w-5 h-5 rounded border flex items-center justify-center mr-3 transition-colors ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
+                                                    }`}>
+                                                    {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
+                                                </div>
+                                                <div>
+                                                    <div className={`text-sm font-medium ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>{service.name}</div>
+                                                    <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">{service.group}</div>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <div className={`text-sm font-medium ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>{service.name}</div>
-                                                <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">{service.group}</div>
-                                            </div>
+
+                                            {isSelected && (
+                                                <div className="px-3 pb-3 pt-0">
+                                                    <label className="mb-1 block text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+                                                        Remarks for this task <span className="text-slate-400 font-normal normal-case">(optional)</span>
+                                                    </label>
+                                                    <textarea
+                                                        rows={2}
+                                                        value={serviceRemarks[service.id] ?? ""}
+                                                        onChange={(e) => setServiceRemarks(prev => ({ ...prev, [service.id]: e.target.value }))}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        placeholder="e.g. driver reported squealing during morning brake check"
+                                                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 }) : (
@@ -273,26 +319,6 @@ export function CreateScheduleForm({ onSave, onCancel, initialAssetId, initialEn
                                     </div>
                                 )}
                             </div>
-                        </div>
-
-                        {/* Remarks — same UX as the Create Task Order modal's
-                            per-task Remarks input. Captures any notes a manager
-                            wants attached to every task spawned from this
-                            schedule (e.g. "always use synthetic 5W-40 oil"). */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Remarks <span className="text-slate-400 font-normal">(optional)</span>
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={scheduleRemarks}
-                                onChange={(e) => setScheduleRemarks(e.target.value)}
-                                placeholder="e.g. Use synthetic 5W-40 oil only. Driver reports squealing under heavy braking — investigate during this service."
-                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                            />
-                            <p className="mt-1 text-[11px] text-slate-500">
-                                These remarks attach to every task this schedule generates — visible to the vendor on the work order.
-                            </p>
                         </div>
 
                     </div>

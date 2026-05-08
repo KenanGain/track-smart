@@ -46,6 +46,7 @@ import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
 import { FuelPage } from '@/pages/fuel/FuelPage'
 import { HoursOfServicePage } from '@/pages/hos/HoursOfServicePage'
 import { SafetyAnalysisPage } from '@/pages/safety-analysis/SafetyAnalysisPage'
+import { NewSafetyAnalysisPage } from '@/pages/safety-analysis/NewSafetyAnalysisPage'
 import { VendorWorkOrderFormPage } from '@/pages/vendor-portal/VendorWorkOrderFormPage'
 import { isVendorPortalUrl } from '@/pages/vendor-portal/vendorPortal.utils'
 
@@ -267,13 +268,29 @@ function App() {
             return <AddAccountPage onNavigate={handleNavigate} />
         }
         if (path === "/inventory") {
-            return <InventoryListPage onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <InventoryListPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                />
+            )
         }
         if (path === "/inventory/items/new") {
             return <AddInventoryItemPage onNavigate={handleNavigate} />
         }
         if (path === "/inventory/vendors") {
-            return <VendorsListPage onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <VendorsListPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                />
+            )
         }
         if (path === "/inventory/vendors/new") {
             return <AddVendorPage onNavigate={handleNavigate} />
@@ -291,7 +308,9 @@ function App() {
             return <DocumentFoldersPage />
         }
         if (path === "/settings/maintenance") {
-            return <MaintenancePage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <MaintenancePage account={account ?? undefined} />
         }
         if (path === "/settings/expenses") {
             return <ExpenseTypesPage />
@@ -350,6 +369,18 @@ function App() {
             return <SafetyEventsPage />
         }
         if (path === "/safety-analysis") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <NewSafetyAnalysisPage
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
+                    currentUser={currentUser ?? undefined}
+                    onSelectAccount={handleSelectAccount}
+                />
+            )
+        }
+        if (path === "/safety-analysis/legacy") {
             return <SafetyAnalysisPage />
         }
         if (path === "/hours-of-service") {
@@ -403,6 +434,11 @@ function App() {
                     onNavigate={handleNavigate}
                     selectedAccountId={selectedAccount?.id}
                     onSelectAccount={handleSelectAccount}
+                    selectedServiceProfileId={
+                        selectedServiceProfileId
+                        ?? getDefaultServiceProfileForUser(currentUser)?.id
+                    }
+                    onSelectServiceProfile={(id) => setSelectedServiceProfileId(id)}
                 />
                 <main className="flex-1 overflow-auto">
                     {renderPage()}

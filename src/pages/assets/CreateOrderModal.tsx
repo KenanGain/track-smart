@@ -2,9 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, X, Check, Trash2, Search, Wrench, Truck, Store, Calendar, FileText, Mail, Copy, ExternalLink, ListChecks } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INITIAL_ASSETS } from "./assets.data";
-import { INITIAL_SERVICE_TYPES, INITIAL_TASKS, INITIAL_ORDERS } from "./maintenance.data";
+import { INITIAL_TASKS, INITIAL_ORDERS } from "./maintenance.data";
 import type { MaintenanceTask } from "./maintenance.data";
 import { VENDOR_CATEGORIES, US_STATES, CA_PROVINCES, ADDRESS_COUNTRIES } from "@/pages/inventory/inventory.data";
+// Live service-types store — picks up edits from Settings → Maintenance
+// without remounting. Adding a service in settings appears here instantly.
+import { useServiceTypes } from "@/data/serviceTypesStore";
 import {
     buildVendorPortalUrl,
     buildMailtoLink,
@@ -65,6 +68,9 @@ interface CreateOrderModalProps {
 }
 
 export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, availableTasks, vendors, onAddVendor, preSelectedAssetId, account }: CreateOrderModalProps) => {
+    // Live service-type catalog. Re-renders automatically when an admin
+    // adds/edits a service in Settings → Maintenance.
+    const SERVICE_TYPES = useServiceTypes();
     const [vendorId, setVendorId] = useState("");
     const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState("");
@@ -101,13 +107,24 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     //      `localSelectedTaskIds` filtered to focusAsset
     //   4) Optionally add a fresh task with maintenance  → `directTasks`
     //      type + per-task remarks (no schedule needed)
-    type DirectTaskDraft = { id: string; assetId: string; serviceTypeIds: string[]; remarks?: string };
+    // Each direct task = one asset + N services + per-service remarks.
+    // remarksByService is keyed by service-type id; entries with empty values
+    // are dropped at submit time.
+    type DirectTaskDraft = {
+        id: string;
+        assetId: string;
+        serviceTypeIds: string[];
+        remarksByService?: Record<string, string>;
+    };
     const [assetClass, setAssetClass] = useState<"CMV" | "Non-CMV">("CMV");
     const [focusAssetId, setFocusAssetId] = useState("");
     const [directTasks, setDirectTasks] = useState<DirectTaskDraft[]>([]);
     // Per-task draft state (for the "Add new task" sub-card)
     const [draftServiceIds, setDraftServiceIds] = useState<string[]>([]);
-    const [draftRemarks, setDraftRemarks] = useState("");
+    // Per-service remarks (keyed by service-type id). Same input pattern as the
+    // existing scheduled tasks list — a remarks textarea appears inline below
+    // each service row that's been checked.
+    const [draftServiceRemarks, setDraftServiceRemarks] = useState<Record<string, string>>({});
     const [serviceQuery, setServiceQuery] = useState("");
     const [serviceGroup, setServiceGroup] = useState<string>("All");
 
@@ -120,7 +137,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
             setNewVendor(emptyVendor);
             setDirectTasks([]);
             setDraftServiceIds([]);
-            setDraftRemarks("");
+            setDraftServiceRemarks({});
             setScheduledTaskRemarks({});
             setServiceQuery("");
             setServiceGroup("All");
@@ -262,7 +279,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                 model: asset?.model,
                 vin: asset?.vin,
                 services: Array.from(serviceTypeIds).map(sid => {
-                    const s = INITIAL_SERVICE_TYPES.find(st => st.id === sid);
+                    const s = SERVICE_TYPES.find(st => st.id === sid);
                     return { id: sid, name: s?.name ?? sid, group: s?.group ?? "" };
                 }),
             };
@@ -332,7 +349,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
             taskRemarks: Object.fromEntries(
                 Object.entries(scheduledTaskRemarks).filter(([, v]) => v.trim().length > 0)
             ),
-            directTasks: directTasks.map(({ assetId, serviceTypeIds, remarks }) => ({ assetId, serviceTypeIds, remarks })),
+            directTasks: directTasks.map(({ assetId, serviceTypeIds, remarksByService }) => ({ assetId, serviceTypeIds, remarksByService })),
             vendorId: finalVendorId,
             createDate,
             dueDate,
@@ -474,19 +491,26 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
 
     const addDirectTask = () => {
         if (!focusAssetId || draftServiceIds.length === 0) return;
+        // Snapshot only the remarks of services that were actually selected,
+        // and only those with non-empty text.
+        const remarksByService: Record<string, string> = {};
+        for (const sid of draftServiceIds) {
+            const text = (draftServiceRemarks[sid] ?? "").trim();
+            if (text) remarksByService[sid] = text;
+        }
         setDirectTasks(prev => [
             ...prev,
             {
                 id: `dt_${Math.random().toString(36).substr(2, 9)}`,
                 assetId: focusAssetId,
                 serviceTypeIds: draftServiceIds,
-                remarks: draftRemarks.trim() || undefined,
+                remarksByService: Object.keys(remarksByService).length > 0 ? remarksByService : undefined,
             },
         ]);
         // Keep the focus asset; reset only the per-task fields so the user
         // can quickly add another task to the same asset.
         setDraftServiceIds([]);
-        setDraftRemarks("");
+        setDraftServiceRemarks({});
         setServiceQuery("");
         setServiceGroup("All");
     };
@@ -496,7 +520,19 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     };
 
     const toggleDraftService = (id: string) => {
-        setDraftServiceIds(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+        setDraftServiceIds(prev => {
+            if (prev.includes(id)) {
+                // Unchecking a service drops its remarks so re-checking starts fresh.
+                setDraftServiceRemarks(r => {
+                    if (!(id in r)) return r;
+                    const next = { ...r };
+                    delete next[id];
+                    return next;
+                });
+                return prev.filter(s => s !== id);
+            }
+            return [...prev, id];
+        });
     };
 
     // Assets filtered by the chosen class — drives the asset dropdown.
@@ -549,7 +585,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
     // badge on each pill so the user knows "Brakes (23)" before they click.
     const servicesByClass = useMemo(() => {
         const isCmv = assetClass === "CMV";
-        return INITIAL_SERVICE_TYPES.filter(s => {
+        return SERVICE_TYPES.filter(s => {
             if (isCmv && s.category === "non_cmv_only") return false;
             if (!isCmv && s.category === "cmv_only") return false;
             return true;
@@ -566,7 +602,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
 
     const filteredServices = useMemo(() => {
         const q = serviceQuery.trim().toLowerCase();
-        return INITIAL_SERVICE_TYPES.filter(s => {
+        return SERVICE_TYPES.filter(s => {
             // Filter by the user's class choice (class is always set in the
             // new flow so we don't fall back to "any").
             const isCmv = assetClass === "CMV";
@@ -830,7 +866,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                         // user picks one that matches the new class.
                                         setFocusAssetId("");
                                         setDraftServiceIds([]);
-                                        setDraftRemarks("");
+                                        setRemarks("");
                                     }}
                                     className={`px-4 py-1.5 text-sm font-semibold rounded transition-all ${assetClass === cls ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${preSelectedAssetId ? 'cursor-not-allowed opacity-60' : ''}`}
                                 >
@@ -856,7 +892,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                 if (preSelectedAssetId) return;
                                 setFocusAssetId(val);
                                 setDraftServiceIds([]);
-                                setDraftRemarks("");
+                                setRemarks("");
                             }}
                         >
                             <SelectTrigger className={`bg-white h-9 ${preSelectedAssetId ? 'opacity-60 cursor-not-allowed' : ''}`}>
@@ -906,7 +942,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                             ) : (
                                 <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1 border border-slate-200 rounded-md bg-white p-2">
                                     {scheduledTasksForFocusAsset.map(task => {
-                                        const serviceNames = task.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                        const serviceNames = task.serviceTypeIds.map((sid: string) => SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
                                         const isSelected = localSelectedTaskIds.includes(task.id);
                                         const statusBadgeCls =
                                             task.status === 'overdue'      ? 'bg-red-100 text-red-700 border-red-200' :
@@ -1055,22 +1091,45 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                     </div>
                                 </div>
 
-                                <div className="border border-slate-200 bg-white rounded-md max-h-56 overflow-y-auto p-1.5 space-y-1">
+                                <div className="border border-slate-200 bg-white rounded-md max-h-72 overflow-y-auto p-1.5 space-y-1">
                                     {filteredServices.length > 0 ? filteredServices.map(s => {
                                         const checked = draftServiceIds.includes(s.id);
                                         return (
                                             <div
                                                 key={s.id}
-                                                onClick={() => toggleDraftService(s.id)}
-                                                className={`flex items-center px-2.5 py-2 rounded cursor-pointer text-sm border ${checked ? 'bg-blue-50 text-blue-900 border-blue-200' : 'hover:bg-slate-50 text-slate-700 border-transparent'}`}
+                                                className={`rounded border ${checked ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-slate-50'}`}
                                             >
-                                                <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2.5 shrink-0 ${checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
-                                                    {checked && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                <div
+                                                    onClick={() => toggleDraftService(s.id)}
+                                                    className={`flex items-center px-2.5 py-2 cursor-pointer text-sm ${checked ? 'text-blue-900' : 'text-slate-700'}`}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center mr-2.5 shrink-0 ${checked ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                                                        {checked && <Check size={11} className="text-white" strokeWidth={3} />}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-medium truncate">{s.name}</div>
+                                                        <div className="text-[10px] text-slate-400 uppercase tracking-wider">{s.group}</div>
+                                                    </div>
                                                 </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="font-medium truncate">{s.name}</div>
-                                                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">{s.group}</div>
-                                                </div>
+
+                                                {/* Inline remarks for this service — same shape and label as
+                                                    the existing scheduled tasks list above so adding a new
+                                                    task feels identical to ticking an existing one. */}
+                                                {checked && (
+                                                    <div className="px-3 pb-2.5 pt-0.5">
+                                                        <Label className="mb-1 block text-[10px] text-slate-500 uppercase tracking-wider">
+                                                            Remarks for this task <span className="text-slate-400 font-normal normal-case">(optional)</span>
+                                                        </Label>
+                                                        <textarea
+                                                            rows={2}
+                                                            value={draftServiceRemarks[s.id] ?? ""}
+                                                            onChange={(e) => setDraftServiceRemarks(prev => ({ ...prev, [s.id]: e.target.value }))}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            placeholder="e.g. driver reported squealing during morning brake check"
+                                                            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     }) : (
@@ -1079,18 +1138,6 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                         </div>
                                     )}
                                 </div>
-                            </div>
-
-                            {/* Per-task remarks */}
-                            <div className="mt-3">
-                                <Label className="mb-1.5 block text-xs text-slate-600">Remarks for this task <span className="text-slate-400 font-normal">(optional)</span></Label>
-                                <textarea
-                                    rows={2}
-                                    value={draftRemarks}
-                                    onChange={(e) => setDraftRemarks(e.target.value)}
-                                    placeholder="e.g. driver reported squealing during morning brake check"
-                                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                />
                             </div>
 
                             <div className="mt-3 flex items-center justify-between">
@@ -1122,7 +1169,7 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                 {/* Scheduled tasks (from props selection) */}
                                 {renderTasks.map((t: any) => {
                                     const asset = INITIAL_ASSETS.find(a => a.id === t.assetId);
-                                    const serviceNames = t.serviceTypeIds.map((sid: string) => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                    const serviceNames = t.serviceTypeIds.map((sid: string) => SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
                                     const remarkText = scheduledTaskRemarks[t.id]?.trim();
                                     return (
                                         <div key={`s-${t.id}`} className="flex items-start gap-3 bg-white border border-slate-200 rounded-md p-3">
@@ -1151,10 +1198,13 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                     );
                                 })}
 
-                                {/* Direct (just-added) tasks with remarks */}
+                                {/* Direct (just-added) tasks — one card per service so each
+                                    remark stays beside its own service line. */}
                                 {directTasks.map(dt => {
                                     const asset = INITIAL_ASSETS.find(a => a.id === dt.assetId);
-                                    const serviceNames = dt.serviceTypeIds.map(sid => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                    const serviceNames = dt.serviceTypeIds.map(sid => SERVICE_TYPES.find(s => s.id === sid)?.name).filter(Boolean).join(", ");
+                                    const remarksByService = dt.remarksByService ?? {};
+                                    const remarkEntries = Object.entries(remarksByService).filter(([, v]) => v.trim());
                                     return (
                                         <div key={`d-${dt.id}`} className="flex items-start gap-3 bg-blue-50/40 border border-blue-100 rounded-md p-3">
                                             <div className="h-9 w-9 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
@@ -1169,10 +1219,17 @@ export const CreateOrderModal = ({ isOpen, onClose, onCreate, selectedTasks, ava
                                                     <span className="inline-flex items-center gap-1"><Truck size={11} className="text-slate-400" /> <span className="font-mono">{asset?.unitNumber}</span></span>
                                                     {asset && <><span className="text-slate-300">·</span><span>{asset.assetCategory}</span></>}
                                                 </div>
-                                                {dt.remarks && (
-                                                    <div className="mt-2 text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5 whitespace-pre-wrap">
-                                                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">Remarks:</span>
-                                                        {dt.remarks}
+                                                {remarkEntries.length > 0 && (
+                                                    <div className="mt-2 space-y-1.5">
+                                                        {remarkEntries.map(([sid, text]) => {
+                                                            const svcName = SERVICE_TYPES.find(s => s.id === sid)?.name ?? sid;
+                                                            return (
+                                                                <div key={sid} className="text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1.5 whitespace-pre-wrap">
+                                                                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">{svcName} —</span>
+                                                                    {text}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>

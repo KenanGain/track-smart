@@ -7142,18 +7142,19 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
                   };
 
                   type KpiDef = { id: typeof cvorEventKpiFilter; title: string; value: number; IconCmp: React.ComponentType<{ size?: number; className?: string }>; tone: Tone };
+                  // 6 cards, evenly distributed at lg breakpoint — gives each
+                  // label enough room to render without ellipsis.
                   const kpis: KpiDef[] = [
                     { id: 'ALL',        title: 'All CVOR',    value: kpiCounts.all,       IconCmp: ClipboardCheck, tone: 'rose' },
                     { id: 'CLEAN',      title: 'Clean',       value: kpiCounts.clean,     IconCmp: CheckCircle2,   tone: 'emerald' },
                     { id: 'OOS',        title: 'OOS Flags',   value: kpiCounts.oos,       IconCmp: ShieldAlert,    tone: 'red' },
-                    { id: 'VEHICLE',    title: 'Veh. Issues', value: kpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
-                    { id: 'HOS_DRIVER', title: 'HOS/Driver',  value: kpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
-                    { id: 'SEVERE',     title: 'Severe (7+)', value: kpiCounts.severe,    IconCmp: AlertTriangle,  tone: 'purple' },
+                    { id: 'VEHICLE',    title: 'Vehicle Issues', value: kpiCounts.vehicle, IconCmp: Truck,          tone: 'orange' },
+                    { id: 'HOS_DRIVER', title: 'HOS / Driver',  value: kpiCounts.hosDriver, IconCmp: User,         tone: 'blue' },
                     { id: 'TICKETS',    title: 'Tickets',     value: kpiCounts.tickets,   IconCmp: Ticket,         tone: 'yellow' },
                   ];
 
                   return (
-                    <div className="px-5 pt-4 pb-3 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                    <div className="px-5 pt-4 pb-3 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
                       {kpis.map(k => {
                         const t = toneMap[k.tone];
                         const isActive = cvorEventKpiFilter === k.id;
@@ -7172,7 +7173,7 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
                               <k.IconCmp size={16} className={t.iconText} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate leading-tight">{k.title}</div>
+                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-tight">{k.title}</div>
                               <div className={`text-xl font-black tabular-nums leading-tight mt-0.5 ${isActive ? t.valueText : 'text-slate-900'}`}>{k.value}</div>
                             </div>
                           </button>
@@ -9669,13 +9670,12 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
                                     { id: 'ALL',        title: 'All',         value: eventKpiCounts.all,       IconCmp: ClipboardCheck, tone: 'rose' },
                                     { id: 'CLEAN',      title: 'Clean',       value: eventKpiCounts.clean,     IconCmp: CheckCircle2,   tone: 'emerald' },
                                     { id: 'OOS',        title: 'OOS',         value: eventKpiCounts.oos,       IconCmp: ShieldAlert,    tone: 'red' },
-                                    { id: 'VEHICLE',    title: 'Veh',         value: eventKpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
-                                    { id: 'HOS_DRIVER', title: 'HOS/Drv',     value: eventKpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
-                                    { id: 'SEVERE',     title: 'Severe',      value: eventKpiCounts.severe,    IconCmp: AlertTriangle,  tone: 'purple' },
+                                    { id: 'VEHICLE',    title: 'Vehicle',     value: eventKpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
+                                    { id: 'HOS_DRIVER', title: 'HOS/Driver',  value: eventKpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
                                     { id: 'TICKETS',    title: 'Tickets',     value: eventKpiCounts.tickets,   IconCmp: Ticket,         tone: 'yellow' },
                                   ];
                                   return (
-                                    <div className="px-4 pt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                                    <div className="px-4 pt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-2">
                                       {kpis.map(k => {
                                         const t = toneMap[k.tone];
                                         const isActive = miniEventsKpiFilter === k.id;
@@ -9694,7 +9694,7 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
                                               <k.IconCmp size={13} className={t.iconText} />
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                              <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate leading-tight">{k.title}</div>
+                                              <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider leading-tight">{k.title}</div>
                                               <div className={`text-base font-black tabular-nums leading-tight mt-0.5 ${isActive ? t.valueText : 'text-slate-900'}`}>{k.value}</div>
                                             </div>
                                           </button>
@@ -10330,13 +10330,12 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
                     { id: 'ALL',        title: 'All CVOR',    value: kpiCounts.all,       IconCmp: ClipboardCheck, tone: 'rose' },
                     { id: 'CLEAN',      title: 'Clean',       value: kpiCounts.clean,     IconCmp: CheckCircle2,   tone: 'emerald' },
                     { id: 'OOS',        title: 'OOS Flags',   value: kpiCounts.oos,       IconCmp: ShieldAlert,    tone: 'red' },
-                    { id: 'VEHICLE',    title: 'Veh. Issues', value: kpiCounts.vehicle,   IconCmp: Truck,          tone: 'orange' },
-                    { id: 'HOS_DRIVER', title: 'HOS/Driver',  value: kpiCounts.hosDriver, IconCmp: User,           tone: 'blue' },
-                    { id: 'SEVERE',     title: 'Severe (7+)', value: kpiCounts.severe,    IconCmp: AlertTriangle,  tone: 'purple' },
+                    { id: 'VEHICLE',    title: 'Vehicle Issues', value: kpiCounts.vehicle, IconCmp: Truck,          tone: 'orange' },
+                    { id: 'HOS_DRIVER', title: 'HOS / Driver',  value: kpiCounts.hosDriver, IconCmp: User,         tone: 'blue' },
                     { id: 'TICKETS',    title: 'Tickets',     value: kpiCounts.tickets,   IconCmp: Ticket,         tone: 'yellow' },
                   ];
                   return (
-                    <div className="px-5 pt-4 pb-3 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                    <div className="px-5 pt-4 pb-3 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
                       {kpis.map(k => {
                         const t = toneMap[k.tone];
                         const isActive = allEventsKpi === k.id;
@@ -10355,7 +10354,7 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
                               <k.IconCmp size={16} className={t.iconText} />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate leading-tight">{k.title}</div>
+                              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-tight">{k.title}</div>
                               <div className={`text-xl font-black tabular-nums leading-tight mt-0.5 ${isActive ? t.valueText : 'text-slate-900'}`}>{k.value}</div>
                             </div>
                           </button>

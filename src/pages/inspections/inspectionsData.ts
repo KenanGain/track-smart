@@ -1,4 +1,7 @@
 import type { CvorInterventionEvent, CvorTravelKmRow } from './cvorInterventionEvents.data';
+import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
+import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-drivers.data';
+import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 
 export const SUMMARY_CATEGORIES = [
   "Vehicle Maintenance",
@@ -1784,6 +1787,106 @@ export const inspectionsData = [
     ]
   }
 ];
+
+// ── Per-carrier FMCSA inspection extension ────────────────────────────────
+//
+// The hand-curated rows above only cover Acme's legacy ('a1', 'a2', …) test
+// IDs. To make every carrier's assets and drivers show real FMCSA records
+// in the per-entity tabs, we generate additional inspections deterministically
+// from the carrier seed data — using each asset's actual id / plate / VIN /
+// unit and each driver's actual id / name / licence.
+//
+// Generation is deterministic (seeded by carrier id) so reloads produce the
+// same rows. Push-after-export means existing imports see the extended array.
+{
+    type AnyAsset = { id: string; unitNumber: string; plateNumber?: string; vin?: string; make?: string };
+    type AnyDriver = { id: string; firstName?: string; lastName?: string; licenseNumber?: string };
+    type AnyAccount = { id: string; country?: string };
+    const _h = (s: string): number => {
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    };
+    const _r = (seed: number) => {
+        let a = seed >>> 0;
+        return () => {
+            a |= 0; a = (a + 0x6D2B79F5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    };
+    const _pick = <T,>(rng: () => number, arr: T[]) => arr[Math.floor(rng() * arr.length) % arr.length];
+    const _today = new Date();
+    const _daysAgo = (n: number) => { const d = new Date(_today); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+
+    const STATES = ['CA', 'TX', 'IL', 'NY', 'GA', 'PA', 'OH', 'WA', 'FL', 'AZ', 'NC', 'IN', 'TN'];
+    const VIOLATION_BANK = [
+        { code: '393.45',  category: 'Vehicle Maintenance',         description: 'Brake hose / tubing chafing',                severity: 4 },
+        { code: '393.95',  category: 'Vehicle Maintenance',         description: 'No / discharged fire extinguisher',          severity: 3 },
+        { code: '393.75',  category: 'Vehicle Maintenance',         description: 'Tire — body ply or belt material exposed',   severity: 8 },
+        { code: '393.9',   category: 'Vehicle Maintenance',         description: 'Inoperative required lamp',                  severity: 6 },
+        { code: '395.8',   category: 'Hours-of-service Compliance', description: "Driver's record of duty status not current", severity: 5 },
+        { code: '391.41',  category: 'Driver Fitness',              description: 'No medical examiner certificate on person',  severity: 1 },
+        { code: '396.3',   category: 'Vehicle Maintenance',         description: 'Inspection / repair / maintenance not done', severity: 2 },
+        { code: '392.9A',  category: 'Cargo Securement',            description: 'Failing to secure load',                     severity: 10 },
+        { code: '383.23',  category: 'Driver Fitness',              description: 'Operating CMV with improper / no CDL',       severity: 8 },
+    ];
+
+    // Use the statically-imported carrier seed datasets at the top of file.
+    for (const account of ACCOUNTS_DB as AnyAccount[]) {
+        const assets = (CARRIER_ASSETS as Record<string, AnyAsset[]>)[account.id] ?? [];
+        const drivers = (CARRIER_DRIVERS as Record<string, AnyDriver[]>)[account.id] ?? [];
+        if (assets.length === 0 || drivers.length === 0) continue;
+
+        const baseR = _r(_h(`fmcsa-extension:${account.id}`));
+        const country = account.country;
+        // US carriers get more FMCSA records than CA-only carriers.
+        const count = country === 'US' ? 6 + Math.floor(baseR() * 6) : 2 + Math.floor(baseR() * 4);
+
+        for (let i = 0; i < count; i++) {
+            const r = _r(_h(`fmcsa-extension:${account.id}:${i}`));
+            const asset = assets[i % assets.length];
+            const driver = drivers[Math.floor(r() * drivers.length)];
+            const violationCount = r() < 0.45 ? 0 : 1 + Math.floor(r() * 3);
+            const isClean = violationCount === 0;
+            const hasOOS = !isClean && r() < 0.35;
+            const violations: Array<{ code: string; category: string; description: string; severity: number; oos: boolean; points: number }> = [];
+            for (let v = 0; v < violationCount; v++) {
+                const tmpl = _pick(r, VIOLATION_BANK);
+                const oos = hasOOS && v === 0;
+                violations.push({
+                    code: tmpl.code,
+                    category: tmpl.category,
+                    description: tmpl.description,
+                    severity: tmpl.severity,
+                    oos,
+                    points: tmpl.severity * (oos ? 2 : 1),
+                });
+            }
+            const driverPts = violations.filter(v => v.category === 'Hours-of-service Compliance' || v.category === 'Driver Fitness').reduce((s, v) => s + v.points, 0);
+            const vehiclePts = violations.filter(v => v.category === 'Vehicle Maintenance' || v.category === 'Cargo Securement').reduce((s, v) => s + v.points, 0);
+
+            (inspectionsData as Array<Record<string, unknown>>).push({
+                id: `INSP-${account.id.slice(-3)}-${asset.id.slice(-4)}-${i}`,
+                date: _daysAgo(Math.floor(r() * 540)),
+                state: _pick(r, STATES),
+                level: `${1 + Math.floor(r() * 3)}`,
+                isClean,
+                hasOOS,
+                smsPoints: { vehicle: vehiclePts, driver: driverPts, carrier: vehiclePts + driverPts },
+                violations,
+                oosSummary: hasOOS ? { driver: driverPts > 0 ? 'Y' : 'N', vehicle: vehiclePts > 0 ? 'Y' : 'N', total: violations.filter(v => v.oos).length } : undefined,
+                driverId: driver.id,
+                assetId: asset.id,
+                driver: `${driver.firstName ?? ''} ${driver.lastName ?? ''}`.trim(),
+                vehiclePlate: asset.plateNumber,
+                vin: asset.vin,
+                unitNumber: asset.unitNumber,
+            });
+        }
+    }
+}
 
 export const cvorOosThresholds = {
   overall: 20,

@@ -1,10 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Plus, ChevronRight, Edit2, Copy, Truck, 
+import {
+  Plus, ChevronRight, Edit2, Copy, Truck,
   AlertCircle, FileText,
-  ShieldCheck, Hash, Clock, 
+  ShieldCheck, Hash, Clock,
   Settings, MapPin, ChevronDown, Wrench, Trash2,
-  X, UploadCloud, FileDown, FileKey, FileCheck, AlertOctagon
+  X, UploadCloud, FileDown, FileKey, FileCheck, AlertOctagon,
+  Search, Calendar, CalendarClock,
+  ArrowUp, ArrowDown, ArrowUpDown, ArrowLeft,
+  User, Activity
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
@@ -15,7 +18,7 @@ import { CreateScheduleForm } from './CreateScheduleForm';
 import { CreateOrderModal } from './CreateOrderModal';
 import { AddExpenseModal } from './AddExpenseModal';
 import { INITIAL_TASKS, INITIAL_ORDERS, INITIAL_SERVICE_TYPES } from './maintenance.data';
-import type { TaskOrder } from './maintenance.data';
+import type { MaintenanceTask, TaskOrder } from './maintenance.data';
 import { INITIAL_VENDORS } from '@/data/vendors.data';
 import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
 import { MOCK_ASSET_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
@@ -27,6 +30,46 @@ import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { getInventoryByAssetId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
 import { Boxes } from 'lucide-react';
+import { getSafetyEventsForAsset } from '@/data/safety-records';
+import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
+
+// Banner shown above the Schedule / Work Order forms when launched from an
+// asset detail page — makes the pre-selected vehicle visually unmistakable so
+// the user knows the form is locked to this asset.
+function SelectedAssetBanner({
+    asset,
+    action,
+}: {
+    asset: { unitNumber: string; year?: number; make?: string; model?: string; vin?: string; assetType?: string; vehicleType?: string };
+    action: string;
+}) {
+    return (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-2.5 sticky top-0 z-30">
+            <div className="max-w-6xl mx-auto flex items-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider">
+                    <Truck size={11} /> {action}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">For:</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-blue-200 text-blue-700 font-mono text-xs font-bold">
+                    Unit #{asset.unitNumber}
+                </span>
+                <span className="text-sm font-semibold text-slate-900 truncate">
+                    {[asset.year, asset.make, asset.model].filter(Boolean).join(" ")}
+                </span>
+                {(asset.assetType || asset.vehicleType) && (
+                    <span className="text-xs text-slate-500 hidden sm:inline">
+                        · {[asset.assetType, asset.vehicleType].filter(Boolean).join(" / ")}
+                    </span>
+                )}
+                {asset.vin && (
+                    <span className="text-[11px] text-slate-400 font-mono ml-auto hidden md:inline">
+                        VIN •••{asset.vin.slice(-6)}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+}
 
 // --- Types for Rich Data (extending base Asset) ---
 export interface DetailedAsset extends Asset {
@@ -128,11 +171,12 @@ const Card = ({ children, className = "" }: { children: React.ReactNode; classNa
   </div>
 );
 
-const Avatar = ({ src, initials, color = "bg-slate-200" }: { src?: string; initials?: string; color?: string }) => (
+const _Avatar = ({ src, initials, color = "bg-slate-200" }: { src?: string; initials?: string; color?: string }) => (
   <div className={`h-8 w-8 rounded-full ring-2 ring-white flex items-center justify-center text-xs font-bold text-slate-600 ${color} overflow-hidden`}>
     {src ? <img src={src} alt="avatar" className="h-full w-full object-cover" /> : initials}
   </div>
 );
+void _Avatar;
 
 // --- Detail View Components ---
 
@@ -144,10 +188,12 @@ const VehicleImageDisplay = ({ src, alt }: { src?: string; alt?: string }) => {
     }, [src]);
 
     if (!src || error) {
+        // Compact placeholder — sized to fit the 96×96 avatar slot. Just a
+        // centered truck icon; full "no image" text doesn't fit at this
+        // size and isn't necessary (the empty avatar reads as no-image).
         return (
-            <div className="flex flex-col items-center justify-center text-slate-300 h-full w-full animate-in fade-in duration-500">
-                <Truck size={64} strokeWidth={1} />
-                <span className="text-[10px] font-bold mt-3 uppercase tracking-widest text-slate-400">No Image Available</span>
+            <div className="flex items-center justify-center h-full w-full bg-gradient-to-br from-slate-100 to-slate-200">
+                <Truck size={32} strokeWidth={1.5} className="text-slate-400" />
             </div>
         );
     }
@@ -162,7 +208,7 @@ const VehicleImageDisplay = ({ src, alt }: { src?: string; alt?: string }) => {
     );
 };
 
-const RiskScoreWidget = ({ score }: { score: number }) => {
+const _RiskScoreWidget = ({ score }: { score: number }) => {
   const radius = 32;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
@@ -186,6 +232,7 @@ const RiskScoreWidget = ({ score }: { score: number }) => {
     </div>
   );
 };
+void _RiskScoreWidget;
 
 
 
@@ -228,16 +275,37 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
   
   const inventoryRecords = useMemo(() => getInventoryByAssetId(asset.id), [asset.id]);
 
-  const tabs = [
-    { name: 'Compliance Monitoring', count: 0 },
-    { name: 'Notifications', count: 3, alert: true },
-    { name: 'Violations', count: 0 },
-    { name: 'Accidents', count: 0 },
-    { name: 'Inspections', count: 0 },
-    { name: 'Maintenance', count: 0 },
-    { name: 'Inventory', count: inventoryRecords.length },
-    { name: 'Expenses', count: 0 },
-    { name: 'Documents', count: 0 },
+  const _maintenanceTaskCountForTab = useMemo(
+    () => INITIAL_TASKS.filter((t) => t.assetId === asset.id).length,
+    [asset.id]
+  );
+
+  // Tabs are grouped by functional area so similar concerns sit next to
+  // each other and the bar reads top-to-bottom by responsibility:
+  //   1. Compliance & Documents — what the asset must keep on file
+  //   2. Operations             — work, parts, costs against the asset
+  //   3. Safety                 — events that affect the asset's risk profile
+  //   4. Alerts                 — cross-cutting summary of action items
+  const tabs: Array<{
+    name: string;
+    count: number;
+    group: string;
+    alert?: boolean;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+  }> = [
+    // 1. Compliance & Documents
+    { name: 'Compliance Monitoring', count: 0,                              group: 'compliance', icon: ShieldCheck },
+    { name: 'Documents',             count: 0,                              group: 'compliance', icon: FileText },
+    // 2. Operations
+    { name: 'Maintenance',           count: _maintenanceTaskCountForTab,    group: 'operations', icon: Wrench },
+    { name: 'Inventory',             count: inventoryRecords.length,        group: 'operations', icon: Boxes },
+    { name: 'Expenses',              count: 0,                              group: 'operations', icon: DollarSign },
+    // 3. Safety
+    { name: 'Inspections',           count: 0,                              group: 'safety',     icon: FileCheck },
+    { name: 'Violations',            count: 0,                              group: 'safety',     icon: AlertTriangle },
+    { name: 'Accidents',             count: 0,                              group: 'safety',     icon: Car },
+    // 4. Alerts (Notifications count is filled in further down once assetAlerts is computed)
+    { name: 'Notifications',         count: 0,                              group: 'alerts',     icon: AlertCircle },
   ];
 
   const [currentVehicle, setCurrentVehicle] = useState(asset);
@@ -436,19 +504,293 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
         total++;
     });
 
-     return { total, expired, expiring, missingNumber, missingExpiry, missingDoc: 0 }; 
+     return { total, expired, expiring, missingNumber, missingExpiry, missingDoc: 0 };
   }, [keyNumbers, currentVehicle]);
+
+  // Cross-cutting alerts surfaced in the Notifications tab. Computed here so
+  // the same numbers drive the tab badge and the rendered list — single source
+  // of truth, no drift between counts.
+  const assetAlerts = useMemo(() => {
+    const items: Array<{
+      severity: 'high' | 'medium' | 'low';
+      category: 'Compliance' | 'Documents' | 'Maintenance' | 'Safety';
+      title: string;
+      detail?: string;
+      tabTarget: string;
+    }> = [];
+
+    if (complianceStats.expired > 0) items.push({
+      severity: 'high', category: 'Compliance',
+      title: `${complianceStats.expired} expired key number${complianceStats.expired === 1 ? '' : 's'}`,
+      detail: 'Plate, permit, or transponder past expiry — renew immediately.',
+      tabTarget: 'Compliance Monitoring',
+    });
+    if (complianceStats.expiring > 0) items.push({
+      severity: 'medium', category: 'Compliance',
+      title: `${complianceStats.expiring} expiring soon`,
+      detail: 'Within the configured reminder window.',
+      tabTarget: 'Compliance Monitoring',
+    });
+    if (complianceStats.missingNumber > 0) items.push({
+      severity: 'medium', category: 'Compliance',
+      title: `${complianceStats.missingNumber} missing key number${complianceStats.missingNumber === 1 ? '' : 's'}`,
+      tabTarget: 'Compliance Monitoring',
+    });
+    if (complianceStats.missingExpiry > 0) items.push({
+      severity: 'low', category: 'Compliance',
+      title: `${complianceStats.missingExpiry} key number${complianceStats.missingExpiry === 1 ? '' : 's'} missing expiry date`,
+      tabTarget: 'Compliance Monitoring',
+    });
+    if (_maintenanceTaskCountForTab > 0) items.push({
+      severity: 'medium', category: 'Maintenance',
+      title: `${_maintenanceTaskCountForTab} maintenance task${_maintenanceTaskCountForTab === 1 ? '' : 's'} due / overdue`,
+      detail: 'Schedule a work order before the next service window.',
+      tabTarget: 'Maintenance',
+    });
+
+    return items;
+  }, [complianceStats, _maintenanceTaskCountForTab]);
+
+  // Wire the alert count + high-severity dot back into the Notifications tab
+  // badge. The tabs array is rebuilt on every render so mutating it here is
+  // safe and keeps the badge in sync with the rendered list.
+  {
+    const notifTab = tabs.find(t => t.name === 'Notifications');
+    if (notifTab) {
+      notifTab.count = assetAlerts.length;
+      notifTab.alert = assetAlerts.some(a => a.severity === 'high');
+    }
+  }
 
   // --- Maintenance Logic ---
   const [assetTasks, setAssetTasks] = useState(() => INITIAL_TASKS.filter(t => t.assetId === asset.id));
   const [assetOrders, setAssetOrders] = useState(() => INITIAL_ORDERS.filter(o => {
-     // Naive check: if any task in order belongs to this asset
-     // We need to resolve tasks from INITIAL_TASKS to check assetId
-     // Note: In a real app backend would filter. Here we join manually.
+     // Join tasks → orders so an order is included if any of its tasks
+     // belong to this asset. (Naive linear scan; fine for in-memory mock.)
      const taskIds = o.taskIds;
      const relatedTasks = INITIAL_TASKS.filter(t => taskIds.includes(t.id));
      return relatedTasks.some(t => t.assetId === asset.id);
   }));
+
+  // Refresh asset-scoped tasks and orders whenever the user navigates to a
+  // different asset without unmounting (e.g. switching via a parent route).
+  // Without this, the Maintenance tab would keep showing the previous
+  // asset's tasks since useState initialisers only run once.
+  useEffect(() => {
+    setAssetTasks(INITIAL_TASKS.filter(t => t.assetId === asset.id));
+    setAssetOrders(INITIAL_ORDERS.filter(o => {
+        const relatedTasks = INITIAL_TASKS.filter(t => o.taskIds.includes(t.id));
+        return relatedTasks.some(t => t.assetId === asset.id);
+    }));
+  }, [asset.id]);
+
+  // ── Per-asset Maintenance UI state (filters, search, sort) ─────────────
+  type TaskStatusFilter = 'all' | 'upcoming' | 'due' | 'overdue' | 'in_progress' | 'completed';
+  type OrderStatusFilter = 'all' | 'open' | 'completed' | 'cancelled';
+
+  const [taskStatusFilter, setTaskStatusFilter]   = useState<TaskStatusFilter>('all');
+  const [taskSearch, setTaskSearch]               = useState('');
+  const [taskSort, setTaskSort]                   = useState<'status' | 'due' | 'created'>('status');
+  const [taskSortDir, setTaskSortDir]             = useState<'asc' | 'desc'>('asc');
+  const [taskPage, setTaskPage]                   = useState(1);
+  const [taskRowsPerPage, setTaskRowsPerPage]     = useState(5);
+
+  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilter>('all');
+  const [orderSearch, setOrderSearch]             = useState('');
+  const [orderSort, setOrderSort]                 = useState<'created' | 'due' | 'status'>('created');
+  const [orderSortDir, setOrderSortDir]           = useState<'asc' | 'desc'>('desc');
+  const [orderPage, setOrderPage]                 = useState(1);
+  const [orderRowsPerPage, setOrderRowsPerPage]   = useState(5);
+
+  // ── Inventory UI state — same shape (filter/search/sort/page) as Tasks ──
+  type InventoryStatusFilter = 'all' | 'Active' | 'Expiring Soon' | 'Expired';
+  const [invStatusFilter, setInvStatusFilter] = useState<InventoryStatusFilter>('all');
+  const [invSearch, setInvSearch]             = useState('');
+  const [invSort, setInvSort]                 = useState<'expiry' | 'vendor' | 'issue'>('expiry');
+  const [invSortDir, setInvSortDir]           = useState<'asc' | 'desc'>('asc');
+  const [invPage, setInvPage]                 = useState(1);
+  const [invRowsPerPage, setInvRowsPerPage]   = useState(5);
+
+  // Reset to page 1 whenever filters change so the user always lands on visible rows.
+  useEffect(() => { setTaskPage(1); }, [taskStatusFilter, taskSearch, taskSort, taskSortDir, taskRowsPerPage]);
+  useEffect(() => { setOrderPage(1); }, [orderStatusFilter, orderSearch, orderSort, orderSortDir, orderRowsPerPage]);
+  useEffect(() => { setInvPage(1); }, [invStatusFilter, invSearch, invSort, invSortDir, invRowsPerPage]);
+
+  // Real metrics derived from this asset's actual tasks/orders.
+  const maintenanceMetrics = useMemo(() => {
+    const openOrders = assetOrders.filter(o => o.status === 'open').length;
+    const overdueTasks = assetTasks.filter(t => t.status === 'overdue').length;
+    const dueTasks = assetTasks.filter(t => t.status === 'due').length;
+
+    let ytdSpend = 0;
+    const yearStart = new Date(new Date().getFullYear(), 0, 1).getTime();
+    for (const o of assetOrders) {
+      for (const c of o.completions ?? []) {
+        if (new Date(c.completedAt).getTime() >= yearStart) {
+          for (const b of c.assetBreakdowns ?? []) {
+            if (b.assetId === asset.id) ytdSpend += b.costs?.totalPaid ?? 0;
+          }
+        }
+      }
+    }
+
+    const upcomingTask = [...assetTasks]
+      .filter(t => t.status === 'upcoming' || t.status === 'due')
+      .sort((a, b) => {
+        const aa = a.dueRule?.dueAtOdometer ?? a.dueRule?.dueAtEngineHours ?? 0;
+        const bb = b.dueRule?.dueAtOdometer ?? b.dueRule?.dueAtEngineHours ?? 0;
+        return aa - bb;
+      })[0];
+
+    const lastCompletion = [...assetOrders]
+      .flatMap(o => (o.completions ?? []).map(c => ({ order: o, completion: c })))
+      .filter(({ completion }) =>
+        completion.assetBreakdowns?.some(b => b.assetId === asset.id)
+      )
+      .sort((a, b) => new Date(b.completion.completedAt).getTime() - new Date(a.completion.completedAt).getTime())
+      [0];
+
+    return { openOrders, overdueTasks, dueTasks, ytdSpend, upcomingTask, lastCompletion };
+  }, [assetTasks, assetOrders, asset.id]);
+
+  // Filtered + sorted list of tasks shown in the panel.
+  const filteredTasks = useMemo(() => {
+    const q = taskSearch.trim().toLowerCase();
+    let list = assetTasks.filter(t => {
+      if (taskStatusFilter !== 'all' && t.status !== taskStatusFilter) return false;
+      if (q) {
+        const serviceName = INITIAL_SERVICE_TYPES.find(s => s.id === t.serviceTypeIds[0])?.name ?? '';
+        return [t.id, serviceName, t.scheduleId].some(v => v.toLowerCase().includes(q));
+      }
+      return true;
+    });
+
+    const STATUS_ORDER: Record<string, number> = { overdue: 0, due: 1, in_progress: 2, upcoming: 3, completed: 4, cancelled: 5 };
+    const dir = taskSortDir === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      let cmp = 0;
+      if (taskSort === 'status') {
+        cmp = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
+      } else if (taskSort === 'due') {
+        const aa = a.dueRule?.dueAtOdometer ?? a.dueRule?.dueAtEngineHours ?? new Date(a.dueRule?.dueAtDate ?? 0).getTime();
+        const bb = b.dueRule?.dueAtOdometer ?? b.dueRule?.dueAtEngineHours ?? new Date(b.dueRule?.dueAtDate ?? 0).getTime();
+        cmp = aa - bb;
+      } else {
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      return cmp * dir;
+    });
+    return list;
+  }, [assetTasks, taskStatusFilter, taskSearch, taskSort, taskSortDir]);
+
+  // Filtered + sorted work orders.
+  const filteredOrders = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
+    let list = assetOrders.filter(o => {
+      if (orderStatusFilter !== 'all' && o.status !== orderStatusFilter) return false;
+      if (q) {
+        const vendorName = vendors.find((v: any) => v.id === o.vendorId)?.companyName?.toLowerCase() ?? '';
+        return [o.id, vendorName, o.notes ?? ''].some(v => v.toLowerCase().includes(q));
+      }
+      return true;
+    });
+
+    const ORDER_STATUS_ORDER: Record<string, number> = { open: 0, completed: 1, cancelled: 2 };
+    const dir = orderSortDir === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      let cmp = 0;
+      if (orderSort === 'status') cmp = (ORDER_STATUS_ORDER[a.status] ?? 99) - (ORDER_STATUS_ORDER[b.status] ?? 99);
+      else if (orderSort === 'due') cmp = new Date(a.dueDate ?? 0).getTime() - new Date(b.dueDate ?? 0).getTime();
+      else cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return cmp * dir;
+    });
+    return list;
+  }, [assetOrders, orderStatusFilter, orderSearch, orderSort, orderSortDir]);
+
+  const taskStatusCounts = useMemo(() => ({
+    all: assetTasks.length,
+    upcoming: assetTasks.filter(t => t.status === 'upcoming').length,
+    due: assetTasks.filter(t => t.status === 'due').length,
+    overdue: assetTasks.filter(t => t.status === 'overdue').length,
+    in_progress: assetTasks.filter(t => t.status === 'in_progress').length,
+    completed: assetTasks.filter(t => t.status === 'completed').length,
+  }), [assetTasks]);
+
+  // Clamp page when filtered list shrinks.
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredTasks.length / taskRowsPerPage));
+    if (taskPage > maxPage) setTaskPage(maxPage);
+  }, [filteredTasks.length, taskRowsPerPage, taskPage]);
+
+  const pagedTasks = useMemo(() => {
+    const start = (taskPage - 1) * taskRowsPerPage;
+    return filteredTasks.slice(start, start + taskRowsPerPage);
+  }, [filteredTasks, taskPage, taskRowsPerPage]);
+
+  const orderStatusCounts = useMemo(() => ({
+    all: assetOrders.length,
+    open: assetOrders.filter(o => o.status === 'open').length,
+    completed: assetOrders.filter(o => o.status === 'completed').length,
+    cancelled: assetOrders.filter(o => o.status === 'cancelled').length,
+  }), [assetOrders]);
+
+  // Clamp page when filtered list shrinks.
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredOrders.length / orderRowsPerPage));
+    if (orderPage > maxPage) setOrderPage(maxPage);
+  }, [filteredOrders.length, orderRowsPerPage, orderPage]);
+
+  const pagedOrders = useMemo(() => {
+    const start = (orderPage - 1) * orderRowsPerPage;
+    return filteredOrders.slice(start, start + orderRowsPerPage);
+  }, [filteredOrders, orderPage, orderRowsPerPage]);
+
+  // Inventory: filter → sort → paginate. Same shape as the tasks/orders
+  // pipelines above.
+  const filteredInventory = useMemo(() => {
+    let list = inventoryRecords.filter((it) => {
+      if (invStatusFilter !== 'all' && it.status !== invStatusFilter) return false;
+      const q = invSearch.trim().toLowerCase();
+      if (q) {
+        const vendor = getVendorById(it.vendorId);
+        const haystack = [
+          vendor?.name, vendor?.companyName,
+          it.serial, it.pin,
+          it.issueDate, it.expiryDate,
+          vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '',
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+    const dir = invSortDir === 'asc' ? 1 : -1;
+    list = [...list].sort((a, b) => {
+      if (invSort === 'expiry') return a.expiryDate.localeCompare(b.expiryDate) * dir;
+      if (invSort === 'issue') return a.issueDate.localeCompare(b.issueDate) * dir;
+      // 'vendor'
+      const va = getVendorById(a.vendorId)?.name ?? '';
+      const vb = getVendorById(b.vendorId)?.name ?? '';
+      return va.localeCompare(vb) * dir;
+    });
+    return list;
+  }, [inventoryRecords, invStatusFilter, invSearch, invSort, invSortDir]);
+
+  const pagedInventory = useMemo(() => {
+    const start = (invPage - 1) * invRowsPerPage;
+    return filteredInventory.slice(start, start + invRowsPerPage);
+  }, [filteredInventory, invPage, invRowsPerPage]);
+
+  const invStatusCounts = useMemo(() => ({
+    all:              inventoryRecords.length,
+    'Active':         inventoryRecords.filter((it) => it.status === 'Active').length,
+    'Expiring Soon':  inventoryRecords.filter((it) => it.status === 'Expiring Soon').length,
+    'Expired':        inventoryRecords.filter((it) => it.status === 'Expired').length,
+  }), [inventoryRecords]);
+
+  const formatMoney = (n: number, currency: 'USD' | 'CAD' = 'USD') =>
+    n.toLocaleString('en-US', { style: 'currency', currency, maximumFractionDigits: 0 });
+
+  const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   // --- Expense Logic ---
   const [manualExpenses, setManualExpenses] = useState<AssetExpense[]>(() => 
@@ -701,38 +1043,74 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
   const [isCreateOrderModalOpen, setIsCreateOrderModalOpen] = useState(false);
   const [vendors, setVendors] = useState(INITIAL_VENDORS);
 
+  /** CreateOrderModal payload contract:
+   *    { id?, taskIds[], taskRemarks?, directTasks[], vendorId, createDate, dueDate, meta, notes, portalUrl? }
+   *  - `taskIds` are existing maintenance tasks the user ticked.
+   *  - `directTasks` are *new* tasks the user authored inside the modal — we
+   *    materialise them here so the asset's task list is consistent with the
+   *    new order.
+   */
   const handleCreateOrder = (orderData: any) => {
+      const orderId: string = orderData.id ?? `wo_new_${Math.random().toString(36).substr(2, 9)}`;
+      const nowIso = new Date().toISOString();
+      const captureIso = orderData.createDate ?? nowIso;
+
+      // 1. Materialise direct tasks (new tasks created inline in the modal).
+      const directTasks: MaintenanceTask[] = (orderData.directTasks ?? []).map((dt: any, idx: number) => {
+          const taskId = `task_inline_${orderId}_${idx}`;
+          return {
+              id: taskId,
+              assetId: dt.assetId ?? asset.id,
+              scheduleId: `sch_inline_${orderId}_${idx}`,
+              serviceTypeIds: dt.serviceTypeIds ?? [],
+              status: 'in_progress',
+              meterSnapshot: {
+                  odometer: currentVehicle.odometer ?? 0,
+                  engineHours: 0,
+                  capturedAt: captureIso,
+              },
+              createdAt: captureIso,
+          } as MaintenanceTask;
+      });
+
+      // 2. Combined task ids — existing ticked tasks + freshly-created direct ones.
+      const combinedTaskIds: string[] = [
+          ...(orderData.taskIds ?? []),
+          ...directTasks.map((t) => t.id),
+      ];
+
+      // 3. Push direct tasks into local state so the Tasks panel shows them.
+      if (directTasks.length > 0) {
+          setAssetTasks((prev) => [...directTasks, ...prev]);
+      }
+
+      // 4. Mark any existing tasks that were attached as in_progress.
+      if ((orderData.taskIds ?? []).length > 0) {
+          setAssetTasks((prev) =>
+              prev.map((t) =>
+                  orderData.taskIds.includes(t.id) ? { ...t, status: 'in_progress' as const } : t
+              )
+          );
+      }
+
+      // 5. Build the new order.
       const newOrder: TaskOrder = {
-          id: `wo_new_${Math.random().toString(36).substr(2, 9)}`,
-          taskIds: orderData.taskIds || [], // CreateOrderModal should pass taskIds, but currently passes meta/vendorId. We need to associate tasks.
-          // Wait, CreateOrderModal logic: "onCreate" passes { vendorId, createDate... meta }.
-          // It DOES NOT pass taskIds in the `onCreate` arg?
-          // Let's check CreateOrderModal.tsx call: `onCreate({ ... })`. It assumes parent knows which tasks were selected.
-          // Correct, `CreateOrderModal` takes `selectedTasks`.
-          // But here in AssetDetailView, what tasks are selected?
-          // "Log Maintenance" button usually implies creating an order for *pending* tasks or *new* tasks?
-          // The prompt said: "Log Maintenance button that triggers a pre-filtered modal for work order creation".
-          // If I click "Log Maintenance" generally, do I select tasks inside?
-          // CreateOrderModal has `selectedTasks` prop.
-          // If I pass *all* upcoming tasks for this asset, the user can see them in the "Tasks in Order" summary.
-          // But CreateOrderModal is designed to receive *already selected* tasks?
-          // Let's look at `CreateOrderModal.tsx`:
-          // `const uniqueAssetIds = [...new Set(selectedTasks.map((t: any) => t.assetId))];`
-          // It displays them. It doesn't seem to have a "Select Tasks" UI *inside* it.
-          // It assumes you selected tasks on the main screen and clicked "Generic Create Order".
-          // User Objective: "Log Maintenance button that triggers a pre-filtered modal".
-          // Maybe I should pass *ALL* active tasks for this asset as `selectedTasks`?
-          // OR, if the modal doesn't allow deselection, this might be wrong.
-          // Assuming for now we pass all "Due/Upcoming/Overdue" tasks as candidates.
+          id: orderId,
+          taskIds: combinedTaskIds,
           vendorId: orderData.vendorId,
           status: 'open',
-          createdAt: orderData.createDate,
+          createdAt: captureIso,
           dueDate: orderData.dueDate,
-          completions: []
-      } as TaskOrder; // Cast for now
-      
-      console.log("Creating Order:", newOrder);
-      setAssetOrders(prev => [newOrder, ...prev]);
+          meta: orderData.meta ?? {
+              odometerRequired: false,
+              odometerUnit: currentVehicle.country === 'Canada' ? 'km' : 'miles',
+              engineHoursRequired: false,
+          },
+          notes: orderData.notes ?? '',
+          completions: [],
+      };
+
+      setAssetOrders((prev) => [newOrder, ...prev]);
       setIsCreateOrderModalOpen(false);
   };
 
@@ -740,112 +1118,289 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
       setVendors(prev => [...prev, newVendor]);
   };
 
+  /** CreateScheduleForm payload contract:
+   *    { id, entityCategory, name, serviceTypeIds[], remarksByService?, assignment: { applyToAll, entityIds[] }, status, createdAt }
+   *  We materialise one MaintenanceTask per (serviceTypeId × entityId in scope)
+   *  for this asset only — when called from the asset detail page the
+   *  assignment is locked to the current asset.
+   */
+  const handleCreateSchedule = (schedule: any) => {
+      const targetIds: string[] = (schedule.assignment?.entityIds ?? []).filter(
+          (id: string) => id === asset.id
+      );
+      // Fall back to this asset's id if nothing matched (defensive — the form
+      // is initialised with `initialAssetId={asset.id}`).
+      const ids = targetIds.length > 0 ? targetIds : [asset.id];
+
+      const newTasks: MaintenanceTask[] = [];
+      for (const aid of ids) {
+          for (const sid of schedule.serviceTypeIds ?? []) {
+              const taskId = `task_${schedule.id}_${aid}_${sid}`;
+              newTasks.push({
+                  id: taskId,
+                  assetId: aid,
+                  scheduleId: schedule.id,
+                  serviceTypeIds: [sid],
+                  status: 'upcoming',
+                  meterSnapshot: {
+                      odometer: currentVehicle.odometer ?? 0,
+                      engineHours: 0,
+                      capturedAt: schedule.createdAt,
+                  },
+                  dueRule: {
+                      unit: 'miles',
+                      frequencyEvery: 15000,
+                      upcomingThreshold: 5000,
+                      dueAtOdometer: (currentVehicle.odometer ?? 0) + 15000,
+                  },
+                  createdAt: schedule.createdAt,
+              });
+          }
+      }
+
+      if (newTasks.length > 0) {
+          setAssetTasks((prev) => [...newTasks, ...prev]);
+      }
+      setIsCreatingSchedule(false);
+  };
+
+  // ── Full-page form: Schedule ────────────────────────────────────────────
+  // Same pattern as AssetMaintenancePage — the form owns the entire content
+  // area. A thin sticky banner above the form makes it clear which asset is
+  // pre-selected, since the form was launched from the asset detail.
+  if (isCreatingSchedule) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-50">
+        <SelectedAssetBanner asset={currentVehicle} action="Schedule Maintenance" />
+        <CreateScheduleForm
+          onSave={handleCreateSchedule}
+          onCancel={() => setIsCreatingSchedule(false)}
+          initialAssetId={asset.id}
+          initialEntityType={asset.assetCategory === 'CMV' ? 'truck' : asset.assetCategory === 'Non-CMV' ? 'trailer' : undefined}
+        />
+      </div>
+    );
+  }
+
+  // ── Full-page form: Add Work Order ──────────────────────────────────────
+  // Same pattern — render the modal directly with the selected-asset banner
+  // above so the user always sees which vehicle the order is for.
+  if (isCreateOrderModalOpen) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-50">
+        <SelectedAssetBanner asset={currentVehicle} action="Add Work Order" />
+        <CreateOrderModal
+          isOpen={true}
+          onClose={() => setIsCreateOrderModalOpen(false)}
+          onCreate={handleCreateOrder}
+          preSelectedAssetId={asset.id}
+          selectedTasks={[]}
+          availableTasks={assetTasks.filter(
+            (t) =>
+              t.status !== 'completed' &&
+              t.status !== 'cancelled' &&
+              !assetOrders.some((o) => o.taskIds.includes(t.id))
+          )}
+          vendors={vendors}
+          onAddVendor={handleAddVendor}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="font-sans text-slate-900 flex flex-col h-full bg-slate-50">
       <main className="flex-1 min-w-0 pb-12 overflow-y-auto">
-        {/* Top Navigation Bar */}
-        <header className="h-14 bg-transparent px-8 flex items-center justify-between pt-4">
-          <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={onBack}
-                className="gap-2 text-slate-600 border-slate-200 bg-white hover:bg-slate-50"
-              >
-                  <ChevronRight size={14} className="rotate-180" /> Back to List
-              </Button>
-              <div className="h-4 w-px bg-slate-300 mx-2" />
-              <nav className="flex items-center text-sm font-medium text-slate-500">
-                <span className="text-slate-400">Account</span>
-                <ChevronRight size={14} className="mx-2 text-slate-300" />
-                <span className="hover:text-slate-900 cursor-pointer transition-colors" onClick={onBack}>Assets</span>
-                <ChevronRight size={14} className="mx-2 text-slate-300" />
-                <span className="text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-xs font-semibold shadow-sm">Unit #{currentVehicle.unitNumber}</span>
-              </nav>
-          </div>
+        {/* Sticky top section — breadcrumb + header strip + tabs travel
+            together so the user always has the back button, status, and
+            tab switcher visible while scrolling tab content. */}
+        <div className="sticky top-0 z-30 bg-white">
+        {/* Breadcrumb bar — Pattern B (matches DriverProfile + MyProfile shell):
+            explicit Back-to-list button + vertical divider + breadcrumb chain.
+            Thin h-11 strip on slate-50 with a single bottom border. */}
+        <header className="h-11 px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+          >
+            <ArrowLeft size={13} /> Back to Assets
+          </button>
+          <span aria-hidden className="h-4 w-px bg-slate-200" />
+          <nav className="flex items-center text-xs font-medium text-slate-500 min-w-0">
+            <span
+              className="text-slate-400 hover:text-blue-600 cursor-pointer transition-colors"
+              onClick={onBack}
+            >
+              Assets
+            </span>
+            <ChevronRight size={12} className="mx-1.5 text-slate-300 shrink-0" />
+            <span
+              className="text-slate-400 hover:text-blue-600 cursor-pointer transition-colors"
+              onClick={onBack}
+            >
+              {currentVehicle.assetType ?? "Asset"}{currentVehicle.vehicleType ? ` · ${currentVehicle.vehicleType}` : ""}
+            </span>
+            <ChevronRight size={12} className="mx-1.5 text-slate-300 shrink-0" />
+            <span className="text-slate-700 font-semibold truncate">
+              Unit #{currentVehicle.unitNumber}
+            </span>
+          </nav>
         </header>
 
-        <div className="px-8 pb-8 pt-6 w-full space-y-6">
-          
-          {/* Header Card */}
-          <Card className="overflow-hidden">
-            <div className="p-6 pb-8">
-              <div className="flex flex-col lg:flex-row gap-8">
-                {/* Left: Image */}
-                <div className="relative w-full lg:w-80 flex-shrink-0">
-                  <div className="aspect-[16/10] bg-slate-50 rounded-xl overflow-hidden border border-slate-100 relative group">
-                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white to-slate-100">
-                      <VehicleImageDisplay src={currentVehicle.image} alt={currentVehicle.unitNumber} />
-                    </div>
-                    <div className="absolute top-3 left-3">
-                      <Badge variant={currentVehicle.operationalStatus === 'Active' ? 'success' : 'warning'} className="shadow-sm font-bold tracking-wider px-3 py-1 text-[10px]">
-                        {currentVehicle.operationalStatus}
-                      </Badge>
+        {/* Header strip — flat edge-to-edge on white with bottom border,
+            matches the MyProfilePage pattern (no surrounding Card wrapper). */}
+        <div className="bg-white border-b border-slate-200 px-8 pt-6 pb-6">
+            <div>
+              <div className="flex items-start gap-5 flex-wrap">
+                {/* Image-as-avatar with status dot, mirrors the driver avatar. */}
+                <div className="relative shrink-0">
+                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-100 overflow-hidden shadow-sm">
+                    <VehicleImageDisplay src={currentVehicle.image} alt={currentVehicle.unitNumber} />
+                  </div>
+                  <div
+                    title={currentVehicle.operationalStatus}
+                    className={cn(
+                      "absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white shadow-sm",
+                      currentVehicle.operationalStatus === 'Active'
+                        ? 'bg-emerald-500'
+                        : currentVehicle.operationalStatus === 'Deactivated'
+                          ? 'bg-slate-400'
+                          : 'bg-amber-500'
+                    )}
+                  />
+                </div>
+
+                {/* Title block + contact row */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <h1 className="text-2xl font-bold text-slate-900 leading-tight">
+                      {currentVehicle.year} {currentVehicle.make} {currentVehicle.model}
+                    </h1>
+                    <Badge
+                      variant={currentVehicle.operationalStatus === 'Active' ? 'success' : 'warning'}
+                      className="shadow-sm font-bold tracking-wider px-2.5 py-0.5 text-[10px]"
+                    >
+                      {currentVehicle.operationalStatus}
+                    </Badge>
+                    {currentVehicle.vehicleType && (
+                      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                        {currentVehicle.vehicleType}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-4 flex-wrap text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-1.5">
+                      <User size={13} className="text-slate-400" />
+                      {currentVehicle.drivers?.length
+                        ? currentVehicle.drivers.map((d) => d.name).join(', ')
+                        : 'No drivers assigned'}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin size={13} className="text-slate-400" />
+                      {currentVehicle.location || 'Location not specified'}
+                    </span>
+                    {currentVehicle.dateAdded && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Calendar size={13} className="text-slate-400" />
+                        Added {currentVehicle.dateAdded}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Edit Vehicle CTA — top-right of the header, like MyProfilePage. */}
+                <div className="shrink-0">
+                  <Button
+                    onClick={onEdit}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 shadow-sm shadow-blue-500/30 transition-all flex items-center gap-2"
+                  >
+                    <Settings size={14} /> Edit Vehicle
+                  </Button>
+                </div>
+              </div>
+
+              {/* Quick stat cards — 4-up, persistent across all tabs.
+                  Replaces the side risk/health panel so the header reads
+                  horizontally like the MyProfilePage pattern. */}
+              <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 text-blue-600">
+                    <Activity size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Odometer</div>
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {currentVehicle.odometer ? currentVehicle.odometer.toLocaleString() : '0'} {currentVehicle.odometerUnit || 'mi'}
                     </div>
                   </div>
                 </div>
 
-                {/* Center: Info */}
-                <div className="flex-1 min-w-0 py-1">
-                  <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-                    <div>
-                      <h1 className="text-2xl font-bold text-slate-900 leading-tight">Unit #{currentVehicle.unitNumber} - {currentVehicle.year} {currentVehicle.make} {currentVehicle.model}</h1>
-                      <p className="text-slate-500 text-sm mt-1 font-medium">{currentVehicle.assetType} - {currentVehicle.vehicleType}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Button onClick={onEdit} className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 shadow-sm shadow-blue-500/30 transition-all flex items-center gap-2">
-                        <Settings size={16} /> Edit Vehicle
-                      </Button>
-                    </div>
+                <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+                  <div className={cn(
+                    "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                    (currentVehicle.riskScore ?? 100) >= 85
+                      ? 'bg-emerald-50 text-emerald-600'
+                      : (currentVehicle.riskScore ?? 100) >= 70
+                        ? 'bg-amber-50 text-amber-600'
+                        : 'bg-rose-50 text-rose-600'
+                  )}>
+                    <ShieldCheck size={16} />
                   </div>
-
-                  <div className="flex flex-col gap-6 mt-6">
-                    <div className="space-y-1.5 relative">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Drivers</span>
-                      <div className="flex items-center gap-4 pt-1 flex-wrap">
-                        {currentVehicle.drivers?.map((driver, index: number) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <Avatar initials={driver.initials} color={driver.color} />
-                            <span className="text-sm font-bold text-slate-900">{driver.name}</span>
-                          </div>
-                        )) || <span className="text-sm text-slate-400">No drivers assigned</span>}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-12">
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location</span>
-                        <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-sm">
-                          <MapPin size={16} className="text-slate-400" /> {currentVehicle.location || 'Not specified'}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Odometer</span>
-                        <div className="flex items-center gap-1.5 text-slate-900 font-bold text-lg leading-none">
-                          {currentVehicle.odometer ? currentVehicle.odometer.toLocaleString() : '0'} <span className="text-xs font-medium text-slate-400 mt-1">{currentVehicle.odometerUnit || 'mi'}</span>
-                        </div>
-                      </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Risk Score</div>
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {currentVehicle.riskScore ?? 100}
+                      <span className="ml-1.5 text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        {(currentVehicle.riskScore ?? 100) >= 85 ? 'Low Risk' : (currentVehicle.riskScore ?? 100) >= 70 ? 'Med Risk' : 'High Risk'}
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Right: Scores */}
-                <div className="flex lg:flex-col xl:flex-row gap-8 border-t lg:border-t-0 lg:border-l border-slate-100 pt-6 lg:pt-0 lg:pl-8 items-center justify-center lg:justify-start">
-                  <RiskScoreWidget score={currentVehicle.riskScore || 100} />
-                  <div className="flex flex-col gap-3 w-full sm:w-auto min-w-[130px]">
-                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-100/50">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Health</span>
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${currentVehicle.health === 'Good' ? 'bg-emerald-500 ring-4 ring-emerald-500/20' : 'bg-amber-500 ring-4 ring-amber-500/20'}`}></div>
-                        <span className={`font-bold text-sm ${currentVehicle.health === 'Good' ? 'text-emerald-700' : 'text-amber-700'}`}>{currentVehicle.health || 'Good'}</span>
-                      </div>
+                <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+                  <div className={cn(
+                    "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                    currentVehicle.health === 'Good' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                  )}>
+                    <Activity size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Health</div>
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {currentVehicle.health || 'Good'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+                  <div className={cn(
+                    "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                    (() => {
+                        const plateKn = keyNumbers.find((k: KeyNumberConfig) => k.id === 'kn-plate');
+                        if (!currentVehicle.registrationExpiryDate) return 'bg-slate-100 text-slate-500';
+                        const status = calculateComplianceStatus(currentVehicle.registrationExpiryDate, isMonitoringEnabled(plateKn), getMaxReminderDays(plateKn), true, true);
+                        return status === 'Expired'
+                          ? 'bg-rose-50 text-rose-600'
+                          : status === 'Expiring Soon'
+                            ? 'bg-amber-50 text-amber-600'
+                            : 'bg-violet-50 text-violet-600';
+                    })()
+                  )}>
+                    <FileText size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Plate Expiry</div>
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {currentVehicle.registrationExpiryDate || '—'}
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Metadata Row */}
-              <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-y-8 gap-x-6">
+              <div className="mt-6 pt-6 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-y-5 gap-x-6">
                 <MetadataItem label="Unit #" value={currentVehicle.unitNumber} copyable={true} />
                 <MetadataItem label="VIN #" value={currentVehicle.vin} copyable={true} />
                 <MetadataItem label="Plate #" value={currentVehicle.plateNumber || '—'} copyable={true} />
@@ -855,100 +1410,122 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                         const plateKn = keyNumbers.find((k: KeyNumberConfig) => k.id === 'kn-plate');
                         if (!currentVehicle.registrationExpiryDate) return false;
                         const status = calculateComplianceStatus(
-                            currentVehicle.registrationExpiryDate, 
-                            isMonitoringEnabled(plateKn), 
-                            getMaxReminderDays(plateKn), 
-                            true, 
+                            currentVehicle.registrationExpiryDate,
+                            isMonitoringEnabled(plateKn),
+                            getMaxReminderDays(plateKn),
+                            true,
                             true
                         );
                         return status === 'Expiring Soon' || status === 'Expired';
                     })()
                 } />
-                
+
                 <MetadataItem label="Gross Weight" value={currentVehicle.grossWeight ? `${currentVehicle.grossWeight.toLocaleString()} ${currentVehicle.grossWeightUnit}` : '—'} />
+                <MetadataItem label="Unloaded Weight" value={currentVehicle.unloadedWeight ? `${currentVehicle.unloadedWeight.toLocaleString()} ${currentVehicle.unloadedWeightUnit}` : '—'} />
                 <div className="flex flex-col">
                     <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase mb-1">GVWR Class</span>
                     <GvwrTag weight={currentVehicle.grossWeight} unit={currentVehicle.grossWeightUnit} size="md" />
                 </div>
-                <MetadataItem label="Unloaded Weight" value={currentVehicle.unloadedWeight ? `${currentVehicle.unloadedWeight.toLocaleString()} ${currentVehicle.unloadedWeightUnit}` : '—'} />
                 <MetadataItem label="Ownership" value={currentVehicle.financialStructure} />
                 <MetadataItem label="Market Value" value={currentVehicle.marketValue ? `$${currentVehicle.marketValue.toLocaleString()} ${currentVehicle.marketValueCurrency || 'USD'}` : '—'} />
-                
+
                 {currentVehicle.financialStructure === 'Leased' && currentVehicle.leasingName && (
                     <MetadataItem label="Leasing Co." value={currentVehicle.leasingName} />
                 )}
                 {currentVehicle.financialStructure === 'Financed' && currentVehicle.lienHolderBusiness && (
                     <MetadataItem label="Lien Holder" value={currentVehicle.lienHolderBusiness} />
                 )}
-                
-                 <MetadataItem label="Date Added" value={currentVehicle.dateAdded || '—'} />
-                 {currentVehicle.dateRemoved && <MetadataItem label="Date Removed" value={currentVehicle.dateRemoved} warning />}
+
+                <MetadataItem label="Date Added" value={currentVehicle.dateAdded || '—'} />
+                {currentVehicle.dateRemoved && <MetadataItem label="Date Removed" value={currentVehicle.dateRemoved} warning />}
               </div>
             </div>
-          </Card>
+        </div>
 
-          {/* Tabs Navigation */}
-          <div className="border-b border-slate-200 flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {tabs.map((tab) => (
-              <button key={tab.name} onClick={() => setActiveTab(tab.name)} className={`relative py-4 px-4 text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === tab.name ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-t-lg'}`}>
-                {tab.name}
-                {tab.count > 0 && (
-                  <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold ${activeTab === tab.name ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                    {tab.count}
-                  </span>
-                )}
-                {tab.alert && <span className="h-1.5 w-1.5 bg-rose-500 rounded-full"></span>}
-                {activeTab === tab.name && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full"></span>}
-              </button>
-            ))}
+        {/* Tabs strip — grouped by `group` field with thin vertical
+            separators between categories so the bar reads as four sections:
+            Compliance · Operations · Safety · Alerts. Same blue-underline
+            active style as the SubTabs component. */}
+        <div className="bg-white px-8 border-b border-slate-200">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
+            {tabs.map((tab, idx) => {
+              const showSeparator = idx > 0 && tabs[idx - 1].group !== tab.group;
+              const active = activeTab === tab.name;
+              const Icon = tab.icon;
+              return (
+                <React.Fragment key={tab.name}>
+                  {showSeparator && (
+                    <div aria-hidden="true" className="h-5 w-px bg-slate-200 mx-2 self-center shrink-0" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tab.name)}
+                    className={`relative py-3 px-3 text-sm font-medium whitespace-nowrap transition-colors inline-flex items-center gap-2 border-b-2 ${
+                      active
+                        ? 'text-blue-600 border-blue-600'
+                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300'
+                    }`}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                    <span>{tab.name}</span>
+                    {tab.count > 0 && (
+                      <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold tabular-nums ${active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                </React.Fragment>
+              );
+            })}
           </div>
+        </div>
+        </div>{/* end sticky top section */}
 
-          <div className="mt-6">
+        {/* Tab content — slate-50 page background visible around the content,
+            same outer padding as MyProfilePage. */}
+        <div className="px-8 py-8">
             {/* Compliance Monitoring Content - NOW IN LIST VIEW */}
             {activeTab === 'Compliance Monitoring' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 
-                {/* Stats Summary Area - NEW FILTERS */}
-                <div className="flex items-center gap-4 overflow-x-auto pb-2 scrollbar-hide">
-                    <button onClick={() => setActiveComplianceFilter(activeComplianceFilter === 'missing-number' ? null : 'missing-number')} className={`flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm hover:shadow transition-all min-w-[200px] group ${activeComplianceFilter === 'missing-number' ? 'ring-2 ring-rose-500 border-rose-500' : 'border-l-4 border-l-rose-500 border-slate-200'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-rose-50 text-rose-500 group-hover:bg-rose-100 transition-colors"><Hash size={16} /></div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Missing<br />Number</span>
-                        </div>
-                        <div className="text-xl font-bold text-slate-900">{complianceStats.missingNumber}</div>
-                    </button>
-
-                    <button onClick={() => setActiveComplianceFilter(activeComplianceFilter === 'missing-expiry' ? null : 'missing-expiry')} className={`flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm hover:shadow transition-all min-w-[200px] group ${activeComplianceFilter === 'missing-expiry' ? 'ring-2 ring-amber-500 border-amber-500' : 'border-l-4 border-l-amber-500 border-slate-200'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-amber-50 text-amber-500 group-hover:bg-amber-100 transition-colors"><Clock size={16} /></div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Missing<br />Expiry</span>
-                        </div>
-                        <div className="text-xl font-bold text-slate-900">{complianceStats.missingExpiry}</div>
-                    </button>
-
-                    <button onClick={() => setActiveComplianceFilter(activeComplianceFilter === 'missing-doc' ? null : 'missing-doc')} className={`flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm hover:shadow transition-all min-w-[200px] group ${activeComplianceFilter === 'missing-doc' ? 'ring-2 ring-orange-500 border-orange-500' : 'border-l-4 border-l-orange-500 border-slate-200'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-orange-50 text-orange-500 group-hover:bg-orange-100 transition-colors"><FileText size={16} /></div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Missing<br />Doc</span>
-                        </div>
-                        <div className="text-xl font-bold text-slate-900">{complianceStats.missingDoc}</div>
-                    </button>
-                    
-                    <button onClick={() => setActiveComplianceFilter(activeComplianceFilter === 'expiring' ? null : 'expiring')} className={`flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm hover:shadow transition-all min-w-[200px] group ${activeComplianceFilter === 'expiring' ? 'ring-2 ring-yellow-500 border-yellow-500' : 'border-l-4 border-l-yellow-500 border-slate-200'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-yellow-50 text-yellow-500 group-hover:bg-yellow-100 transition-colors"><Clock size={16} /></div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Expiring<br />Soon</span>
-                        </div>
-                        <div className="text-xl font-bold text-slate-900">{complianceStats.expiring}</div>
-                    </button>
-
-                    <button onClick={() => setActiveComplianceFilter(activeComplianceFilter === 'expired' ? null : 'expired')} className={`flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm hover:shadow transition-all min-w-[200px] group ${activeComplianceFilter === 'expired' ? 'ring-2 ring-rose-600 border-rose-600' : 'border-l-4 border-l-rose-600 border-slate-200'}`}>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-rose-50 text-rose-600 group-hover:bg-rose-100 transition-colors"><AlertCircle size={16} /></div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Expired<br />Items</span>
-                        </div>
-                        <div className="text-xl font-bold text-slate-900">{complianceStats.expired}</div>
-                    </button>
+                {/* Compliance Stat Filters — single-line labels, accent bar,
+                    refined ring active state. Same template across cards so the
+                    grid stays aligned at every breakpoint. */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {[
+                        { id: 'missing-number',  label: 'Missing Number', value: complianceStats.missingNumber, Icon: Hash,         tone: 'rose'   },
+                        { id: 'missing-expiry',  label: 'Missing Expiry', value: complianceStats.missingExpiry, Icon: Clock,        tone: 'amber'  },
+                        { id: 'missing-doc',     label: 'Missing Doc',    value: complianceStats.missingDoc,    Icon: FileText,     tone: 'orange' },
+                        { id: 'expiring',        label: 'Expiring Soon',  value: complianceStats.expiring,      Icon: Clock,        tone: 'yellow' },
+                        { id: 'expired',         label: 'Expired Items',  value: complianceStats.expired,       Icon: AlertCircle,  tone: 'red'    },
+                    ].map((card) => {
+                        const active = activeComplianceFilter === card.id;
+                        const tones: Record<string, { iconBg: string; iconFg: string; bar: string; ring: string }> = {
+                            rose:   { iconBg: 'bg-rose-50',   iconFg: 'text-rose-500',   bar: 'bg-rose-500',   ring: 'ring-rose-500/30' },
+                            amber:  { iconBg: 'bg-amber-50',  iconFg: 'text-amber-500',  bar: 'bg-amber-500',  ring: 'ring-amber-500/30' },
+                            orange: { iconBg: 'bg-orange-50', iconFg: 'text-orange-500', bar: 'bg-orange-500', ring: 'ring-orange-500/30' },
+                            yellow: { iconBg: 'bg-yellow-50', iconFg: 'text-yellow-600', bar: 'bg-yellow-500', ring: 'ring-yellow-500/30' },
+                            red:    { iconBg: 'bg-red-50',    iconFg: 'text-red-600',    bar: 'bg-red-500',    ring: 'ring-red-500/30' },
+                        };
+                        const t = tones[card.tone];
+                        return (
+                            <button
+                                key={card.id}
+                                onClick={() => setActiveComplianceFilter(active ? null : card.id)}
+                                className={`relative flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden text-left transition-all hover:shadow hover:border-slate-300 ${active ? `ring-2 ${t.ring} border-transparent` : ''}`}
+                            >
+                                <span className={`absolute left-0 top-0 bottom-0 w-1 transition-all ${t.bar} ${active ? 'opacity-100' : 'opacity-30'}`} />
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${t.iconBg} ${t.iconFg}`}>
+                                        <card.Icon size={16} />
+                                    </div>
+                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">{card.label}</span>
+                                </div>
+                                <div className="text-2xl font-bold text-slate-900 tabular-nums shrink-0">{card.value}</div>
+                            </button>
+                        );
+                    })}
                 </div>
 
                 <Card className="flex flex-col overflow-hidden border-blue-100 shadow-md">
@@ -1043,9 +1620,22 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
 
 
-            {/* Violations Content */}
-
-            {activeTab === 'Violations' && (() => {
+            {/* Violations Content — unified CVOR / NSC / FMCSA panel
+                showing this asset's convictions and FMCSA violations. */}
+            {activeTab === 'Violations' && (
+              <SafetyRecordsPanel
+                events={getSafetyEventsForAsset(currentVehicle.id, {
+                  plateNumber: currentVehicle.plateNumber,
+                  vin: currentVehicle.vin,
+                  unitNumber: currentVehicle.unitNumber,
+                })}
+                kinds={['violation', 'conviction']}
+                title="Violations"
+                subtitle="Convictions and citations linked to this asset across regulatory reports."
+              />
+            )}
+            {/* Legacy FMCSA/MOCK violations view — disabled until removed. */}
+            {activeTab === '__legacy_violations_disabled' && (() => {
 
               const assetViolations = MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) => v.assetId === currentVehicle.id || v.assetName === currentVehicle.unitNumber || v.assetName === currentVehicle.plateNumber);
 
@@ -1240,9 +1830,22 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
             })()}
 
-            {/* Accidents Content */}
-
-            {activeTab === 'Accidents' && (() => {
+            {/* Accidents Content — unified CVOR / NSC / FMCSA panel
+                showing collisions linked to this asset. */}
+            {activeTab === 'Accidents' && (
+              <SafetyRecordsPanel
+                events={getSafetyEventsForAsset(currentVehicle.id, {
+                  plateNumber: currentVehicle.plateNumber,
+                  vin: currentVehicle.vin,
+                  unitNumber: currentVehicle.unitNumber,
+                })}
+                kinds={['collision', 'accident']}
+                title="Accidents"
+                subtitle="Collisions involving this asset reported across CVOR, NSC, and FMCSA."
+              />
+            )}
+            {/* Legacy INCIDENTS view — disabled until removed. */}
+            {activeTab === '__legacy_accidents_disabled' && (() => {
 
               const assetIncidents = INCIDENTS.filter((inc: any) => inc.vehicles?.some((v: any) => v.assetId === currentVehicle.id || v.vin === currentVehicle.vin));
 
@@ -1448,7 +2051,26 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
             {/* Inspections Content */}
 
-            {activeTab === 'Inspections' && (() => {
+            {/* Inspections tab — unified CVOR / NSC / FMCSA panel.
+                Switches between the three carrier-report sources via sub-tab
+                pills and renders only inspection-kind events for this asset. */}
+            {activeTab === 'Inspections' && (
+              <SafetyRecordsPanel
+                events={getSafetyEventsForAsset(currentVehicle.id, {
+                  plateNumber: currentVehicle.plateNumber,
+                  vin: currentVehicle.vin,
+                  unitNumber: currentVehicle.unitNumber,
+                })}
+                kinds={['inspection']}
+                title="Inspections"
+                subtitle="Inspections recorded against this asset across CVOR, NSC, and FMCSA reports."
+              />
+            )}
+            {/* Legacy FMCSA-only Inspections view kept below as fallback —
+                executes only when activeTab is the (now non-existent) value
+                'InspectionsLegacy', so it never renders. Preserved as
+                reference until the new panel is fully validated. */}
+            {activeTab === '__legacy_inspections_disabled' && (() => {
 
               const assetInspections = inspectionsData.filter((ins: any) => ins.assetId === currentVehicle.id || ins.vehiclePlate === currentVehicle.plateNumber || ins.units?.some((u: any) => u.vin === currentVehicle.vin));
 
@@ -1891,214 +2513,598 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
 
             {/* Maintenance Content */}
             {activeTab === 'Maintenance' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {/* Metrics Row */}
+              <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Metrics Row — derived from this asset's actual tasks/orders */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                     <Card className="p-4 flex flex-col justify-between relative overflow-hidden group">
-                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider z-10">YTD Maintenance</span>
-                       <div className="z-10 mt-1">
-                         <div className="flex items-baseline gap-2">
-                           <span className="text-xl font-bold text-slate-900">{currentVehicle.ytdCost || '$0.00'}</span>
-                         </div>
-                         <div className="text-[10px] text-slate-500 mt-1">
-                            <span className="text-emerald-600 font-bold">{currentVehicle.ytdChange || '0%'}</span> vs last year
-                         </div>
-                       </div>
-                     </Card>
-                     <Card className="p-4 flex flex-col justify-between relative overflow-hidden group">
-                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider z-10">Open Orders</span>
-                       <div className="z-10 mt-1 leading-none">
-                            <span className="text-xl font-bold text-slate-900">{currentVehicle.openWorkOrders || 0}</span>
-                       </div>
-                       <div className="mt-2">
-                            <Badge variant={(currentVehicle.openWorkOrders || 0) > 0 ? 'warning' : 'success'}>
-                                {(currentVehicle.openWorkOrders || 0) > 0 ? 'Action Needed' : 'All Clear'}
-                            </Badge>
-                       </div>
-                     </Card>
-                     <Card className="p-4 flex flex-col justify-between bg-blue-50/50 border-blue-100">
-                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Next Service</span>
-                        <div className="mt-1">
-                             {assetTasks.find(t => t.status === 'upcoming' || t.status === 'due') ? (
-                                 <>
-                                    <div className="text-sm font-bold text-blue-900 truncate">
-                                        {INITIAL_SERVICE_TYPES.find(s => s.id === assetTasks.find(t => t.status === 'upcoming' || t.status === 'due')?.serviceTypeIds[0])?.name || 'Service'}
-                                    </div>
-                                    <div className="text-xs text-blue-600 mt-1">
-                                        {(() => {
-                                            const t = assetTasks.find(t => t.status === 'upcoming' || t.status === 'due');
-                                            return t?.dueRule ? `Due in ${t.dueRule.upcomingThreshold} ${t.dueRule.unit}` : 'No schedule set';
-                                        })()}
-                                    </div>
-                                 </>
-                             ) : (
-                                 <span className="text-sm text-blue-400 font-medium">No upcoming service</span>
-                             )}
+                  <Card className="p-4">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">YTD Maintenance Spend</span>
+                    <div className="mt-1.5 flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-slate-900 tabular-nums">{formatMoney(maintenanceMetrics.ytdSpend, currentVehicle.country === 'Canada' ? 'CAD' : 'USD')}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1.5">
+                      Across {assetOrders.filter(o => (o.completions ?? []).length > 0).length} completed work order{assetOrders.filter(o => (o.completions ?? []).length > 0).length === 1 ? '' : 's'}
+                    </div>
+                  </Card>
+                  <Card className="p-4">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Open Work Orders</span>
+                    <div className="mt-1.5 flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-slate-900 tabular-nums">{maintenanceMetrics.openOrders}</span>
+                    </div>
+                    <div className="mt-2">
+                      <Badge variant={maintenanceMetrics.openOrders > 0 ? 'warning' : 'success'}>
+                        {maintenanceMetrics.openOrders > 0 ? 'In progress' : 'All clear'}
+                      </Badge>
+                    </div>
+                  </Card>
+                  <Card className="p-4">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Overdue / Due</span>
+                    <div className="mt-1.5 flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-slate-900 tabular-nums">{maintenanceMetrics.overdueTasks}</span>
+                      <span className="text-xs text-slate-500">overdue</span>
+                      <span className="text-base font-semibold text-amber-600 tabular-nums">{maintenanceMetrics.dueTasks}</span>
+                      <span className="text-xs text-slate-500">due</span>
+                    </div>
+                    <div className="mt-2">
+                      <Badge variant={maintenanceMetrics.overdueTasks > 0 ? 'danger' : maintenanceMetrics.dueTasks > 0 ? 'warning' : 'success'}>
+                        {maintenanceMetrics.overdueTasks > 0 ? 'Action required' : maintenanceMetrics.dueTasks > 0 ? 'Schedule soon' : 'On track'}
+                      </Badge>
+                    </div>
+                  </Card>
+                  <Card className="p-4 bg-blue-50/50 border-blue-100">
+                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Next Service</span>
+                    {maintenanceMetrics.upcomingTask ? (
+                      <>
+                        <div className="text-sm font-bold text-blue-900 mt-1.5 truncate">
+                          {INITIAL_SERVICE_TYPES.find(s => s.id === maintenanceMetrics.upcomingTask?.serviceTypeIds[0])?.name || 'Service'}
                         </div>
-                     </Card>
+                        <div className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1">
+                          <CalendarClock size={11} />
+                          {maintenanceMetrics.upcomingTask.dueRule?.unit === 'miles'
+                            ? `${(maintenanceMetrics.upcomingTask.dueRule?.dueAtOdometer ?? 0).toLocaleString()} mi`
+                            : maintenanceMetrics.upcomingTask.dueRule?.unit === 'engine_hours'
+                              ? `${(maintenanceMetrics.upcomingTask.dueRule?.dueAtEngineHours ?? 0).toLocaleString()} hrs`
+                              : maintenanceMetrics.upcomingTask.dueRule?.dueAtDate
+                                ? formatDate(maintenanceMetrics.upcomingTask.dueRule.dueAtDate)
+                                : '—'}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-sm text-blue-400 font-medium mt-1.5">No upcoming service</div>
+                    )}
+                    {maintenanceMetrics.lastCompletion && (
+                      <div className="text-[10px] text-blue-500 mt-1.5">
+                        Last completed: {formatDate(maintenanceMetrics.lastCompletion.completion.completedAt)}
+                      </div>
+                    )}
+                  </Card>
                 </div>
 
-                {/* Split View */}
+                {/* Split View — Tasks (left) + Work Orders (right) */}
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-                    {/* Left: Tasks */}
-                    <Card className="flex flex-col h-[600px] overflow-hidden border-slate-200 shadow-sm">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                             <div className="flex items-center gap-2">
-                                <Wrench size={16} className="text-slate-400" />
-                                <h3 className="font-bold text-slate-800 text-sm">Maintenance Tasks</h3>
-                                <Badge variant="neutral" className="ml-2">{assetTasks.length}</Badge>
-                             </div>
-                             <div className="flex items-center gap-2">
-                                <Button size="sm" variant="ghost" className="h-7 text-xs text-slate-500">Filter</Button>
-                                <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="h-7 text-xs gap-1.5 bg-white border-slate-200 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                    onClick={() => setIsCreatingSchedule(true)}
-                                >
-                                    <Plus size={12} /> Schedule
-                                </Button>
-                             </div>
+                    {/* ─────────── Left: Maintenance Tasks ─────────── */}
+                    <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                            <div className="flex items-center gap-2">
+                                <Wrench size={16} className="text-slate-500" />
+                                <h3 className="font-bold text-slate-800 text-sm">Scheduled Maintenance Tasks</h3>
+                                <Badge variant="neutral" className="ml-2">{filteredTasks.length} of {assetTasks.length}</Badge>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs gap-1.5 bg-white border-slate-200 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={() => setIsCreatingSchedule(true)}
+                            >
+                                <Plus size={13} /> Schedule
+                            </Button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-0 bg-white">
-                            {assetTasks.length > 0 ? (
-                                <div className="divide-y divide-slate-50">
-                                    {assetTasks.map(task => {
-                                        const serviceName = INITIAL_SERVICE_TYPES.find(s => s.id === task.serviceTypeIds[0])?.name || 'Service';
+
+                        {/* Search + Sort */}
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                            <div className="relative flex-1 min-w-0">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={taskSearch}
+                                    onChange={(e) => setTaskSearch(e.target.value)}
+                                    placeholder="Search service, ID…"
+                                    className="w-full h-8 pl-8 pr-7 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                                />
+                                {taskSearch && (
+                                    <button onClick={() => setTaskSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:bg-slate-100" aria-label="Clear">
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (taskSort === 'status') setTaskSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                    else { setTaskSort('status'); setTaskSortDir('asc'); }
+                                }}
+                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${taskSort === 'status' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                                title="Sort by status"
+                            >Status {taskSort === 'status' ? (taskSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
+                            <button
+                                onClick={() => {
+                                    if (taskSort === 'due') setTaskSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                    else { setTaskSort('due'); setTaskSortDir('asc'); }
+                                }}
+                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${taskSort === 'due' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                                title="Sort by due"
+                            >Due {taskSort === 'due' ? (taskSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
+                        </div>
+
+                        {/* Status filter chips */}
+                        <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-hide bg-white">
+                            {([
+                                { id: 'all',         label: 'All' },
+                                { id: 'overdue',     label: 'Overdue' },
+                                { id: 'due',         label: 'Due' },
+                                { id: 'in_progress', label: 'In progress' },
+                                { id: 'upcoming',    label: 'Upcoming' },
+                                { id: 'completed',   label: 'Completed' },
+                            ] as Array<{ id: TaskStatusFilter; label: string }>).map(chip => {
+                                const active = taskStatusFilter === chip.id;
+                                const count = (taskStatusCounts as Record<string, number>)[chip.id] ?? 0;
+                                return (
+                                    <button
+                                        key={chip.id}
+                                        onClick={() => setTaskStatusFilter(chip.id)}
+                                        className={`shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors border ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                                    >
+                                        {chip.label}
+                                        <span className={`tabular-nums ${active ? 'opacity-90' : 'text-slate-400'}`}>{count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Task table — same column shape as the central
+                            AssetMaintenancePage (Task Name · Order # · Due At
+                            · Status), trimmed to remove the Asset / Asset
+                            Type columns since the whole page is already
+                            scoped to a single asset. */}
+                        <div className="bg-white overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-2.5 font-semibold">Task Name</th>
+                                        <th className="px-4 py-2.5 font-semibold">Order #</th>
+                                        <th className="px-4 py-2.5 font-semibold">Due At</th>
+                                        <th className="px-4 py-2.5 font-semibold">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {pagedTasks.length > 0 ? pagedTasks.map(task => {
+                                        const serviceNames = task.serviceTypeIds
+                                            .map(sid => INITIAL_SERVICE_TYPES.find(s => s.id === sid)?.name)
+                                            .filter(Boolean)
+                                            .join(', ');
+                                        const associatedOrder = assetOrders.find(o => o.taskIds.includes(task.id));
+                                        const statusVariant =
+                                            task.status === 'overdue'     ? 'danger'  :
+                                            task.status === 'due'         ? 'warning' :
+                                            task.status === 'in_progress' ? 'Drafted' :
+                                            task.status === 'completed'   ? 'success' : 'neutral';
+
+                                        // Format the "due at" cell: meter / hours / date
+                                        // depending on the task's due rule.
+                                        let dueAtPrimary = '—';
+                                        let dueAtSecondary: string | null = null;
+                                        const dueRule = task.dueRule;
+                                        if (dueRule) {
+                                            if (dueRule.unit === 'miles' && dueRule.dueAtOdometer != null) {
+                                                dueAtPrimary = `${dueRule.dueAtOdometer.toLocaleString()} mi`;
+                                                const remaining = dueRule.dueAtOdometer - task.meterSnapshot.odometer;
+                                                if (task.status !== 'completed' && task.status !== 'cancelled') {
+                                                    dueAtSecondary = remaining >= 0
+                                                        ? `${remaining.toLocaleString()} mi remaining`
+                                                        : `${Math.abs(remaining).toLocaleString()} mi past due`;
+                                                }
+                                            } else if (dueRule.unit === 'engine_hours' && dueRule.dueAtEngineHours != null) {
+                                                dueAtPrimary = `${dueRule.dueAtEngineHours.toLocaleString()} hrs`;
+                                                const remaining = dueRule.dueAtEngineHours - task.meterSnapshot.engineHours;
+                                                if (task.status !== 'completed' && task.status !== 'cancelled') {
+                                                    dueAtSecondary = remaining >= 0
+                                                        ? `${remaining.toLocaleString()} hrs remaining`
+                                                        : `${Math.abs(remaining).toLocaleString()} hrs past due`;
+                                                }
+                                            } else if (dueRule.dueAtDate) {
+                                                dueAtPrimary = formatDate(dueRule.dueAtDate);
+                                                if (task.status !== 'completed' && task.status !== 'cancelled') {
+                                                    const days = Math.round((new Date(dueRule.dueAtDate).getTime() - Date.now()) / 86_400_000);
+                                                    dueAtSecondary = days >= 0 ? `${days} days remaining` : `${Math.abs(days)} days past due`;
+                                                }
+                                            }
+                                        }
+
                                         return (
-                                            <div key={task.id} className="p-4 hover:bg-slate-50 transition-colors group">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="font-semibold text-slate-800 text-sm">{serviceName}</span>
-                                                    <Badge 
-                                                        variant={
-                                                            task.status === 'overdue' ? 'danger' : 
-                                                            task.status === 'due' ? 'warning' : 
-                                                            task.status === 'completed' ? 'success' : 'neutral'
-                                                        }
-                                                    >
-                                                        {task.status}
-                                                    </Badge>
-                                                </div>
-                                                <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-                                                    <div className="flex items-center gap-1">
-                                                        <Clock size={12} className="text-slate-400" />
-                                                        <span>
-                                                            {!task.dueRule ? '—' :
-                                                                task.dueRule.unit === 'miles' ? `${task.dueRule.dueAtOdometer?.toLocaleString()} mi` :
-                                                                task.dueRule.dueAtDate ? new Date(task.dueRule.dueAtDate!).toLocaleDateString() : '—'}
-                                                        </span>
+                                            <tr key={task.id} className="hover:bg-slate-50/70 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="text-slate-900 font-medium truncate max-w-[320px]" title={serviceNames || 'Service'}>
+                                                        {serviceNames || 'Service'}
                                                     </div>
-                                                    <span>•</span>
-                                                    <span>ID: {task.id}</span>
-                                                </div>
-                                            </div>
+                                                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{task.id}</div>
+                                                </td>
+                                                <td className="px-4 py-3 font-mono text-xs">
+                                                    {associatedOrder
+                                                        ? <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded">#{associatedOrder.id.slice(-6).toUpperCase()}</span>
+                                                        : <span className="text-slate-400">—</span>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {dueRule ? (
+                                                        <>
+                                                            <div className="font-medium text-slate-900">{dueAtPrimary}</div>
+                                                            {dueAtSecondary && (
+                                                                <div className={`text-[11px] mt-0.5 ${task.status === 'overdue' ? 'text-red-600' : task.status === 'due' ? 'text-amber-600' : 'text-slate-500'}`}>
+                                                                    {dueAtSecondary}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400">No schedule</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <Badge variant={statusVariant}>{task.status.replace('_', ' ')}</Badge>
+                                                </td>
+                                            </tr>
                                         );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                    <ShieldCheck size={48} className="mb-3 opacity-20" />
-                                    <span className="text-sm font-medium">No tasks found</span>
-                                </div>
-                            )}
+                                    }) : (
+                                        <tr>
+                                            <td colSpan={4} className="px-4 py-12 text-center">
+                                                <div className="flex flex-col items-center justify-center text-slate-400">
+                                                    <ShieldCheck size={36} className="mb-2 opacity-25" />
+                                                    <span className="text-sm font-semibold text-slate-600">
+                                                        {assetTasks.length === 0 ? 'No tasks scheduled' : 'No tasks match the filter'}
+                                                    </span>
+                                                    <span className="text-xs text-slate-400 mt-1">
+                                                        {assetTasks.length === 0
+                                                            ? 'Schedule the first preventive task for this asset.'
+                                                            : 'Try clearing the search or selecting a different status.'}
+                                                    </span>
+                                                    {(taskStatusFilter !== 'all' || taskSearch) && (
+                                                        <button
+                                                            onClick={() => { setTaskSearch(''); setTaskStatusFilter('all'); }}
+                                                            className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                                                        >
+                                                            Clear filters
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
+
+                        {/* Pagination — default 5 rows; selectable 5/10/20/50 */}
+                        {filteredTasks.length > 0 && (
+                            <PaginationBar
+                                totalItems={filteredTasks.length}
+                                currentPage={taskPage}
+                                rowsPerPage={taskRowsPerPage}
+                                onPageChange={setTaskPage}
+                                onRowsPerPageChange={(rows) => {
+                                    setTaskRowsPerPage(rows);
+                                    setTaskPage(1);
+                                }}
+                            />
+                        )}
                     </Card>
 
-                    {/* Right: Work Orders */}
-                    <Card className="flex flex-col h-[600px] overflow-hidden border-slate-200 shadow-sm">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                             <div className="flex items-center gap-2">
-                                <FileText size={16} className="text-slate-400" />
+                    {/* ─────────── Right: Work Orders ─────────── */}
+                    <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
+                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                            <div className="flex items-center gap-2">
+                                <FileText size={16} className="text-slate-500" />
                                 <h3 className="font-bold text-slate-800 text-sm">Work Orders</h3>
-                                <Badge variant="neutral" className="ml-2">{assetOrders.length}</Badge>
-                             </div>
-                             <Button 
-                                size="sm" 
-                                onClick={() => setIsCreateOrderModalOpen(true)} 
-                                className="gap-2 h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200"
-                             >
-                                <Plus size={14}/> Add Work Order
-                             </Button>
+                                <Badge variant="neutral" className="ml-2">{filteredOrders.length} of {assetOrders.length}</Badge>
+                            </div>
+                            <Button
+                                size="sm"
+                                onClick={() => setIsCreateOrderModalOpen(true)}
+                                className="gap-1.5 h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200"
+                            >
+                                <Plus size={13}/> Add Work Order
+                            </Button>
                         </div>
-                         <div className="flex-1 overflow-y-auto p-0 bg-white">
-                            {assetOrders.length > 0 ? (
-                                <div className="divide-y divide-slate-50">
-                                    {assetOrders.map(order => (
-                                        <div key={order.id} className="p-4 hover:bg-slate-50 transition-colors group">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-slate-900 text-sm">#{order.id}</span>
-                                                    <span className="text-xs text-slate-500">{vendors.find((v:any) => v.id === order.vendorId)?.companyName || 'Unknown Vendor'}</span>
-                                                </div>
-                                                <div className="flex flex-col items-end">
-                                                    <Badge variant={order.status === 'completed' ? 'success' : 'Drafted'}>{order.status}</Badge>
-                                                    <span className="text-[10px] text-slate-400 mt-1">{new Date(order.createdAt).toLocaleDateString()}</span>
-                                                </div>
-                                            </div>
-                                            <div className="mt-3 flex items-center gap-2 overflow-hidden">
-                                                {order.taskIds.map(tid => {
-                                                    const task = INITIAL_TASKS.find(t => t.id === tid);
-                                                    const sName = INITIAL_SERVICE_TYPES.find(s => s.id === task?.serviceTypeIds[0])?.name;
-                                                    if (!sName) return null;
-                                                    return (
-                                                        <span key={tid} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded font-medium truncate max-w-[150px]">
-                                                            {sName}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                    <FileText size={48} className="mb-3 opacity-20" />
-                                    <span className="text-sm font-medium">No work orders</span>
-                                </div>
-                            )}
+
+                        {/* Search + Sort */}
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                            <div className="relative flex-1 min-w-0">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={orderSearch}
+                                    onChange={(e) => setOrderSearch(e.target.value)}
+                                    placeholder="Search WO #, vendor, notes…"
+                                    className="w-full h-8 pl-8 pr-7 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                                />
+                                {orderSearch && (
+                                    <button onClick={() => setOrderSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:bg-slate-100" aria-label="Clear">
+                                        <X size={12} />
+                                    </button>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (orderSort === 'created') setOrderSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                    else { setOrderSort('created'); setOrderSortDir('desc'); }
+                                }}
+                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${orderSort === 'created' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                                title="Sort by created date"
+                            >Created {orderSort === 'created' ? (orderSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
+                            <button
+                                onClick={() => {
+                                    if (orderSort === 'due') setOrderSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                    else { setOrderSort('due'); setOrderSortDir('asc'); }
+                                }}
+                                className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${orderSort === 'due' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                                title="Sort by due date"
+                            >Due {orderSort === 'due' ? (orderSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}</button>
                         </div>
+
+                        {/* Status filter chips */}
+                        <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-hide bg-white">
+                            {([
+                                { id: 'all',       label: 'All' },
+                                { id: 'open',      label: 'Open' },
+                                { id: 'completed', label: 'Completed' },
+                                { id: 'cancelled', label: 'Cancelled' },
+                            ] as Array<{ id: OrderStatusFilter; label: string }>).map(chip => {
+                                const active = orderStatusFilter === chip.id;
+                                const count = (orderStatusCounts as Record<string, number>)[chip.id] ?? 0;
+                                return (
+                                    <button
+                                        key={chip.id}
+                                        onClick={() => setOrderStatusFilter(chip.id)}
+                                        className={`shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors border ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                                    >
+                                        {chip.label}
+                                        <span className={`tabular-nums ${active ? 'opacity-90' : 'text-slate-400'}`}>{count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Work Orders table — same column shape as the
+                            central AssetMaintenancePage (Order # · Vendor ·
+                            Tasks · Progress · Created · Due · Status), trimmed
+                            to drop the Assets column since the page is already
+                            scoped to one asset. */}
+                        <div className="bg-white overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-2.5 font-semibold">Order #</th>
+                                        <th className="px-4 py-2.5 font-semibold">Vendor</th>
+                                        <th className="px-4 py-2.5 font-semibold">Tasks</th>
+                                        <th className="px-4 py-2.5 font-semibold">Progress</th>
+                                        <th className="px-4 py-2.5 font-semibold">Created</th>
+                                        <th className="px-4 py-2.5 font-semibold">Due</th>
+                                        <th className="px-4 py-2.5 font-semibold">Total</th>
+                                        <th className="px-4 py-2.5 font-semibold">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {pagedOrders.length > 0 ? pagedOrders.map(order => {
+                                        const vendor = vendors.find((v: any) => v.id === order.vendorId);
+                                        const lastCompletion = (order.completions ?? []).slice(-1)[0];
+                                        const orderTotal = lastCompletion?.assetBreakdowns?.find(b => b.assetId === asset.id)?.costs?.totalPaid ?? 0;
+                                        const currency = lastCompletion?.currency ?? (currentVehicle.country === 'Canada' ? 'CAD' : 'USD');
+                                        // Resolve tasks attached to this order to compute progress + service names.
+                                        const orderTasks = INITIAL_TASKS.filter(t => order.taskIds.includes(t.id));
+                                        const completedCount = orderTasks.filter(t => t.status === 'completed').length;
+                                        const totalCount = orderTasks.length;
+                                        const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                                        const serviceNames = orderTasks
+                                            .map(t => INITIAL_SERVICE_TYPES.find(s => s.id === t.serviceTypeIds[0])?.name)
+                                            .filter(Boolean)
+                                            .join(', ');
+                                        return (
+                                            <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
+                                                <td className="px-4 py-3 font-mono text-xs">
+                                                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold">
+                                                        #{order.id.slice(-6).toUpperCase()}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate" title={vendor?.companyName ?? ''}>
+                                                    {vendor?.companyName ?? <span className="text-slate-400">Unassigned</span>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="text-slate-900 font-medium">{totalCount} task{totalCount === 1 ? '' : 's'}</div>
+                                                    {serviceNames && (
+                                                        <div className="text-[11px] text-slate-500 truncate max-w-[200px]" title={serviceNames}>
+                                                            {serviceNames}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-1.5 bg-slate-100 rounded-full w-20 overflow-hidden">
+                                                            <div
+                                                                className={`h-full rounded-full ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                                                                style={{ width: `${progress}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-[11px] font-medium text-slate-500 tabular-nums">{progress}%</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
+                                                    {formatDate(order.createdAt)}
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
+                                                    {order.dueDate ? formatDate(order.dueDate) : <span className="text-slate-400">—</span>}
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-700 font-semibold tabular-nums whitespace-nowrap">
+                                                    {orderTotal > 0
+                                                        ? formatMoney(orderTotal, currency as 'USD' | 'CAD')
+                                                        : <span className="text-slate-400 font-normal">—</span>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <Badge variant={order.status === 'completed' ? 'success' : order.status === 'cancelled' ? 'neutral' : 'Drafted'}>
+                                                        {order.status}
+                                                    </Badge>
+                                                </td>
+                                            </tr>
+                                        );
+                                    }) : (
+                                        <tr>
+                                            <td colSpan={8} className="px-4 py-12 text-center">
+                                                <div className="flex flex-col items-center justify-center text-slate-400">
+                                                    <FileText size={36} className="mb-2 opacity-25" />
+                                                    <span className="text-sm font-semibold text-slate-600">
+                                                        {assetOrders.length === 0 ? 'No work orders' : 'No work orders match the filter'}
+                                                    </span>
+                                                    <span className="text-xs text-slate-400 mt-1">
+                                                        {assetOrders.length === 0
+                                                            ? 'Create a work order from one or more scheduled tasks.'
+                                                            : 'Try clearing the search or selecting a different status.'}
+                                                    </span>
+                                                    {(orderStatusFilter !== 'all' || orderSearch) && (
+                                                        <button
+                                                            onClick={() => { setOrderSearch(''); setOrderStatusFilter('all'); }}
+                                                            className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                                                        >
+                                                            Clear filters
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination — default 5 rows; selectable 5/10/20/50 */}
+                        {filteredOrders.length > 0 && (
+                            <PaginationBar
+                                totalItems={filteredOrders.length}
+                                currentPage={orderPage}
+                                rowsPerPage={orderRowsPerPage}
+                                onPageChange={setOrderPage}
+                                onRowsPerPageChange={(rows) => {
+                                    setOrderRowsPerPage(rows);
+                                    setOrderPage(1);
+                                }}
+                            />
+                        )}
                     </Card>
                 </div>
               </div>
             )}
 
-            {/* Inventory Content */}
+            {/* Inventory Content — same shape as Maintenance: header card
+                with title, search + sort row, status chips, table, and the
+                shared PaginationBar. */}
             {activeTab === 'Inventory' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base">Inventory Records</h3>
-                    <p className="text-xs font-medium text-slate-500">Vendor inventory items assigned to this asset.</p>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
-                    <Boxes size={12} /> {inventoryRecords.length} record{inventoryRecords.length === 1 ? '' : 's'}
-                  </span>
-                </div>
-
-                {inventoryRecords.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
-                    <div className="mx-auto h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                      <Boxes className="text-slate-400" size={20} />
+                <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
+                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                    <div className="flex items-center gap-2">
+                      <Boxes size={16} className="text-slate-500" />
+                      <h3 className="font-bold text-slate-800 text-sm">Inventory Records</h3>
+                      <Badge variant="neutral" className="ml-2">
+                        {filteredInventory.length} of {inventoryRecords.length}
+                      </Badge>
                     </div>
-                    <h4 className="text-sm font-semibold text-slate-700">No inventory assigned</h4>
-                    <p className="text-xs text-slate-500 mt-1">This asset has no fuel cards, transponders, ELDs, GPS, or dashcams on file.</p>
                   </div>
-                ) : (
-                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-200">
+
+                  {/* Search + Sort row */}
+                  <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
+                    <div className="relative flex-1 min-w-0">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={invSearch}
+                        onChange={(e) => setInvSearch(e.target.value)}
+                        placeholder="Search vendor, serial, PIN…"
+                        className="w-full h-8 pl-8 pr-7 rounded-md border border-slate-200 text-xs focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                      />
+                      {invSearch && (
+                        <button
+                          onClick={() => setInvSearch('')}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:bg-slate-100"
+                          aria-label="Clear"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (invSort === 'expiry') setInvSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                        else { setInvSort('expiry'); setInvSortDir('asc'); }
+                      }}
+                      className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${invSort === 'expiry' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                      title="Sort by expiry"
+                    >
+                      Expiry {invSort === 'expiry' ? (invSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (invSort === 'vendor') setInvSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                        else { setInvSort('vendor'); setInvSortDir('asc'); }
+                      }}
+                      className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${invSort === 'vendor' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                      title="Sort by vendor"
+                    >
+                      Vendor {invSort === 'vendor' ? (invSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (invSort === 'issue') setInvSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                        else { setInvSort('issue'); setInvSortDir('desc'); }
+                      }}
+                      className={`h-8 px-2 inline-flex items-center gap-1 rounded-md border text-xs font-medium ${invSort === 'issue' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'}`}
+                      title="Sort by issue date"
+                    >
+                      Issued {invSort === 'issue' ? (invSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />) : <ArrowUpDown size={11} className="text-slate-300" />}
+                    </button>
+                  </div>
+
+                  {/* Status filter chips */}
+                  <div className="px-4 py-2 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto scrollbar-hide bg-white">
+                    {([
+                      { id: 'all',            label: 'All' },
+                      { id: 'Active',         label: 'Active' },
+                      { id: 'Expiring Soon',  label: 'Expiring Soon' },
+                      { id: 'Expired',        label: 'Expired' },
+                    ] as Array<{ id: InventoryStatusFilter; label: string }>).map(chip => {
+                      const active = invStatusFilter === chip.id;
+                      const count = invStatusCounts[chip.id] ?? 0;
+                      return (
+                        <button
+                          key={chip.id}
+                          onClick={() => setInvStatusFilter(chip.id)}
+                          className={`shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors border ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        >
+                          {chip.label}
+                          <span className={`tabular-nums ${active ? 'opacity-90' : 'text-slate-400'}`}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Table */}
+                  <div className="bg-white overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Vendor</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Serial #</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">PIN #</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Issue Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Expiry Date</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-2.5 font-semibold">Vendor</th>
+                          <th className="px-4 py-2.5 font-semibold">Type</th>
+                          <th className="px-4 py-2.5 font-semibold">Serial #</th>
+                          <th className="px-4 py-2.5 font-semibold">PIN #</th>
+                          <th className="px-4 py-2.5 font-semibold">Issue Date</th>
+                          <th className="px-4 py-2.5 font-semibold">Expiry Date</th>
+                          <th className="px-4 py-2.5 font-semibold">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {inventoryRecords.map((it) => {
+                        {pagedInventory.length > 0 ? pagedInventory.map((it) => {
                           const vendor = getVendorById(it.vendorId);
                           const statusClass =
                             it.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -2109,13 +3115,13 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                             it.status === 'Expiring Soon' ? 'bg-amber-500' :
                             'bg-red-500';
                           return (
-                            <tr key={it.id} className="hover:bg-slate-50/60">
+                            <tr key={it.id} className="hover:bg-slate-50/70 transition-colors">
                               <td className="px-4 py-3 font-semibold text-slate-900">{vendor?.name ?? '—'}</td>
                               <td className="px-4 py-3 text-slate-600">{vendor ? getCategoryLabel(vendor.categoryId, VENDOR_CATEGORIES) : '—'}</td>
                               <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.serial}</td>
                               <td className="px-4 py-3 font-mono text-xs text-slate-700">{it.pin}</td>
-                              <td className="px-4 py-3 text-slate-600">{it.issueDate}</td>
-                              <td className="px-4 py-3 text-slate-600">{it.expiryDate}</td>
+                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{it.issueDate}</td>
+                              <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{it.expiryDate}</td>
                               <td className="px-4 py-3">
                                 <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
                                   <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${dotClass}`} />
@@ -2124,11 +3130,49 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                               </td>
                             </tr>
                           );
-                        })}
+                        }) : (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-12 text-center">
+                              <div className="flex flex-col items-center justify-center text-slate-400">
+                                <Boxes size={36} className="mb-2 opacity-25" />
+                                <span className="text-sm font-semibold text-slate-600">
+                                  {inventoryRecords.length === 0 ? 'No inventory assigned' : 'No inventory matches the filter'}
+                                </span>
+                                <span className="text-xs text-slate-400 mt-1">
+                                  {inventoryRecords.length === 0
+                                    ? 'No fuel cards, transponders, ELDs, GPS, or dashcams on file.'
+                                    : 'Try clearing the search or selecting a different status.'}
+                                </span>
+                                {(invStatusFilter !== 'all' || invSearch) && (
+                                  <button
+                                    onClick={() => { setInvSearch(''); setInvStatusFilter('all'); }}
+                                    className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                                  >
+                                    Clear filters
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
-                )}
+
+                  {/* Pagination — default 5 rows; selectable 5/10/20/50 */}
+                  {filteredInventory.length > 0 && (
+                    <PaginationBar
+                      totalItems={filteredInventory.length}
+                      currentPage={invPage}
+                      rowsPerPage={invRowsPerPage}
+                      onPageChange={setInvPage}
+                      onRowsPerPageChange={(rows) => {
+                        setInvRowsPerPage(rows);
+                        setInvPage(1);
+                      }}
+                    />
+                  )}
+                </Card>
               </div>
             )}
 
@@ -2319,7 +3363,77 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
                   </Card>
               </div>
             )}
-          </div>
+
+            {/* Notifications — cross-cutting alert center. Aggregates the
+                items the asset's owner needs to act on across compliance,
+                maintenance, and safety. Each row links back to the tab where
+                the underlying record lives. */}
+            {activeTab === 'Notifications' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">Action Required</h3>
+                    <p className="text-xs font-medium text-slate-500">
+                      {assetAlerts.length === 0
+                        ? "Nothing needs attention right now."
+                        : `${assetAlerts.length} alert${assetAlerts.length === 1 ? '' : 's'} across compliance, maintenance, and safety.`}
+                    </p>
+                  </div>
+                </div>
+
+                {assetAlerts.length === 0 ? (
+                  <Card className="overflow-hidden">
+                    <div className="p-12 flex flex-col items-center justify-center text-center">
+                      <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+                        <ShieldCheck size={24} />
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900">All clear</div>
+                      <div className="text-xs text-slate-500 mt-1 max-w-sm">
+                        No expiring documents, overdue maintenance, or pending compliance items for this asset.
+                      </div>
+                    </div>
+                  </Card>
+                ) : (
+                  <Card className="overflow-hidden">
+                    <ul className="divide-y divide-slate-100">
+                      {assetAlerts.map((a, i) => {
+                        const sev = a.severity === 'high'
+                          ? { dot: 'bg-rose-500', pillBg: 'bg-rose-50', pillFg: 'text-rose-700', pillBorder: 'border-rose-200', label: 'High' }
+                          : a.severity === 'medium'
+                            ? { dot: 'bg-amber-500', pillBg: 'bg-amber-50', pillFg: 'text-amber-700', pillBorder: 'border-amber-200', label: 'Medium' }
+                            : { dot: 'bg-slate-400', pillBg: 'bg-slate-50', pillFg: 'text-slate-600', pillBorder: 'border-slate-200', label: 'Low' };
+                        return (
+                          <li key={i} className="px-5 py-4 flex items-start gap-4 hover:bg-slate-50/60 transition-colors">
+                            <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                              <span className={`h-2 w-2 rounded-full ${sev.dot}`}></span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${sev.pillBg} ${sev.pillFg} ${sev.pillBorder}`}>
+                                  {sev.label}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{a.category}</span>
+                              </div>
+                              <div className="text-sm font-semibold text-slate-900 mt-1">{a.title}</div>
+                              {a.detail && (
+                                <div className="text-xs text-slate-500 mt-0.5">{a.detail}</div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab(a.tabTarget)}
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 shrink-0 self-center"
+                            >
+                              Open {a.tabTarget} <ChevronRight size={12} />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Card>
+                )}
+              </div>
+            )}
         </div>
 
         {/* ACCIDENT DETAIL POPUP */}
@@ -2792,43 +3906,10 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
         getDocumentTypeById={getDocumentTypeById}
       />
 
-      {/* Create Order Modal — opened from this asset's detail page, so we
-          lock the modal to this asset (`preSelectedAssetId`) and feed the
-          full pickable task list via `availableTasks`. Leaving
-          `selectedTasks` empty means the user starts with a clean order
-          and ticks any tasks they want included from the asset's "Existing
-          Scheduled Tasks" panel inside the modal. */}
-      <CreateOrderModal
-        isOpen={isCreateOrderModalOpen}
-        onClose={() => setIsCreateOrderModalOpen(false)}
-        onCreate={handleCreateOrder}
-        preSelectedAssetId={asset.id}
-        selectedTasks={[]}
-        availableTasks={assetTasks.filter(
-          (t) =>
-            t.status !== 'completed' &&
-            t.status !== 'cancelled' &&
-            !assetOrders.some((o) => o.taskIds.includes(t.id))
-        )}
-        vendors={vendors}
-        onAddVendor={handleAddVendor}
-      />
-      
-      {/* Create Schedule Modal using generic container for full-screen form */}
-      {isCreatingSchedule && (
-        <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
-            <CreateScheduleForm
-                onSave={(schedule) => {
-                    console.log('Saved schedule:', schedule);
-                    setIsCreatingSchedule(false);
-                    // ideally refresh data here
-                }}
-                onCancel={() => setIsCreatingSchedule(false)}
-                initialAssetId={asset.id}
-                initialEntityType={asset.assetCategory === 'CMV' ? 'truck' : asset.assetCategory === 'Non-CMV' ? 'trailer' : undefined}
-            />
-        </div>
-      )}
+      {/* The Schedule and Add Work Order forms are now rendered as
+          dedicated form pages (early-return at the top of this component)
+          rather than overlays. See the `if (isCreatingSchedule) ... return`
+          and `if (isCreateOrderModalOpen) ... return` blocks above. */}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Plus, Download, Building2, ChevronRight, ChevronDown, Search,
     Truck, IdCard,
@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import {
     INVENTORY_ITEMS,
+    getInventoryForCarrier,
     VENDORS,
     VENDOR_CATEGORIES,
     ACME_ASSETS,
@@ -16,10 +17,16 @@ import {
     type VendorCategory,
     type Assignment,
 } from "./inventory.data";
+import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
+import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import { cn } from "@/lib/utils";
 
 type Props = {
     onNavigate: (path: string) => void;
+    /** Active carrier — inventory list is filtered to this carrier's items. */
+    accountId?: string;
+    /** Display name for the breadcrumb. Falls back to the legacy ACME label. */
+    accountName?: string;
 };
 
 // ── Status pill styling ────────────────────────────────────────────────────
@@ -66,20 +73,33 @@ const TD = ({ children, className }: { children?: React.ReactNode; className?: s
     <td className={cn("px-4 py-3 text-sm whitespace-nowrap align-middle", className)}>{children}</td>
 );
 
-function resolveAssignment(a: Assignment | undefined) {
+function resolveAssignment(
+    a: Assignment | undefined,
+    accountId: string | undefined,
+) {
     if (!a) return null;
+    // Carrier-scoped lookup: prefer the active carrier's drivers / assets,
+    // fall back to Acme's so the display continues to work for the legacy
+    // hand-curated INVENTORY_ITEMS that are seeded against Acme ids.
+    const drivers = (accountId && CARRIER_DRIVERS[accountId]) || ACME_DRIVERS;
+    const assets = (accountId && CARRIER_ASSETS[accountId]) || ACME_ASSETS;
+
     if (a.kind === "driver") {
-        const driver = ACME_DRIVERS.find((d) => d.id === a.targetId);
+        const driver = drivers.find((d: any) => d.id === a.targetId)
+            ?? ACME_DRIVERS.find((d) => d.id === a.targetId);
         if (!driver) return { label: "—", sub: "Unknown driver", icon: IdCard, kindLabel: "Driver", tone: "slate" as const };
+        const fullName = (driver as any).name
+            ?? `${(driver as any).firstName ?? ""} ${(driver as any).lastName ?? ""}`.trim();
         return {
-            label: driver.name,
-            sub: `License ${driver.licenseNumber}`,
+            label: fullName || "—",
+            sub: (driver as any).licenseNumber ? `License ${(driver as any).licenseNumber}` : "—",
             icon: IdCard,
             kindLabel: "Driver",
             tone: "emerald" as const,
         };
     }
-    const asset = ACME_ASSETS.find((x) => x.id === a.targetId);
+    const asset = assets.find((x: any) => x.id === a.targetId)
+        ?? ACME_ASSETS.find((x) => x.id === a.targetId);
     if (!asset) return { label: "—", sub: "Unknown asset", icon: Truck, kindLabel: a.kind === "cmv" ? "CMV" : "Non-CMV", tone: "slate" as const };
     return {
         label: asset.unitNumber,
@@ -99,11 +119,26 @@ const KIND_TONE: Record<string, string> = {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 
-export function InventoryListPage({ onNavigate }: Props) {
+export function InventoryListPage({ onNavigate, accountId, accountName }: Props) {
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState<InventoryStatus | "all">("all");
-    const [items] = useState<InventoryItem[]>(INVENTORY_ITEMS);
     const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
+
+    // Inventory items are scoped to the active carrier. Each item's vendor
+    // carries an `accountId`; we keep only items whose vendor belongs to the
+    // currently selected carrier. With no `accountId` we fall back to the
+    // global INVENTORY_ITEMS list so super-admin first-mount still renders.
+    const items = useMemo<InventoryItem[]>(() => {
+        if (!accountId) return INVENTORY_ITEMS;
+        return getInventoryForCarrier(accountId);
+    }, [accountId]);
+
+    // Reset filters and category collapse when the carrier changes.
+    useEffect(() => {
+        setSearch("");
+        setStatusFilter("all");
+        setCollapsedCats({});
+    }, [accountId]);
 
     const matched = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -142,7 +177,7 @@ export function InventoryListPage({ onNavigate }: Props) {
                 <div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
                         <Building2 size={14} />
-                        <span className="font-medium">{CARRIER_NAME}</span>
+                        <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
                         <span>/</span>
                         <span>Inventory</span>
                     </div>
@@ -229,6 +264,7 @@ export function InventoryListPage({ onNavigate }: Props) {
                                 onToggleCollapse={() =>
                                     setCollapsedCats((prev) => ({ ...prev, [g.category.id]: !prev[g.category.id] }))
                                 }
+                                accountId={accountId}
                             />
                         );
                     })}
@@ -241,12 +277,13 @@ export function InventoryListPage({ onNavigate }: Props) {
 // ── Per-category block ─────────────────────────────────────────────────────
 
 function CategoryBlock({
-    category, items, collapsed, onToggleCollapse,
+    category, items, collapsed, onToggleCollapse, accountId,
 }: {
     category: VendorCategory;
     items: InventoryItem[];
     collapsed: boolean;
     onToggleCollapse: () => void;
+    accountId?: string;
 }) {
     const visual = visualFor(category.id);
     const Icon = visual.icon;
@@ -322,7 +359,7 @@ function CategoryBlock({
                         <tbody className="divide-y divide-slate-100">
                             {items.map((item) => {
                                 const vendor = VENDORS.find((v) => v.id === item.vendorId);
-                                const target = resolveAssignment(item.assignedTo);
+                                const target = resolveAssignment(item.assignedTo, accountId);
                                 const vInitials = (vendor?.name ?? "?")
                                     .replace(/[^a-zA-Z0-9\s]/g, "")
                                     .split(/\s+/).filter(Boolean).slice(0, 2)

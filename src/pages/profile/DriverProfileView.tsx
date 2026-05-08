@@ -3,7 +3,7 @@ import {
   User, Phone, MapPin, Briefcase,
   AlertTriangle, Edit, Edit3, Trash2, Mail, History, Award,
   UploadCloud, Camera, ChevronRight, ChevronDown, LayoutDashboard, ShieldCheck, FileText, GraduationCap, Route, Ticket, Car, DollarSign, AlertOctagon, FileKey, Hash, Clock, Plus,
-  CalendarX, FileWarning, Download, Eye, X, Construction, Map, Printer, ArrowRight, FileCheck, Globe
+  CalendarX, FileWarning, Download, Eye, X, Map, Printer, ArrowLeft, ArrowRight, FileCheck, Globe
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 // Removed: import { Badge } from '../../components/ui/Badge';
@@ -19,6 +19,9 @@ import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
 import { Boxes } from 'lucide-react';
 import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
+import { type SubTab } from '@/components/ui/SubTabs';
+import { getSafetyEventsForDriver } from '@/data/safety-records';
+import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
 
 // --- Individual Section Edit Modals ---
 
@@ -1358,22 +1361,37 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
     const inventoryRecords = React.useMemo(() => getInventoryByDriverId(driverData.id), [driverData.id]);
 
-    const tabs = [
-        { id: 'Overview', label: 'Overview', icon: LayoutDashboard },
-        { id: 'Profile', label: 'Profile', icon: User },
-        { id: 'Compliance', label: 'Compliance Monitoring', icon: ShieldCheck },
-        { id: 'Documents', label: 'Documents', icon: FileText },
-        { id: 'Training', label: 'Training', icon: GraduationCap },
-        { id: 'Certificates', label: 'Certificates', icon: Award },
-        { id: 'Trips', label: 'Trips', icon: Route },
-        { id: 'Tickets', label: 'Tickets', icon: Ticket },
-        { id: 'Accidents', label: 'Accidents', icon: Car },
-        { id: 'Inspections', label: 'Inspections', icon: FileCheck },
-        { id: 'Violations', label: 'Violations', icon: AlertTriangle },
-        { id: 'Inventory', label: 'Inventory', icon: Boxes, count: inventoryRecords.length },
-        { id: 'Paystubs', label: 'Paystubs', icon: DollarSign },
-        { id: 'HoursOfService', label: 'Hours of Service', icon: Clock },
-        { id: 'MileageReport', label: 'Mileage Report', icon: Map }
+    // Tabs grouped logically. Each tab declares which group it belongs to so the
+    // strip can render a thin vertical divider at every group boundary.
+    //   1. Identity     — Overview, Profile, Compliance Monitoring
+    //   2. Records      — Documents, Training, Certificates
+    //   3. Operations   — Trips, Hours of Service, Mileage Report
+    //   4. Safety       — Inspections, Violations, Accidents, Tickets
+    //   5. Finance      — Paystubs
+    //   6. Other        — Inventory
+    type DriverTab = SubTab<string> & { group: 'identity' | 'records' | 'operations' | 'safety' | 'finance' | 'other' };
+    const tabs: DriverTab[] = [
+        // Identity
+        { id: 'Overview',       label: 'Overview',         icon: LayoutDashboard, group: 'identity' },
+        { id: 'Profile',        label: 'Profile',          icon: User,            group: 'identity' },
+        { id: 'Compliance',     label: 'Compliance',       icon: ShieldCheck,     group: 'identity' },
+        // Records
+        { id: 'Documents',      label: 'Documents',        icon: FileText,        group: 'records' },
+        { id: 'Training',       label: 'Training',         icon: GraduationCap,   group: 'records' },
+        { id: 'Certificates',   label: 'Certificates',     icon: Award,           group: 'records' },
+        // Operations
+        { id: 'Trips',          label: 'Trips',            icon: Route,           group: 'operations' },
+        { id: 'HoursOfService', label: 'Hours of Service', icon: Clock,           group: 'operations' },
+        { id: 'MileageReport',  label: 'Mileage',          icon: Map,             group: 'operations' },
+        // Safety
+        { id: 'Inspections',    label: 'Inspections',      icon: FileCheck,       group: 'safety' },
+        { id: 'Violations',     label: 'Violations',       icon: AlertTriangle,   group: 'safety' },
+        { id: 'Accidents',      label: 'Accidents',        icon: Car,             group: 'safety' },
+        { id: 'Tickets',        label: 'Tickets',          icon: Ticket,          group: 'safety' },
+        // Finance
+        { id: 'Paystubs',       label: 'Paystubs',         icon: DollarSign,      group: 'finance' },
+        // Other
+        { id: 'Inventory',      label: 'Inventory',        icon: Boxes, count: inventoryRecords.length, group: 'other' },
     ];
 
   // Document Logic
@@ -1466,24 +1484,66 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
     expired: driverDocuments.filter((d: any) => d.status === 'Expired').length
   }), [driverDocuments]);
 
+  // Header stat cards — same data the Overview tab used to render in its
+  // banner, lifted to the component scope so it sits in the persistent header
+  // (visible regardless of which tab is active) and matches MyProfilePage.
+  const headerStats = React.useMemo(() => {
+    const toStr = (v: any): string => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'object') return v.city ?? v.raw ?? v.name ?? '';
+      return String(v);
+    };
+    const hireDate = driverData.hiredDate ?? driverData.dateAdded;
+    const tenureDays = hireDate ? Math.floor((Date.now() - new Date(hireDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const tenureLabel = !hireDate
+      ? '—'
+      : tenureDays >= 365
+        ? `${(tenureDays / 365).toFixed(1)} yrs`
+        : tenureDays >= 30
+          ? `${Math.floor(tenureDays / 30)} mo`
+          : `${tenureDays} d`;
+
+    return {
+      statusStr: toStr(driverData.status) || '—',
+      tenureLabel,
+      hireDate,
+      licenseNumber: toStr(driverData.licenseNumber) || '—',
+      licenseStateStr: toStr(driverData.licenseState),
+      licenseExpiry: driverData.licenseExpiry,
+      terminalStr: toStr(driverData.terminal) || toStr(driverData.driverType) || '—',
+      driverTypeStr: toStr(driverData.driverType),
+    };
+  }, [driverData]);
+
   return (
     <div className="bg-slate-50 min-h-screen pb-12 font-sans text-slate-900">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        {/* Breadcrumb Bar */}
-        <header className="h-11 px-8 flex items-center border-b border-slate-100 bg-slate-50/60">
-          <nav className="flex items-center text-xs font-medium text-slate-500">
-            <span className="text-slate-400 hover:text-blue-600 cursor-pointer transition-colors" onClick={onBack}>Drivers List</span>
-            <ChevronRight size={12} className="mx-1.5 text-slate-300" />
+        {/* Breadcrumb bar — Pattern B (matches Asset Detail + MyProfile shell):
+            explicit Back-to-list button + vertical divider + breadcrumb chain.
+            Thin h-11 strip on slate-50 with a single bottom border. */}
+        <header className="h-11 px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+          >
+            <ArrowLeft size={13} /> Back to Drivers
+          </button>
+          <span aria-hidden className="h-4 w-px bg-slate-200" />
+          <nav className="flex items-center text-xs font-medium text-slate-500 min-w-0">
+            <span className="text-slate-400 hover:text-blue-600 cursor-pointer transition-colors" onClick={onBack}>Drivers</span>
+            <ChevronRight size={12} className="mx-1.5 text-slate-300 shrink-0" />
             <span className="text-slate-400 hover:text-blue-600 cursor-pointer transition-colors" onClick={onBack}>Personnel</span>
-            <ChevronRight size={12} className="mx-1.5 text-slate-300" />
-            <span className="text-slate-700 font-semibold">{driverData.firstName} {driverData.lastName}</span>
+            <ChevronRight size={12} className="mx-1.5 text-slate-300 shrink-0" />
+            <span className="text-slate-700 font-semibold truncate">{driverData.firstName} {driverData.lastName}</span>
           </nav>
         </header>
 
         {/* Profile Header */}
-        <div className="w-full px-8 py-5">
-          <div className="flex items-start justify-between">
+        <div className="w-full px-4 sm:px-8 py-5">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div className="flex items-center gap-5">
               {/* Avatar with Online Indicator */}
               <div className="relative flex-shrink-0">
@@ -1526,43 +1586,123 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-2 flex-shrink-0 pt-1">
-              <button className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-semibold text-xs hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm">
-                <Printer className="w-3.5 h-3.5" /> Print
+            {/* Actions — uniform height, consistent icon sizing, mobile-friendly */}
+            <div className="flex items-center gap-2 flex-shrink-0 pt-1 self-start lg:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="h-9 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 font-semibold text-sm hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 active:scale-[0.98] transition-all inline-flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Printer className="w-4 h-4 text-slate-500" />
+                <span className="hidden sm:inline">Print</span>
               </button>
               <button
+                type="button"
                 onClick={() => onEditProfile(driverData)}
-                className="px-3.5 py-2 bg-blue-600 border border-blue-700 rounded-lg text-white font-semibold text-xs hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm shadow-blue-600/20"
+                className="h-9 px-4 bg-blue-600 border border-transparent rounded-lg text-white font-semibold text-sm hover:bg-blue-700 active:scale-[0.98] transition-all inline-flex items-center justify-center gap-1.5 shadow-sm shadow-blue-600/20"
               >
-                <Edit className="w-3.5 h-3.5" /> Edit Profile
+                <Edit className="w-4 h-4" />
+                <span className="hidden sm:inline">Edit Profile</span>
+                <span className="sm:hidden">Edit</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Tab Navigation - Underline Style */}
-        <div className="w-full px-8">
-          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative px-3 pb-3 pt-1 text-sm font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5
-                  ${activeTab === tab.id
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-slate-400 hover:text-slate-600 border-b-2 border-transparent'
-                  }`}
-              >
-                {tab.label}
-                {(tab as any).count > 0 && (
-                  <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold ${activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                    {(tab as any).count}
-                  </span>
+        {/* Header stat cards — persistent across all tabs, mirrors the
+            MyProfilePage layout (4 cards: Status, Tenure, CDL, Terminal). */}
+        <div className="w-full px-4 sm:px-8 pb-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <div className={cn(
+                "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                headerStats.statusStr === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+              )}>
+                <ShieldCheck size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</div>
+                <div className="text-sm font-semibold text-slate-900 truncate">{headerStats.statusStr}</div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 text-blue-600">
+                <CalendarX size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Tenure</div>
+                <div className="text-sm font-semibold text-slate-900 truncate">{headerStats.tenureLabel}</div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-violet-50 text-violet-600">
+                <FileKey size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">CDL / Licence</div>
+                <div className="text-sm font-semibold text-slate-900 truncate font-mono">{headerStats.licenseNumber}</div>
+                {(headerStats.licenseStateStr || headerStats.licenseExpiry) && (
+                  <div className="text-[10px] text-slate-500 truncate">
+                    {headerStats.licenseStateStr}{headerStats.licenseExpiry ? ` · exp ${formatDate(headerStats.licenseExpiry)}` : ''}
+                  </div>
                 )}
-              </button>
-            ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-amber-50 text-amber-600">
+                <MapPin size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Terminal</div>
+                <div className="text-sm font-semibold text-slate-900 truncate">{headerStats.terminalStr}</div>
+                {headerStats.driverTypeStr && headerStats.driverTypeStr !== headerStats.terminalStr && (
+                  <div className="text-[10px] text-slate-500 truncate">{headerStats.driverTypeStr}</div>
+                )}
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* Tab Navigation — sectioned underline strip with thin vertical
+            dividers between groups (Identity · Records · Operations · Safety
+            · Finance · Other). Same pattern as the Asset Detail page so the
+            two profile views read consistently. */}
+        <div className="w-full px-4 sm:px-8 border-b border-slate-200">
+          <nav className="flex items-center gap-0.5 overflow-x-auto no-scrollbar -mb-px" aria-label="Driver sections">
+            {tabs.map((tab, idx) => {
+              const showSeparator = idx > 0 && tabs[idx - 1]!.group !== tab.group;
+              const active = activeTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <React.Fragment key={tab.id}>
+                  {showSeparator && (
+                    <div aria-hidden className="h-5 w-px bg-slate-200 mx-1.5 self-center shrink-0" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`relative py-3 px-3 text-sm font-medium whitespace-nowrap transition-colors inline-flex items-center gap-1.5 border-b-2 ${
+                      active
+                        ? 'text-blue-600 border-blue-600'
+                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300'
+                    }`}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    {Icon && <Icon size={14} className={active ? 'text-blue-600' : 'text-slate-400'} />}
+                    <span>{tab.label}</span>
+                    {typeof tab.count === 'number' && tab.count > 0 && (
+                      <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold tabular-nums ${active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </nav>
         </div>
       </div>
         
@@ -1719,17 +1859,347 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 </div>
             )}
 
-            {activeTab === 'Overview' && (
-                <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                        <Construction className="w-8 h-8 text-slate-400" />
+            {activeTab === 'Overview' && (() => {
+                // Compute driver-scoped slices once for the whole tab.
+                // Same filter logic the Inspections / Violations / Accidents
+                // tabs use further down — kept inline so we don't have to lift
+                // state and refactor those tabs.
+                const dInspections = inspectionsData.filter((ins: any) => ins.driverId === driverData.id);
+                const dViolations = MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id);
+                const dIncidents = INCIDENTS.filter((inc: any) => inc.driver?.driverId === driverData.id);
+                const dTickets = MOCK_TICKETS.filter((t: any) => t.driverId === driverData.id);
+
+                const insOos = dInspections.filter((i: any) => i.hasOOS).length;
+                const insClean = dInspections.filter((i: any) => i.isClean).length;
+                const insViolations = dInspections.reduce((s: number, i: any) => s + (i.violations?.length || 0), 0);
+                const violOpen = dViolations.filter((v: any) => v.status === 'Open').length;
+                const violOos = dViolations.filter((v: any) => v.isOos).length;
+                const violFines = dViolations.reduce((s: number, v: any) => s + (v.fineAmount || 0), 0);
+                const incPreventable = dIncidents.filter((i: any) => i.preventability?.value === 'preventable').length;
+                const incCost = dIncidents.reduce((s: number, i: any) => s + (i.costs?.totalAccidentCosts || 0), 0);
+
+                // HOS — last 7 days of trips for this driver. Some records have
+                // `driver` as an object (not a string), so we extract a name
+                // candidate defensively before lowercasing.
+                const driverFullName = `${driverData.firstName ?? ''} ${driverData.lastName ?? ''}`.trim().toLowerCase();
+                const tripNameOf = (t: any): string => {
+                    const cand = t.driverName ?? (typeof t.driver === 'string' ? t.driver : (t.driver?.name ?? '')) ?? '';
+                    return typeof cand === 'string' ? cand.toLowerCase() : '';
+                };
+                const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+                const recentTrips = (HOS_TRIPS_IMPORT as any[]).filter((t: any) => {
+                    if (driverFullName !== '' && !tripNameOf(t).includes(driverFullName)) return false;
+                    const ts = new Date(t.startedAt ?? t.startTime ?? t.date ?? 0).getTime();
+                    return ts >= sevenDaysAgo;
+                });
+                const tripDistance = recentTrips.reduce((s: number, t: any) => s + (Number(t.distance) || 0), 0);
+                const tripDriving = recentTrips.reduce((s: number, t: any) => s + (Number(t.statusDurations?.driving ?? t.duration) || 0), 0);
+
+                // Tenure
+                const hireDate = driverData.hiredDate ?? driverData.dateAdded;
+                const tenureDays = hireDate ? Math.floor((Date.now() - new Date(hireDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                const _tenureLabel = tenureDays >= 365
+                    ? `${(tenureDays / 365).toFixed(1)} yrs`
+                    : tenureDays >= 30
+                        ? `${Math.floor(tenureDays / 30)} mo`
+                        : `${tenureDays} d`;
+                void _tenureLabel;
+
+                // Coerce possibly-object fields to strings — some seed records
+                // have terminal/state/driverType as { city, province, raw }
+                // objects which would crash React if rendered directly.
+                const toStr = (v: any): string => {
+                    if (v == null) return '';
+                    if (typeof v === 'string') return v;
+                    if (typeof v === 'object') return v.city ?? v.raw ?? v.name ?? '';
+                    return String(v);
+                };
+                const driverTypeStr = toStr(driverData.driverType);
+                const _terminalStr = toStr(driverData.terminal) || driverTypeStr || '—';
+                const _licenseStateStr = toStr(driverData.licenseState);
+                const _statusStr = toStr(driverData.status) || '—';
+                void _terminalStr; void _licenseStateStr; void _statusStr;
+
+                // Composite safety score (0-100). Penalize each negative metric.
+                // Tuned so a clean record stays at 100 and an active OOS / open
+                // violation pushes it down quickly. Clamps to [0, 100].
+                const safetyScore = Math.max(0, 100
+                    - violOpen * 8
+                    - insOos * 5
+                    - violOos * 6
+                    - incPreventable * 10
+                    - dIncidents.length * 4
+                );
+                // Static class strings (Tailwind can't scan dynamic templates).
+                const safetyTone = safetyScore >= 85 ? 'emerald' : safetyScore >= 65 ? 'amber' : 'red';
+                const safetyBorderCls = safetyTone === 'emerald'
+                    ? 'border-l-emerald-600'
+                    : safetyTone === 'amber'
+                        ? 'border-l-amber-500'
+                        : 'border-l-red-600';
+                const safetyIconCls = safetyTone === 'emerald'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : safetyTone === 'amber'
+                        ? 'bg-amber-50 text-amber-600'
+                        : 'bg-red-50 text-red-600';
+                const safetyValueCls = safetyTone === 'emerald'
+                    ? 'text-emerald-600'
+                    : safetyTone === 'amber'
+                        ? 'text-amber-600'
+                        : 'text-red-600';
+
+                // Combined recent activity feed (last 5 events across types).
+                type ActivityItem = { kind: 'inspection' | 'violation' | 'incident' | 'ticket'; date: string; title: string; subtitle?: string; tone: string };
+                const activity: ActivityItem[] = [];
+                for (const i of dInspections as any[]) {
+                    const stateLabel = typeof i.state === 'string' ? i.state : (i.state?.city ?? i.state?.raw ?? '');
+                    activity.push({
+                        kind: 'inspection',
+                        date: i.date,
+                        title: i.isClean ? 'Clean inspection' : `Inspection — ${(i.violations?.length || 0)} violation${(i.violations?.length || 0) === 1 ? '' : 's'}`,
+                        subtitle: i.location ?? stateLabel,
+                        tone: i.isClean ? 'emerald' : (i.hasOOS ? 'red' : 'amber'),
+                    });
+                }
+                for (const v of dViolations as any[]) {
+                    activity.push({
+                        kind: 'violation',
+                        date: v.date,
+                        title: v.violationType ?? 'Violation',
+                        subtitle: `${v.result ?? ''}${v.fineAmount ? ` · $${v.fineAmount}` : ''}`,
+                        tone: v.isOos ? 'red' : 'amber',
+                    });
+                }
+                for (const inc of dIncidents as any[]) {
+                    activity.push({
+                        kind: 'incident',
+                        date: inc.occurredAt ?? inc.occurredDate ?? '',
+                        title: 'Incident reported',
+                        subtitle: inc.cause?.primaryCause ?? inc.severity ?? '',
+                        tone: 'red',
+                    });
+                }
+                for (const t of dTickets as any[]) {
+                    activity.push({
+                        kind: 'ticket',
+                        date: t.date ?? '',
+                        title: t.violationType ?? 'Ticket',
+                        subtitle: t.location ?? '',
+                        tone: 'amber',
+                    });
+                }
+                activity.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                const recentActivity = activity.slice(0, 6);
+
+                const activityIcon = (k: ActivityItem['kind']) => {
+                    if (k === 'inspection') return FileCheck;
+                    if (k === 'violation') return AlertTriangle;
+                    if (k === 'incident') return AlertOctagon;
+                    return Ticket;
+                };
+                const toneIconCls = (tone: string) => tone === 'emerald'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : tone === 'red'
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-amber-50 text-amber-600';
+
+                // Documents needing attention (computed earlier as docCounts).
+                const totalDocAlerts = docCounts.requiredMissing + docCounts.expiringSoon + docCounts.expired;
+
+                return (
+                    <div className="space-y-6 animate-in fade-in">
+                        {/* (Status / Tenure / CDL / Terminal moved to the
+                             persistent header — kept off the Overview tab to
+                             avoid duplicating the cards visible just above.) */}
+
+                        {/* Compliance KPI row */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className={cn("flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-slate-200 shadow-sm", safetyBorderCls)}>
+                                <div className="flex items-center gap-3">
+                                    <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0", safetyIconCls)}>
+                                        <ShieldCheck className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Safety<br />Score</span>
+                                </div>
+                                <div className={cn("text-lg font-bold", safetyValueCls)}>{safetyScore}</div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Inspections')}
+                                className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                                        <FileCheck className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Inspections<br /><span className="text-emerald-600">{insClean} clean</span> / {insOos} OOS</span>
+                                </div>
+                                <div className="text-lg font-bold text-slate-900">{dInspections.length}</div>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Violations')}
+                                className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0">
+                                        <AlertTriangle className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Violations<br />{violOpen} open · {insViolations} cited</span>
+                                </div>
+                                <div className="text-lg font-bold text-slate-900">{dViolations.length}</div>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Accidents')}
+                                className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-500 border-slate-200 shadow-sm transition-all hover:shadow cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                                        <AlertOctagon className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Incidents<br />{incPreventable} preventable</span>
+                                </div>
+                                <div className="text-lg font-bold text-slate-900">{dIncidents.length}</div>
+                            </button>
+                        </div>
+
+                        {/* Two-column body: HOS / Documents alerts | Recent activity */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                            {/* Left column — HOS this week + Document alerts */}
+                            <div className="space-y-5 lg:col-span-1">
+                                <Card title="HOS · Last 7 days" icon={Clock}>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-baseline">
+                                            <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Distance</span>
+                                            <span className="text-lg font-bold text-slate-900 tabular-nums">{tripDistance.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-xs font-semibold text-slate-500">mi</span></span>
+                                        </div>
+                                        <div className="flex justify-between items-baseline">
+                                            <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Driving Time</span>
+                                            <span className="text-lg font-bold text-slate-900 tabular-nums">{(tripDriving / 60).toFixed(1)} <span className="text-xs font-semibold text-slate-500">hr</span></span>
+                                        </div>
+                                        <div className="flex justify-between items-baseline">
+                                            <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Trips</span>
+                                            <span className="text-lg font-bold text-slate-900 tabular-nums">{recentTrips.length}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveTab('HoursOfService')}
+                                            className="w-full mt-2 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-md transition-colors flex items-center justify-center gap-1"
+                                        >
+                                            View HOS log <ArrowRight className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                </Card>
+
+                                <Card title="Document Alerts" icon={FileWarning}>
+                                    <div className="space-y-2.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setActiveTab('Documents'); setDocFilter('required_missing'); }}
+                                            disabled={docCounts.requiredMissing === 0}
+                                            className="w-full flex items-center justify-between px-3 py-2 rounded-md border border-slate-200 hover:bg-red-50 hover:border-red-200 transition-colors disabled:opacity-60 disabled:hover:bg-white disabled:hover:border-slate-200"
+                                        >
+                                            <span className="flex items-center gap-2 text-xs">
+                                                <span className="w-2 h-2 rounded-full bg-red-500" /> Missing required
+                                            </span>
+                                            <span className="font-bold text-slate-900 tabular-nums">{docCounts.requiredMissing}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setActiveTab('Documents'); setDocFilter('expiring_soon'); }}
+                                            disabled={docCounts.expiringSoon === 0}
+                                            className="w-full flex items-center justify-between px-3 py-2 rounded-md border border-slate-200 hover:bg-amber-50 hover:border-amber-200 transition-colors disabled:opacity-60 disabled:hover:bg-white disabled:hover:border-slate-200"
+                                        >
+                                            <span className="flex items-center gap-2 text-xs">
+                                                <span className="w-2 h-2 rounded-full bg-amber-500" /> Expiring soon
+                                            </span>
+                                            <span className="font-bold text-slate-900 tabular-nums">{docCounts.expiringSoon}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setActiveTab('Documents'); setDocFilter('expired'); }}
+                                            disabled={docCounts.expired === 0}
+                                            className="w-full flex items-center justify-between px-3 py-2 rounded-md border border-slate-200 hover:bg-red-50 hover:border-red-200 transition-colors disabled:opacity-60 disabled:hover:bg-white disabled:hover:border-slate-200"
+                                        >
+                                            <span className="flex items-center gap-2 text-xs">
+                                                <span className="w-2 h-2 rounded-full bg-red-600" /> Expired
+                                            </span>
+                                            <span className="font-bold text-slate-900 tabular-nums">{docCounts.expired}</span>
+                                        </button>
+                                        {totalDocAlerts === 0 && (
+                                            <div className="text-center py-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md">
+                                                <ShieldCheck className="w-4 h-4 mx-auto mb-0.5" />
+                                                All documents up to date
+                                            </div>
+                                        )}
+                                    </div>
+                                </Card>
+                            </div>
+
+                            {/* Right column — Recent activity feed */}
+                            <div className="lg:col-span-2">
+                                <Card title="Recent Activity" icon={History}>
+                                    {recentActivity.length === 0 ? (
+                                        <div className="text-center py-10 text-sm text-slate-500">
+                                            No recorded inspections, violations, incidents, or tickets for this driver.
+                                        </div>
+                                    ) : (
+                                        <ul className="divide-y divide-slate-100 -mx-2">
+                                            {recentActivity.map((a, i) => {
+                                                const Icon = activityIcon(a.kind);
+                                                return (
+                                                    <li key={i} className="flex items-start gap-3 px-2 py-2.5">
+                                                        <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0", toneIconCls(a.tone))}>
+                                                            <Icon className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-sm font-semibold text-slate-900 truncate">{a.title}</div>
+                                                            {a.subtitle && (
+                                                                <div className="text-xs text-slate-500 mt-0.5 truncate">{a.subtitle}</div>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-400 font-medium uppercase tracking-wider tabular-nums shrink-0">
+                                                            {formatDate(a.date)}
+                                                        </div>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    )}
+                                </Card>
+                            </div>
+                        </div>
+
+                        {/* Financial summary — fines + accident costs */}
+                        {(violFines > 0 || incCost > 0) && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
+                                        <div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fines (Lifetime)</div>
+                                            <div className="text-lg font-bold text-slate-900 tabular-nums">${violFines.toLocaleString()}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
+                                        <div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accident Costs</div>
+                                            <div className="text-lg font-bold text-slate-900 tabular-nums">${incCost.toLocaleString()}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900">Under Development</h3>
-                    <p className="text-sm text-slate-500 max-w-sm mt-2">
-                        The Driver Overview dashboard is currently being built. Please check back later for updates.
-                    </p>
-                </div>
-            )}
+                );
+            })()}
 
             {activeTab === 'Profile' && (
               <ProfileTab 
@@ -2005,7 +2475,16 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             )}
 
             {/* ACCIDENTS TAB */}
-            {activeTab === 'Accidents' && (() => {
+            {/* Accidents — unified CVOR/NSC/FMCSA panel scoped to this driver. */}
+            {activeTab === 'Accidents' && (
+              <SafetyRecordsPanel
+                events={getSafetyEventsForDriver(driverData.id)}
+                kinds={['collision', 'accident']}
+                title="Accidents"
+                subtitle="Collisions involving this driver across CVOR, NSC, and FMCSA reports."
+              />
+            )}
+            {activeTab === '__legacy_driver_accidents__' && (() => {
               const driverIncidents = INCIDENTS.filter((inc: any) => inc.driver?.driverId === driverData.id);
               const totalCost = driverIncidents.reduce((sum: number, inc: any) => sum + (inc.costs?.totalAccidentCosts || 0), 0);
               const preventableCount = driverIncidents.filter((inc: any) => inc.preventability?.value === 'preventable').length;
@@ -2441,7 +2920,16 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
             {/* INSPECTIONS TAB */}
 
-            {activeTab === 'Inspections' && (() => {
+            {/* Inspections — unified CVOR/NSC/FMCSA panel scoped to this driver. */}
+            {activeTab === 'Inspections' && (
+              <SafetyRecordsPanel
+                events={getSafetyEventsForDriver(driverData.id)}
+                kinds={['inspection']}
+                title="Inspections"
+                subtitle="Inspections recorded against this driver across regulatory reports."
+              />
+            )}
+            {activeTab === '__legacy_driver_inspections__' && (() => {
 
               const driverInspections = inspectionsData.filter((ins: any) => ins.driverId === driverData.id);
 
@@ -2687,7 +3175,17 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
             {/* VIOLATIONS TAB */}
 
-            {activeTab === 'Violations' && (() => {
+            {/* Violations — unified CVOR/NSC/FMCSA panel scoped to this driver.
+                Includes CVOR convictions which sit in the same regulatory bucket. */}
+            {activeTab === 'Violations' && (
+              <SafetyRecordsPanel
+                events={getSafetyEventsForDriver(driverData.id)}
+                kinds={['violation', 'conviction']}
+                title="Violations"
+                subtitle="Convictions and citations recorded against this driver across regulatory reports."
+              />
+            )}
+            {activeTab === '__legacy_driver_violations__' && (() => {
 
               const driverViolations = MOCK_VIOLATION_RECORDS.filter((v: any) => v.driverId === driverData.id);
 

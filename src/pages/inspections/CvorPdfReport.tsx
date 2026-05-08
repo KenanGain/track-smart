@@ -10,7 +10,7 @@ import { useMemo } from "react";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     PieChart, Pie, Cell, Legend,
-    LineChart, Line,
+    LineChart, Line, LabelList, ReferenceLine,
 } from "recharts";
 import {
     A4_W, A4_H, PAGE_PAD_X, CHART_W,
@@ -202,7 +202,7 @@ function Page({
                 </div>
                 <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 8.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 1.4 }}>
-                        Subject Carrier
+                        Carrier
                     </div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: C.ink, marginTop: 1 }}>
                         {carrierName}
@@ -355,7 +355,7 @@ function CoverPage({
                     }}
                 >
                     <div style={{ fontSize: 8.5, fontWeight: 800, color: C.gold, textTransform: "uppercase", letterSpacing: 2 }}>
-                        Subject Carrier
+                        Carrier
                     </div>
                     <div
                         style={{
@@ -549,10 +549,11 @@ function ExecutiveSummaryPage({
     const convictions = a.counts.convictions ?? 0;
     const oosOverall  = a.counts.oosOverall ?? 0;
 
+    // Each component gets its own color so the bar chart is readable at a glance.
     const composition = [
-        { name: "Collisions",  value: a.collisions.percentage,  weight: a.collisions.weight },
-        { name: "Convictions", value: a.convictions.percentage, weight: a.convictions.weight },
-        { name: "Inspections", value: a.inspections.percentage, weight: a.inspections.weight },
+        { name: "Collisions",  value: a.collisions.percentage,  weight: a.collisions.weight,  color: C.red    },
+        { name: "Convictions", value: a.convictions.percentage, weight: a.convictions.weight, color: C.orange },
+        { name: "Inspections", value: a.inspections.percentage, weight: a.inspections.weight, color: C.indigo },
     ];
 
     const narrative = useMemo(() => {
@@ -643,20 +644,49 @@ function ExecutiveSummaryPage({
             {/* Composition chart */}
             <div>
                 <Eyebrow>Rating Composition</Eyebrow>
-                <ChartCard>
+                <ChartCard title="% of threshold consumed by each component (lower is better)">
                     <BarChart
-                        width={CHART_W} height={200}
-                        data={composition} margin={{ top: 6, right: 12, bottom: 24, left: 0 }}
+                        width={CHART_W} height={210}
+                        data={composition} margin={{ top: 16, right: 16, bottom: 8, left: 8 }}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                        <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: C.muted, fontWeight: 700 }} />
-                        <YAxis tick={{ fontSize: 9.5, fill: C.soft }} width={28} unit="%" />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
-                        <Bar dataKey="value" name="% of threshold consumed" fill={C.accent} radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="weight" name="Weight in rating (%)" fill={C.soft} radius={[3, 3, 0, 0]} />
+                        <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 10.5, fill: C.muted, fontWeight: 700 }}
+                            tickMargin={8}
+                        />
+                        <YAxis
+                            tick={{ fontSize: 9.5, fill: C.soft }}
+                            width={42}
+                            unit="%"
+                            label={{ value: "% of threshold", angle: -90, position: "insideLeft", offset: 16, fontSize: 9.5, fill: C.soft, fontWeight: 700 }}
+                        />
+                        <Tooltip
+                            formatter={(v: any) => [`${Number(v).toFixed(2)}%`, "Threshold consumed"]}
+                            cursor={{ fill: C.softer }}
+                        />
+                        <Bar dataKey="value" name="% of threshold consumed" radius={[4, 4, 0, 0]}>
+                            {composition.map((c) => (
+                                <Cell key={c.name} fill={c.color} />
+                            ))}
+                            <LabelList
+                                dataKey="value"
+                                position="top"
+                                formatter={(v: any) => `${Number(v).toFixed(1)}%`}
+                                style={{ fontSize: 10, fontWeight: 700, fill: C.ink }}
+                            />
+                        </Bar>
                     </BarChart>
                 </ChartCard>
+                <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9.5, color: C.muted, flexWrap: "wrap" }}>
+                    {composition.map((c) => (
+                        <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: c.color, display: "inline-block" }} />
+                            <span style={{ color: C.ink, fontWeight: 700 }}>{c.name}</span>
+                            <span>weight {c.weight}%</span>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -880,25 +910,37 @@ function CollisionsPage({ carrierProfile }: { carrierProfile: CarrierProfile }) 
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 12 }}>
-                <ChartCard title="Severity Mix">
+                <ChartCard title="Collisions by Severity">
                     {allZero ? (
                         <div style={{ padding: "40px 0", textAlign: "center", fontSize: 10.5, color: C.muted, fontStyle: "italic" }}>
                             No collisions recorded in the review window.
                         </div>
                     ) : (
-                        <PieChart width={280} height={220}>
+                        <PieChart width={300} height={240}>
                             <Pie
                                 data={breakdown}
                                 dataKey="value" nameKey="name"
-                                cx="50%" cy="50%"
-                                innerRadius={48} outerRadius={86}
+                                cx="50%" cy="46%"
+                                innerRadius={48} outerRadius={84}
                                 paddingAngle={2}
-                                label={(e: any) => `${e.value}`}
-                                labelLine={false}
-                                fontSize={10}
+                                label={(e: any) =>
+                                    `${e.name}: ${e.value} (${total > 0 ? Math.round((e.value / total) * 100) : 0}%)`
+                                }
+                                labelLine={{ stroke: C.soft, strokeWidth: 0.6 }}
+                                fontSize={9.5}
                             >
                                 {breakdown.map((b, i) => <Cell key={i} fill={b.color} />)}
                             </Pie>
+                            <Tooltip formatter={(v: any, n: any) => [`${v} collision${v === 1 ? "" : "s"}`, n]} />
+                            <Legend
+                                verticalAlign="bottom"
+                                iconType="square"
+                                wrapperStyle={{ fontSize: 10, fontWeight: 600 }}
+                                formatter={(value: string) => {
+                                    const row = breakdown.find((b) => b.name === value);
+                                    return `${value} · ${row?.value ?? 0}`;
+                                }}
+                            />
                         </PieChart>
                     )}
                 </ChartCard>
@@ -1002,25 +1044,37 @@ function ConvictionsPage({ carrierProfile }: { carrierProfile: CarrierProfile })
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 12 }}>
-                <ChartCard title="Category Mix">
+                <ChartCard title="Convictions by Category">
                     {allZero ? (
                         <div style={{ padding: "40px 0", textAlign: "center", fontSize: 10.5, color: C.muted, fontStyle: "italic" }}>
                             No convictions recorded in the review window.
                         </div>
                     ) : (
-                        <PieChart width={280} height={220}>
+                        <PieChart width={300} height={240}>
                             <Pie
                                 data={breakdown}
                                 dataKey="value" nameKey="name"
-                                cx="50%" cy="50%"
-                                innerRadius={48} outerRadius={86}
+                                cx="50%" cy="46%"
+                                innerRadius={48} outerRadius={84}
                                 paddingAngle={2}
-                                label={(e: any) => `${e.value}`}
-                                labelLine={false}
-                                fontSize={10}
+                                label={(e: any) =>
+                                    `${e.name}: ${e.value} (${total > 0 ? Math.round((e.value / total) * 100) : 0}%)`
+                                }
+                                labelLine={{ stroke: C.soft, strokeWidth: 0.6 }}
+                                fontSize={9.5}
                             >
                                 {breakdown.map((b, i) => <Cell key={i} fill={b.color} />)}
                             </Pie>
+                            <Tooltip formatter={(v: any, n: any) => [`${v} conviction${v === 1 ? "" : "s"}`, n]} />
+                            <Legend
+                                verticalAlign="bottom"
+                                iconType="square"
+                                wrapperStyle={{ fontSize: 10, fontWeight: 600 }}
+                                formatter={(value: string) => {
+                                    const row = breakdown.find((b) => b.name === value);
+                                    return `${value} · ${row?.value ?? 0}`;
+                                }}
+                            />
                         </PieChart>
                     )}
                 </ChartCard>
@@ -1126,9 +1180,9 @@ function InspectionsPagePdf({
     }, [cvorPeriodicReports]);
 
     const oosBars = [
-        { name: "Overall", carrier: oosOverall, threshold: cvorOosThresholds.overall },
-        { name: "Vehicle", carrier: oosVehicle, threshold: cvorOosThresholds.vehicle },
-        { name: "Driver",  carrier: oosDriver,  threshold: cvorOosThresholds.driver },
+        { name: "Overall OOS", carrier: oosOverall, threshold: cvorOosThresholds.overall },
+        { name: "Vehicle OOS", carrier: oosVehicle, threshold: cvorOosThresholds.vehicle },
+        { name: "Driver OOS",  carrier: oosDriver,  threshold: cvorOosThresholds.driver },
     ];
 
     return (
@@ -1149,35 +1203,69 @@ function InspectionsPagePdf({
                 <Stat label="Driver OOS"  value={`${oosDriver.toFixed(1)}%`}  sub={`Threshold ${cvorOosThresholds.driver}%`}  tone={driverTone} />
             </div>
 
-            <ChartCard title="OOS Rate vs MTO Threshold">
+            <ChartCard title="Carrier OOS Rate vs MTO Threshold (% of inspections out-of-service)">
                 <BarChart
-                    width={CHART_W} height={200}
-                    data={oosBars} margin={{ top: 6, right: 12, bottom: 12, left: 0 }}
+                    width={CHART_W} height={210}
+                    data={oosBars} margin={{ top: 18, right: 16, bottom: 8, left: 8 }}
+                    barCategoryGap="22%"
                 >
                     <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                    <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: C.muted, fontWeight: 700 }} />
-                    <YAxis tick={{ fontSize: 9.5, fill: C.soft }} width={28} unit="%" />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Bar dataKey="carrier"   name="Carrier"   fill={C.accent} radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="threshold" name="Threshold" fill={C.gold}   radius={[3, 3, 0, 0]} />
+                    <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 10.5, fill: C.muted, fontWeight: 700 }}
+                        tickMargin={8}
+                    />
+                    <YAxis
+                        tick={{ fontSize: 9.5, fill: C.soft }}
+                        width={42}
+                        unit="%"
+                        label={{ value: "OOS rate (%)", angle: -90, position: "insideLeft", offset: 16, fontSize: 9.5, fill: C.soft, fontWeight: 700 }}
+                    />
+                    <Tooltip formatter={(v: any) => [`${Number(v).toFixed(1)}%`, ""]} cursor={{ fill: C.softer }} />
+                    <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="square" />
+                    <Bar dataKey="carrier" name="Carrier" fill={C.accent} radius={[4, 4, 0, 0]}>
+                        <LabelList
+                            dataKey="carrier"
+                            position="top"
+                            formatter={(v: any) => `${Number(v).toFixed(1)}%`}
+                            style={{ fontSize: 10, fontWeight: 700, fill: C.ink }}
+                        />
+                    </Bar>
+                    <Bar dataKey="threshold" name="MTO threshold" fill={C.gold} radius={[4, 4, 0, 0]}>
+                        <LabelList
+                            dataKey="threshold"
+                            position="top"
+                            formatter={(v: any) => `${v}%`}
+                            style={{ fontSize: 10, fontWeight: 600, fill: C.muted }}
+                        />
+                    </Bar>
                 </BarChart>
             </ChartCard>
 
             {trend.length > 1 && (
-                <ChartCard title="OOS Trend across CVOR Pulls">
+                <ChartCard title="OOS Trend across CVOR Pulls (last 12 periods, % out-of-service)">
                     <LineChart
-                        width={CHART_W} height={200}
-                        data={trend} margin={{ top: 6, right: 12, bottom: 24, left: 0 }}
+                        width={CHART_W} height={210}
+                        data={trend} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                        <XAxis dataKey="label" tick={{ fontSize: 9.5, fill: C.muted, fontWeight: 600 }} />
-                        <YAxis tick={{ fontSize: 9.5, fill: C.soft }} width={26} unit="%" />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
-                        <Line type="monotone" dataKey="overall" name="Overall" stroke={C.accent} strokeWidth={2.5} dot={{ r: 3 }} />
-                        <Line type="monotone" dataKey="vehicle" name="Vehicle" stroke={C.orange} strokeWidth={2}   dot={{ r: 2.5 }} />
-                        <Line type="monotone" dataKey="driver"  name="Driver"  stroke={C.indigo} strokeWidth={2}   strokeDasharray="4 3" dot={{ r: 2.5 }} />
+                        <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 9.5, fill: C.muted, fontWeight: 600 }}
+                            tickMargin={8}
+                        />
+                        <YAxis
+                            tick={{ fontSize: 9.5, fill: C.soft }}
+                            width={42}
+                            unit="%"
+                            label={{ value: "OOS rate (%)", angle: -90, position: "insideLeft", offset: 16, fontSize: 9.5, fill: C.soft, fontWeight: 700 }}
+                        />
+                        <Tooltip formatter={(v: any) => [`${Number(v).toFixed(1)}%`, ""]} />
+                        <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="line" />
+                        <ReferenceLine y={cvorOosThresholds.overall} stroke={TONE.critical.fg} strokeDasharray="3 3" label={{ value: `Overall threshold ${cvorOosThresholds.overall}%`, fontSize: 8.5, fill: TONE.critical.fg, position: "right" }} />
+                        <Line type="monotone" dataKey="overall" name="Overall OOS" stroke={C.accent} strokeWidth={2.5} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="vehicle" name="Vehicle OOS" stroke={C.orange} strokeWidth={2}   dot={{ r: 2.5 }} />
+                        <Line type="monotone" dataKey="driver"  name="Driver OOS"  stroke={C.indigo} strokeWidth={2}   strokeDasharray="4 3" dot={{ r: 2.5 }} />
                     </LineChart>
                 </ChartCard>
             )}
@@ -1234,19 +1322,27 @@ function TravelPage({ cvorTravelKm }: { cvorTravelKm: CvorTravelKmRow[] }) {
                 </div>
             )}
 
-            <ChartCard title="Travel by Jurisdiction (millions of km)">
+            <ChartCard title="Travel by Jurisdiction (millions of km, by reporting period)">
                 <LineChart
-                    width={CHART_W} height={210}
-                    data={trend} margin={{ top: 6, right: 12, bottom: 24, left: 0 }}
+                    width={CHART_W} height={220}
+                    data={trend} margin={{ top: 10, right: 16, bottom: 8, left: 8 }}
                 >
                     <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.muted, fontWeight: 600 }} />
-                    <YAxis tick={{ fontSize: 9, fill: C.soft }} width={26} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 10 }} />
-                    <Line type="monotone" dataKey="ontario" name="Ontario"  stroke={C.accent} strokeWidth={2.5} dot={{ r: 2.5 }} />
-                    <Line type="monotone" dataKey="canada"  name="Canada"   stroke={C.indigo} strokeWidth={2}   dot={{ r: 2 }} />
-                    <Line type="monotone" dataKey="usMexico" name="US / MX" stroke={C.orange} strokeWidth={2}   strokeDasharray="4 3" dot={{ r: 2 }} />
+                    <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: C.muted, fontWeight: 600 }}
+                        tickMargin={8}
+                    />
+                    <YAxis
+                        tick={{ fontSize: 9, fill: C.soft }}
+                        width={48}
+                        label={{ value: "Million km", angle: -90, position: "insideLeft", offset: 16, fontSize: 9.5, fill: C.soft, fontWeight: 700 }}
+                    />
+                    <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} M km`, ""]} />
+                    <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="line" />
+                    <Line type="monotone" dataKey="ontario"  name="Ontario"        stroke={C.accent} strokeWidth={2.5} dot={{ r: 2.5 }} />
+                    <Line type="monotone" dataKey="canada"   name="Rest of Canada" stroke={C.indigo} strokeWidth={2}   dot={{ r: 2 }} />
+                    <Line type="monotone" dataKey="usMexico" name="US / Mexico"    stroke={C.orange} strokeWidth={2}   strokeDasharray="4 3" dot={{ r: 2 }} />
                 </LineChart>
             </ChartCard>
 
@@ -1400,21 +1496,30 @@ function InterventionPage({
             </div>
 
             {trend.length > 1 && (
-                <ChartCard title="Rating Trend across CVOR Pulls">
+                <ChartCard title="Carrier CVOR Rating Trend vs MTO Thresholds (% of threshold consumed)">
                     <LineChart
-                        width={CHART_W} height={200}
-                        data={trend} margin={{ top: 6, right: 12, bottom: 24, left: 0 }}
+                        width={CHART_W} height={210}
+                        data={trend} margin={{ top: 10, right: 16, bottom: 8, left: 8 }}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.muted, fontWeight: 600 }} />
-                        <YAxis domain={[0, cap]} tick={{ fontSize: 9, fill: C.soft }} width={28} unit="%" />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 9, fill: C.muted, fontWeight: 600 }}
+                            tickMargin={8}
+                        />
+                        <YAxis
+                            domain={[0, cap]}
+                            tick={{ fontSize: 9, fill: C.soft }}
+                            width={42}
+                            unit="%"
+                            label={{ value: "Rating (%)", angle: -90, position: "insideLeft", offset: 16, fontSize: 9.5, fill: C.soft, fontWeight: 700 }}
+                        />
+                        <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)}%`, ""]} />
+                        <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconType="line" />
+                        <ReferenceLine y={cvorThresholds.showCause}    stroke={TONE.critical.fg} strokeDasharray="3 3" label={{ value: `Show Cause ${cvorThresholds.showCause}%`,    fontSize: 8.5, fill: TONE.critical.fg, position: "right" }} />
+                        <ReferenceLine y={cvorThresholds.intervention} stroke={TONE.concern.fg}  strokeDasharray="3 3" label={{ value: `Intervention ${cvorThresholds.intervention}%`, fontSize: 8.5, fill: TONE.concern.fg,  position: "right" }} />
+                        <ReferenceLine y={cvorThresholds.warning}      stroke={TONE.moderate.fg} strokeDasharray="3 3" label={{ value: `Warning ${cvorThresholds.warning}%`,           fontSize: 8.5, fill: TONE.moderate.fg, position: "right" }} />
                         <Line type="monotone" dataKey="rating" name="Carrier rating" stroke={C.accent} strokeWidth={2.5} dot={{ r: 3 }} />
-                        {/* Threshold reference lines */}
-                        <Line dataKey={() => cvorThresholds.showCause}    name={`Show Cause ${cvorThresholds.showCause}%`}       stroke={TONE.critical.fg} strokeDasharray="4 3" strokeWidth={1} dot={false} legendType="line" />
-                        <Line dataKey={() => cvorThresholds.intervention} name={`Intervention ${cvorThresholds.intervention}%`}  stroke={TONE.concern.fg}  strokeDasharray="4 3" strokeWidth={1} dot={false} legendType="line" />
-                        <Line dataKey={() => cvorThresholds.warning}      name={`Warning ${cvorThresholds.warning}%`}            stroke={TONE.moderate.fg} strokeDasharray="4 3" strokeWidth={1} dot={false} legendType="line" />
                     </LineChart>
                 </ChartCard>
             )}

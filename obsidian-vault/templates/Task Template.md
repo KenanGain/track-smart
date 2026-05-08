@@ -1,10 +1,10 @@
 ---
-name: {{title}}
-description: 
+name: { { title } }
+description:
 type: task
 tags: [task]
 status: todo
-created: {{date:YYYY-MM-DD}}
+created: { { date:YYYY-MM-DD } }
 ---
 
 # {{title}}
@@ -18,12 +18,12 @@ Why does this matter?
 
 ## Acceptance criteria
 
-- [ ] 
-- [ ] 
+- [ ]
+- [ ]
 
 ## Notes / scratch
 
-- 
+-
 
 ## Related
 

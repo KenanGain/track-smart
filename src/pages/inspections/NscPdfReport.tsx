@@ -8,7 +8,7 @@
 import { useMemo } from "react";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-    Cell,
+    Cell, LabelList,
 } from "recharts";
 import {
     A4_W, A4_H, PAGE_PAD_X, CHART_W,
@@ -428,7 +428,7 @@ function Page({
                 </div>
                 <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 8.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 1.4 }}>
-                        Subject Carrier
+                        Carrier
                     </div>
                     <div style={{ fontSize: 10.5, fontWeight: 700, color: C.ink, marginTop: 1 }}>
                         {carrierName}
@@ -574,7 +574,7 @@ function CoverPage({
                     }}
                 >
                     <div style={{ fontSize: 8.5, fontWeight: 800, color: C.gold, textTransform: "uppercase", letterSpacing: 2 }}>
-                        Subject Carrier
+                        Carrier
                     </div>
                     <div
                         style={{
@@ -828,21 +828,58 @@ function ExecutiveSummaryPage({
 
             <div>
                 <Eyebrow>Score Composition</Eyebrow>
-                <ChartCard>
+                <ChartCard title={`Components contributing to ${snapshot.headlineLabel.toLowerCase()}`}>
                     <BarChart
-                        width={CHART_W} height={210}
-                        data={snapshot.scoreBreakdown.map(b => ({ name: b.name, value: b.value, color: b.color }))}
-                        margin={{ top: 6, right: 12, bottom: 38, left: 0 }}
+                        width={CHART_W} height={230}
+                        data={snapshot.scoreBreakdown.map(b => ({ name: b.name, value: b.value, events: b.events ?? 0, color: b.color }))}
+                        margin={{ top: 18, right: 16, bottom: 8, left: 8 }}
                     >
                         <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                        <XAxis dataKey="name" tick={{ fontSize: 9, fill: C.muted, fontWeight: 600 }} angle={-25} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fontSize: 9.5, fill: C.soft }} width={32} />
-                        <Tooltip />
-                        <Bar dataKey="value" name="Component" radius={[3, 3, 0, 0]}>
+                        <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 9.5, fill: C.muted, fontWeight: 600 }}
+                            angle={-22}
+                            textAnchor="end"
+                            interval={0}
+                            height={56}
+                            tickMargin={6}
+                        />
+                        <YAxis
+                            tick={{ fontSize: 9.5, fill: C.soft }}
+                            width={48}
+                            label={{ value: snapshot.headlineLabel, angle: -90, position: "insideLeft", offset: 16, fontSize: 9.5, fill: C.soft, fontWeight: 700 }}
+                        />
+                        <Tooltip
+                            cursor={{ fill: C.softer }}
+                            formatter={(v: any, _n: any, p: any) => {
+                                const events = p?.payload?.events;
+                                const score = Number(v).toFixed(2);
+                                return events ? [`${score} (${events} event${events === 1 ? "" : "s"})`, "Score"] : [score, "Score"];
+                            }}
+                        />
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                             {snapshot.scoreBreakdown.map((b, i) => <Cell key={i} fill={b.color} />)}
+                            <LabelList
+                                dataKey="value"
+                                position="top"
+                                formatter={(v: any) => Number(v).toFixed(2)}
+                                style={{ fontSize: 10, fontWeight: 700, fill: C.ink }}
+                            />
                         </Bar>
                     </BarChart>
                 </ChartCard>
+                <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9.5, color: C.muted, flexWrap: "wrap" }}>
+                    {snapshot.scoreBreakdown.map((b) => (
+                        <div key={b.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: b.color, display: "inline-block" }} />
+                            <span style={{ color: C.ink, fontWeight: 700 }}>{b.name}</span>
+                            <span style={{ fontFamily: MONO }}>{b.value.toFixed(2)}</span>
+                            {b.events !== undefined && (
+                                <span>· {b.events} event{b.events === 1 ? "" : "s"}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

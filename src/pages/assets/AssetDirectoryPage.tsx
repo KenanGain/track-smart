@@ -1,15 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { calculateAssetComplianceStats } from '@/utils/compliance-utils';
 import {
     Search, Plus, Download, MoreHorizontal,
     Check, Edit2, FileText,
     RotateCcw, Trash2, Copy, Calendar, Truck,
     AlertCircle, Briefcase, LayoutGrid, XCircle,
-    Columns, ChevronDown
+    Columns, ChevronDown,
+    ArrowUp, ArrowDown, ArrowUpDown, X as XIcon, Filter,
 } from 'lucide-react';
 import { INITIAL_ASSETS, type Asset } from './assets.data';
 import { AssetModal } from './AssetModal';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
+import { PaginationBar } from '@/components/ui/DataListToolbar';
 
 // --- UI Utility ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
@@ -98,6 +100,60 @@ const TH = ({ children, className, align = 'left' }: { children?: React.ReactNod
     </th>
 );
 
+// Active filter chip — appears in the toolbar's active-filter row.
+const FilterChip = ({ label, onClear }: { label: string; onClear: () => void }) => (
+    <span className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-medium">
+        {label}
+        <button
+            type="button"
+            onClick={onClear}
+            className="p-0.5 rounded hover:bg-blue-100 transition-colors"
+            aria-label={`Clear filter: ${label}`}
+        >
+            <XIcon size={11} />
+        </button>
+    </span>
+);
+
+// Sortable header — click to cycle asc → desc.
+const SortTH = ({
+    id, label, current, dir, onClick, className, align = 'left',
+}: {
+    id: string;
+    label: string;
+    current: string;
+    dir: 'asc' | 'desc';
+    onClick: (id: string) => void;
+    className?: string;
+    align?: string;
+}) => {
+    const active = current === id;
+    return (
+        <th
+            onClick={() => onClick(id)}
+            className={cn(
+                'px-4 py-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none transition-colors',
+                active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700',
+                align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
+                className
+            )}
+        >
+            <span className={cn(
+                'inline-flex items-center gap-1.5',
+                align === 'right' && 'justify-end w-full',
+                align === 'center' && 'justify-center w-full'
+            )}>
+                {label}
+                {active ? (
+                    dir === 'asc' ? <ArrowUp size={11} className="text-blue-600" /> : <ArrowDown size={11} className="text-blue-600" />
+                ) : (
+                    <ArrowUpDown size={11} className="text-slate-300" />
+                )}
+            </span>
+        </th>
+    );
+};
+
 const TD = ({ children, className, align = 'left' }: { children?: React.ReactNode; className?: string; align?: string }) => (
     <td className={cn(
         'px-4 py-3 text-sm whitespace-nowrap align-middle',
@@ -109,7 +165,18 @@ const TD = ({ children, className, align = 'left' }: { children?: React.ReactNod
 );
 
 // --- Main Page Component ---
-export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: { isEmbedded?: boolean; assets?: Asset[] }) {
+export function AssetDirectoryPage({
+    isEmbedded = false,
+    assets: assetsProp,
+    onDetailViewChange,
+}: {
+    isEmbedded?: boolean;
+    assets?: Asset[];
+    /** Fired whenever the embedded asset detail view opens or closes — lets
+     *  the parent (CarrierProfilePage) hide its own breadcrumb/tabs while
+     *  the user is on the detail page. */
+    onDetailViewChange?: (active: boolean) => void;
+}) {
     const [assets, setAssets] = useState<Asset[]>(assetsProp ?? INITIAL_ASSETS);
     const [activeTab, setActiveTab] = useState('all');
     const [search, setSearch] = useState("");
@@ -121,6 +188,26 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
     const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
     const [selectedAsset, setSelectedAsset] = useState<DetailedAsset | null>(null);
 
+    // Notify the parent (CarrierProfilePage) when the embedded detail view
+    // opens or closes so it can hide its own carrier breadcrumb + tabs while
+    // the user is reading a single asset.
+    useEffect(() => {
+        onDetailViewChange?.(selectedAsset !== null);
+    }, [selectedAsset, onDetailViewChange]);
+
+
+    // Pagination
+    const [page, setPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+
+    // Sorting
+    const [sortKey, setSortKey] = useState<string>('unitNumber');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const handleSort = (key: string) => {
+        if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        else { setSortKey(key); setSortDir('asc'); }
+    };
+
     const stats = useMemo(() => ({
         total: assets.length,
         active: assets.filter(a => a.operationalStatus === 'Active').length,
@@ -131,17 +218,70 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
     }), [assets]);
 
     const filteredAssets = useMemo(() => {
-        return assets.filter(a => {
+        const filtered = assets.filter(a => {
             if (activeTab === 'trucks' && a.assetCategory !== 'CMV') return false;
             if (activeTab === 'trailers' && a.assetType !== 'Trailer') return false;
             if (activeStatusFilter !== 'all' && a.operationalStatus !== activeStatusFilter) return false;
             if (search) {
                 const s = search.toLowerCase();
-                return [a.unitNumber, a.vin, a.make, a.model, a.plateNumber].some(v => v?.toLowerCase().includes(s));
+                return [
+                    a.unitNumber, a.vin, a.make, a.model,
+                    a.plateNumber, a.plateJurisdiction,
+                    a.assetType, a.vehicleType, a.color,
+                    String(a.year ?? ''),
+                ].some(v => v?.toString().toLowerCase().includes(s));
             }
             return true;
         });
-    }, [assets, search, activeTab, activeStatusFilter]);
+
+        if (!sortKey) return filtered;
+        const dir = sortDir === 'asc' ? 1 : -1;
+        const valueOf = (a: Asset, k: string): string | number => {
+            switch (k) {
+                case 'unitNumber': return (a.unitNumber || '').toLowerCase();
+                case 'type':       return `${a.assetType || ''} ${a.vehicleType || ''}`.toLowerCase();
+                case 'plate':      return (a.plateNumber || '').toLowerCase();
+                case 'plateExpiry':return a.registrationExpiryDate || '';
+                case 'vin':        return (a.vin || '').toLowerCase();
+                case 'makeModel':  return `${a.make || ''} ${a.model || ''}`.toLowerCase();
+                case 'year':       return a.year ?? 0;
+                case 'dateAdded':  return a.insuranceAddedDate || '';
+                case 'ownership':  return (a.financialStructure || '').toLowerCase();
+                case 'status':     return (a.operationalStatus || '').toLowerCase();
+                default:           return '';
+            }
+        };
+        return [...filtered].sort((a, b) => {
+            const av = valueOf(a, sortKey);
+            const bv = valueOf(b, sortKey);
+            if (av < bv) return -1 * dir;
+            if (av > bv) return 1 * dir;
+            return 0;
+        });
+    }, [assets, search, activeTab, activeStatusFilter, sortKey, sortDir]);
+
+    const hasActiveFilters = search.length > 0 || activeStatusFilter !== 'all' || activeTab !== 'all';
+    const clearAllFilters = () => {
+        setSearch('');
+        setActiveStatusFilter('all');
+        setActiveTab('all');
+    };
+
+    // Reset to page 1 whenever filters change so the user always lands on visible rows.
+    useEffect(() => {
+        setPage(1);
+    }, [search, activeTab, activeStatusFilter, rowsPerPage]);
+
+    // Clamp page if filters trim the list shorter than the current page.
+    useEffect(() => {
+        const max = Math.max(1, Math.ceil(filteredAssets.length / rowsPerPage));
+        if (page > max) setPage(max);
+    }, [filteredAssets.length, rowsPerPage, page]);
+
+    const pagedAssets = useMemo(() => {
+        const start = (page - 1) * rowsPerPage;
+        return filteredAssets.slice(start, start + rowsPerPage);
+    }, [filteredAssets, page, rowsPerPage]);
 
     const handleSaveAsset = (data: any) => {
         setIsSaving(true);
@@ -172,13 +312,13 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
     return (
         <>
             {selectedAsset ? (
-                <AssetDetailView 
-                    asset={selectedAsset} 
-                    onBack={() => setSelectedAsset(null)} 
+                <AssetDetailView
+                    asset={selectedAsset}
+                    onBack={() => setSelectedAsset(null)}
                     onEdit={() => {
                         setEditingAsset(selectedAsset);
                         setIsModalOpen(true);
-                    }} 
+                    }}
                 />
             ) : (
                 <div className={isEmbedded ? "w-full flex flex-col bg-[#F8FAFC] text-slate-900" : "h-full flex flex-col bg-[#F8FAFC] text-slate-900 overflow-hidden"}>
@@ -191,102 +331,160 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
                                 </div>
                             )}
                             
-                            {/* KPI CARDS (MOVED TO TOP) */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                                <button onClick={() => setActiveStatusFilter('all')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'all' ? 'ring-1 ring-blue-500 border-l-blue-500' : 'border-l-blue-500 border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-blue-50 text-blue-600"><LayoutGrid className="w-4 h-4" /></div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Total<br />Assets</span>
-                                    </div>
-                                    <div className="text-xl font-bold text-slate-900">{stats.total}</div>
-                                </button>
-                                <button onClick={() => setActiveStatusFilter('Active')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'Active' ? 'ring-1 ring-emerald-500 border-l-emerald-500' : 'border-l-emerald-500 border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-emerald-50 text-emerald-600"><Check className="w-4 h-4" /></div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Active<br />Assets</span>
-                                    </div>
-                                    <div className="text-xl font-bold text-slate-900">{stats.active}</div>
-                                </button>
-                                <button onClick={() => setActiveStatusFilter('Maintenance')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'Maintenance' ? 'ring-1 ring-rose-500 border-l-rose-500' : 'border-l-rose-500 border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-rose-50 text-rose-600"><RotateCcw className="w-4 h-4" /></div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">In<br />Maintenance</span>
-                                    </div>
-                                    <div className="text-xl font-bold text-slate-900">{stats.maintenance}</div>
-                                </button>
-                                <button onClick={() => setActiveStatusFilter('OutOfService')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'OutOfService' ? 'ring-1 ring-amber-500 border-l-amber-500' : 'border-l-amber-500 border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-amber-50 text-amber-600"><AlertCircle className="w-4 h-4" /></div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Out of<br />Service</span>
-                                    </div>
-                                    <div className="text-xl font-bold text-slate-900">{stats.outOfService}</div>
-                                </button>
-                                <button onClick={() => setActiveStatusFilter('Drafted')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'Drafted' ? 'ring-1 ring-blue-400 border-l-blue-400' : 'border-l-blue-400 border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-blue-50 text-blue-500"><FileText className="w-4 h-4" /></div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Draft<br />Assets</span>
-                                    </div>
-                                    <div className="text-xl font-bold text-slate-900">{stats.draft}</div>
-                                </button>
-                                <button onClick={() => setActiveStatusFilter('Deactivated')} className={`flex items-center justify-between p-4 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeStatusFilter === 'Deactivated' ? 'ring-1 ring-slate-500 border-l-slate-500' : 'border-l-slate-500 border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-full bg-slate-100 text-slate-600"><XCircle className="w-4 h-4" /></div>
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Deactivated<br />Assets</span>
-                                    </div>
-                                    <div className="text-xl font-bold text-slate-900">{stats.deactivated}</div>
-                                </button>
+                            {/* KPI CARDS — single-line labels, tighter padding, clearer active state */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                {[
+                                    { id: 'all',          label: 'Total Assets',  value: stats.total,        Icon: LayoutGrid, accent: 'blue'    },
+                                    { id: 'Active',       label: 'Active',        value: stats.active,       Icon: Check,      accent: 'emerald' },
+                                    { id: 'Maintenance',  label: 'Maintenance',   value: stats.maintenance,  Icon: RotateCcw,  accent: 'rose'    },
+                                    { id: 'OutOfService', label: 'Out of Service',value: stats.outOfService, Icon: AlertCircle,accent: 'amber'   },
+                                    { id: 'Drafted',      label: 'Draft',         value: stats.draft,        Icon: FileText,   accent: 'sky'     },
+                                    { id: 'Deactivated',  label: 'Deactivated',   value: stats.deactivated,  Icon: XCircle,    accent: 'slate'   },
+                                ].map((card) => {
+                                    const active = activeStatusFilter === card.id;
+                                    const tones: Record<string, { iconBg: string; iconFg: string; bar: string; ring: string }> = {
+                                        blue:    { iconBg: 'bg-blue-50',    iconFg: 'text-blue-600',    bar: 'bg-blue-500',    ring: 'ring-blue-500/30' },
+                                        emerald: { iconBg: 'bg-emerald-50', iconFg: 'text-emerald-600', bar: 'bg-emerald-500', ring: 'ring-emerald-500/30' },
+                                        rose:    { iconBg: 'bg-rose-50',    iconFg: 'text-rose-600',    bar: 'bg-rose-500',    ring: 'ring-rose-500/30' },
+                                        amber:   { iconBg: 'bg-amber-50',   iconFg: 'text-amber-600',   bar: 'bg-amber-500',   ring: 'ring-amber-500/30' },
+                                        sky:     { iconBg: 'bg-sky-50',     iconFg: 'text-sky-600',     bar: 'bg-sky-500',     ring: 'ring-sky-500/30' },
+                                        slate:   { iconBg: 'bg-slate-100',  iconFg: 'text-slate-600',   bar: 'bg-slate-500',   ring: 'ring-slate-500/30' },
+                                    };
+                                    const t = tones[card.accent];
+                                    return (
+                                        <button
+                                            key={card.id}
+                                            onClick={() => setActiveStatusFilter(card.id)}
+                                            className={cn(
+                                                'relative flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm transition-all overflow-hidden text-left',
+                                                'hover:shadow hover:border-slate-300',
+                                                active && `ring-2 ${t.ring} border-transparent`
+                                            )}
+                                        >
+                                            <span className={cn('absolute left-0 top-0 bottom-0 w-1 transition-all', t.bar, active ? 'opacity-100' : 'opacity-30')} />
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', t.iconBg, t.iconFg)}>
+                                                    <card.Icon className="w-4 h-4" />
+                                                </div>
+                                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">
+                                                    {card.label}
+                                                </span>
+                                            </div>
+                                            <div className="text-2xl font-bold text-slate-900 tabular-nums shrink-0">{card.value}</div>
+                                        </button>
+                                    );
+                                })}
                             </div>
-                            
-                            <div className="flex flex-col gap-4 w-full mt-2">
-                                {/* TOOLBAR TOP: SEARCH BAR ALONE */}
-                                <div className="relative w-full sm:w-80 shrink-0">
-                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                    <Input
-                                        placeholder="Search by Unit #, VIN or Type..."
-                                        className="pl-10 h-10 text-[14px] bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all w-full leading-relaxed rounded-lg"
-                                        value={search}
-                                        onChange={(e) => setSearch(e.target.value)}
-                                    />
-                                </div>
 
-                                {/* TOOLBAR BOTTOM: TABS AND ACTIONS */}
-                                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 w-full">
-                                    {/* TABS */}
-                                    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide w-full lg:w-auto shrink-0">
-                                        {TABS.map((tab) => (
+                            {/* TOOLBAR — search row + filter row, wraps cleanly on small screens */}
+                            <div className="flex flex-col gap-3 mt-1">
+                                {/* Top row: search (left, flexible) · primary actions (right) */}
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+                                    <div className="relative flex-1 min-w-0">
+                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <Input
+                                            placeholder="Search by Unit #, VIN, make, model, plate, year…"
+                                            className="pl-10 pr-10 h-10 text-[13px] bg-white shadow-sm border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all w-full rounded-lg"
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                        />
+                                        {search && (
                                             <button
-                                                key={tab.id}
-                                                onClick={() => { setActiveTab(tab.id); }}
-                                                className={cn(
-                                                    "flex items-center justify-center px-4 h-9 text-[13px] font-semibold transition-all rounded-lg whitespace-nowrap",
-                                                    activeTab === tab.id 
-                                                        ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' 
-                                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
-                                                )}
+                                                type="button"
+                                                onClick={() => setSearch('')}
+                                                aria-label="Clear search"
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                                             >
-                                                {tab.label}
+                                                <XIcon size={14} />
                                             </button>
-                                        ))}
+                                        )}
                                     </div>
-
-                                    <div className="flex items-center gap-4 w-full lg:w-auto shrink-0 justify-start lg:justify-end overflow-x-auto scrollbar-hide">
-                                        {/* DIVIDER */}
-                                        <div className="hidden lg:block w-px h-6 bg-slate-200"></div>
-
-                                        {/* ACTIONS */}
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            <Button variant="outline" size="sm" className="h-9 gap-2 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 flex-none justify-center font-medium shadow-sm rounded-lg">
-                                                <Columns size={14} className="text-slate-500" /> Columns <ChevronDown size={14} className="ml-0.5 -mr-1 text-slate-400" />
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="h-9 gap-2 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 flex-none justify-center font-medium shadow-sm rounded-lg">
-                                                <Download size={14} className="text-slate-500" /> Export
-                                            </Button>
-                                            <Button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} size="sm" className="h-9 gap-2 px-4 shadow-sm flex-none justify-center bg-[#2563eb] hover:bg-blue-600 text-white font-medium rounded-lg">
-                                                <Plus size={16} /> Add Asset
-                                            </Button>
-                                        </div>
+                                    <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                                        <Button variant="outline" size="sm" className="h-10 gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-sm rounded-lg">
+                                            <Columns size={14} className="text-slate-500" /><span className="hidden sm:inline">Columns</span> <ChevronDown size={13} className="text-slate-400" />
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="h-10 gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-sm rounded-lg">
+                                            <Download size={14} className="text-slate-500" /><span className="hidden sm:inline">Export</span>
+                                        </Button>
+                                        <Button onClick={() => { setEditingAsset(null); setIsModalOpen(true); }} size="sm" className="h-10 gap-1.5 px-4 shadow-sm bg-[#2563eb] hover:bg-blue-700 text-white font-semibold rounded-lg">
+                                            <Plus size={15} /> <span className="hidden sm:inline">Add Asset</span><span className="sm:hidden">Add</span>
+                                        </Button>
                                     </div>
                                 </div>
+
+                                {/* Bottom row: All/Trucks/Trailers segmented switcher (scrolls horizontally on mobile) */}
+                                <div className="flex items-center gap-3 -mx-1 px-1 overflow-x-auto scrollbar-hide">
+                                    <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg shrink-0">
+                                        {TABS.map((tab) => {
+                                            const active = activeTab === tab.id;
+                                            const count = tab.id === 'all'
+                                                ? assets.length
+                                                : tab.id === 'trucks'
+                                                    ? assets.filter((a) => a.assetCategory === 'CMV').length
+                                                    : assets.filter((a) => a.assetType === 'Trailer').length;
+                                            return (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => setActiveTab(tab.id)}
+                                                    className={cn(
+                                                        'inline-flex items-center gap-2 h-8 px-3.5 rounded-md text-[13px] font-semibold transition-all whitespace-nowrap',
+                                                        active
+                                                            ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                                                            : 'text-slate-600 hover:text-slate-900'
+                                                    )}
+                                                >
+                                                    <tab.icon size={14} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                                                    <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                                                    <span className="sm:hidden">{tab.id === 'all' ? 'All' : tab.id === 'trucks' ? 'Trucks' : 'Trailers'}</span>
+                                                    <span
+                                                        className={cn(
+                                                            'inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full text-[10px] font-bold',
+                                                            active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                                                        )}
+                                                    >
+                                                        {count}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Active filter chips */}
+                                {hasActiveFilters && (
+                                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                                        <Filter size={13} className="text-slate-400 shrink-0" />
+                                        <span className="text-slate-500 font-medium shrink-0">Active filters:</span>
+                                        {activeTab !== 'all' && (
+                                            <FilterChip
+                                                label={`Category: ${activeTab === 'trucks' ? 'Trucks (CMV)' : 'Trailers (Non-CMV)'}`}
+                                                onClear={() => setActiveTab('all')}
+                                            />
+                                        )}
+                                        {activeStatusFilter !== 'all' && (
+                                            <FilterChip
+                                                label={`Status: ${activeStatusFilter}`}
+                                                onClear={() => setActiveStatusFilter('all')}
+                                            />
+                                        )}
+                                        {search && (
+                                            <FilterChip
+                                                label={`Search: "${search}"`}
+                                                onClear={() => setSearch('')}
+                                            />
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={clearAllFilters}
+                                            className="ml-1 text-blue-600 hover:text-blue-800 font-semibold"
+                                        >
+                                            Clear all
+                                        </button>
+                                        <span className="text-slate-400 ml-auto">
+                                            {filteredAssets.length} match{filteredAssets.length === 1 ? '' : 'es'}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -300,22 +498,22 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
                                     <table className="w-full text-left border-collapse min-w-[1300px]">
                                         <thead className="bg-slate-50/80 border-b border-slate-200 sticky top-0 z-10">
                                             <tr>
-                                                <TH className="w-32 pl-6">Unit #</TH>
-                                                <TH className="w-40">Type</TH>
-                                                <TH className="w-48">Plate (No. / State)</TH>
-                                                <TH className="w-32">Plate Expiry</TH>
-                                                <TH className="w-56">VIN</TH>
-                                                <TH>Make / Model / Year</TH>
-                                                <TH className="w-32">Date Added</TH>
-                                                <TH className="w-32">Ownership</TH>
-                                                <TH className="w-32 text-center">Compliance</TH>
-                                                <TH className="w-32">Status</TH>
+                                                <SortTH id="unitNumber"  label="Unit #"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-32 pl-6" />
+                                                <SortTH id="type"        label="Type"                 current={sortKey} dir={sortDir} onClick={handleSort} className="w-40" />
+                                                <SortTH id="plate"       label="Plate (No. / State)"  current={sortKey} dir={sortDir} onClick={handleSort} className="w-48" />
+                                                <SortTH id="plateExpiry" label="Plate Expiry"         current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
+                                                <SortTH id="vin"         label="VIN"                  current={sortKey} dir={sortDir} onClick={handleSort} className="w-56" />
+                                                <SortTH id="makeModel"   label="Make / Model / Year"  current={sortKey} dir={sortDir} onClick={handleSort} />
+                                                <SortTH id="dateAdded"   label="Date Added"           current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
+                                                <SortTH id="ownership"   label="Ownership"            current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
+                                                <TH className="w-32 text-center" align="center">Compliance</TH>
+                                                <SortTH id="status"      label="Status"               current={sortKey} dir={sortDir} onClick={handleSort} className="w-32" />
                                                 <TH align="right" className="w-24 pr-6">Actions</TH>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 text-slate-600">
                                             {filteredAssets.length > 0 ? (
-                                                filteredAssets.map((asset) => (
+                                                pagedAssets.map((asset) => (
                                                     <tr 
                                                         key={asset.id} 
                                                         onClick={() => setSelectedAsset(asset as DetailedAsset)} // Cast for now, fields are optional
@@ -431,12 +629,28 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
                                                 ))
                                             ) : (
                                                 <tr>
-                                                    <td colSpan={10} className="py-32 text-center bg-slate-50/30">
-                                                        <div className="flex flex-col items-center gap-4">
-                                                            <div className="p-6 bg-white rounded-full shadow-sm border border-slate-100 text-slate-200">
-                                                                <Search size={48} strokeWidth={1} />
+                                                    <td colSpan={11} className="py-24 text-center bg-slate-50/30">
+                                                        <div className="flex flex-col items-center gap-3">
+                                                            <div className="p-5 bg-white rounded-full shadow-sm border border-slate-100 text-slate-300">
+                                                                <Search size={40} strokeWidth={1.25} />
                                                             </div>
-                                                            <p className="text-base font-bold text-slate-900 tracking-tight">No assets found</p>
+                                                            <div>
+                                                                <p className="text-base font-bold text-slate-900 tracking-tight">No assets found</p>
+                                                                <p className="text-sm text-slate-500 mt-1">
+                                                                    {hasActiveFilters
+                                                                        ? 'Try clearing some filters or adjusting your search.'
+                                                                        : 'Add an asset to get started.'}
+                                                                </p>
+                                                            </div>
+                                                            {hasActiveFilters && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={clearAllFilters}
+                                                                    className="mt-1 text-sm font-semibold text-blue-600 hover:text-blue-800"
+                                                                >
+                                                                    Clear all filters
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -444,6 +658,16 @@ export function AssetDirectoryPage({ isEmbedded = false, assets: assetsProp }: {
                                         </tbody>
                                     </table>
                                 </div>
+                                <PaginationBar
+                                    totalItems={filteredAssets.length}
+                                    currentPage={page}
+                                    rowsPerPage={rowsPerPage}
+                                    onPageChange={setPage}
+                                    onRowsPerPageChange={(rows) => {
+                                        setRowsPerPage(rows);
+                                        setPage(1);
+                                    }}
+                                />
                             </div>
                         </div>
                     </div>

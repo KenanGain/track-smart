@@ -22,6 +22,9 @@ import {
     Repeat,
     AlertTriangle,
     Crown,
+    Building2,
+    Briefcase,
+    Truck,
 } from "lucide-react";
 import {
     BarChart,
@@ -209,6 +212,18 @@ export function SuperAdminDashboardPage({ currentUser }: Props) {
         const active = APP_USERS.filter((u) => u.status === "Active").length;
         const inactive = APP_USERS.filter((u) => u.status === "Inactive").length;
         const activePct = total > 0 ? (active / total) * 100 : 0;
+
+        // Cross-carrier asset + driver totals (sum of every carrier's roster).
+        let totalAssets = 0;
+        let totalDrivers = 0;
+        let activeCarriers = 0;
+        for (const a of ACCOUNTS_DB) {
+            totalAssets += a.assets ?? 0;
+            totalDrivers += a.drivers ?? 0;
+            if (a.status === "Active") activeCarriers += 1;
+        }
+        const activeServiceProfiles = SERVICE_PROFILES_DB.filter((s) => s.status === "Active").length;
+
         return {
             total,
             superAdmins,
@@ -218,7 +233,11 @@ export function SuperAdminDashboardPage({ currentUser }: Props) {
             inactive,
             activePct,
             carriers: ACCOUNTS_DB.length,
+            activeCarriers,
             serviceProfiles: SERVICE_PROFILES_DB.length,
+            activeServiceProfiles,
+            totalAssets,
+            totalDrivers,
         };
     }, []);
 
@@ -523,39 +542,102 @@ export function SuperAdminDashboardPage({ currentUser }: Props) {
                 {/* ───────────────── Overview ───────────────── */}
                 {activeTab === "overview" && (
                     <div className="space-y-6">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <StatCard
-                                label="Super Admins"
-                                value={stats.superAdmins}
-                                icon={<ShieldAlert size={16} />}
-                                tone="violet"
-                                share={stats.superAdmins / Math.max(stats.total, 1)}
-                                shareLabel="of platform"
-                            />
-                            <StatCard
-                                label="Admins"
-                                value={stats.admins}
-                                icon={<UserCog size={16} />}
-                                tone="blue"
-                                share={stats.admins / Math.max(stats.total, 1)}
-                                shareLabel="of platform"
-                            />
-                            <StatCard
-                                label="Regular Users"
-                                value={stats.regular}
-                                icon={<User size={16} />}
-                                tone="slate"
-                                share={stats.regular / Math.max(stats.total, 1)}
-                                shareLabel="of platform"
-                            />
-                            <StatCard
-                                label="Active Rate"
-                                value={`${stats.activePct.toFixed(0)}%`}
-                                icon={<TrendingUp size={16} />}
-                                tone="emerald"
-                                share={stats.activePct / 100}
-                                shareLabel={`${stats.active} of ${stats.total} accounts`}
-                            />
+                        {/* Platform inventory — cross-carrier counts. Carrier
+                            Profiles, Service Profiles, Assets, Drivers — the
+                            top-level "what's on the platform" snapshot. */}
+                        <div>
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <h2 className="text-sm font-semibold text-slate-900">Platform Inventory</h2>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Counts across every carrier and service profile in the system.
+                                    </p>
+                                </div>
+                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                    All carriers · All service profiles
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <StatCard
+                                    label="Carrier Profiles"
+                                    value={stats.carriers}
+                                    icon={<Building2 size={16} />}
+                                    tone="amber"
+                                    share={stats.activeCarriers / Math.max(stats.carriers, 1)}
+                                    shareLabel={`${stats.activeCarriers} active`}
+                                />
+                                <StatCard
+                                    label="Service Profiles"
+                                    value={stats.serviceProfiles}
+                                    icon={<Briefcase size={16} />}
+                                    tone="violet"
+                                    share={stats.activeServiceProfiles / Math.max(stats.serviceProfiles, 1)}
+                                    shareLabel={`${stats.activeServiceProfiles} active`}
+                                />
+                                <StatCard
+                                    label="Total Assets"
+                                    value={stats.totalAssets.toLocaleString()}
+                                    icon={<Truck size={16} />}
+                                    tone="blue"
+                                    share={1}
+                                    shareLabel={`Avg ${(stats.totalAssets / Math.max(stats.carriers, 1)).toFixed(1)} per carrier`}
+                                />
+                                <StatCard
+                                    label="Total Drivers"
+                                    value={stats.totalDrivers.toLocaleString()}
+                                    icon={<UsersIcon size={16} />}
+                                    tone="emerald"
+                                    share={1}
+                                    shareLabel={`Avg ${(stats.totalDrivers / Math.max(stats.carriers, 1)).toFixed(1)} per carrier`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Users by role — same as before, now under its own
+                            heading so it doesn't bleed into the inventory row. */}
+                        <div>
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <h2 className="text-sm font-semibold text-slate-900">User Breakdown</h2>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Platform users by role and active rate.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <StatCard
+                                    label="Super Admins"
+                                    value={stats.superAdmins}
+                                    icon={<ShieldAlert size={16} />}
+                                    tone="violet"
+                                    share={stats.superAdmins / Math.max(stats.total, 1)}
+                                    shareLabel="of platform"
+                                />
+                                <StatCard
+                                    label="Admins"
+                                    value={stats.admins}
+                                    icon={<UserCog size={16} />}
+                                    tone="blue"
+                                    share={stats.admins / Math.max(stats.total, 1)}
+                                    shareLabel="of platform"
+                                />
+                                <StatCard
+                                    label="Regular Users"
+                                    value={stats.regular}
+                                    icon={<User size={16} />}
+                                    tone="slate"
+                                    share={stats.regular / Math.max(stats.total, 1)}
+                                    shareLabel="of platform"
+                                />
+                                <StatCard
+                                    label="Active Rate"
+                                    value={`${stats.activePct.toFixed(0)}%`}
+                                    icon={<TrendingUp size={16} />}
+                                    tone="emerald"
+                                    share={stats.activePct / 100}
+                                    shareLabel={`${stats.active} of ${stats.total} accounts`}
+                                />
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
