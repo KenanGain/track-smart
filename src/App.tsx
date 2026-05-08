@@ -61,6 +61,7 @@ function App() {
     // or the user might want to test without it initially.
     // The user's request showed "sidebar accepts currentPath", so this mocks it.
     const [path, setPath] = useState("/dashboard")
+    const [previousPath, setPreviousPath] = useState<string | null>(null)
     const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
     const [selectedServiceProfileId, setSelectedServiceProfileId] = useState<string | undefined>(undefined)
     const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
@@ -163,6 +164,9 @@ function App() {
     }
 
     const handleNavigate = (newPath: string) => {
+        // Remember where the user came from so detail pages can render an
+        // accurate "Back to <list>" affordance.
+        if (newPath !== path) setPreviousPath(path)
         setPath(newPath)
         console.log("Navigated to:", newPath)
     }
@@ -222,6 +226,8 @@ function App() {
                     accountId={account?.id}
                     currentUser={currentUser ?? undefined}
                     onSelectAccount={handleSelectAccount}
+                    previousPath={previousPath ?? undefined}
+                    onNavigate={handleNavigate}
                 />
             )
         }

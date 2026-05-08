@@ -124,6 +124,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/safety-analysis",
     },
     {
+        key: "safety-analysis-legacy",
+        label: "Old Safety Analysis",
+        icon: History,
+        path: "/safety-analysis/legacy",
+    },
+    {
         key: "tickets",
         label: "Tickets",
         icon: Ticket,

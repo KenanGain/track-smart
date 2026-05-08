@@ -556,11 +556,34 @@ const DirectorEditModal = ({ director, isOpen, onClose, onSave }: any) => {
 
 // Key Number Add/Edit Modal
 
-export function CarrierProfilePage({ accountId, currentUser: _currentUser, onSelectAccount: _onSelectAccount }: {
+export function CarrierProfilePage({
+    accountId,
+    currentUser: _currentUser,
+    onSelectAccount: _onSelectAccount,
+    previousPath,
+    onNavigate,
+}: {
     accountId?: string;
     currentUser?: import('@/data/users.data').AppUser;
     onSelectAccount?: (account: import('@/pages/accounts/accounts.data').AccountRecord) => void;
+    /** Path the user came from — used to render an accurate "Back to ..."
+     *  button when this profile was opened from a list page. */
+    previousPath?: string;
+    onNavigate?: (path: string) => void;
 } = {}) {
+    // Compute a back-button target only when the user came from a list page
+    // that makes sense as an "ancestor" of the carrier profile. Avoids showing
+    // a back arrow when the user landed via the sidebar / direct URL.
+    const backTarget = (() => {
+        if (!previousPath || !onNavigate) return null;
+        if (previousPath === '/accounts')
+            return { label: 'Back to Accounts', path: '/accounts' };
+        if (previousPath === '/admin/users')
+            return { label: 'Back to Users', path: '/admin/users' };
+        if (previousPath === '/admin/dashboard')
+            return { label: 'Back to Admin Dashboard', path: '/admin/dashboard' };
+        return null;
+    })();
     const profileBundle = useMemo(() => buildProfileBundle(accountId), [accountId]);
     const [viewData] = useState(profileBundle?.viewData ?? INITIAL_VIEW_DATA);
     const [formConfig, setFormConfig] = useState(profileBundle?.uiData ?? UI_DATA);
@@ -1049,7 +1072,20 @@ export function CarrierProfilePage({ accountId, currentUser: _currentUser, onSel
                 the top navbar is the single carrier-pick surface; we no
                 longer render a duplicate one here. */}
             {!isAssetDetailActive && (
-                <div className="mb-6 flex items-center gap-4 flex-wrap min-h-[36px]">
+                <div className="mb-6 flex items-center gap-3 flex-wrap min-h-[36px]">
+                    {backTarget && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => onNavigate?.(backTarget.path)}
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+                            >
+                                <ChevronDown size={13} className="rotate-90" />
+                                {backTarget.label}
+                            </button>
+                            <span aria-hidden className="h-4 w-px bg-slate-200" />
+                        </>
+                    )}
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                         <Building2 className="w-4 h-4" />
                         <span>{viewData.page.breadcrumb[0]}</span>
