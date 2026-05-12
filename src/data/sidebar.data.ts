@@ -28,6 +28,7 @@ import {
     ShieldAlert,
     Lock,
     History,
+    FlaskConical,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -94,12 +95,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     },
 
     {
-        key: "accidents",
-        label: "Accidents",
-        icon: AlertTriangle,
-        path: "/accidents",
-    },
-    {
         key: "inspections",
         label: "Safety and Compliance",
         icon: ClipboardCheck,
@@ -110,6 +105,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Violations",
         icon: Ban,
         path: "/violations",
+    },
+    {
+        key: "accidents",
+        label: "Accidents",
+        icon: AlertTriangle,
+        path: "/accidents",
     },
     {
         key: "safety-events",
@@ -128,6 +129,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Old Safety Analysis",
         icon: History,
         path: "/safety-analysis/legacy",
+    },
+    {
+        key: "safety-analysis-beta",
+        label: "Beta Safety Analysis",
+        icon: FlaskConical,
+        path: "/safety-analysis/beta",
     },
     {
         key: "tickets",
@@ -149,6 +156,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders" },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },
+            { key: "accidents-settings", label: "Accidents", icon: AlertTriangle, path: "/settings/accidents" },
             { key: "trainings", label: "Trainings", icon: GraduationCap, path: "/settings/trainings" },
             { key: "inspections-settings", label: "Inspections", icon: ClipboardCheck, path: "/settings/inspections" },
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },

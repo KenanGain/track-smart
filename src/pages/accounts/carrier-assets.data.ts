@@ -88,16 +88,30 @@ function buildAssetsForCarrier(account: AccountRecord, count: number): Asset[] {
     const rng = mulberry32(hash('assets:' + account.id));
 
     // Fleet mix aligned 1:1 with the MCS-150 overview:
-    //   - Trucks = CMV Power Units
-    //   - Vans   = Non-CMV
-    // No trailers are generated, so: Power Units + Non-CMV == total assets,
-    // and the Assets tab count matches the Fleet Overview exactly.
+    //   - Trucks   = CMV Power Units
+    //   - Trailers = Non-CMV (a trailer alone isn't a CMV; the truck+trailer
+    //                combination is. The trailer asset itself is Non-CMV.)
+    //   - Vans     = Non-CMV
+    // Power Units + Trailers + Non-CMV vans == total assets, so the Assets
+    // tab count still matches the Fleet Overview exactly.
     //
-    // Ratio: 80% Power Units / 20% Non-CMV, with small-fleet guard clauses
-    // so the non-CMV count never rounds up past the total.
-    const vans = count <= 2 ? (count === 2 ? 1 : 0) : Math.max(1, Math.round(count * 0.20));
-    const trucks = Math.max(1, count - vans);
-    const trailers = 0;
+    // Ratio: ~70% Power Units / ~20% Trailers / ~10% Non-CMV vans, with
+    // small-fleet guard clauses so the non-CMV portion never rounds past
+    // the total.
+    let trailers = 0;
+    let vans = 0;
+    if (count <= 1) {
+        // Single-asset carrier — keep it a power unit.
+    } else if (count === 2) {
+        trailers = 1;
+    } else if (count === 3) {
+        trailers = 1;
+        vans = 1;
+    } else {
+        trailers = Math.max(1, Math.round(count * 0.20));
+        vans = Math.max(1, Math.round(count * 0.10));
+    }
+    const trucks = Math.max(1, count - trailers - vans);
 
     const shortId = account.id.replace('acct-', '');
     const prefix = (account.dbaName.replace(/[^A-Za-z]/g, '').slice(0, 3) || 'UNK').toUpperCase();
@@ -185,7 +199,9 @@ function buildAssetsForCarrier(account: AccountRecord, count: number): Asset[] {
     };
 
     for (let i = 0; i < trucks; i++) pushAsset('Truck', 'CMV', 'Power Unit', TRUCK_MODELS);
-    for (let i = 0; i < trailers; i++) pushAsset('Trailer', 'CMV', 'Dry Van Trailer', TRAILER_MODELS);
+    // Trailers are Non-CMV: the trailer asset on its own isn't a commercial
+    // motor vehicle — only the truck+trailer combination is.
+    for (let i = 0; i < trailers; i++) pushAsset('Trailer', 'Non-CMV', 'Dry Van Trailer', TRAILER_MODELS);
     for (let i = 0; i < vans; i++) pushAsset('Van', 'Non-CMV', 'Cargo Van', VAN_MODELS);
 
     return out;

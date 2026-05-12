@@ -24,6 +24,8 @@ import { VIOLATION_DATA } from '@/data/violations.data';
 import { NSC_CODE_TO_SYSTEM, CCMTA_ALPHA_CODE_MAP, FMCSA_BASIC_MAP, cfr_to_basic } from '@/pages/inspections/nscViolationMap';
 import { NSC_VIOLATION_CATALOG } from '@/pages/inspections/NscAnalysis';
 import { SubTabs } from '@/components/ui/SubTabs';
+import { resolveViolationDisplay, DISPLAY_CATEGORIES, DISPLAY_SUBCATEGORIES_BY_CATEGORY, DISPLAY_CATEGORY_TONE, type DisplayCategory } from '@/data/violation-display-mapping';
+import { Wrench, UserCheck, Clock, Truck, Beaker, Flame, HelpCircle, ShieldAlert } from 'lucide-react';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
@@ -41,6 +43,52 @@ const TABS_CONFIG = [
   { key: 'hazmat_compliance', label: 'Hazmat Compliance' },
   { key: 'controlled_substances_alcohol', label: 'Controlled Substances' },
 ];
+
+// Friendly labels for the BASIC category column.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _CATEGORY_LABEL: Record<string, string> = {
+  vehicle_maintenance: 'Vehicle Maintenance',
+  driver_fitness: 'Driver Fitness',
+  unsafe_driving: 'Unsafe Driving',
+  hours_of_service: 'Hours of Service',
+  hazmat_compliance: 'Hazmat Compliance',
+  controlled_substances_alcohol: 'Controlled Substances',
+  canada_provincial: 'Canada Provincial',
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _CATEGORY_TONE: Record<string, string> = {
+  vehicle_maintenance: 'bg-blue-50 text-blue-700 border-blue-200',
+  driver_fitness: 'bg-violet-50 text-violet-700 border-violet-200',
+  unsafe_driving: 'bg-rose-50 text-rose-700 border-rose-200',
+  hours_of_service: 'bg-amber-50 text-amber-700 border-amber-200',
+  hazmat_compliance: 'bg-orange-50 text-orange-700 border-orange-200',
+  controlled_substances_alcohol: 'bg-red-50 text-red-700 border-red-200',
+  canada_provincial: 'bg-slate-50 text-slate-700 border-slate-200',
+};
+void _CATEGORY_LABEL; void _CATEGORY_TONE;
+
+// localStorage key for the editable TrackSmart points override map.
+const TS_POINTS_STORAGE_KEY = 'tracksmart_violation_points_v1';
+
+function loadTsPoints(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(TS_POINTS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function saveTsPoints(points: Record<string, number>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TS_POINTS_STORAGE_KEY, JSON.stringify(points));
+  } catch {
+    /* ignore */
+  }
+}
+
 
 // Normalize text: convert ALL CAPS to sentence case, preserving acronyms
 const normalizeText = (text: string): string => {
@@ -117,10 +165,11 @@ const COLUMN_GROUPS = [
   {
     group: 'Core',
     columns: [
+      { id: 'category',    label: 'Category',    desc: 'BASIC / parent category (Vehicle Maintenance, Driver Fitness…)' },
+      { id: 'group',       label: 'Sub-category',desc: 'Violation group / sub-category' },
       { id: 'code',        label: 'Code',        desc: 'Violation / regulation code' },
       { id: 'description', label: 'Description', desc: 'Full violation description' },
       { id: 'regulatory',  label: 'Regulatory',  desc: 'Authority (FMCSA, DOT, NSC…)' },
-      { id: 'group',       label: 'Group',       desc: 'Violation group / sub-category' },
     ],
   },
   {
@@ -143,12 +192,13 @@ const COLUMN_GROUPS = [
   {
     group: 'Risk & Scoring',
     columns: [
-      { id: 'risk',     label: 'Risk Level',   desc: 'Driver risk category (1=High, 2=Mod, 3=Low)' },
-      { id: 'crashPct', label: 'Crash %',      desc: 'Crash likelihood correlation %' },
-      { id: 'severity', label: 'Severity D/C', desc: 'Severity weight: Driver / Carrier (0–10)' },
-      { id: 'vehPts',   label: 'Vehicle Pts',  desc: 'Carrier severity weight' },
-      { id: 'dvrPts',   label: 'Driver Pts',   desc: 'Driver severity weight' },
-      { id: 'carPts',   label: 'Carrier Pts',  desc: 'Combined carrier impact score' },
+      { id: 'risk',     label: 'Risk Level',       desc: 'Driver risk category (1=High, 2=Mod, 3=Low)' },
+      { id: 'crashPct', label: 'Crash %',          desc: 'Crash likelihood correlation %' },
+      { id: 'severity', label: 'Severity D/C',     desc: 'Severity weight: Driver / Carrier (0–10)' },
+      { id: 'vehPts',   label: 'Vehicle Pts',      desc: 'Carrier severity weight' },
+      { id: 'dvrPts',   label: 'Driver Pts',       desc: 'Driver severity weight' },
+      { id: 'carPts',   label: 'Carrier Pts',      desc: 'Combined carrier impact score' },
+      { id: 'tsPoints', label: 'TrackSmart Pts',   desc: 'Editable override used by the TrackSmart score (saved locally)' },
     ],
   },
   {
@@ -169,10 +219,10 @@ const COLUMN_GROUPS = [
 const ALL_COLUMN_OPTIONS = COLUMN_GROUPS.flatMap(g => g.columns);
 
 const DEFAULT_VISIBLE = new Set([
-  'code', 'description', 'regulatory',
+  'category', 'group', 'code', 'description', 'regulatory',
   'ccmtaCode', 'nscSystem', 'fmcsaBasic',
   'nscPoints', 'cvorPoints',
-  'risk', 'severity', 'actions'
+  'risk', 'severity', 'tsPoints', 'actions'
 ]);
 
 // ─── Column Selector Component (grouped) ──────────────────────────────────────
@@ -268,6 +318,371 @@ const ColumnSelector = ({ visibleColumns, onChange }: { visibleColumns: Set<stri
   );
 };
 
+// ─── Sub-category KPI helpers ──────────────────────────────────────────────
+
+const TAB_KEY_TO_DISPLAY_CATEGORY: Record<string, DisplayCategory> = {
+  vehicle_maintenance:           'Vehicle Maintenance',
+  driver_fitness:                'Driver Fitness',
+  unsafe_driving:                'Unsafe Driving',
+  hours_of_service:              'Hours-of-Service',
+  hazmat_compliance:             'Hazardous Materials',
+  controlled_substances_alcohol: 'Controlled Substance',
+};
+
+const KPI_CATEGORY_ICON: Record<DisplayCategory, React.ElementType> = {
+  'Vehicle Maintenance':  Wrench,
+  'Driver Fitness':       UserCheck,
+  'Hours-of-Service':     Clock,
+  'Unsafe Driving':       Truck,
+  'Controlled Substance': Beaker,
+  'Hazardous Materials':  Flame,
+  'Other':                HelpCircle,
+};
+
+const KPI_ACCENT_BAR: Record<DisplayCategory, string> = {
+  'Vehicle Maintenance':  'bg-blue-500',
+  'Driver Fitness':       'bg-violet-500',
+  'Hours-of-Service':     'bg-amber-500',
+  'Unsafe Driving':       'bg-rose-500',
+  'Controlled Substance': 'bg-red-500',
+  'Hazardous Materials':  'bg-orange-500',
+  'Other':                'bg-slate-400',
+};
+
+const KPI_COUNT_TONE: Record<DisplayCategory, string> = {
+  'Vehicle Maintenance':  'text-blue-700',
+  'Driver Fitness':       'text-violet-700',
+  'Hours-of-Service':     'text-amber-700',
+  'Unsafe Driving':       'text-rose-700',
+  'Controlled Substance': 'text-red-700',
+  'Hazardous Materials':  'text-orange-700',
+  'Other':                'text-slate-700',
+};
+
+const KPI_HOVER_RING: Record<DisplayCategory, string> = {
+  'Vehicle Maintenance':  'hover:ring-blue-200',
+  'Driver Fitness':       'hover:ring-violet-200',
+  'Hours-of-Service':     'hover:ring-amber-200',
+  'Unsafe Driving':       'hover:ring-rose-200',
+  'Controlled Substance': 'hover:ring-red-200',
+  'Hazardous Materials':  'hover:ring-orange-200',
+  'Other':                'hover:ring-slate-200',
+};
+
+interface SubCategoryAggregate {
+  subCategory: string;
+  total: number;
+  oosCount: number;
+  highRisk: number;
+  avgDriverSev: number;
+  sampleCodes: string[];
+}
+
+interface CategoryAggregate {
+  category: DisplayCategory;
+  total: number;
+  oosCount: number;
+  highRisk: number;
+  avgDriverSev: number;
+  bySubCategory: Map<string, SubCategoryAggregate>;
+}
+
+function buildCategoryAggregates(): Map<DisplayCategory, CategoryAggregate> {
+  const out = new Map<DisplayCategory, CategoryAggregate>();
+  for (const cat of DISPLAY_CATEGORIES) {
+    const sub = new Map<string, SubCategoryAggregate>();
+    for (const subName of DISPLAY_SUBCATEGORIES_BY_CATEGORY[cat]) {
+      sub.set(subName, { subCategory: subName, total: 0, oosCount: 0, highRisk: 0, avgDriverSev: 0, sampleCodes: [] });
+    }
+    out.set(cat, { category: cat, total: 0, oosCount: 0, highRisk: 0, avgDriverSev: 0, bySubCategory: sub });
+  }
+  const sevSums = new Map<string, number>();
+  for (const [catKey, cat] of Object.entries(VIOLATION_DATA.categories)) {
+    for (const it of cat.items) {
+      const { category, subCategory } = resolveViolationDisplay(it, catKey);
+      const c = out.get(category);
+      if (!c) continue;
+      let s = c.bySubCategory.get(subCategory);
+      if (!s) {
+        s = { subCategory, total: 0, oosCount: 0, highRisk: 0, avgDriverSev: 0, sampleCodes: [] };
+        c.bySubCategory.set(subCategory, s);
+      }
+      c.total += 1;
+      s.total += 1;
+      if (it.isOos) { c.oosCount += 1; s.oosCount += 1; }
+      if (it.driverRiskCategory === 1) { c.highRisk += 1; s.highRisk += 1; }
+      const sev = it.severityWeight?.driver ?? 0;
+      sevSums.set(`${category}::${subCategory}`, (sevSums.get(`${category}::${subCategory}`) ?? 0) + sev);
+      sevSums.set(`${category}::__total__`, (sevSums.get(`${category}::__total__`) ?? 0) + sev);
+      if (s.sampleCodes.length < 3 && !s.sampleCodes.includes(it.violationCode)) {
+        s.sampleCodes.push(it.violationCode);
+      }
+    }
+  }
+  for (const c of out.values()) {
+    c.avgDriverSev = c.total > 0 ? (sevSums.get(`${c.category}::__total__`) ?? 0) / c.total : 0;
+    for (const s of c.bySubCategory.values()) {
+      s.avgDriverSev = s.total > 0 ? (sevSums.get(`${c.category}::${s.subCategory}`) ?? 0) / s.total : 0;
+    }
+  }
+  return out;
+}
+
+// ─── Sub-category KPI card ─────────────────────────────────────────────────
+
+function SubCategoryKpiCard({
+  category,
+  data,
+  categoryTotal,
+  selected,
+  onToggle,
+}: {
+  category: DisplayCategory;
+  data: SubCategoryAggregate;
+  categoryTotal: number;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const empty = data.total === 0;
+  const sharePct = categoryTotal > 0 ? (data.total / categoryTotal) * 100 : 0;
+  const accent = KPI_ACCENT_BAR[category];
+  const countTone = empty ? 'text-slate-300' : KPI_COUNT_TONE[category];
+  const hoverRing = KPI_HOVER_RING[category];
+
+  // Wrap in a relative container so the popover can be a *sibling* to the
+  // button (nesting interactive divs inside a button is invalid HTML and
+  // makes the popover render inconsistently across browsers).
+  return (
+    <div className="group/card relative">
+      <button
+        type="button"
+        onClick={empty ? undefined : onToggle}
+        disabled={empty}
+        title={empty ? 'No items mapped' : `Click to ${selected ? 'remove' : 'apply'} filter`}
+        className={`relative text-left w-full bg-white rounded-lg border overflow-hidden shadow-sm transition-all ${
+          empty
+            ? 'border-slate-200 opacity-60 cursor-not-allowed'
+            : `cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${hoverRing} ${selected ? 'border-slate-900 ring-2 ring-slate-900/20' : 'border-slate-200 hover:ring-1'}`
+        }`}
+      >
+        {/* selection check pip */}
+        {selected && !empty && (
+          <span className="absolute top-1.5 right-1.5 z-10 h-4 w-4 rounded-full bg-slate-900 text-white flex items-center justify-center text-[9px] font-bold shadow">
+            ✓
+          </span>
+        )}
+        {/* Top accent bar */}
+        <div className={`h-1 w-full ${empty ? 'bg-slate-100' : accent}`} />
+
+        <div className="px-3 py-2.5">
+          <h3
+            className="text-[11px] font-semibold text-slate-700 leading-tight line-clamp-2 min-h-[2.2em]"
+            title={data.subCategory}
+          >
+            {data.subCategory}
+          </h3>
+
+          <div className="flex items-baseline gap-1.5 mt-1.5">
+            <span className={`text-[24px] font-bold font-mono tabular-nums leading-none ${countTone}`}>
+              {data.total.toLocaleString()}
+            </span>
+            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold pb-0.5">
+              violations
+            </span>
+          </div>
+
+          <div className="mt-2 flex items-center gap-1.5">
+            <StatPill icon={AlertOctagon} value={data.oosCount} label="OOS"  active={data.oosCount > 0} tone="rose" />
+            <StatPill icon={ShieldAlert} value={data.highRisk} label="High" active={data.highRisk > 0} tone="amber" />
+            <StatPill icon={AlertTriangle} value={empty ? '—' : data.avgDriverSev.toFixed(1)} label="Sev" active tone="slate" />
+          </div>
+        </div>
+      </button>
+
+      {/* ─── Hover popover (sibling, valid HTML) ─── */}
+      {!empty && (
+        <div
+          role="tooltip"
+          className="invisible opacity-0 group-hover/card:visible group-hover/card:opacity-100 pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 z-50 w-64 transition-opacity duration-100"
+        >
+          {/* Caret */}
+          <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-3 w-3 rotate-45 bg-white border-l border-t border-slate-200" />
+          <div className="relative rounded-lg border border-slate-200 bg-white shadow-2xl overflow-hidden">
+            <div className={`h-1 w-full ${accent}`} />
+            <div className="p-3">
+              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{category}</div>
+              <div className="text-[13px] font-semibold text-slate-900 leading-snug mt-0.5">{data.subCategory}</div>
+              <div className="flex items-baseline gap-1.5 mt-2">
+                <span className={`text-[28px] font-bold font-mono tabular-nums leading-none ${countTone}`}>
+                  {data.total.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  violations · {sharePct.toFixed(1)}% of category
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 mt-3">
+                <PopoverStatTile icon={AlertOctagon} label="OOS"  value={data.oosCount} active={data.oosCount > 0} tone="rose" />
+                <PopoverStatTile icon={ShieldAlert} label="High Risk" value={data.highRisk} active={data.highRisk > 0} tone="amber" />
+                <PopoverStatTile icon={AlertTriangle} label="Avg Sev" value={data.avgDriverSev.toFixed(1)} active tone="slate" />
+              </div>
+              {data.sampleCodes.length > 0 && (
+                <div className="mt-3 pt-2.5 border-t border-slate-100">
+                  <div className="text-[9px] uppercase font-bold tracking-wider text-slate-400 mb-1">Sample codes</div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {data.sampleCodes.slice(0, 3).map((code) => (
+                      <span key={code} className="font-mono text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{code}</span>
+                    ))}
+                    {data.total > data.sampleCodes.length && (
+                      <span className="text-[10px] text-slate-400 font-medium">+{data.total - data.sampleCodes.length} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="mt-2.5 text-[10px] text-slate-400 italic">
+                Click the card to {selected ? 'remove' : 'apply'} this sub-category filter.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Compact inline pill used on the card body.
+function StatPill({
+  icon: Icon, value, label, active, tone,
+}: {
+  icon: React.ElementType;
+  value: number | string;
+  label: string;
+  active: boolean;
+  tone: 'rose' | 'amber' | 'slate';
+}) {
+  const cls = !active
+    ? 'bg-slate-50 border-slate-100 text-slate-300'
+    : tone === 'rose'  ? 'bg-rose-50 border-rose-100 text-rose-700'
+    : tone === 'amber' ? 'bg-amber-50 border-amber-100 text-amber-700'
+    : 'bg-slate-50 border-slate-100 text-slate-700';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold tabular-nums ${cls}`}
+      title={label}
+    >
+      <Icon size={9} />
+      <span>{value}</span>
+    </span>
+  );
+}
+
+// Detailed stat tile used inside the hover popover.
+function PopoverStatTile({
+  icon: Icon, label, value, active, tone,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: number | string;
+  active: boolean;
+  tone: 'rose' | 'amber' | 'slate';
+}) {
+  const cls = !active
+    ? 'bg-slate-50 border-slate-100 text-slate-400'
+    : tone === 'rose'  ? 'bg-rose-50 border-rose-100 text-rose-700'
+    : tone === 'amber' ? 'bg-amber-50 border-amber-100 text-amber-700'
+    : 'bg-slate-50 border-slate-100 text-slate-700';
+  return (
+    <div className={`rounded-md border px-2 py-1.5 ${cls}`}>
+      <div className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider opacity-80">
+        <Icon size={10} /><span className="truncate">{label}</span>
+      </div>
+      <div className="text-[16px] font-bold font-mono tabular-nums leading-tight mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+// ─── Compact risk filter chip ──────────────────────────────────────────────
+
+function RiskChip({
+  label, tooltip, count, tone, active, onClick,
+}: {
+  level: string;
+  label: string;
+  tooltip: string;
+  count: number;
+  tone: 'red' | 'amber' | 'emerald';
+  active: boolean;
+  onClick: () => void;
+}) {
+  const dot =
+    tone === 'red' ? 'bg-red-500'
+    : tone === 'amber' ? 'bg-amber-500'
+    : 'bg-emerald-500';
+  const activeCls =
+    tone === 'red' ? 'bg-red-50 text-red-700 border-red-300 ring-1 ring-red-300'
+    : tone === 'amber' ? 'bg-amber-50 text-amber-700 border-amber-300 ring-1 ring-amber-300'
+    : 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-300';
+  const idleCls = 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      className={`group/chip relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold transition-all ${active ? activeCls : idleCls}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      <span>{label}</span>
+      <span className="font-mono font-bold tabular-nums">{count.toLocaleString()}</span>
+      {active && <X size={11} className="opacity-70" />}
+      {/* Hover popover */}
+      <span className="hidden group-hover/chip:block pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 z-30 w-52">
+        <span className="block rounded-lg border border-slate-200 bg-white shadow-xl p-2.5 text-left">
+          <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">{label}</span>
+          <span className="block text-[12px] font-semibold text-slate-900 mt-0.5">{count.toLocaleString()} violations</span>
+          <span className="block text-[11px] text-slate-500 leading-snug mt-1">{tooltip}</span>
+          <span className="block text-[10px] text-slate-400 italic mt-1.5">Click to {active ? 'remove' : 'apply'} risk filter.</span>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+// ─── Category overview card (shown on the "All Violations" tab) ────────────
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _CategoryOverviewCard({ aggregate, onSelect }: { aggregate: CategoryAggregate; onSelect: () => void }) {
+  const Icon = KPI_CATEGORY_ICON[aggregate.category];
+  const accent = KPI_ACCENT_BAR[aggregate.category];
+  const countTone = KPI_COUNT_TONE[aggregate.category];
+  const hoverRing = KPI_HOVER_RING[aggregate.category];
+  const tone = DISPLAY_CATEGORY_TONE[aggregate.category];
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`text-left bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm transition-all hover:shadow-md hover:ring-1 ${hoverRing}`}
+    >
+      <div className={`h-0.5 w-full ${accent}`} />
+      <div className="px-2.5 py-2">
+        <div className="flex items-center gap-1.5 mb-1">
+          <div className={`h-5 w-5 rounded flex items-center justify-center ${tone} border`}>
+            <Icon size={11} />
+          </div>
+          <h3 className="text-[11px] font-semibold text-slate-700 leading-tight truncate">{aggregate.category}</h3>
+        </div>
+        <div className="flex items-baseline gap-1">
+          <span className={`text-[20px] font-bold font-mono tabular-nums leading-none ${countTone}`}>{aggregate.total.toLocaleString()}</span>
+          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">violations</span>
+        </div>
+        <div className="text-[10px] text-slate-500 mt-1 tabular-nums">
+          {aggregate.bySubCategory.size} subs · {aggregate.oosCount} OOS · {aggregate.highRisk} high
+        </div>
+      </div>
+    </button>
+  );
+}
+void _CategoryOverviewCard;
+
 export function ViolationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -278,6 +693,8 @@ export function ViolationsPage() {
 
   // State for Filters
   const [selectedRisks, setSelectedRisks] = useState<string[]>([]); // Empty array = ALL
+  // Sub-category KPI cards double as filters — empty Set = no sub-cat filter.
+  const [selectedSubCategories, setSelectedSubCategories] = useState<Set<string>>(new Set());
   const [canadaOnly, setCanadaOnly] = useState(false);
   const [fmcsaOnly, setFmcsaOnly] = useState(false);
   const [cvorOnly, setCvorOnly] = useState(false);
@@ -292,7 +709,62 @@ export function ViolationsPage() {
   // Column Visibility State
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
 
+  // Editable TrackSmart Points (saved to localStorage)
+  const [tsPoints, setTsPoints] = useState<Record<string, number>>(() => loadTsPoints());
+  const [editingTsId, setEditingTsId] = useState<string | null>(null);
+  const [editTsValue, setEditTsValue] = useState<string>('');
+
+  React.useEffect(() => { saveTsPoints(tsPoints); }, [tsPoints]);
+
   const data = VIOLATION_DATA;
+
+  // Map every violation id back to its parent category key, so the Category
+  // column still renders correctly when the "All" tab is active.
+  const itemCategoryMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [catKey, cat] of Object.entries(data.categories)) {
+      for (const it of cat.items) m.set(it.id, catKey);
+    }
+    return m;
+  }, [data.categories]);
+
+  // Resolve every item to the canonical Display Category + Sub-category
+  // defined in `inspection_violations_display_description_only_combined.txt`.
+  const displayMap = useMemo(() => {
+    const m = new Map<string, { category: DisplayCategory; subCategory: string }>();
+    for (const [catKey, cat] of Object.entries(data.categories)) {
+      for (const it of cat.items) m.set(it.id, resolveViolationDisplay(it, catKey));
+    }
+    return m;
+  }, [data.categories]);
+
+  // Pre-aggregated counts per Display Category + Sub-category (drives the KPI grid).
+  const categoryAggregates = useMemo(() => buildCategoryAggregates(), []);
+
+  const startEditTs = (id: string, current: number | undefined) => {
+    setEditingTsId(id);
+    setEditTsValue(current !== undefined ? String(current) : '');
+  };
+  const commitEditTs = () => {
+    if (!editingTsId) return;
+    const v = parseInt(editTsValue, 10);
+    setTsPoints((prev) => {
+      const next = { ...prev };
+      if (Number.isFinite(v) && v >= 0) next[editingTsId] = v;
+      else delete next[editingTsId];
+      return next;
+    });
+    setEditingTsId(null);
+    setEditTsValue('');
+  };
+  const cancelEditTs = () => { setEditingTsId(null); setEditTsValue(''); };
+  const resetTs = (id: string) => {
+    setTsPoints((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
 
   const currentCategoryData = useMemo(() => {
     if (activeCategory === 'all') {
@@ -407,6 +879,11 @@ export function ViolationsPage() {
       if (canadaOnly && !item.canadaEnforcement?.ccmtaCode) return false;
       if (fmcsaOnly && !item.regulatoryCodes?.usa?.some(r => r.authority?.toUpperCase().includes('FMCSA'))) return false;
       if (cvorOnly && !item.canadaEnforcement?.points?.cvor) return false;
+      // Sub-category filter (driven by KPI card selection)
+      if (selectedSubCategories.size > 0) {
+        const sub = displayMap.get(item.id)?.subCategory;
+        if (!sub || !selectedSubCategories.has(sub)) return false;
+      }
       return true;
     });
 
@@ -418,13 +895,15 @@ export function ViolationsPage() {
         switch(sortConfig.key) {
           case 'code': aVal = a.violationCode; bVal = b.violationCode; break;
           case 'desc': aVal = a.violationDescription; bVal = b.violationDescription; break;
-          case 'group': aVal = a.violationGroup; bVal = b.violationGroup; break;
+          case 'group': aVal = displayMap.get(a.id)?.subCategory ?? a.violationGroup ?? ''; bVal = displayMap.get(b.id)?.subCategory ?? b.violationGroup ?? ''; break;
+          case 'category': aVal = displayMap.get(a.id)?.category ?? ''; bVal = displayMap.get(b.id)?.category ?? ''; break;
           case 'risk': aVal = a.driverRiskCategory; bVal = b.driverRiskCategory; break;
           case 'sev': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
           case 'crash': aVal = a.crashLikelihoodPercent || 0; bVal = b.crashLikelihoodPercent || 0; break;
           case 'vehPts': aVal = a.severityWeight.carrier; bVal = b.severityWeight.carrier; break;
           case 'dvrPts': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
           case 'carPts': aVal = (a.severityWeight.driver || 0) + (a.severityWeight.carrier || 0); bVal = (b.severityWeight.driver || 0) + (b.severityWeight.carrier || 0); break;
+          case 'tsPoints': aVal = tsPoints[a.id] ?? -1; bVal = tsPoints[b.id] ?? -1; break;
           case 'status': aVal = a.inDsms ? 1 : 0; bVal = b.inDsms ? 1 : 0; break;
           default: return 0;
         }
@@ -436,7 +915,7 @@ export function ViolationsPage() {
     }
 
     return items;
-  }, [currentCategoryData, searchTerm, selectedRisks, sortConfig, searchableMap, canadaOnly, fmcsaOnly, cvorOnly]);
+  }, [currentCategoryData, searchTerm, selectedRisks, sortConfig, searchableMap, canadaOnly, fmcsaOnly, cvorOnly, itemCategoryMap, tsPoints, displayMap, selectedSubCategories]);
 
   // Pagination derived values
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / rowsPerPage));
@@ -523,96 +1002,110 @@ export function ViolationsPage() {
 
       </div>
 
-      {/* ── KPI Risk Cards ── */}
-      <div className="bg-slate-50 border-b border-slate-200 px-6 py-4">
-        <div className="grid grid-cols-3 gap-4">
-          {/* High Risk */}
-          {(() => {
-            const active = selectedRisks.includes('1');
-            const count = currentCategoryData._stats.high_risk;
-            return (
-              <button
-                onClick={() => handleRiskCardClick('1')}
-                className={`relative text-left rounded-xl border-2 p-4 shadow-sm cursor-pointer transition-all duration-150 overflow-hidden group ${
-                  active ? 'border-red-500 bg-red-50 ring-2 ring-red-400 ring-offset-1' : 'border-slate-200 bg-white hover:border-red-300 hover:shadow-md'
-                }`}
-              >
-                <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${active ? 'bg-red-500' : 'bg-red-400'}`} />
-                <div className="pl-3">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${active ? 'bg-red-100 text-red-700 border-red-200' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                      <AlertTriangle size={9} /> High Risk
-                    </span>
-                    {active && <X size={13} className="text-red-500 shrink-0" />}
-                  </div>
-                  <div className={`text-3xl font-black tabular-nums mt-2 ${active ? 'text-red-700' : 'text-red-600'}`}>{count.toLocaleString()}</div>
-                  <div className="text-xs text-slate-500 mt-1 leading-snug group-hover:text-slate-700 transition-colors">Highest crash probability — urgent action required</div>
-                </div>
-              </button>
-            );
-          })()}
-
-          {/* Moderate Risk */}
-          {(() => {
-            const active = selectedRisks.includes('2');
-            const count = currentCategoryData._stats.moderate_risk;
-            return (
-              <button
-                onClick={() => handleRiskCardClick('2')}
-                className={`relative text-left rounded-xl border-2 p-4 shadow-sm cursor-pointer transition-all duration-150 overflow-hidden group ${
-                  active ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-400 ring-offset-1' : 'border-slate-200 bg-white hover:border-amber-300 hover:shadow-md'
-                }`}
-              >
-                <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${active ? 'bg-amber-500' : 'bg-amber-400'}`} />
-                <div className="pl-3">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`inline-flex text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${active ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                      Moderate Risk
-                    </span>
-                    {active && <X size={13} className="text-amber-500 shrink-0" />}
-                  </div>
-                  <div className={`text-3xl font-black tabular-nums mt-2 ${active ? 'text-amber-700' : 'text-amber-600'}`}>{count.toLocaleString()}</div>
-                  <div className="text-xs text-slate-500 mt-1 leading-snug group-hover:text-slate-700 transition-colors">Elevated risk — monitoring and corrective training</div>
-                </div>
-              </button>
-            );
-          })()}
-
-          {/* Lower Risk */}
-          {(() => {
-            const active = selectedRisks.includes('3');
-            const count = currentCategoryData._stats.lower_risk;
-            return (
-              <button
-                onClick={() => handleRiskCardClick('3')}
-                className={`relative text-left rounded-xl border-2 p-4 shadow-sm cursor-pointer transition-all duration-150 overflow-hidden group ${
-                  active ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400 ring-offset-1' : 'border-slate-200 bg-white hover:border-emerald-300 hover:shadow-md'
-                }`}
-              >
-                <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${active ? 'bg-emerald-500' : 'bg-emerald-400'}`} />
-                <div className="pl-3">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`inline-flex text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${active ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                      Lower Risk
-                    </span>
-                    {active && <X size={13} className="text-emerald-500 shrink-0" />}
-                  </div>
-                  <div className={`text-3xl font-black tabular-nums mt-2 ${active ? 'text-emerald-700' : 'text-emerald-600'}`}>{count.toLocaleString()}</div>
-                  <div className="text-xs text-slate-500 mt-1 leading-snug group-hover:text-slate-700 transition-colors">Compliance / maintenance — lower crash correlation</div>
-                </div>
-              </button>
-            );
-          })()}
-        </div>
+      {/* ── Category Tabs (top) ── */}
+      <div className="bg-white border-b border-slate-200 px-6">
+        <SubTabs
+          tabs={TABS_CONFIG.map((t) => {
+            const dispCat = TAB_KEY_TO_DISPLAY_CATEGORY[t.key];
+            const count = dispCat ? (categoryAggregates.get(dispCat)?.total ?? 0) : undefined;
+            return { id: t.key, label: t.label, count };
+          })}
+          activeId={activeCategory}
+          onChange={(id) => { setActiveCategory(id); setSelectedSubCategories(new Set()); resetPage(); }}
+        />
       </div>
 
-      {/* ── Category Tabs + Search ── */}
-      <div className="bg-white px-6">
-        <SubTabs
-          tabs={TABS_CONFIG.map((t) => ({ id: t.key, label: t.label }))}
-          activeId={activeCategory}
-          onChange={(id) => { setActiveCategory(id); resetPage(); }}
-        />
+      {/* ── Sub-category KPI Grid (filter chips) ── */}
+      {activeCategory !== 'all' && (() => {
+        const dispCat = TAB_KEY_TO_DISPLAY_CATEGORY[activeCategory];
+        if (!dispCat) return null;
+        const a = categoryAggregates.get(dispCat);
+        if (!a) return null;
+        const subs = Array.from(a.bySubCategory.values()).sort((x, y) => y.total - x.total);
+        return (
+          <div className="bg-slate-50 border-b border-slate-200 px-6 py-3">
+            <div className="flex items-center justify-between mb-2 gap-3">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{dispCat} — Sub-categories</h2>
+                <span className="text-[11px] text-slate-400">click to filter · hover for details</span>
+              </div>
+              {selectedSubCategories.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedSubCategories(new Set()); resetPage(); }}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
+                >
+                  Clear {selectedSubCategories.size} filter{selectedSubCategories.size > 1 ? 's' : ''}
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              {subs.map((s) => (
+                <SubCategoryKpiCard
+                  key={s.subCategory}
+                  category={dispCat}
+                  data={s}
+                  categoryTotal={a.total}
+                  selected={selectedSubCategories.has(s.subCategory)}
+                  onToggle={() => {
+                    // Single-select: clicking a card filters to that one
+                    // sub-category; clicking it again clears back to "all".
+                    setSelectedSubCategories((prev) => {
+                      if (prev.has(s.subCategory) && prev.size === 1) return new Set();
+                      return new Set([s.subCategory]);
+                    });
+                    resetPage();
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Risk Filter Chips (compact) ── */}
+      <div className="bg-slate-50 border-b border-slate-200 px-6 py-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1">Risk filter</span>
+          <RiskChip
+            level="1"
+            label="High Risk"
+            tooltip="Highest crash probability — urgent action required"
+            count={currentCategoryData._stats.high_risk}
+            tone="red"
+            active={selectedRisks.includes('1')}
+            onClick={() => handleRiskCardClick('1')}
+          />
+          <RiskChip
+            level="2"
+            label="Moderate Risk"
+            tooltip="Elevated risk — monitoring and corrective training"
+            count={currentCategoryData._stats.moderate_risk}
+            tone="amber"
+            active={selectedRisks.includes('2')}
+            onClick={() => handleRiskCardClick('2')}
+          />
+          <RiskChip
+            level="3"
+            label="Lower Risk"
+            tooltip="Compliance / maintenance — lower crash correlation"
+            count={currentCategoryData._stats.lower_risk}
+            tone="emerald"
+            active={selectedRisks.includes('3')}
+            onClick={() => handleRiskCardClick('3')}
+          />
+          {selectedRisks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setSelectedRisks([]); resetPage(); }}
+              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 ml-1"
+            >
+              Clear
+              <X size={11} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Search + Filter Row ── */}
@@ -667,6 +1160,12 @@ export function ViolationsPage() {
             <table className="w-full divide-y divide-slate-100 text-sm">
               <thead className="bg-slate-50 select-none">
                 <tr className="border-b border-slate-200">
+                  {visibleColumns.has('category') && <th scope="col" className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider min-w-[140px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('category')}>
+                    <div className="flex items-center gap-1">Category {getSortIcon('category')}</div>
+                  </th>}
+                  {visibleColumns.has('group') && <th scope="col" className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider min-w-[140px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('group')}>
+                    <div className="flex items-center gap-1">Sub-category {getSortIcon('group')}</div>
+                  </th>}
                   {visibleColumns.has('code') && <th scope="col" className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider w-28 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('code')}>
                     <div className="flex items-center gap-1">Code {getSortIcon('code')}</div>
                   </th>}
@@ -675,9 +1174,6 @@ export function ViolationsPage() {
                   </th>}
                   {visibleColumns.has('regulatory') && <th scope="col" className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider w-28">
                     Regulatory
-                  </th>}
-                  {visibleColumns.has('group') && <th scope="col" className="px-3 py-2.5 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider min-w-[120px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('group')}>
-                    <div className="flex items-center gap-1">Group {getSortIcon('group')}</div>
                   </th>}
                   {visibleColumns.has('ccmtaCode') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-28">
                     CCMTA
@@ -721,6 +1217,9 @@ export function ViolationsPage() {
                   {visibleColumns.has('carPts') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-16 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('carPts')}>
                     <div className="flex items-center justify-center gap-1">Car {getSortIcon('carPts')}</div>
                   </th>}
+                  {visibleColumns.has('tsPoints') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('tsPoints')}>
+                    <div className="flex items-center justify-center gap-1">TrackSmart Pts {getSortIcon('tsPoints')}</div>
+                  </th>}
                   {visibleColumns.has('actions') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-16">
                     Actions
                   </th>}
@@ -755,6 +1254,25 @@ export function ViolationsPage() {
                           } ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-slate-50/80'}`}
                           onClick={() => toggleRow(item.id)}
                         >
+                          {visibleColumns.has('category') && <td className="px-3 py-2 whitespace-nowrap">
+                            {(() => {
+                              const mapped = displayMap.get(item.id);
+                              const label = mapped?.category ?? '—';
+                              const tone = mapped ? DISPLAY_CATEGORY_TONE[mapped.category] : 'bg-slate-50 text-slate-700 border-slate-200';
+                              return (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-semibold whitespace-nowrap ${tone}`}>
+                                  {label}
+                                </span>
+                              );
+                            })()}
+                          </td>}
+
+                          {visibleColumns.has('group') && <td className="px-3 py-2">
+                            <span className="text-xs text-slate-700 font-medium whitespace-nowrap">
+                              {displayMap.get(item.id)?.subCategory ?? item.violationGroup ?? '—'}
+                            </span>
+                          </td>}
+
                           {visibleColumns.has('code') && <td className="px-3 py-2 whitespace-nowrap">
                             <div className="flex flex-col gap-0.5">
                               <span className="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] tracking-wide">
@@ -781,10 +1299,6 @@ export function ViolationsPage() {
                                   </span>
                               ))}
                             </div>
-                          </td>}
-
-                          {visibleColumns.has('group') && <td className="px-3 py-2 whitespace-nowrap">
-                             <span className="text-xs text-slate-600 font-medium">{item.violationGroup}</span>
                           </td>}
 
                           {/* CCMTA Code */}
@@ -1025,6 +1539,52 @@ export function ViolationsPage() {
                             })()}
                           </td>}
 
+
+                          {/* TrackSmart Points (editable, persisted to localStorage) */}
+                          {visibleColumns.has('tsPoints') && <td className="px-3 py-2 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+                            {editingTsId === item.id ? (
+                              <span className="inline-flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editTsValue}
+                                  onChange={(e) => setEditTsValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') commitEditTs();
+                                    if (e.key === 'Escape') cancelEditTs();
+                                  }}
+                                  autoFocus
+                                  className="w-14 h-7 px-2 rounded border border-blue-500 bg-white text-center text-sm font-mono outline-none ring-2 ring-blue-500/20"
+                                />
+                                <button type="button" onClick={commitEditTs} className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 px-1">Save</button>
+                                <button type="button" onClick={cancelEditTs} className="text-[10px] font-bold text-slate-400 hover:text-slate-700 px-1">Cancel</button>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 group/ts">
+                                <span className={`font-mono font-bold tabular-nums text-sm ${tsPoints[item.id] !== undefined ? 'text-blue-700' : 'text-slate-300'}`}>
+                                  {tsPoints[item.id] !== undefined ? tsPoints[item.id] : '—'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditTs(item.id, tsPoints[item.id])}
+                                  className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 opacity-0 group-hover/ts:opacity-100 transition-opacity"
+                                  title="Edit TrackSmart points"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                                {tsPoints[item.id] !== undefined && (
+                                  <button
+                                    type="button"
+                                    onClick={() => resetTs(item.id)}
+                                    className="text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:underline opacity-0 group-hover/ts:opacity-100 transition-opacity"
+                                    title="Reset to default"
+                                  >
+                                    reset
+                                  </button>
+                                )}
+                              </span>
+                            )}
+                          </td>}
 
                           {/* Actions Column */}
                           {visibleColumns.has('actions') && <td className="px-3 py-2 whitespace-nowrap text-center">

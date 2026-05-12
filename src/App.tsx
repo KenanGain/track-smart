@@ -31,6 +31,7 @@ import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
 import { ExpenseTypesPage } from '@/pages/settings/ExpenseTypesPage'
 import { ViolationsPage } from '@/pages/settings/ViolationsPage'
+import { AccidentsSettingsPage } from '@/pages/settings/AccidentsSettingsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
@@ -47,6 +48,7 @@ import { FuelPage } from '@/pages/fuel/FuelPage'
 import { HoursOfServicePage } from '@/pages/hos/HoursOfServicePage'
 import { SafetyAnalysisPage } from '@/pages/safety-analysis/SafetyAnalysisPage'
 import { NewSafetyAnalysisPage } from '@/pages/safety-analysis/NewSafetyAnalysisPage'
+import { BetaSafetyAnalysisPage } from '@/pages/safety-analysis/BetaSafetyAnalysisPage'
 import { VendorWorkOrderFormPage } from '@/pages/vendor-portal/VendorWorkOrderFormPage'
 import { isVendorPortalUrl } from '@/pages/vendor-portal/vendorPortal.utils'
 
@@ -322,7 +324,14 @@ function App() {
             return <ExpenseTypesPage />
         }
         if (path === "/accidents") {
-            return <AccidentsPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <AccidentsPage
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
+                />
+            )
         }
         if (path === "/inspections") {
             const account = selectedAccount
@@ -339,10 +348,20 @@ function App() {
             )
         }
         if (path === "/violations") {
-            return <ViolationsListPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <ViolationsListPage
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
+                />
+            )
         }
         if (path === "/settings/violations") {
             return <ViolationsPage />
+        }
+        if (path === "/settings/accidents") {
+            return <AccidentsSettingsPage />
         }
         if (path === "/settings/inspections") {
             return <InspectionsSettingsPage />
@@ -388,6 +407,9 @@ function App() {
         }
         if (path === "/safety-analysis/legacy") {
             return <SafetyAnalysisPage />
+        }
+        if (path === "/safety-analysis/beta") {
+            return <BetaSafetyAnalysisPage />
         }
         if (path === "/hours-of-service") {
             return <HoursOfServicePage />

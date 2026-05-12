@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Clock, MapPin, User as UserIcon, Truck, Globe, FileText, Upload, Plus } from 'lucide-react';
+import { X, Save, Clock, MapPin, User as UserIcon, Truck, Globe, FileText, Upload, Plus, ArrowLeft } from 'lucide-react';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS } from '@/pages/assets/assets.data';
 import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from '@/data/geo-data';
@@ -8,6 +8,8 @@ import { type AssetViolationRecord, type AssetViolationDef, ASSET_VIOLATION_DEFS
 import { Combobox } from '@/components/ui/combobox';
 import { VIOLATION_DATA } from '@/data/violations.data';
 import { useAppData } from '@/context/AppDataContext';
+import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
+import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 
 type FormMode = 'driver' | 'asset';
 
@@ -17,9 +19,49 @@ interface ViolationEditFormProps {
     record: ViolationRecord | AssetViolationRecord | null;
     mode: FormMode;
     onSave: (updatedRecord: any) => void;
+    /** When provided, the driver + asset dropdowns are filtered to this
+     *  carrier's actual fleet. Falls back to the global MOCK_DRIVERS /
+     *  MOCK_ASSETS for backwards compatibility with callers that don't
+     *  know which carrier is active. */
+    accountId?: string;
+    /** 'modal' (default) renders the form in a centred modal overlay.
+     *  'page' renders it as a full-page view with a back button — use this
+     *  for dedicated Add/Edit pages. */
+    presentation?: 'modal' | 'page';
 }
 
-export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: ViolationEditFormProps) => {
+export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave, accountId, presentation = 'modal' }: ViolationEditFormProps) => {
+    // Carrier-scoped fleet — falls back to the global lists when no carrier
+    // is supplied. For the Acme demo carrier (acct-001) the hand-curated
+    // MOCK_VIOLATION_RECORDS reference driver/asset ids from MOCK_DRIVERS /
+    // MOCK_ASSETS, so we MERGE those with the synthesized carrier fleet to
+    // guarantee the dropdown can resolve every historical record's id.
+    const driversForCarrier = useMemo(() => {
+        if (!accountId) return MOCK_DRIVERS;
+        const carrierList = CARRIER_DRIVERS[accountId] ?? [];
+        if (accountId === 'acct-001') {
+            const seen = new Set<string>();
+            return [...MOCK_DRIVERS, ...carrierList].filter(d => {
+                if (seen.has(d.id)) return false;
+                seen.add(d.id);
+                return true;
+            });
+        }
+        return carrierList.length > 0 ? carrierList : MOCK_DRIVERS;
+    }, [accountId]);
+    const assetsForCarrier = useMemo(() => {
+        if (!accountId) return MOCK_ASSETS;
+        const carrierList = CARRIER_ASSETS[accountId] ?? [];
+        if (accountId === 'acct-001') {
+            const seen = new Set<string>();
+            return [...MOCK_ASSETS, ...carrierList].filter(a => {
+                if (seen.has(a.id)) return false;
+                seen.add(a.id);
+                return true;
+            });
+        }
+        return carrierList.length > 0 ? carrierList : MOCK_ASSETS;
+    }, [accountId]);
     // We use a flexible type for internal state to handle both record types
     const [formData, setFormData] = useState<any>({});
     const { documents: allDocTypes } = useAppData();
@@ -69,6 +111,33 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
     // Build country-aware violation options for driver mode
     // MUST be before early return to maintain hooks order
     const isCanada = formData.locationCountry === 'Canada';
+
+    // ── Look up the parent BASIC category for a given violation. We walk the
+    // VIOLATION_DATA tree (the unified master chart) to find which category
+    // owns the selected item so the form can echo it back to the user as
+    // chips (e.g. "Unsafe Driving · Speeding 6-10 over").
+    const categoryForViolation = useMemo(() => {
+        const targetId   = formData.violationDataId;
+        const targetCode = formData.violationCode;
+        if (!targetId && !targetCode) return null;
+        for (const [catKey, cat] of Object.entries(VIOLATION_DATA.categories)) {
+            const hit = cat.items.find(item =>
+                (targetId && item.id === targetId) ||
+                (targetCode && item.violationCode === targetCode) ||
+                (targetCode && item.canadaEnforcement?.code === targetCode)
+            );
+            if (hit) {
+                return {
+                    categoryKey:    catKey,
+                    categoryLabel:  cat.label ?? catKey.replace(/_/g, ' '),
+                    subCategory:    hit.violationGroup,
+                    isOos:          hit.isOos,
+                    driverRiskCategory: hit.driverRiskCategory,
+                };
+            }
+        }
+        return null;
+    }, [formData.violationDataId, formData.violationCode]);
     const driverViolationOptions = useMemo(() => {
       if (isCanada) {
         // Show Canadian enforcement codes from VIOLATION_DATA
@@ -126,27 +195,56 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
     const totalAmount = (formData.fineAmount || 0) + (formData.expenseAmount || 0);
 
 
+    const isPage = presentation === 'page';
+    const Outer: React.FC<{ children: React.ReactNode }> = ({ children }) => isPage
+        ? <div className="flex flex-col h-full bg-slate-50 p-6 overflow-y-auto">{children}</div>
+        : <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">{children}</div>;
+    const Inner: React.FC<{ children: React.ReactNode }> = ({ children }) => isPage
+        ? <div className="bg-white border border-slate-200 rounded-xl shadow-sm w-full max-w-6xl mx-auto flex flex-col" style={{ maxHeight: 'calc(100vh - 8rem)' }}>{children}</div>
+        : <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">{children}</div>;
+
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
-                
+        <Outer>
+            <Inner>
+
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
-                    <div>
-                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                             {record?.id ? 'Edit' : 'Add'} {isDriverMode ? 'Driver' : 'Asset'} Violation
-                        </h2>
-                        {record?.id && <p className="text-xs text-slate-500 mt-0.5">ID: <span className="font-mono">{record.id}</span></p>}
+                    <div className="flex items-center gap-3 min-w-0">
+                        {isPage && (
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-semibold shrink-0"
+                                title="Back to list"
+                            >
+                                <ArrowLeft size={14} />
+                                Back
+                            </button>
+                        )}
+                        <div className="min-w-0">
+                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                {record?.id ? 'Edit' : 'Add'} {isDriverMode ? 'Driver' : 'Asset'} Violation
+                            </h2>
+                            {record?.id && <p className="text-xs text-slate-500 mt-0.5">ID: <span className="font-mono">{record.id}</span></p>}
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
-                        <X size={20} />
-                    </button>
+                    {!isPage && (
+                        <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                            <X size={20} />
+                        </button>
+                    )}
                 </div>
 
                 {/* Form Content */}
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                     <form id="violation-form" onSubmit={handleSubmit} className="space-y-6">
-                        
+
+                        {/* Two-column layout in page mode (collapses to one
+                            column in the narrower modal). Left column: who,
+                            when, where. Right column: what + paperwork. */}
+                        <div className="grid xl:grid-cols-2 gap-6">
+                          <div className="space-y-6">
+
                         {/* Top Section: Driver/Asset + Date */}
                         <div className="grid grid-cols-2 gap-5">
                             
@@ -156,20 +254,20 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                 <div className="relative">
                                     {isDriverMode ? (
                                         <>
-                                            <select 
+                                            <select
                                                 className={inputClass}
                                                 value={formData.driverId || ''}
                                                 onChange={e => {
-                                                    const d = MOCK_DRIVERS.find(d => d.id === e.target.value);
+                                                    const d = driversForCarrier.find(d => d.id === e.target.value);
                                                     if (d) {
                                                         handleChange('driverId', d.id);
                                                         handleChange('driverName', `${d.firstName} ${d.lastName}`);
-                                                        handleChange('driverType', 'Long Haul Driver');
+                                                        handleChange('driverType', (d as any).driverType || 'Long Haul Driver');
                                                     }
                                                 }}
                                             >
                                                 <option value="">Select Driver...</option>
-                                                {MOCK_DRIVERS.map(d => (
+                                                {driversForCarrier.map(d => (
                                                     <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>
                                                 ))}
                                             </select>
@@ -177,11 +275,11 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                         </>
                                     ) : (
                                         <>
-                                            <select 
+                                            <select
                                                 className={inputClass}
                                                 value={formData.assetId || formData.assetUnitNumber || ''} // Handle ID or Unit Number matching
                                                 onChange={e => {
-                                                    const a = MOCK_ASSETS.find(a => a.id === e.target.value || a.unitNumber === e.target.value);
+                                                    const a = assetsForCarrier.find(a => a.id === e.target.value || a.unitNumber === e.target.value);
                                                     if (a) {
                                                         handleChange('assetId', a.id);
                                                         handleChange('assetUnitNumber', a.unitNumber);
@@ -192,7 +290,7 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                                 }}
                                             >
                                                 <option value="">Select Asset...</option>
-                                                {MOCK_ASSETS.map(a => (
+                                                {assetsForCarrier.map(a => (
                                                     <option key={a.id} value={a.id}>{a.unitNumber} - {a.make} {a.model} ({a.plateNumber})</option>
                                                 ))}
                                             </select>
@@ -208,11 +306,11 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                 <div className="relative">
                                     {isDriverMode ? (
                                          <>
-                                            <select 
+                                            <select
                                                 className={inputClass}
                                                 value={formData.assetId || ''}
                                                 onChange={e => {
-                                                    const a = MOCK_ASSETS.find(a => a.id === e.target.value);
+                                                    const a = assetsForCarrier.find(a => a.id === e.target.value);
                                                     if (a) {
                                                         handleChange('assetId', a.id);
                                                         handleChange('assetName', a.unitNumber);
@@ -223,7 +321,7 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                                 }}
                                             >
                                                 <option value="">None / Not Applicable</option>
-                                                {MOCK_ASSETS.map(a => (
+                                                {assetsForCarrier.map(a => (
                                                     <option key={a.id} value={a.id}>{a.unitNumber} - {a.make} {a.model}</option>
                                                 ))}
                                             </select>
@@ -231,11 +329,11 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                         </>
                                     ) : (
                                         <>
-                                            <select 
+                                            <select
                                                 className={inputClass}
                                                 value={formData.linkedDriverId || ''}
                                                 onChange={e => {
-                                                    const d = MOCK_DRIVERS.find(d => d.id === e.target.value);
+                                                    const d = driversForCarrier.find(d => d.id === e.target.value);
                                                     if (d) {
                                                         handleChange('linkedDriverId', d.id);
                                                         handleChange('linkedDriverName', `${d.firstName} ${d.lastName}`);
@@ -246,7 +344,7 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                                 }}
                                             >
                                                 <option value="">No Driver Linked</option>
-                                                {MOCK_DRIVERS.map(d => (
+                                                {driversForCarrier.map(d => (
                                                     <option key={d.id} value={d.id}>{d.firstName} {d.lastName}</option>
                                                 ))}
                                             </select>
@@ -353,6 +451,9 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                             </div>
                         </div>
 
+                          </div>
+                          <div className="space-y-6">
+
                         {/* Violation Details */}
                         <div className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 space-y-4">
                             <div>
@@ -414,6 +515,33 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                         searchPlaceholder="Search asset violations..."
                                         className="w-full bg-white"
                                     />
+                                )}
+
+                                {/* Resolved Category / Sub-category chips — gives
+                                    the clerk an immediate visual confirmation of
+                                    which BASIC / group the selected code belongs
+                                    to. Read-only; derived from VIOLATION_DATA. */}
+                                {isDriverMode && categoryForViolation && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Category</span>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                            {categoryForViolation.categoryLabel}
+                                        </span>
+                                        {categoryForViolation.subCategory && (
+                                            <>
+                                                <span className="text-[10px] text-slate-300">/</span>
+                                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Sub-category</span>
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                    {categoryForViolation.subCategory}
+                                                </span>
+                                            </>
+                                        )}
+                                        {categoryForViolation.isOos && (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
+                                                OOS-qualifying
+                                            </span>
+                                        )}
+                                    </div>
                                 )}
                             </div>
 
@@ -523,6 +651,157 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* ===== REFERENCES & IDENTIFIERS ===== */}
+                        {/* Court / regulator paperwork — used when the violation
+                            was reconciled against an external feed (FMCSA SMS,
+                            CVOR conviction, NSC AB·PEI·NS conviction, federal
+                            Contraventions) or when a clerk is logging the
+                            offence by hand from the ticket. */}
+                        <div className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 space-y-4">
+                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                                <FileText size={14} className="text-slate-500" /> References &amp; Identifiers
+                            </h3>
+
+                            {/* Row 1 — paperwork numbers */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClass}>Microfilm #</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="MF-US1234567"
+                                        value={formData.microfilmNumber || ''}
+                                        onChange={e => handleChange('microfilmNumber', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Ticket #</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="CT-IL-12345"
+                                        value={formData.ticketNumber || ''}
+                                        onChange={e => handleChange('ticketNumber', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Citation #</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="CIT-2025-00123"
+                                        value={formData.citationNumber || ''}
+                                        onChange={e => handleChange('citationNumber', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Docket #</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="DKT-2025-00123"
+                                        value={formData.docketNumber || ''}
+                                        onChange={e => handleChange('docketNumber', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className={labelClass}>Driver Master No.</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="Provincial driver abstract / master number"
+                                        value={formData.driverMasterNumber || ''}
+                                        onChange={e => handleChange('driverMasterNumber', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Row 2 — what was charged */}
+                            <div className="grid grid-cols-2 gap-4 pt-1 border-t border-slate-200/60">
+                                <div className="col-span-2">
+                                    <label className={labelClass}>Charge (as filed)</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="e.g. Operate commercial vehicle — wheel not secured"
+                                        value={formData.charge || ''}
+                                        onChange={e => handleChange('charge', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className={labelClass}>Offence (section / description as printed on ticket)</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="e.g. HTA 84.1 — Drive CMV — wheel not secured"
+                                        value={formData.offence || ''}
+                                        onChange={e => handleChange('offence', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>NAT Code (CCMTA)</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="e.g. F36"
+                                        value={formData.natCode || ''}
+                                        onChange={e => handleChange('natCode', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Act · Section</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="e.g. HTA s.84.1 / 49 CFR §392.5"
+                                        value={formData.actSection || ''}
+                                        onChange={e => handleChange('actSection', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className={labelClass}>Issuing Agency</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="e.g. Ontario MTO — CVCEC / RCMP / FMCSA"
+                                        value={formData.issuingAgency || ''}
+                                        onChange={e => handleChange('issuingAgency', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Court conviction — populated when the ticket has been
+                                disposed and the conviction is now registered on the
+                                carrier's NSC or CVOR profile.
+                                USDOT / CVOR / NSC carrier numbers live on the carrier
+                                profile (same across every violation for this carrier),
+                                so they're not duplicated here. */}
+                            <div className="grid grid-cols-2 gap-4 pt-1 border-t border-slate-200/60">
+                                <div>
+                                    <label className={labelClass}>Conviction #</label>
+                                    <input
+                                        type="text"
+                                        className={inputClass}
+                                        placeholder="CN-ON-654321"
+                                        value={formData.convictionNumber || ''}
+                                        onChange={e => handleChange('convictionNumber', e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Conviction Date</label>
+                                    <input
+                                        type="date"
+                                        className={inputClass}
+                                        value={formData.convictionDate || ''}
+                                        onChange={e => handleChange('convictionDate', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                          </div>
                         </div>
 
                         {/* ===== DOCUMENTS SECTION ===== */}
@@ -666,7 +945,7 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave }: Vio
                     </button>
                 </div>
 
-            </div>
-        </div>
+            </Inner>
+        </Outer>
     );
 };

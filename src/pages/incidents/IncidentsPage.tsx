@@ -4,7 +4,25 @@ import { MOCK_DRIVERS } from "@/data/mock-app-data";
 import { INITIAL_ASSETS } from "../assets/assets.data";
 import { Toggle } from "@/components/ui/toggle";
 import { INCIDENTS } from "./incidents.data";
+import { CARRIER_INCIDENTS_ALL, getAccidentsForCarrier } from "./carrier-accidents.data";
+import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
+import {
+  EXTERNAL_ACCIDENT_FEEDS_ALL,
+  generateLiveAccidentBatch,
+  getExternalAccidentsForCarrier,
+  matchInternalToExternal,
+  SOURCE_TONE,
+  SOURCE_META,
+  type ExternalAccidentRecord,
+  type ExternalFeedSource,
+} from "./external-feeds.data";
 import { useAppData } from "@/context/AppDataContext";
+import {
+  ACCIDENT_TYPES,
+  ACCIDENT_GROUPS,
+  type AccidentTypeDef,
+  type AccidentGroup,
+} from "@/data/accident-types.data";
 import {
   AlertTriangle,
   Shield,
@@ -32,6 +50,8 @@ import {
   HelpCircle,
   Video,
   Wifi,
+  RefreshCw,
+  ChevronUp,
 } from "lucide-react";
 
 
@@ -362,6 +382,13 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
             <Fld l="Timestamp" v={fmtDateTime(inc.occurredAt)} />
             <Fld l="Accident Type" v={inc.cause?.incidentType} />
             <Fld l="Address" v={inc.location.full} full />
+            {(inc.location?.unit || inc.location?.streetAddress || inc.location?.zip) && (
+              <Fld
+                l="Street / Unit / Zip"
+                full
+                v={[inc.location?.unit, inc.location?.streetAddress, inc.location?.zip].filter(Boolean).join(" · ")}
+              />
+            )}
             <div className="col-span-2 grid grid-cols-2 gap-x-5">
               <Fld l="Primary Cause" v={inc.cause?.primaryCause} />
               <Fld l="Location Type" v={inc.location?.locationType} />
@@ -374,6 +401,8 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
               l="FMCSR 390.15"
               v={(inc.classification as any).fmcsr39015 || (inc.classification.fmcsaReportable ? "Yes" : "No")}
             />
+            <Fld l="Police Report Obtained?" v={inc.classification?.policeReport ? "Yes" : "No"} />
+            <Fld l="Status" v={inc.status?.label ?? inc.status?.value} />
           </div>
         </Sect>
         <div className="grid grid-cols-2 gap-5">
@@ -435,11 +464,15 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
               <Fld l="Age Band" v={inc.driver.ageBand} />
               <Fld l="Driving Experience" v={inc.driver.drivingExperience} />
               <Fld l="Length of Employment" v={inc.driver.lengthOfEmployment} />
+              {inc.driver?.hrsDriving != null && inc.driver.hrsDriving !== "" &&
+                <Fld l="Hrs Driving at Crash" v={`${inc.driver.hrsDriving} hr`} />}
+              {inc.driver?.hrsOnDuty != null && inc.driver.hrsOnDuty !== "" &&
+                <Fld l="Hrs On Duty at Crash" v={`${inc.driver.hrsOnDuty} hr`} />}
             </div>
           </Sect>
         </div>
         <Sect title="Severity & Costs">
-          <div className="grid grid-cols-4 gap-2 mb-3">
+          <div className="grid grid-cols-5 gap-2 mb-3">
             {[
               {
                 l: "Fatalities",
@@ -455,6 +488,11 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
                 l: "Tow Away",
                 v: inc.severity.towAway ? "Yes" : "No",
                 bad: inc.severity.towAway,
+              },
+              {
+                l: "Vehicles Towed",
+                v: inc.severity.vehiclesTowed ?? 0,
+                bad: (inc.severity.vehiclesTowed ?? 0) > 0,
               },
               {
                 l: "HAZMAT",
@@ -476,6 +514,8 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
             ))}
           </div>
           <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+            <Fld l="Currency" v={inc.costs?.currency ?? "USD"} />
+            <div />
             <Fld
               l="Company Costs"
               v={fmt(inc.costs.companyCostsFromDollarOne)}
@@ -522,12 +562,193 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
                   : null
               }
             />
+            <Fld l="Traffic Control Device" v={inc.roadway.trafficControl} />
             <Fld l="Weather" v={inc.roadway.weatherConditions} />
             <Fld l="Road Conditions" v={inc.roadway.roadConditions} />
             <Fld l="Terrain" v={inc.roadway.terrain} />
             <Fld l="Light" v={inc.roadway.light} />
           </div>
         </Sect>
+        {/* References & Identifiers (mirrors the form section) */}
+        {(() => {
+          const r = inc.references ?? {};
+          const hasAny = !!(
+            r.microfilmNumber || r.policeReportNumber || r.policeAgency ||
+            r.investigatingOfficer || r.officerBadge || r.citationNumber ||
+            r.usdotNumber || r.cvorNumber || r.nscNumber || r.mcNumber ||
+            r.firstNoticeOfLoss || r.reportingSource
+          );
+          if (!hasAny) return null;
+          return (
+            <Sect title="References & Identifiers">
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+                {r.microfilmNumber      && <Fld l="Microfilm Number"      v={r.microfilmNumber} />}
+                {r.policeReportNumber   && <Fld l="Police Report #"        v={r.policeReportNumber} />}
+                {r.policeAgency         && <Fld l="Police Agency"          v={r.policeAgency} full />}
+                {r.investigatingOfficer && <Fld l="Investigating Officer"  v={r.investigatingOfficer} />}
+                {r.officerBadge         && <Fld l="Officer Badge #"        v={r.officerBadge} />}
+                {r.citationNumber       && <Fld l="Citation / Ticket #"    v={r.citationNumber} />}
+                {r.usdotNumber          && <Fld l="USDOT #"                v={r.usdotNumber} />}
+                {r.cvorNumber           && <Fld l="CVOR # (Ontario)"       v={r.cvorNumber} />}
+                {r.nscNumber            && <Fld l="NSC # (Canada)"         v={r.nscNumber} />}
+                {r.mcNumber             && <Fld l="MC #"                   v={r.mcNumber} />}
+                {r.firstNoticeOfLoss    && <Fld l="First Notice of Loss"   v={fmtDateTime(r.firstNoticeOfLoss)} />}
+                {r.reportingSource      && <Fld l="Reporting Source"       v={r.reportingSource} />}
+              </div>
+            </Sect>
+          );
+        })()}
+
+        {/* Trailer & Trip Details */}
+        {(() => {
+          const e = inc.equipment ?? {};
+          const hasAny = !!(
+            e.trailer1UnitNumber || e.trailer1Plate || e.trailer1Vin ||
+            e.trailer2UnitNumber || e.trailer2Plate || e.trailer2Vin ||
+            e.odometer || e.gvw || e.axles || e.tripStatus ||
+            e.originCity || e.originState || e.destinationCity || e.destinationState ||
+            e.lastDutyStatus || e.lastDvirStatus
+          );
+          if (!hasAny) return null;
+          return (
+            <Sect title="Trailer & Trip Details">
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+                {e.trailer1UnitNumber && <Fld l="Trailer 1 Unit #" v={e.trailer1UnitNumber} />}
+                {e.trailer1Plate      && <Fld l="Trailer 1 Plate"  v={e.trailer1Plate} />}
+                {e.trailer1Vin        && <Fld l="Trailer 1 VIN"    v={e.trailer1Vin} full />}
+                {e.trailer2UnitNumber && <Fld l="Trailer 2 Unit #" v={e.trailer2UnitNumber} />}
+                {e.trailer2Plate      && <Fld l="Trailer 2 Plate"  v={e.trailer2Plate} />}
+                {e.trailer2Vin        && <Fld l="Trailer 2 VIN"    v={e.trailer2Vin} full />}
+                {e.odometer != null   && <Fld l="Odometer"          v={`${Number(e.odometer).toLocaleString()} ${inc.location?.country === "Canada" ? "km" : "mi"}`} />}
+                {e.gvw != null        && <Fld l="GVW"               v={`${Number(e.gvw).toLocaleString()} lbs`} />}
+                {e.axles != null      && <Fld l="Axles"             v={e.axles} />}
+                {e.tripStatus         && <Fld l="Trip Status"       v={e.tripStatus} />}
+                {(e.originCity || e.originState) &&
+                  <Fld l="Trip Origin"      v={[e.originCity, e.originState].filter(Boolean).join(", ")} />}
+                {(e.destinationCity || e.destinationState) &&
+                  <Fld l="Trip Destination" v={[e.destinationCity, e.destinationState].filter(Boolean).join(", ")} />}
+                {e.lastDutyStatus     && <Fld l="Last Duty Status"  v={e.lastDutyStatus} />}
+                {e.lastDvirStatus     && <Fld l="Last DVIR"         v={e.lastDvirStatus} />}
+              </div>
+            </Sect>
+          );
+        })()}
+
+        {/* HazMat detail — extends Severity when applicable */}
+        {inc.severity?.hazmatReleased && (() => {
+          const s = inc.severity;
+          const hasDetail = !!(s.hazardousCommodity || s.hazmatClass || s.hazmatUnNumber || s.hazmatQuantityReleased || s.hazmatPlacarded != null);
+          if (!hasDetail) return null;
+          return (
+            <Sect title="HazMat Detail">
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+                {s.hazardousCommodity     && <Fld l="Hazardous Commodity" v={s.hazardousCommodity} full />}
+                {s.hazmatClass            && <Fld l="HazMat Class"        v={s.hazmatClass} />}
+                {s.hazmatUnNumber         && <Fld l="UN / NA Number"      v={s.hazmatUnNumber} />}
+                {s.hazmatQuantityReleased && <Fld l="Quantity Released"   v={s.hazmatQuantityReleased} />}
+                <Fld l="Placarded?" v={s.hazmatPlacarded ? "Yes" : "No"} />
+              </div>
+            </Sect>
+          );
+        })()}
+
+        {/* Insurance, Tow & Repair */}
+        {(() => {
+          const ins = inc.insurance ?? {};
+          const hasAny = !!(
+            ins.carrierName || ins.policyNumber || ins.adjusterName || ins.adjusterPhone ||
+            ins.tpaName || ins.towCompany || ins.towBill || ins.repairVendor ||
+            ins.repairStatus || ins.totalLoss != null || ins.subrogationPending != null
+          );
+          if (!hasAny) return null;
+          return (
+            <Sect title="Insurance, Tow & Repair">
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+                {ins.carrierName    && <Fld l="Insurance Carrier" v={ins.carrierName} />}
+                {ins.policyNumber   && <Fld l="Policy Number"     v={ins.policyNumber} />}
+                {ins.adjusterName   && <Fld l="Adjuster Name"     v={ins.adjusterName} />}
+                {ins.adjusterPhone  && <Fld l="Adjuster Phone"    v={ins.adjusterPhone} blue />}
+                {ins.tpaName        && <Fld l="TPA / 3rd-Party Admin" v={ins.tpaName} full />}
+                {ins.towCompany     && <Fld l="Tow Company"       v={ins.towCompany} />}
+                {ins.towBill != null && <Fld l="Tow Bill"          v={fmt(ins.towBill)} />}
+                {ins.repairVendor   && <Fld l="Repair Vendor"     v={ins.repairVendor} />}
+                {ins.repairStatus   && <Fld l="Repair Status"     v={ins.repairStatus} />}
+                <Fld l="Total Loss?"          v={ins.totalLoss ? "Yes" : "No"} />
+                <Fld l="Subrogation Pending?" v={ins.subrogationPending ? "Yes" : "No"} />
+              </div>
+            </Sect>
+          );
+        })()}
+
+        {/* Other Party */}
+        {(() => {
+          const op = inc.otherParty ?? {};
+          const hasAny = !!(
+            op.driverName || op.driverPhone || op.driverLicense || op.driverLicenseState ||
+            op.vehicleMake || op.vehicleModel || op.vehicleYear || op.vehiclePlate ||
+            op.insuranceCarrier || op.insurancePolicy || op.atFault != null || op.citationIssued != null
+          );
+          if (!hasAny) return null;
+          const veh = [op.vehicleYear, op.vehicleMake, op.vehicleModel].filter(Boolean).join(" ");
+          return (
+            <Sect title="Other Party (3rd Party)">
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+                {op.driverName     && <Fld l="Other Driver"  v={op.driverName} />}
+                {op.driverPhone    && <Fld l="Phone"          v={op.driverPhone} blue />}
+                {op.driverLicense  && <Fld l="License #"      v={op.driverLicense} />}
+                {op.driverLicenseState && <Fld l="License State" v={op.driverLicenseState} />}
+                {veh               && <Fld l="Vehicle"         v={veh} full />}
+                {op.vehiclePlate   && <Fld l="Plate"           v={op.vehiclePlate} />}
+                {op.insuranceCarrier && <Fld l="Insurance Carrier" v={op.insuranceCarrier} />}
+                {op.insurancePolicy  && <Fld l="Insurance Policy"  v={op.insurancePolicy} />}
+                <Fld l="At Fault?"        v={op.atFault ? "Yes" : "No"} />
+                <Fld l="Citation Issued?" v={op.citationIssued ? "Yes" : "No"} />
+              </div>
+            </Sect>
+          );
+        })()}
+
+        {/* Admin & Follow-Up */}
+        {(() => {
+          const fu = inc.followUp ?? {};
+          if (!fu.action && !fu.comments) return null;
+          return (
+            <Sect title="Admin & Follow Up">
+              <div className="space-y-3">
+                {fu.action && (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Driver Follow-Up Training / Action</p>
+                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{fu.action}</p>
+                  </div>
+                )}
+                {fu.comments && (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Additional Comments</p>
+                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{fu.comments}</p>
+                  </div>
+                )}
+              </div>
+            </Sect>
+          );
+        })()}
+
+        {/* Video Evidence */}
+        {Array.isArray((inc as any).videoEvidence) && (inc as any).videoEvidence.length > 0 && (
+          <Sect title="Video Evidence">
+            <div className="space-y-2">
+              {(inc as any).videoEvidence.map((v: any, vi: number) => (
+                <div key={vi} className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Video size={13} className="text-violet-500 shrink-0" />
+                    <span className="text-xs font-medium text-gray-800 truncate">{v.name}</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 shrink-0">{v.size}</span>
+                </div>
+              ))}
+            </div>
+          </Sect>
+        )}
+
         <Sect title="Sources">
           <div className="flex gap-2 flex-wrap">
             {inc.sources.map((s: any, i: number) => (
@@ -583,13 +804,97 @@ const DetailPopup = ({ inc, onClose, onEdit }: any) => {
 };
 
 
-const EditPopup = ({ inc, onClose, onSave }: any) => {
+// ── Accident-type catalogue helpers ──────────────────────────────────────
+// Pulls the master accident-type list (built-in + admin-edited overrides +
+// admin-created custom rows) from the same localStorage keys used by
+// Settings → Accidents, so this form always shows the latest catalogue.
+
+const _ACCIDENT_OVERRIDES_KEY = "tracksmart_accident_type_overrides_v2"; void _ACCIDENT_OVERRIDES_KEY;
+const ACCIDENT_CUSTOM_KEY    = "tracksmart_accident_type_custom_v2";
+
+function loadAccidentTypeCatalogue(): AccidentTypeDef[] {
+  let custom: AccidentTypeDef[] = [];
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(ACCIDENT_CUSTOM_KEY);
+      if (raw) custom = JSON.parse(raw) as AccidentTypeDef[];
+    } catch { /* ignore */ }
+  }
+  return [...ACCIDENT_TYPES, ...custom];
+}
+
+interface AccidentTypeGroupedOption {
+  group: AccidentGroup;
+  options: { v: string; l: string }[];
+}
+
+function buildAccidentTypeOptions(catalogue: AccidentTypeDef[]): AccidentTypeGroupedOption[] {
+  const byGroup = new Map<AccidentGroup, { v: string; l: string }[]>();
+  for (const g of ACCIDENT_GROUPS) byGroup.set(g, []);
+  for (const t of catalogue) {
+    const arr = byGroup.get(t.group) ?? [];
+    arr.push({ v: t.displayName, l: t.displayName });
+    byGroup.set(t.group, arr);
+  }
+  const out: AccidentTypeGroupedOption[] = [];
+  for (const g of ACCIDENT_GROUPS) {
+    const opts = byGroup.get(g) ?? [];
+    if (opts.length > 0) out.push({ group: g, options: opts.sort((a, b) => a.l.localeCompare(b.l)) });
+  }
+  return out;
+}
+
+const EditPopup = ({ inc, onClose, onSave, accountId: scopedAccountId, presentation = 'modal' }: any) => {
   if (!inc) return null;
+  const isPage = presentation === 'page';
   const [form, setForm] = useState(JSON.parse(JSON.stringify(inc)));
+
+  // Carrier-scoped asset list. When the form is opened inside a specific
+  // carrier scope (or when seeded from an external feed which carries an
+  // accountId), pull that carrier's fleet from CARRIER_ASSETS. Otherwise fall
+  // back to the demo INITIAL_ASSETS so the legacy Acme view still works.
+  const effectiveAccountId: string | undefined = scopedAccountId ?? inc?.accountId;
+  const assetOptions = useMemo<any[]>(() => {
+    if (effectiveAccountId && CARRIER_ASSETS[effectiveAccountId]?.length) {
+      return CARRIER_ASSETS[effectiveAccountId];
+    }
+    return INITIAL_ASSETS as any[];
+  }, [effectiveAccountId]);
+
+  /**
+   * Trailers are Non-CMV assets in CARRIER_ASSETS — surface them as a
+   * dropdown so the user picks an existing trailer rather than retyping
+   * Unit # / Plate / VIN. Match by assetType (the structural classification)
+   * — assetCategory is always Non-CMV for trailers since a trailer on its
+   * own isn't a CMV. If a carrier has no trailers on file the picker
+   * shows an empty-state message instead of silently falling back to power
+   * units.
+   */
+  const trailerOptions = useMemo<any[]>(() => {
+    return assetOptions.filter((a: any) =>
+      String(a.assetType ?? a.vehicleType ?? '').toLowerCase().includes('trailer'),
+    );
+  }, [assetOptions]);
 
   // Accident document types from AppDataContext
   const { documents: allDocs } = useAppData();
   const accidentDocTypes = allDocs.filter((d: any) => d.isAccidentDoc);
+
+  // Live accident-type catalogue (from Settings → Accidents).
+  // Refreshes when the window regains focus or another tab updates storage.
+  const [accidentCatalogue, setAccidentCatalogue] = useState<AccidentTypeDef[]>(() => loadAccidentTypeCatalogue());
+  useEffect(() => {
+    const refresh = () => setAccidentCatalogue(loadAccidentTypeCatalogue());
+    window.addEventListener("focus", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+  const accidentTypeGroups = useMemo(() => buildAccidentTypeOptions(accidentCatalogue), [accidentCatalogue]);
+  const currentIncidentType: string | undefined = form?.cause?.incidentType;
+  const isLegacyType = !!currentIncidentType && !accidentCatalogue.some((t) => t.displayName === currentIncidentType);
 
   const u = (s: string, f: string, v: any) =>
     setForm((p: any) => {
@@ -702,10 +1007,128 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
   </div>
 );
 
+  /**
+   * Trailer picker — replaces the legacy 3-field free-text Unit / Plate /
+   * VIN block. Picks an existing trailer from the carrier's asset roster
+   * and auto-populates the persisted form fields via `onPick`. Spans both
+   * grid columns since one row carries the picker + read-only preview of
+   * the resolved Plate / VIN.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _TrailerPicker = ({
+    index, options, unitNumber, plate, vin, onPick,
+  }: {
+    index: number;
+    options: any[];
+    unitNumber: string;
+    plate: string;
+    vin: string;
+    onPick: (trailer: any | null) => void;
+  }) => {
+    // Resolve which option is currently picked. Prefer VIN (most reliable),
+    // then Unit, then Plate — same pattern as the Vehicles Involved picker.
+    const resolved =
+      (vin && options.find((a: any) => (a.vin ?? '') === vin)) ||
+      (unitNumber && options.find((a: any) => (a.unitNumber ?? a.id) === unitNumber)) ||
+      (plate && options.find((a: any) =>
+        (a.plateNumber ?? a.licensePlate ?? '') === plate,
+      )) ||
+      null;
+    return (
+      <div className="col-span-2">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Trailer {index}
+          {effectiveAccountId && (
+            <span className="ml-1.5 text-[10px] font-semibold text-blue-600 normal-case">
+              · {options.length} trailer{options.length === 1 ? '' : 's'} for this carrier
+            </span>
+          )}
+        </label>
+        <select
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+          value={resolved?.id ?? ''}
+          onChange={(e) => {
+            if (!e.target.value) {
+              onPick(null);
+              return;
+            }
+            const t = options.find((a: any) => a.id === e.target.value);
+            if (t) onPick(t);
+          }}
+        >
+          <option value="">
+            {options.length === 0 ? '-- No trailers on file --' : '-- Select Trailer --'}
+          </option>
+          {options.map((a: any) => {
+            const unit = a.unitNumber ?? a.id;
+            const make = a.make ?? '';
+            const model = a.model ?? '';
+            const year = a.year ? ` (${a.year})` : '';
+            return (
+              <option key={a.id} value={a.id}>
+                {unit} — {make} {model}{year}
+              </option>
+            );
+          })}
+        </select>
+        {resolved && (
+          <p className="mt-1 text-[10px] text-slate-500 truncate">
+            {[resolved.year, resolved.make, resolved.model].filter(Boolean).join(' ')}
+            {plate && <span className="font-mono ml-1">· {plate}</span>}
+            {vin && <span className="font-mono ml-1 text-slate-400">· VIN {vin}</span>}
+          </p>
+        )}
+        {!resolved && (unitNumber || plate || vin) && (
+          // Legacy data — show what's stored even though it isn't in the
+          // current trailer list, so the user can verify before overwriting.
+          <p className="mt-1 text-[10px] text-amber-600 truncate">
+            On file: {[unitNumber, plate, vin].filter(Boolean).join(' · ')}
+          </p>
+        )}
+      </div>
+    );
+  };
+  void _TrailerPicker;
+
   const strOpts = (arr: string[]) => arr.map((x) => ({ v: x, l: x }));
 
+  // Page-mode container — same form content rendered as a dedicated page
+  // with a header containing a Back button. Modal mode keeps the original
+  // overlay behaviour.
+  const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="flex flex-col h-full bg-slate-50 p-6 overflow-y-auto">
+      <div
+        className="bg-white border border-slate-200 rounded-xl shadow-sm w-full max-w-3xl mx-auto flex flex-col"
+        style={{ maxHeight: 'calc(100vh - 8rem)' }}
+      >
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-semibold"
+          >
+            <ChevronLeft size={14} /> Back
+          </button>
+          <h2 className="text-sm font-bold text-slate-800">
+            {inc?.incidentId ? 'Edit Accident' : 'Add Accident'}
+          </h2>
+          {inc?.incidentId && (
+            <span className="text-[11px] text-slate-500 font-mono">{inc.incidentId}</span>
+          )}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+
+  const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => isPage
+    ? <PageWrapper>{children}</PageWrapper>
+    : <Modal open={!!inc} onClose={onClose} width={720}>{children}</Modal>;
+
   return (
-    <Modal open={!!inc} onClose={onClose} width={720}>
+    <Wrapper>
+      {/* In page mode the wrapper above already shows a header with Back —
+          the original Modal header is still rendered for modal mode. */}
       {/* Fixed header */}
       <div
         style={{
@@ -784,35 +1207,38 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
             </div>
-            <Sel
-              l="Accident Type"
-              s="cause"
-              f="incidentType"
-              opts={strOpts([
-                "Lost Control/Jackknife/Rollover",
-                "Head-on Collision",
-                "Rearend Collision",
-                "Intersection",
-                "Pedestrian",
-                "Sideswipe - High Speed",
-                "Sideswipe - Low Speed",
-                "Backing",
-                "Struck Object",
-                "Animal Strike",
-                "Parking Lot",
-                "Hit While Parked",
-                "Rearended By Other",
-                "Equipment Fire",
-                "Equipment Theft",
-                "Cargo Theft",
-                "Temperature Damage",
-                "Water Damage",
-                "Load Shift",
-                "Load Transfer Damage",
-                "Cargo Damage",
-                "Miscellaneous",
-              ])}
-            />
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Accident Type
+                <span className="ml-1.5 text-[10px] font-semibold text-blue-600 normal-case">
+                  · from Settings &rsaquo; Accidents
+                </span>
+              </label>
+              <select
+                value={currentIncidentType ?? ""}
+                onChange={(e) => u("cause", "incidentType", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              >
+                <option value="" disabled>Select…</option>
+                {isLegacyType && (
+                  <optgroup label="Legacy / not in catalogue">
+                    <option value={currentIncidentType}>{currentIncidentType} (legacy)</option>
+                  </optgroup>
+                )}
+                {accidentTypeGroups.map((grp) => (
+                  <optgroup key={grp.group} label={grp.group}>
+                    {grp.options.map((o) => (
+                      <option key={o.v} value={o.v}>{o.l}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {accidentTypeGroups.length === 0 && (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  No accident types configured. Add some in Settings &rsaquo; Accidents.
+                </p>
+              )}
+            </div>
             <Sel
               l="Primary Cause"
               s="cause"
@@ -890,6 +1316,37 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                 f="policeReport"
               />
             </div>
+          </div>
+        </Sect>
+
+        {/* ── References & Identifiers (NEW) ─────────────────────────────── */}
+        <Sect title="References & Identifiers">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Inp l="Microfilm Number"          s="references" f="microfilmNumber" />
+            <Inp l="Police Report #"            s="references" f="policeReportNumber" />
+            <Inp l="Police Agency / Department" s="references" f="policeAgency" />
+            <Inp l="Investigating Officer"      s="references" f="investigatingOfficer" />
+            <Inp l="Officer Badge #"            s="references" f="officerBadge" />
+            <Inp l="Citation / Ticket #"        s="references" f="citationNumber" />
+            <Inp l="USDOT #"                    s="references" f="usdotNumber" />
+            <Inp l="CVOR # (Ontario)"           s="references" f="cvorNumber" />
+            <Inp l="NSC # (Canada)"             s="references" f="nscNumber" />
+            <Inp l="MC #"                       s="references" f="mcNumber" />
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">First Notice of Loss</label>
+              <input
+                type="datetime-local"
+                value={form.references?.firstNoticeOfLoss?.slice(0, 16) ?? ""}
+                onChange={(e) => u("references", "firstNoticeOfLoss", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+            </div>
+            <Sel
+              l="Reporting Source"
+              s="references"
+              f="reportingSource"
+              opts={strOpts(["Driver", "Dispatcher", "Police", "Insurance", "Other Party", "Telematics", "Other"])}
+            />
           </div>
         </Sect>
 
@@ -1142,26 +1599,72 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Select Asset (Unit #)</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Select Asset (Unit #)
+                      {effectiveAccountId && (
+                        <span className="ml-1.5 text-[10px] font-semibold text-blue-600 normal-case">
+                          · {assetOptions.length} asset{assetOptions.length === 1 ? "" : "s"} for this carrier
+                        </span>
+                      )}
+                    </label>
                     <select
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                      value={INITIAL_ASSETS.find((a: any) => a.unitNumber === veh.assetId)?.id || ""}
+                      value={(() => {
+                        // Prefer matching by VIN (most reliable), then by unit/plate.
+                        const byVin   = veh.vin ? assetOptions.find((a: any) => (a.vin ?? "") === veh.vin) : null;
+                        const byUnit  = veh.assetId ? assetOptions.find((a: any) => (a.unitNumber ?? a.id) === veh.assetId) : null;
+                        const byPlate = veh.licenseNumber ? assetOptions.find((a: any) => (a.plateNumber ?? a.licensePlate) === veh.licenseNumber) : null;
+                        return (byVin ?? byUnit ?? byPlate)?.id ?? "";
+                      })()}
                       onChange={(e) => {
-                        const a = INITIAL_ASSETS.find((x: any) => x.id === e.target.value);
+                        const a = assetOptions.find((x: any) => x.id === e.target.value);
                         if (a) {
                           setForm((p: any) => {
                             const vehicles = [...(p.vehicles && p.vehicles.length > 0 ? p.vehicles : [{}])];
-                            vehicles[vi] = { ...vehicles[vi], assetId: a.unitNumber, vehicleType: a.vehicleType || a.assetType, make: a.make, model: a.model, year: a.year, vin: a.vin, licenseNumber: a.plateNumber };
+                            vehicles[vi] = {
+                              ...vehicles[vi],
+                              assetId:               a.unitNumber ?? a.id,
+                              vehicleType:           a.vehicleType ?? a.assetType ?? "",
+                              make:                  a.make ?? "",
+                              model:                 a.model ?? "",
+                              year:                  a.year ?? "",
+                              vin:                   a.vin ?? "",
+                              licenseNumber:         a.plateNumber ?? a.licensePlate ?? "",
+                              licenseStateOrProvince: a.licenseStateOrProvince ?? a.plateStateOrProvince ?? vehicles[vi]?.licenseStateOrProvince ?? "",
+                              commodityType:         a.commodityType ?? vehicles[vi]?.commodityType ?? "",
+                              assetCategory:         a.assetCategory ?? "CMV",
+                            };
                             return { ...p, vehicles };
                           });
                         }
                       }}
                     >
                       <option value="">-- Select Asset --</option>
-                      {INITIAL_ASSETS.map((a: any) => (
-                        <option key={a.id} value={a.id}>{a.unitNumber} - {a.make} {a.model}</option>
-                      ))}
+                      {assetOptions.map((a: any) => {
+                        const unit = a.unitNumber ?? a.id;
+                        const make = a.make ?? "";
+                        const model = a.model ?? "";
+                        const year = a.year ? ` (${a.year})` : "";
+                        return (
+                          <option key={a.id} value={a.id}>
+                            {unit} — {make} {model}{year}
+                          </option>
+                        );
+                      })}
                     </select>
+                    {assetOptions.length === 0 && (
+                      <p className="mt-1 text-[11px] text-amber-600">
+                        No assets found for this carrier.
+                      </p>
+                    )}
+                    {/* Quick visual confirmation of the currently-selected asset */}
+                    {(veh.vin || veh.licenseNumber || veh.make) && (
+                      <p className="mt-1 text-[10px] text-slate-500 truncate">
+                        {[veh.year, veh.make, veh.model].filter(Boolean).join(" ")}
+                        {veh.licenseNumber && <span className="font-mono ml-1">· {veh.licenseNumber}</span>}
+                        {veh.vin && <span className="font-mono ml-1 text-slate-400">· VIN {veh.vin}</span>}
+                      </p>
+                    )}
                   </div>
                   {/* Auto-populated vehicle fields - hidden from form, shown in table */}
                   <div className="hidden">
@@ -1185,6 +1688,190 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
             </button>
           </div>
         </Sect>
+
+        {/* ── Trailer & Trip Details ─────────────────────────────────────
+            Trailers mirror the Vehicles Involved pattern exactly: each
+            trailer sits in its own card with a remove control, and an
+            "+ Add Trailer" button appends another. Picking a trailer fills
+            Unit # / Plate / VIN from the carrier's roster. */}
+        <Sect title="Trailer & Trip Details">
+          <div className="space-y-4 mb-5">
+            {(() => {
+              // Resolve the trailer list from the array, or migrate from the
+              // legacy flat trailer1*/trailer2* fields if it doesn't exist
+              // yet. Always provide at least one empty row so the picker
+              // shows up even on a brand-new accident.
+              const eq = form.equipment ?? {};
+              let list: Array<{ unitNumber: string; plate: string; vin: string }> =
+                Array.isArray(eq.trailers) ? eq.trailers : [];
+              if (list.length === 0) {
+                if (eq.trailer1UnitNumber || eq.trailer1Plate || eq.trailer1Vin
+                    || eq.trailer2UnitNumber || eq.trailer2Plate || eq.trailer2Vin) {
+                  list = [
+                    { unitNumber: eq.trailer1UnitNumber ?? '', plate: eq.trailer1Plate ?? '', vin: eq.trailer1Vin ?? '' },
+                    { unitNumber: eq.trailer2UnitNumber ?? '', plate: eq.trailer2Plate ?? '', vin: eq.trailer2Vin ?? '' },
+                  ].filter(t => t.unitNumber || t.plate || t.vin);
+                }
+                if (list.length === 0) list = [{ unitNumber: '', plate: '', vin: '' }];
+              }
+
+              // Sync helper: write the array AND the flat trailer1/trailer2
+              // fields back to the form so legacy display code (Fld rows in
+              // the detail view) keeps working.
+              const writeTrailers = (next: typeof list) => {
+                setForm((p: any) => ({
+                  ...p,
+                  equipment: {
+                    ...p.equipment,
+                    trailers: next,
+                    trailer1UnitNumber: next[0]?.unitNumber ?? '',
+                    trailer1Plate:      next[0]?.plate ?? '',
+                    trailer1Vin:        next[0]?.vin ?? '',
+                    trailer2UnitNumber: next[1]?.unitNumber ?? '',
+                    trailer2Plate:      next[1]?.plate ?? '',
+                    trailer2Vin:        next[1]?.vin ?? '',
+                  },
+                }));
+              };
+
+              return (
+                <>
+                  {list.map((tr, ti) => {
+                    // Resolve the picked asset for the preview line / value.
+                    const resolved =
+                      (tr.vin && trailerOptions.find((a: any) => (a.vin ?? '') === tr.vin)) ||
+                      (tr.unitNumber && trailerOptions.find((a: any) => (a.unitNumber ?? a.id) === tr.unitNumber)) ||
+                      (tr.plate && trailerOptions.find((a: any) =>
+                        (a.plateNumber ?? a.licensePlate ?? '') === tr.plate,
+                      )) ||
+                      null;
+                    return (
+                      <div key={ti} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-sm font-semibold text-gray-700">Trailer {ti + 1}</span>
+                          {ti > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = list.filter((_, i) => i !== ti);
+                                writeTrailers(next.length > 0 ? next : [{ unitNumber: '', plate: '', vin: '' }]);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                              title="Remove trailer"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">
+                              Select Trailer (Unit #)
+                              {effectiveAccountId && (
+                                <span className="ml-1.5 text-[10px] font-semibold text-blue-600 normal-case">
+                                  · {trailerOptions.length} trailer{trailerOptions.length === 1 ? '' : 's'} for this carrier
+                                </span>
+                              )}
+                            </label>
+                            <select
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                              value={resolved?.id ?? ''}
+                              onChange={(e) => {
+                                const next = [...list];
+                                if (!e.target.value) {
+                                  next[ti] = { unitNumber: '', plate: '', vin: '' };
+                                } else {
+                                  const a = trailerOptions.find((x: any) => x.id === e.target.value);
+                                  if (a) {
+                                    next[ti] = {
+                                      unitNumber: a.unitNumber ?? '',
+                                      plate:      a.plateNumber ?? a.licensePlate ?? '',
+                                      vin:        a.vin ?? '',
+                                    };
+                                  }
+                                }
+                                writeTrailers(next);
+                              }}
+                            >
+                              <option value="">
+                                {trailerOptions.length === 0 ? '-- No trailers on file --' : '-- Select Trailer --'}
+                              </option>
+                              {trailerOptions.map((a: any) => {
+                                const unit = a.unitNumber ?? a.id;
+                                const make = a.make ?? '';
+                                const model = a.model ?? '';
+                                const year = a.year ? ` (${a.year})` : '';
+                                return (
+                                  <option key={a.id} value={a.id}>
+                                    {unit} — {make} {model}{year}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            {trailerOptions.length === 0 && (
+                              <p className="mt-1 text-[11px] text-amber-600">
+                                No trailers found for this carrier.
+                              </p>
+                            )}
+                            {resolved && (
+                              <p className="mt-1 text-[10px] text-slate-500 truncate">
+                                {[resolved.year, resolved.make, resolved.model].filter(Boolean).join(' ')}
+                                {tr.plate && <span className="font-mono ml-1">· {tr.plate}</span>}
+                                {tr.vin && <span className="font-mono ml-1 text-slate-400">· VIN {tr.vin}</span>}
+                              </p>
+                            )}
+                            {!resolved && (tr.unitNumber || tr.plate || tr.vin) && (
+                              <p className="mt-1 text-[10px] text-amber-600 truncate">
+                                On file: {[tr.unitNumber, tr.plate, tr.vin].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => writeTrailers([...list, { unitNumber: '', plate: '', vin: '' }])}
+                    className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 rounded-lg px-4 py-2 transition"
+                  >
+                    <Plus size={14} />
+                    Add Trailer
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Inp l="Odometer at Crash" s="equipment" f="odometer" type="number" />
+            <Inp l="GVW (lbs)"         s="equipment" f="gvw" type="number" />
+            <Inp l="Number of Axles"   s="equipment" f="axles" type="number" />
+            <Sel
+              l="Trip Status"
+              s="equipment"
+              f="tripStatus"
+              opts={strOpts(["Loaded", "Empty", "Bobtail", "Deadhead", "Mixed"])}
+            />
+            <Inp l="Trip Origin (City)"            s="equipment" f="originCity" />
+            <Inp l="Trip Origin (State/Prov)"      s="equipment" f="originState" />
+            <Inp l="Trip Destination (City)"       s="equipment" f="destinationCity" />
+            <Inp l="Trip Destination (State/Prov)" s="equipment" f="destinationState" />
+            <Sel
+              l="Last Duty Status"
+              s="equipment"
+              f="lastDutyStatus"
+              opts={strOpts(["Driving", "On-Duty (not driving)", "Off-Duty", "Sleeper Berth"])}
+            />
+            <Sel
+              l="Last DVIR Status"
+              s="equipment"
+              f="lastDvirStatus"
+              opts={strOpts(["Pre-Trip Pass", "Pre-Trip Fail", "Post-Trip Pass", "Post-Trip Fail", "Not Performed"])}
+            />
+          </div>
+        </Sect>
+
         <Sect title="Commodity">
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div>
@@ -1228,12 +1915,28 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
             <Chk l="Tow Away" s="severity" f="towAway" />
             <Chk l="HAZMAT Spilled/Released" s="severity" f="hazmatReleased" />
             {form.severity?.hazmatReleased && (
-              <Inp
-                l="Hazardous Commodity"
-                s="severity"
-                f="hazardousCommodity"
-                full
-              />
+              <>
+                <Inp l="Hazardous Commodity" s="severity" f="hazardousCommodity" full />
+                <Sel
+                  l="HazMat Class"
+                  s="severity"
+                  f="hazmatClass"
+                  opts={strOpts([
+                    "1 — Explosives",
+                    "2 — Gases",
+                    "3 — Flammable Liquids",
+                    "4 — Flammable Solids",
+                    "5 — Oxidisers / Organic Peroxides",
+                    "6 — Toxic / Infectious",
+                    "7 — Radioactive",
+                    "8 — Corrosive",
+                    "9 — Miscellaneous",
+                  ])}
+                />
+                <Inp l="UN / NA Number"        s="severity" f="hazmatUnNumber" />
+                <Inp l="Quantity Released"     s="severity" f="hazmatQuantityReleased" />
+                <Chk l="Placarded?"            s="severity" f="hazmatPlacarded" />
+              </>
             )}
           </div>
         </Sect>
@@ -1278,6 +1981,46 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
             </div>
           </div>
         </Sect>
+        {/* ── Insurance, Tow & Repair (NEW) ─────────────────────────────── */}
+        <Sect title="Insurance, Tow & Repair">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Inp l="Insurance Carrier"   s="insurance" f="carrierName" />
+            <Inp l="Policy Number"       s="insurance" f="policyNumber" />
+            <Inp l="Adjuster Name"       s="insurance" f="adjusterName" />
+            <Inp l="Adjuster Phone"      s="insurance" f="adjusterPhone" />
+            <Inp l="TPA / Third-Party Admin" s="insurance" f="tpaName" full />
+            <Inp l="Tow Company"         s="insurance" f="towCompany" />
+            <Inp l="Tow Bill (amount)"   s="insurance" f="towBill" type="number" />
+            <Inp l="Repair Vendor"       s="insurance" f="repairVendor" />
+            <Sel
+              l="Repair Status"
+              s="insurance"
+              f="repairStatus"
+              opts={strOpts(["Pending", "In Progress", "Completed", "Total Loss", "Awaiting Parts"])}
+            />
+            <Chk l="Total Loss?"         s="insurance" f="totalLoss" />
+            <Chk l="Subrogation Pending?" s="insurance" f="subrogationPending" />
+          </div>
+        </Sect>
+
+        {/* ── Other Party (NEW) ──────────────────────────────────────────── */}
+        <Sect title="Other Party (3rd Party Vehicle)">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Inp l="Other Driver Name"   s="otherParty" f="driverName" />
+            <Inp l="Other Driver Phone"  s="otherParty" f="driverPhone" />
+            <Inp l="Other Driver License #" s="otherParty" f="driverLicense" />
+            <Inp l="Other Driver License State/Prov" s="otherParty" f="driverLicenseState" />
+            <Inp l="Other Vehicle Make"  s="otherParty" f="vehicleMake" />
+            <Inp l="Other Vehicle Model" s="otherParty" f="vehicleModel" />
+            <Inp l="Other Vehicle Year"  s="otherParty" f="vehicleYear" type="number" />
+            <Inp l="Other Vehicle Plate" s="otherParty" f="vehiclePlate" />
+            <Inp l="Other Insurance Carrier" s="otherParty" f="insuranceCarrier" />
+            <Inp l="Other Insurance Policy #" s="otherParty" f="insurancePolicy" />
+            <Chk l="At Fault?"           s="otherParty" f="atFault" />
+            <Chk l="Citation Issued to Other?" s="otherParty" f="citationIssued" />
+          </div>
+        </Sect>
+
         <Sect title="Admin & Follow Up">
           <div className="grid grid-cols-1 gap-y-3">
             <div>
@@ -1475,7 +2218,7 @@ const EditPopup = ({ inc, onClose, onSave }: any) => {
           Save Changes
         </button>
       </div>
-    </Modal>
+    </Wrapper>
   );
 };
 
@@ -1518,8 +2261,570 @@ const ALL_COLS = [
   { id: "docs", label: "Docs", checked: true },
 ];
 
-export function AccidentsPage() {
-  const [data, setData] = useState(INCIDENTS);
+// ── Compliance reconciliation helpers ────────────────────────────────────
+
+/**
+ * Seed an EditPopup form from an external feed record. Pre-populates every
+ * field we can infer from the feed so the admin only needs to confirm and
+ * fill in the carrier-private fields (insurance, follow-up, etc.).
+ */
+function externalRecordToFormSeed(rec: ExternalAccidentRecord) {
+  const meta = SOURCE_META[rec.source];
+  const refField = meta.refField; // 'usdotNumber' | 'cvorNumber' | 'nscNumber'
+  const reportableTone = rec.fatalities > 0 || rec.injuries > 0 || rec.towAway;
+
+  // Build references with the source-specific identifier slotted in correctly.
+  const references: Record<string, any> = {
+    microfilmNumber:      rec.source !== "FMCSA" ? rec.externalId : "",
+    policeReportNumber:   rec.policeReportNumber ?? (rec.source === "FMCSA" ? rec.externalId : ""),
+    policeAgency:         rec.reportedBy,
+    investigatingOfficer: rec.investigatingOfficer ?? "",
+    officerBadge:         "",
+    citationNumber:       "",
+    usdotNumber:          "",
+    cvorNumber:           "",
+    nscNumber:            "",
+    mcNumber:             "",
+    firstNoticeOfLoss:    rec.occurredAt,
+    reportingSource:      rec.source === "FMCSA" ? "Police"
+                          : rec.source === "CVOR" ? "Police"
+                          : "Police",
+  };
+  references[refField] = rec.externalId;
+  // Tag every per-source match-id so audit trails know which feed seeded this.
+  references[`${rec.source.replace(/-/g, "_").toLowerCase()}MatchId`] = rec.externalId;
+
+  return {
+    incidentId: "",
+    insuranceClaimNumber: "",
+    occurredAt: rec.occurredAt,
+    occurredDate: rec.occurredDate,
+    incidentKind: ["crash_report"],
+    accountId: rec.accountId,
+    driver: {
+      name:           rec.driverName ?? "",
+      license:        rec.driverLicense ?? "",
+      licenseState:   rec.driverLicenseState ?? rec.stateOrProvince,
+      driverType:     "Long Haul Driver",
+      ageBand:        "",
+      drivingExperience: "",
+      lengthOfEmployment: "",
+      hrsDriving:     "",
+      hrsOnDuty:      "",
+      email:          "",
+      phone:          "",
+    },
+    location: {
+      unit:            "",
+      streetAddress:   "",
+      city:            rec.city,
+      stateOrProvince: rec.stateOrProvince,
+      country:         rec.country,
+      zip:             "",
+      full:            `${rec.city}, ${rec.stateOrProvince}, ${rec.country}`,
+      geo:             { lat: 0, lng: 0 },
+      locationType:    "Highway",
+    },
+    vehicles: [
+      {
+        assetId: "",
+        vin: rec.vehicleVin ?? "",
+        licenseNumber: rec.vehiclePlate ?? "",
+        licenseStateOrProvince: rec.stateOrProvince,
+        vehicleType: "Power Unit",
+        make: rec.vehicleMakeModel?.split(" ")[0] ?? "",
+        model: rec.vehicleMakeModel?.split(" ").slice(1).join(" ") ?? "",
+        year: "",
+        commodityType: "",
+        assetCategory: "CMV",
+      },
+    ],
+    severity: {
+      fatalities: rec.fatalities,
+      injuriesNonFatal: rec.injuries,
+      towAway: rec.towAway,
+      vehiclesTowed: rec.towAway ? 1 : 0,
+      hazmatReleased: false,
+      hazardousCommodity: "",
+    },
+    roadway: {
+      postedSpeedLimitKmh: "",
+      roadType: "Highway",
+      trafficControl: "None",
+      weatherConditions: "",
+      roadConditions: "",
+      light: "",
+      terrain: "",
+    },
+    references,
+    equipment: {
+      trailer1UnitNumber: "",
+      trailer1Plate: "",
+      trailer1Vin: "",
+      trailer2UnitNumber: "",
+      trailer2Plate: "",
+      trailer2Vin: "",
+      odometer: "",
+      gvw: "",
+      axles: "",
+      tripStatus: "",
+      originCity: "",
+      originState: "",
+      destinationCity: rec.city,
+      destinationState: rec.stateOrProvince,
+      lastDutyStatus: "Driving",
+      lastDvirStatus: "",
+    },
+    insurance: {
+      carrierName: "",
+      policyNumber: "",
+      adjusterName: "",
+      adjusterPhone: "",
+      tpaName: "",
+      towCompany: "",
+      towBill: "",
+      repairVendor: "",
+      repairStatus: "Pending",
+      totalLoss: false,
+      subrogationPending: false,
+    },
+    otherParty: {},
+    cause: { primaryCause: "Unknown", incidentType: "" },
+    classification: {
+      fmcsaReportable: reportableTone,
+      fmcsr39015: reportableTone ? "Yes" : "Not Applicable",
+      accidentType: rec.towAway ? "Tow Away" : (rec.injuries > 0 ? "Injury" : "Property Damage Only"),
+      policeReport: true,
+    },
+    preventability: { value: "tbd", isPreventable: null, notes: "" },
+    sources: [rec.source.toLowerCase().replace(/-/g, "_") + "_feed", "external_match_seed"],
+    status: { value: "open", label: "Open — pending review" },
+    documents: [] as string[],
+    costs: {
+      currency: rec.country === "Canada" ? "CAD" : "USD",
+      companyCostsFromDollarOne: 0,
+      insuranceCostsPaid: 0,
+      insuranceReserves: 0,
+      totalAccidentCosts: 0,
+    },
+    followUp: {
+      action: `Imported from ${meta.label} feed (${rec.externalId}); pending carrier review.`,
+      comments: rec.rawDescription,
+    },
+    /** Internal flag so the form header can show a "from external feed" badge. */
+    _seededFromFeed: { source: rec.source, externalId: rec.externalId, agency: rec.reportedBy },
+  } as any;
+}
+
+function ComplianceReconciliationBanner({
+  verifiedCount, missing, showMissing, onToggle, onLog, onDismiss, onSyncFeeds, lastSyncedAt,
+}: {
+  verifiedCount: number;
+  missing: ExternalAccidentRecord[];
+  showMissing: boolean;
+  onToggle: () => void;
+  onLog: (rec: ExternalAccidentRecord) => void;
+  onDismiss: (externalId: string) => void;
+  onSyncFeeds?: () => void;
+  lastSyncedAt?: number | null;
+}) {
+  const bySource = useMemo(() => {
+    const m = new Map<ExternalFeedSource, number>();
+    for (const r of missing) m.set(r.source, (m.get(r.source) ?? 0) + 1);
+    return m;
+  }, [missing]);
+
+  // Sources actually present in the active scope — drives the dynamic
+  // wording in the header description so we never mention sources the
+  // carrier doesn't have data for.
+  const presentSources = useMemo(() => Array.from(bySource.keys()), [bySource]);
+
+  // Row selection + pagination state for the missing list when expanded.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
+
+  // Keep the banner mounted even with zero records when a sync handler is
+  // wired up, so the user can always click "Sync feeds" to pull a fresh
+  // batch from the regulator. Hide it entirely otherwise (legacy behaviour).
+  if (missing.length === 0 && verifiedCount === 0 && !onSyncFeeds) return null;
+
+  const hasMissing = missing.length > 0;
+  const expanded = hasMissing && showMissing;
+
+  const totalPages = Math.max(1, Math.ceil(missing.length / perPage));
+  const safePage   = Math.min(page, totalPages);
+  const startIdx   = (safePage - 1) * perPage;
+  const pageSlice  = missing.slice(startIdx, startIdx + perPage);
+  const pageIds    = pageSlice.map(r => r.externalId);
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every(id => selectedIds.has(id));
+  const someOnPageSelected = pageIds.some(id => selectedIds.has(id));
+  const selectedCount = selectedIds.size;
+
+  const toggleOne = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleAllOnPage = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allOnPageSelected) pageIds.forEach(id => next.delete(id));
+      else pageIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const logAllSelected = () => {
+    const selected = missing.filter(r => selectedIds.has(r.externalId));
+    selected.forEach(r => onLog(r));
+    setSelectedIds(new Set());
+  };
+  const dismissAllSelected = () => {
+    const selected = [...selectedIds];
+    selected.forEach(id => onDismiss(id));
+    setSelectedIds(new Set());
+  };
+
+  return (
+    <div className="mb-6">
+      <div
+        className={`rounded-xl border overflow-hidden shadow-sm ${
+          hasMissing ? "border-amber-200" : "border-emerald-200"
+        }`}
+      >
+        {/* Banner (header). Rounded corners come from the outer wrapper. */}
+        <div
+          className={`px-5 py-3.5 flex items-center justify-between gap-4 flex-wrap ${
+            hasMissing ? "bg-amber-50" : "bg-emerald-50"
+          } ${expanded ? "border-b border-amber-200" : ""}`}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${hasMissing ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+              <AlertTriangle size={18} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-slate-900">
+                {hasMissing
+                  ? `${missing.length} external record${missing.length === 1 ? "" : "s"} missing from your accident log`
+                  : verifiedCount > 0
+                    ? "Accident log is in sync with external feeds"
+                    : "No external feed entries received yet"}
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5 leading-snug">
+                {verifiedCount > 0 && (
+                  <span className="mr-2">
+                    <span className="font-semibold text-emerald-700">{verifiedCount}</span> verified by external feeds
+                  </span>
+                )}
+                {hasMissing && (
+                  <>
+                    <span className="text-slate-400 mx-1">·</span>
+                    Found in
+                    {Array.from(bySource.entries()).map(([s, n]) => (
+                      <span key={s} className={`ml-1 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${SOURCE_TONE[s]}`}>
+                        {s} ({n})
+                      </span>
+                    ))}
+                    <span className="text-slate-500 ml-1.5">— matched on date, time (±60min) and location.</span>
+                  </>
+                )}
+                {!hasMissing && verifiedCount === 0 && (
+                  <span className="italic text-slate-500">
+                    Click <span className="font-semibold text-slate-700">Sync feeds</span> to pull a fresh batch of FMCSA / CVOR / NSC entries.
+                  </span>
+                )}
+                {presentSources.length > 0 && !hasMissing && (
+                  <>
+                    <span className="text-slate-400 mx-1">·</span>
+                    <span className="text-slate-500">Sources:</span>
+                    {presentSources.map(s => (
+                      <span key={s} className={`ml-1 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${SOURCE_TONE[s]}`}>
+                        {s}
+                      </span>
+                    ))}
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          {/* Action buttons — single side-by-side row, exactly mirroring
+              the Violations page (h-9 buttons, gap-2, primary blue + amber
+              outlined). Timestamp sits below the row when present. */}
+          <div className="shrink-0 flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              {onSyncFeeds && (
+                <button
+                  type="button"
+                  onClick={onSyncFeeds}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
+                  title="Pull a fresh batch of regulator-feed entries (FMCSA / CVOR / NSC)"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Sync feeds
+                </button>
+              )}
+              {hasMissing && (
+                <button
+                  type="button"
+                  onClick={onToggle}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-semibold rounded-lg bg-white border border-amber-200 text-amber-800 hover:bg-amber-50 shadow-sm"
+                >
+                  {showMissing ? 'Hide' : 'Show'} missing
+                  {showMissing ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+            {lastSyncedAt && (
+              <span className="text-[10px] text-slate-500 tabular-nums">
+                Last synced {new Date(lastSyncedAt).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Table — flush with the banner above, sharing the outer border. */}
+        {expanded && (
+          <div className="bg-white">
+          {/* Bulk action bar */}
+          {selectedCount > 0 && (
+            <div className="px-3 py-2 bg-blue-50 border-b border-blue-200 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-blue-800">
+                {selectedCount} record{selectedCount === 1 ? "" : "s"} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissAllSelected}
+                  className="inline-flex items-center gap-1 px-2.5 h-7 text-xs font-semibold rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                >
+                  <X size={12} /> Dismiss {selectedCount}
+                </button>
+                <button
+                  type="button"
+                  onClick={logAllSelected}
+                  className="inline-flex items-center gap-1 px-3 h-7 text-xs font-bold rounded-md bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
+                >
+                  <Plus size={12} /> Log {selectedCount} accident{selectedCount === 1 ? "" : "s"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <table className="w-full text-sm">
+            <thead className="bg-amber-50/60 border-b border-amber-200 text-[10px] uppercase font-bold tracking-wider text-amber-800">
+              <tr>
+                <th className="w-8 px-2 py-2">
+                  <input
+                    type="checkbox"
+                    className="rounded border-amber-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                    checked={allOnPageSelected}
+                    ref={el => { if (el) el.indeterminate = !allOnPageSelected && someOnPageSelected; }}
+                    onChange={toggleAllOnPage}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Select all on page"
+                  />
+                </th>
+                <th className="px-3 py-2 text-left w-[110px]">Source</th>
+                <th className="px-3 py-2 text-left w-[150px]">Date / Time</th>
+                <th className="px-3 py-2 text-left">Location</th>
+                <th className="px-3 py-2 text-left">Vehicle</th>
+                <th className="px-3 py-2 text-left">Driver</th>
+                <th className="px-3 py-2 text-left w-[180px]">Severity</th>
+                <th className="px-3 py-2 text-right w-[180px]">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-amber-100">
+              {pageSlice.map((rec) => {
+                const checked = selectedIds.has(rec.externalId);
+                return (
+                <tr
+                  key={rec.externalId}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onLog(rec)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onLog(rec); } }}
+                  title="Click to log this accident with pre-filled details"
+                  className={`group/row hover:bg-amber-50/50 cursor-pointer transition-colors ${checked ? "bg-blue-50/40" : ""}`}
+                >
+                  <td className="w-8 px-2 py-2 align-top" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="rounded border-amber-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                      checked={checked}
+                      onChange={() => toggleOne(rec.externalId)}
+                      aria-label={`Select ${rec.externalId}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <div className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${SOURCE_TONE[rec.source]}`}>
+                      {SOURCE_META[rec.source].short}
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[110px]" title={rec.externalId}>{rec.externalId}</div>
+                  </td>
+                  <td className="px-3 py-2 align-top whitespace-nowrap">
+                    <div className="text-[12px] font-semibold text-slate-900">
+                      {new Date(rec.occurredAt).toLocaleDateString()}
+                    </div>
+                    <div className="text-[11px] text-slate-500 tabular-nums">
+                      {new Date(rec.occurredAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <div className="text-[12px] text-slate-700 leading-tight">
+                      {rec.city}, {rec.stateOrProvince}
+                    </div>
+                    <div className="text-[10px] text-slate-400">{rec.country}</div>
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <div className="text-[12px] font-mono text-slate-700">{rec.vehiclePlate ?? "—"}</div>
+                    {rec.vehicleMakeModel && <div className="text-[10px] text-slate-500 truncate max-w-[180px]">{rec.vehicleMakeModel}</div>}
+                    {rec.vehicleVin && <div className="text-[10px] font-mono text-slate-400 truncate max-w-[180px]" title={rec.vehicleVin}>{rec.vehicleVin}</div>}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <div className="text-[12px] text-slate-700 truncate max-w-[180px]">{rec.driverName ?? "—"}</div>
+                    {rec.driverLicense && <div className="text-[10px] font-mono text-slate-400 truncate max-w-[180px]">{rec.driverLicense}</div>}
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <div className="text-[12px] font-semibold text-slate-900 capitalize">{rec.severitySummary}</div>
+                    <div className="text-[10px] text-slate-400 truncate max-w-[180px]" title={rec.reportedBy}>{rec.reportedBy}</div>
+                  </td>
+                  <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600 group-hover/row:bg-blue-700 text-white text-[11px] font-bold transition-colors">
+                      <Plus size={11} /> Log accident
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onDismiss(rec.externalId); }}
+                      aria-label="Dismiss"
+                      title="Dismiss this missing record"
+                      className="ml-1 p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </td>
+                </tr>
+              );
+              })}
+            </tbody>
+          </table>
+
+          {/* Pagination footer */}
+          <div className="border-t border-amber-200 px-3 py-2 flex items-center justify-between gap-3 flex-wrap bg-amber-50/40">
+            <div className="flex items-center gap-2 text-[11px] text-slate-600">
+              <span>Rows per page:</span>
+              <select
+                className="h-6 px-1.5 border border-slate-200 rounded bg-white text-[11px] focus:outline-none"
+                value={perPage}
+                onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }}
+              >
+                {[5, 10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span className="ml-2 text-slate-400">
+                {startIdx + 1}-{Math.min(startIdx + perPage, missing.length)} of {missing.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={safePage <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="h-6 w-6 flex items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-3 h-3" />
+              </button>
+              <span className="text-[11px] text-slate-600 tabular-nums">
+                {safePage} / {totalPages}
+              </span>
+              <button
+                disabled={safePage >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="h-6 w-6 flex items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface AccidentsPageProps {
+  /** When provided, the table is scoped to that carrier's accidents only. */
+  accountId?: string;
+}
+
+export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
+  const initialAccidents = useMemo(() => {
+    return accountId ? getAccidentsForCarrier(accountId) : CARRIER_INCIDENTS_ALL;
+  }, [accountId]);
+
+  const [data, setData] = useState<any[]>(initialAccidents);
+
+  // Live (runtime-synced) feed entries pulled by the Sync button.
+  const [liveAccidentFeeds, setLiveAccidentFeeds] = useState<ExternalAccidentRecord[]>([]);
+  const [lastAccidentSyncedAt, setLastAccidentSyncedAt] = useState<number | null>(null);
+
+  // External regulatory feeds (FMCSA / CVOR / NSC) for the active scope —
+  // baseline static feeds plus any runtime-synced batches.
+  const externalFeed = useMemo<ExternalAccidentRecord[]>(
+    () => [
+      ...(accountId ? getExternalAccidentsForCarrier(accountId) : EXTERNAL_ACCIDENT_FEEDS_ALL),
+      ...liveAccidentFeeds,
+    ],
+    [accountId, liveAccidentFeeds],
+  );
+
+  const handleSyncAccidentFeeds = () => {
+    const id = accountId ?? "acct-001";
+    const batch = generateLiveAccidentBatch(id);
+    if (batch.length === 0) return;
+    setLiveAccidentFeeds(prev => [...batch, ...prev]);
+    setLastAccidentSyncedAt(Date.now());
+    setShowMissing(true);
+  };
+
+  // Match internal accidents to external feed records by date + city + ±60min.
+  const matchResult = useMemo(
+    () => matchInternalToExternal(data, externalFeed),
+    [data, externalFeed],
+  );
+
+  // Locally-dismissed missing records (admin clicked "Dismiss"). Persists per
+  // window for the session — not localStorage — so dismissals don't leak
+  // across users.
+  const [dismissedMissing, setDismissedMissing] = useState<Set<string>>(new Set());
+  const visibleMissing = useMemo(
+    () => matchResult.missing.filter((m) => !dismissedMissing.has(m.externalId)),
+    [matchResult.missing, dismissedMissing],
+  );
+
+  const [showMissing, setShowMissing] = useState(false);
+
+  // When the selected carrier changes, swap the dataset.
+  useEffect(() => {
+    setData(accountId ? getAccidentsForCarrier(accountId) : CARRIER_INCIDENTS_ALL);
+    setDismissedMissing(new Set());
+    setShowMissing(false);
+    setLiveAccidentFeeds([]);
+    setLastAccidentSyncedAt(null);
+  }, [accountId]);
+
+  // Suppress unused-symbol error for INCIDENTS — it's still re-exported via
+  // `carrier-accidents.data` for the demo carrier and the page no longer
+  // imports it directly into state. Keeping the import compiled helps the
+  // bundler tree-shake.
+  void INCIDENTS;
   const [q, setQ] = useState("");
 
   const [selected, setSelected] = useState<string[]>([]);
@@ -1579,8 +2884,32 @@ export function AccidentsPage() {
   const [sortCol] = useState("date");
   const [sortDesc] = useState(true);
 
+  // Sub-category breakdown for the active tab — drives the mini KPI strip.
+  // Declared BEFORE `sorted` because `sorted` reads from `subFiltered`.
+  const [subTypeFilter, setSubTypeFilter] = useState<string | null>(null);
+  useEffect(() => { setSubTypeFilter(null); }, [activeTab]);
+  const subTypeBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of filtered) {
+      const t = (item.cause?.incidentType ?? "").trim() || "(Unspecified)";
+      map.set(t, (map.get(t) ?? 0) + 1);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12);
+  }, [filtered]);
+
+  // Apply sub-type filter to the rows that go into the table.
+  const subFiltered = useMemo(() => {
+    if (!subTypeFilter) return filtered;
+    return filtered.filter((it) => {
+      const t = (it.cause?.incidentType ?? "").trim() || "(Unspecified)";
+      return t === subTypeFilter;
+    });
+  }, [filtered, subTypeFilter]);
+
   const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
+    return [...subFiltered].sort((a, b) => {
       let va: any = a.occurredDate;
       let vb: any = b.occurredDate;
 
@@ -1594,7 +2923,7 @@ export function AccidentsPage() {
       if (va > vb) return sortDesc ? -1 : 1;
       return 0;
     });
-  }, [filtered, sortCol, sortDesc]);
+  }, [subFiltered, sortCol, sortDesc]);
 
   // Stats
   const stats = useMemo(() => {
@@ -1606,8 +2935,33 @@ export function AccidentsPage() {
       (x) => x.preventability.value === "preventable"
     ).length;
     return { total, cost, inj, fat, prev };
-    return { total, cost, inj, fat, prev };
   }, [filtered]);
+
+  // Per-tab count is computed against the date / driver / search filtered set
+  // (i.e. ignoring the tab itself). This way each tab's badge shows how many
+  // records would land there under the current top-level filters.
+  const tabCounts = useMemo(() => {
+    const base = data.filter((item) => {
+      if (q) {
+        const s = q.toLowerCase();
+        const m = (v: any) => v?.toLowerCase().includes(s);
+        const match = m(item.incidentId) || m(item.driver?.name) || m(item.location?.city) || m(item.vehicles?.[0]?.assetId);
+        if (!match) return false;
+      }
+      const occurred = new Date(item.occurredDate);
+      if (dateRange.start && occurred < new Date(`${dateRange.start}T00:00:00`)) return false;
+      if (dateRange.end && occurred > new Date(`${dateRange.end}T23:59:59`)) return false;
+      if (driverFilter !== "All" && item.driver?.name !== driverFilter) return false;
+      return true;
+    });
+    return {
+      all:        base.length,
+      hazmat:     base.filter((x) => x.severity?.hazmatReleased).length,
+      tow:        base.filter((x) => x.severity?.towAway).length,
+      injuries:   base.filter((x) => (x.severity?.injuriesNonFatal ?? 0) > 0).length,
+      fatalities: base.filter((x) => (x.severity?.fatalities ?? 0) > 0).length,
+    };
+  }, [data, q, dateRange, driverFilter]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -1688,6 +3042,21 @@ export function AccidentsPage() {
     setQ("");
   };
 
+  // ── Dedicated Add/Edit page mode ───────────────────────────────────────
+  // When `editing` is set the form takes over the entire page area instead
+  // of opening as a modal overlay. The Back button restores the list.
+  if (editing) {
+    return (
+      <EditPopup
+        inc={editing}
+        accountId={accountId}
+        presentation="page"
+        onClose={() => setEditing(null)}
+        onSave={handleSave}
+      />
+    );
+  }
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
       {/* Header */}
@@ -1704,13 +3073,27 @@ export function AccidentsPage() {
           >
             <Upload size={16} /> Export
           </button>
-          <button 
+          <button
              onClick={() => setEditing({})}
              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm shadow-blue-200">
             <Plus size={16} /> Log Accident
           </button>
         </div>
       </div>
+
+      {/* ── Compliance reconciliation banner ───────────────────────────── */}
+      <ComplianceReconciliationBanner
+        verifiedCount={matchResult.verifiedByIncidentId.size}
+        missing={visibleMissing}
+        showMissing={showMissing}
+        onToggle={() => setShowMissing((v) => !v)}
+        onLog={(rec) => setEditing(externalRecordToFormSeed(rec))}
+        onDismiss={(externalId) => setDismissedMissing((prev) => {
+          const next = new Set(prev); next.add(externalId); return next;
+        })}
+        onSyncFeeds={handleSyncAccidentFeeds}
+        lastSyncedAt={lastAccidentSyncedAt}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -1751,36 +3134,193 @@ export function AccidentsPage() {
         />
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-6 overflow-x-auto">
+      {/* ── Continuous block: Tabs + Sub-category KPIs + Controls + Table ── */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 overflow-x-auto">
           {[
-            { id: "all", l: "All Accidents" },
-            { id: "hazmat", l: "Hazmat" },
-            { id: "tow", l: "Tow Away" },
-            { id: "injuries", l: "Injuries" },
-            { id: "fatalities", l: "Fatalities" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                whitespace-nowrap pb-3 border-b-2 font-medium text-sm transition-colors
-                ${
-                  activeTab === tab.id
-                    ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }
-              `}
-            >
-              {tab.l}
-            </button>
-          ))}
-        </nav>
-      </div>
+            { id: "all",        l: "All Accidents", count: tabCounts.all,        tone: "blue",   icon: AlertTriangle },
+            { id: "hazmat",     l: "Hazmat",        count: tabCounts.hazmat,     tone: "orange", icon: Activity },
+            { id: "tow",        l: "Tow Away",      count: tabCounts.tow,        tone: "amber",  icon: Truck },
+            { id: "injuries",   l: "Injuries",      count: tabCounts.injuries,   tone: "rose",   icon: User },
+            { id: "fatalities", l: "Fatalities",    count: tabCounts.fatalities, tone: "red",    icon: UserX },
+          ].map((tab) => {
+            const active = activeTab === tab.id;
+            const Icon = tab.icon;
+            const activeCls =
+              tab.tone === "blue"   ? "border-blue-600 text-blue-700 bg-blue-50/40"
+              : tab.tone === "orange" ? "border-orange-600 text-orange-700 bg-orange-50/40"
+              : tab.tone === "amber"  ? "border-amber-600 text-amber-700 bg-amber-50/40"
+              : tab.tone === "rose"   ? "border-rose-600 text-rose-700 bg-rose-50/40"
+              :                         "border-red-600 text-red-700 bg-red-50/40";
+            const badgeCls =
+              tab.tone === "blue"   ? "bg-blue-100 text-blue-700"
+              : tab.tone === "orange" ? "bg-orange-100 text-orange-700"
+              : tab.tone === "amber"  ? "bg-amber-100 text-amber-700"
+              : tab.tone === "rose"   ? "bg-rose-100 text-rose-700"
+              :                         "bg-red-100 text-red-700";
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`group relative flex items-center gap-2 px-5 py-3 border-b-2 transition-colors whitespace-nowrap ${
+                  active ? activeCls : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                }`}
+              >
+                <Icon size={14} className={active ? "" : "opacity-70 group-hover:opacity-100"} />
+                <span className="text-sm font-semibold">{tab.l}</span>
+                <span className={`inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full text-[10px] font-bold tabular-nums ${active ? badgeCls : "bg-slate-100 text-slate-500"}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-      {/* Controls */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-5">
+        {/* ── Mini KPI strip — sub-category breakdown for the active tab ── */}
+        {(() => {
+          const activeTone = activeTab === "all" ? "blue"
+            : activeTab === "hazmat" ? "orange"
+            : activeTab === "tow" ? "amber"
+            : activeTab === "injuries" ? "rose"
+            : "red";
+          const stripBg =
+            activeTone === "blue"   ? "bg-blue-50/40"
+            : activeTone === "orange" ? "bg-orange-50/40"
+            : activeTone === "amber"  ? "bg-amber-50/40"
+            : activeTone === "rose"   ? "bg-rose-50/40"
+            :                           "bg-red-50/40";
+          const accentBar =
+            activeTone === "blue"   ? "bg-blue-500"
+            : activeTone === "orange" ? "bg-orange-500"
+            : activeTone === "amber"  ? "bg-amber-500"
+            : activeTone === "rose"   ? "bg-rose-500"
+            :                           "bg-red-500";
+          const countTone =
+            activeTone === "blue"   ? "text-blue-700"
+            : activeTone === "orange" ? "text-orange-700"
+            : activeTone === "amber"  ? "text-amber-700"
+            : activeTone === "rose"   ? "text-rose-700"
+            :                           "text-red-700";
+          const selectedRing =
+            activeTone === "blue"   ? "border-blue-600 ring-2 ring-blue-300/40"
+            : activeTone === "orange" ? "border-orange-600 ring-2 ring-orange-300/40"
+            : activeTone === "amber"  ? "border-amber-600 ring-2 ring-amber-300/40"
+            : activeTone === "rose"   ? "border-rose-600 ring-2 ring-rose-300/40"
+            :                           "border-red-600 ring-2 ring-red-300/40";
+
+          if (subTypeBreakdown.length === 0) {
+            return (
+              <div className="px-4 py-6 text-center text-[12px] text-slate-400 italic border-b border-slate-200 bg-slate-50/50">
+                No accidents in this category for the current filters.
+              </div>
+            );
+          }
+          return (
+            <div className={`px-4 py-3 border-b border-slate-200 ${stripBg}`}>
+              <div className="flex items-center justify-between mb-2 gap-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Sub-categories — accident types in this view
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Click a card to narrow the table to that accident type
+                  </div>
+                </div>
+                {subTypeFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setSubTypeFilter(null)}
+                    className={`inline-flex items-center gap-1 text-[11px] font-bold ${countTone} hover:opacity-80`}
+                  >
+                    Clear sub-filter <X size={11} />
+                  </button>
+                )}
+              </div>
+              {(() => {
+                /**
+                 * Each card gets a coordinated colour palette cycled by index
+                 * (8 tones drawn from Tailwind's saturated family). The palette
+                 * is muted at rest (50-tint background, 500 accent bar, 700
+                 * text) so cards don't compete with the page chrome, but they
+                 * stay distinct enough to scan at a glance. The selected card
+                 * still adopts the parent-tab tone via the existing `accentBar`
+                 * / `countTone` / `selectedRing` variables.
+                 */
+                const palette = [
+                  { bar: "bg-sky-500",     bg: "bg-sky-50/60",     count: "text-sky-700",     chip: "bg-sky-50 text-sky-700 ring-sky-200",         barBg: "bg-sky-100",     barFill: "bg-sky-500" },
+                  { bar: "bg-violet-500",  bg: "bg-violet-50/60",  count: "text-violet-700",  chip: "bg-violet-50 text-violet-700 ring-violet-200", barBg: "bg-violet-100",  barFill: "bg-violet-500" },
+                  { bar: "bg-emerald-500", bg: "bg-emerald-50/60", count: "text-emerald-700", chip: "bg-emerald-50 text-emerald-700 ring-emerald-200", barBg: "bg-emerald-100", barFill: "bg-emerald-500" },
+                  { bar: "bg-amber-500",   bg: "bg-amber-50/60",   count: "text-amber-700",   chip: "bg-amber-50 text-amber-700 ring-amber-200",   barBg: "bg-amber-100",   barFill: "bg-amber-500" },
+                  { bar: "bg-rose-500",    bg: "bg-rose-50/60",    count: "text-rose-700",    chip: "bg-rose-50 text-rose-700 ring-rose-200",      barBg: "bg-rose-100",    barFill: "bg-rose-500" },
+                  { bar: "bg-indigo-500",  bg: "bg-indigo-50/60",  count: "text-indigo-700",  chip: "bg-indigo-50 text-indigo-700 ring-indigo-200", barBg: "bg-indigo-100",  barFill: "bg-indigo-500" },
+                  { bar: "bg-teal-500",    bg: "bg-teal-50/60",    count: "text-teal-700",    chip: "bg-teal-50 text-teal-700 ring-teal-200",      barBg: "bg-teal-100",    barFill: "bg-teal-500" },
+                  { bar: "bg-fuchsia-500", bg: "bg-fuchsia-50/60", count: "text-fuchsia-700", chip: "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200", barBg: "bg-fuchsia-100", barFill: "bg-fuchsia-500" },
+                ];
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                    {subTypeBreakdown.map(([type, count], i) => {
+                      const selected = subTypeFilter === type;
+                      const sharePct = stats.total > 0 ? (count / stats.total) * 100 : 0;
+                      const c = palette[i % palette.length];
+                      return (
+                        <button
+                          type="button"
+                          key={type}
+                          onClick={() => setSubTypeFilter(selected ? null : type)}
+                          title={`${type} — ${count} accident${count === 1 ? "" : "s"}`}
+                          className={`group text-left rounded-lg border overflow-hidden shadow-sm transition-all flex flex-col h-full ${
+                            selected
+                              ? `${selectedRing} bg-white`
+                              : `border-slate-200 hover:border-slate-300 hover:shadow-md ${c.bg}`
+                          }`}
+                        >
+                          <div className={`h-1 w-full ${selected ? accentBar : c.bar}`} />
+                          <div className="px-3 py-2.5 flex-1 flex flex-col">
+                            <div
+                              className="text-[11px] font-semibold text-slate-700 leading-snug line-clamp-2 min-h-[2.6em]"
+                              title={type}
+                            >
+                              {type}
+                            </div>
+                            <div className="flex items-end justify-between gap-2 mt-2">
+                              <span
+                                className={`text-[22px] font-bold tabular-nums leading-none ${
+                                  selected ? countTone : c.count
+                                }`}
+                              >
+                                {count}
+                              </span>
+                              <span
+                                className={`text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-md ring-1 ${
+                                  selected
+                                    ? `${countTone} ring-current/30 bg-white`
+                                    : c.chip
+                                }`}
+                              >
+                                {sharePct.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div className={`mt-2 h-1 rounded-full overflow-hidden ${selected ? "bg-slate-100" : c.barBg}`}>
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  selected ? accentBar : c.barFill
+                                }`}
+                                style={{ width: `${Math.min(100, sharePct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
+
+        {/* Controls — search / filters / column picker / counts */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-4 border-b border-gray-200">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
@@ -1901,11 +3441,9 @@ export function AccidentsPage() {
             <span className="font-semibold text-gray-900">{filtered.length}</span> Records Found
           </div>
         </div>
-      </div>
 
-      {/* Table List View */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        {/* Table List View — within the same continuous block */}
+        <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
                 <tr>
@@ -2156,10 +3694,25 @@ export function AccidentsPage() {
                       )}
                       {colVis("source") && (
                         <td className="px-4 py-3">
-                            <div className="flex -space-x-1">
-                                {item.sources.map((x: string, i: number) => (
-                                    <span key={i} title={x}>{sourceBadge(x)}</span>
-                                ))}
+                            <div className="flex flex-col gap-1">
+                                <div className="flex -space-x-1">
+                                    {item.sources.map((x: string, i: number) => (
+                                        <span key={i} title={x}>{sourceBadge(x)}</span>
+                                    ))}
+                                </div>
+                                {(() => {
+                                    const verified = matchResult.verifiedByIncidentId.get(item.incidentId) ?? [];
+                                    if (verified.length === 0) return null;
+                                    return (
+                                        <div className="flex items-center gap-1 flex-wrap" title="Verified by external regulator feeds (FMCSA / CVOR / NSC)">
+                                            {verified.map((src: ExternalFeedSource) => (
+                                                <span key={src} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider ${SOURCE_TONE[src]}`}>
+                                                    <span aria-hidden="true">✓</span>{src}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </td>
                       )}
@@ -2307,12 +3860,7 @@ export function AccidentsPage() {
         }}
       />
       
-      {/* Edit Modal */}
-      <EditPopup 
-        inc={editing} 
-        onClose={() => setEditing(null)} 
-        onSave={handleSave}
-      />
+      {/* Add/Edit form is rendered as a dedicated page above (early return). */}
     </div>
   );
 }

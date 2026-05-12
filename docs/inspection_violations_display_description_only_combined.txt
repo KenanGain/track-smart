@@ -1,0 +1,287 @@
+INSPECTION VIOLATIONS - DISPLAY NAME AND DESCRIPTION ONLY
+
+
+
+Summary
+=======
+
+Display Name: Inspection Total
+Description: Total count of distinct inspections during the last rolling 24 months.
+
+Display Name: Inspection Violation Total
+Description: Total count of violations during the last rolling 24 months.
+
+Display Name: Inspection Violation Ratio
+Description: Percent (ratio) of violations to inspections in the rolling 24 months.
+
+Display Name: Inspection Violation Ratio Group
+Description: Based on an entity's inspection violation ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. No Violations; B. Very Low; C. Low; D. Med; E. High; U. No Inspections.
+
+
+Hours-of-Service
+================
+
+Display Name: Hours-of-Service Total Violations
+Description: Total count of all Hours of Service related violations in the last rolling 24 months.
+
+Display Name: Hours-of-Service Violation Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are Hours or Service related.
+
+Display Name: Hours-of-Service - Relative Pain Point
+Description: Based on the entity's Hours of Service Violation Ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. High; B. Med; C. Low; U. Unknown.
+
+Display Name: Driver - 10/15 Hours
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - 60/70/80 Hours
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - All Other Hours of Service
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - False Log Book
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - No Log Book/Log Not Current
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - State/Local Hours of Service
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Driver Fitness
+==============
+
+Display Name: Driver Fitness Violation Total
+Description: Total count of all Driver Fitness related violations in the last rolling 24 months.
+
+Display Name: Driver Fitness Violations Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are Driver Fitness related.
+
+Display Name: Driver Fitness - Relative Pain Point
+Description: Based on the entity's Driver Fitness Violation Ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. High; B. Med; C. Low; U. Unknown.
+
+Display Name: Driver - Medical Certificate
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Disqualified Drivers
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Controlled Substance
+====================
+
+Display Name: Controlled Substance Violation Total
+Description: Total count of all Controlled Substance related violations in the last rolling 24 months.
+
+Display Name: Controlled Substance Violations Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are Controlled Substance related.
+
+Display Name: Controlled Substance - Relative Pain Point
+Description: Based on the entity's Controlled Substance Violation Ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. High; B. Med; C. Low; U. Unknown.
+
+Display Name: Driver - Alcohol
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Drugs
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Unsafe Driving
+==============
+
+Display Name: Unsafe Driving Violation Total
+Description: Total count of all Unsafe Driving related violations in the last rolling 24 months.
+
+Display Name: Unsafe Driving Violation Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are Unsafe Driving related.
+
+Display Name: Unsafe Driving - Relative Pain Point
+Description: Based on the entity's Unsafe Driving Violation Ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. High; B. Med; C. Low; U. Unknown.
+
+Display Name: Driver - Failure to Obey Traffic Control Device
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Failure to Yield Right of Way
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Following Too Close
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Improper Lane Change
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Improper Passing
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Improper Turns
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Radar Detectors
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Reckless Driving
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Seat Belt
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Speeding
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - Traffic Enforcement
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Vehicle Maintenance
+===================
+
+Display Name: Vehicle Maint. Violation Total
+Description: Total count of all Vehicle Maintenance related violations in the last rolling 24 months.
+
+Display Name: Vehicle Maint. Violations Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are Vehicle Maintenance related.
+
+Display Name: Vehicle Maint. - Relative Pain Point
+Description: Based on the entity's Vehicle Maintenance Violation Ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. High; B. Med; C. Low; U. Unknown.
+
+Display Name: Vehicle - All Other Brake Violations
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - All Other Vehicle Defects
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Brakes out of adjustment
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Coupling Devices
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Emergency Equipment
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Exhaust Discharge
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Frames
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Fuel Systems
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Lighting
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Load Securement
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Periodic Inspection
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Steering Mechanism
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Suspension
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Tires
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Wheels/Studs/Clamps
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Vehicle - Windshield
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Hazardous Materials
+===================
+
+Display Name: Hazmat Violation Total
+Description: Total count of all Hazmat related violations in the last rolling 24 months.
+
+Display Name: Hazmat Violations Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are Hazmat related.
+
+Display Name: Hazardous Materials - Relative Pain Point
+Description: Based on the entity's Hazmat Violation Ratio, each entity is assigned a violation pain point group to indicate the relative severity based of their violation ratio compared to the distribution of violation ratios among active entities: A. High; B. Med; C. Low; U. Unknown.
+
+Display Name: Hazmat - Accepting Shipment Improperly Marked
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - All Other Hazmat Violations
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - Emergency Response
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - Improper Blocking and Bracing
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - Improper Placarding
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - No Remote Shutoff Control
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - No Retest and Inspection (Cargo Tank)
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - Shipping Paper
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Hazmat - Use of Non-Specification Container
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Other
+=====
+
+Display Name: Other Violation Total
+Description: Total count of all Other violations in the last rolling 24 months.
+
+Display Name: Other Violations Ratio
+Description: Percent (ratio) of total violations, in the last 24 rolling months, that are in the Other category.
+
+Display Name: Driver - Size and Weight
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Driver - All Other Driver Violations
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+Display Name: Unknown
+Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
+
+
+Accident Summary
+================
+
+Display Name: Accident Total
+Description: Total count of accidents in the last rolling 24 months.
+
+Display Name: Accident Ratio (Est.)
+Description: Estimated accident ratio is the total accidents per 100 estimated power units. Calculation includes accidents in the last rolling 24 months, averaged over 12 months to get an annualized value.
+
+Display Name: Accident Ratio (Est.) Group
+Description: Based on the estimated accident to power unit ratio, each entity is assigned an accident pain point group to indicate the relative severity of their accident ratio compared to the distribution of accident ratios among active entities: A. High; B. Med; C. Low.
+
+Display Name: Accidents w/Fatalities
+Description: Total count of accidents involving a fatality in the last rolling 24 months.
+
+Display Name: Accidents Total Fatalities
+Description: Total fatality count in the last rolling 24 months.
+
+Display Name: Accidents w/Injuries
+Description: Total count of accidents involving an injury in the last rolling 24 months.
+
+Display Name: Accidents Total Injuries
+Description: Total injury count in the last rolling 24 months.
+
+Display Name: Accidents w/Property Damage
+Description: Total count of accidents involving property damage in the last rolling 24 months.
+
+Display Name: Accidents w/Tow-Away
+Description: Total count of accidents involving a tow-away in the last 24 months.
+
+Display Name: Accidents w/Rollover
+Description: Total count of rollover accidents in the last 24 months.

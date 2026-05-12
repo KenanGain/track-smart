@@ -39,6 +39,28 @@ export interface ViolationRecord {
   expenses: number;
   status: 'Open' | 'Closed' | 'Under Review';
   inspectionId?: string;   // If set, this violation came from an inspection event
+  // ── Optional regulator-feed identifiers (used to reconcile against external
+  // sources: FMCSA SMS, CVOR conviction, NSC AB/PEI/NS conviction, federal
+  // Contraventions). These do not change the meaning of existing records;
+  // when absent the reconciliation falls back to date + time + driver name +
+  // violation code matching.
+  citationNumber?: string;
+  convictionNumber?: string;
+  convictionDate?: string;
+  // Court / regulator paperwork — populated when reconciling against an
+  // external feed entry or when a clerk adds the violation by hand.
+  // (USDOT / CVOR / NSC carrier numbers belong on the carrier profile, not
+  // on each violation — they're identical across every record for the same
+  // carrier, so they aren't stored here.)
+  microfilmNumber?: string;
+  ticketNumber?: string;
+  offence?: string;            // Free-text section / offence description as printed on the ticket
+  docketNumber?: string;       // Court docket / case number
+  driverMasterNumber?: string; // Provincial driver master / abstract record number (CA)
+  charge?: string;             // Formal charge wording as filed by the prosecuting body
+  natCode?: string;            // CCMTA NAT code — cross-jurisdictional Canadian violation reporting code
+  actSection?: string;         // Statute reference: e.g. "HTA s.84.1", "MVTA s.193(1)", "49 CFR §392.5"
+  issuingAgency?: string;      // Police / regulator that issued the citation
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
