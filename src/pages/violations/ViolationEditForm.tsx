@@ -192,7 +192,6 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave, accou
     const labelClass = "block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5";
 
     const isDriverMode = mode === 'driver';
-    const totalAmount = (formData.fineAmount || 0) + (formData.expenseAmount || 0);
 
 
     const isPage = presentation === 'page';
@@ -597,58 +596,21 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave, accou
                                     </div>
                                 </div>
                             
-                            {/* Fine & Expense Section */}
+                            {/* Currency stays here so the violation record keeps
+                                its jurisdiction context — fine amounts are now
+                                tracked downstream on the linked Ticket record
+                                (see Tickets page), not on the violation itself. */}
                             <div className="grid grid-cols-2 gap-5 pt-2 border-t border-slate-200/60">
-                                {/* Fine Amount */}
                                 <div>
-                                    <label className={labelClass}>Fine Amount ({formData.currency || 'USD'})</label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
-                                        <input 
-                                            type="number" 
-                                            className={`${inputClass} pl-7`}
-                                            value={formData.fineAmount || ''}
-                                            onChange={e => handleChange('fineAmount', Number(e.target.value))}
-                                            placeholder="0.00"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Expense Amount */}
-                                <div>
-                                    <label className={labelClass}>Expense Amount</label>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
-                                            <input 
-                                                type="number" 
-                                                className={`${inputClass} pl-7`}
-                                                value={formData.expenseAmount || ''}
-                                                onChange={e => handleChange('expenseAmount', Number(e.target.value))}
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                        <select 
-                                            className="w-20 h-10 px-2 rounded-lg border border-slate-200 text-sm focus:border-blue-500 outline-none bg-slate-50 font-bold text-slate-600"
-                                            value={formData.currency || 'USD'}
-                                            onChange={e => handleChange('currency', e.target.value)}
-                                        >
-                                            <option value="USD">USD</option>
-                                            <option value="CAD">CAD</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Total Amount Badge */}
-                                <div className="col-span-2">
-                                    <div className="bg-slate-100 rounded-xl p-3 flex justify-between items-center border border-slate-200">
-                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total (Fine + Expenses)</span>
-                                        <div className="text-lg font-bold text-slate-900 font-mono">
-                                            {formData.currency === 'USD' ? '$' : 'C$'}
-                                            {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            <span className="text-xs text-slate-400 ml-1 font-sans">{formData.currency || 'USD'}</span>
-                                        </div>
-                                    </div>
+                                    <label className={labelClass}>Currency</label>
+                                    <select
+                                        className={`${inputClass} bg-slate-50 font-bold text-slate-600`}
+                                        value={formData.currency || 'USD'}
+                                        onChange={e => handleChange('currency', e.target.value)}
+                                    >
+                                        <option value="USD">USD</option>
+                                        <option value="CAD">CAD</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>

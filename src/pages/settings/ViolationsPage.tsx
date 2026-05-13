@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  AlertTriangle, 
-  Search, 
-  Activity, 
+import {
+  AlertTriangle,
+  Search,
+  Activity,
   Info,
   AlertOctagon,
   ChevronDown,
@@ -18,9 +18,13 @@ import {
   ArrowUp,
   ArrowDown,
   Edit2,
-  LayoutGrid
+  LayoutGrid,
+  Save,
+  Download,
+  Sigma,
 } from 'lucide-react';
 import { VIOLATION_DATA } from '@/data/violations.data';
+import type { ViolationItem } from '@/types/violations.types';
 import { NSC_CODE_TO_SYSTEM, CCMTA_ALPHA_CODE_MAP, FMCSA_BASIC_MAP, cfr_to_basic } from '@/pages/inspections/nscViolationMap';
 import { NSC_VIOLATION_CATALOG } from '@/pages/inspections/NscAnalysis';
 import { SubTabs } from '@/components/ui/SubTabs';
@@ -69,24 +73,94 @@ const _CATEGORY_TONE: Record<string, string> = {
 void _CATEGORY_LABEL; void _CATEGORY_TONE;
 
 // localStorage key for the editable TrackSmart points override map.
+// V2 schema splits the single number into three weighted points so safety
+// & compliance can score the driver, the asset, and the carrier separately.
 const TS_POINTS_STORAGE_KEY = 'tracksmart_violation_points_v1';
+const TS_POINTS_V2_KEY      = 'tracksmart_violation_points_v2';
 
-function loadTsPoints(): Record<string, number> {
+/** TrackSmart per-violation point override. All three are optional —
+ *  leaving a field undefined falls back to the data-driven default. */
+export interface TsPoints {
+    driver?: number;
+    asset?: number;
+    carrier?: number;
+}
+
+function loadTsPoints(): Record<string, TsPoints> {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = window.localStorage.getItem(TS_POINTS_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    // V2 wins when present; otherwise migrate the legacy V1 single-number
+    // map (where the value applied to the driver).
+    const v2 = window.localStorage.getItem(TS_POINTS_V2_KEY);
+    if (v2) return JSON.parse(v2) as Record<string, TsPoints>;
+    const v1 = window.localStorage.getItem(TS_POINTS_STORAGE_KEY);
+    if (!v1) return {};
+    const parsed = JSON.parse(v1) as Record<string, number>;
+    const migrated: Record<string, TsPoints> = {};
+    for (const [id, n] of Object.entries(parsed)) {
+      if (Number.isFinite(n)) migrated[id] = { driver: Number(n) };
+    }
+    return migrated;
   } catch {
     return {};
   }
 }
-function saveTsPoints(points: Record<string, number>): void {
+function saveTsPoints(points: Record<string, TsPoints>): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(TS_POINTS_STORAGE_KEY, JSON.stringify(points));
+    window.localStorage.setItem(TS_POINTS_V2_KEY, JSON.stringify(points));
   } catch {
     /* ignore */
   }
+}
+
+/** True when at least one of the three TS-point fields is set. */
+function tsPointsHasAny(p: TsPoints | undefined): boolean {
+  return !!p && (p.driver !== undefined || p.asset !== undefined || p.carrier !== undefined);
+}
+
+/** Sum of the three TS-point fields. Used for the existing column sort + display. */
+function tsPointsTotal(p: TsPoints | undefined): number {
+  if (!p) return 0;
+  return (p.driver ?? 0) + (p.asset ?? 0) + (p.carrier ?? 0);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Violation override / custom-record persistence
+// ───────────────────────────────────────────────────────────────────────────
+// Edits made via the Add/Edit modal are stored in localStorage as a sparse
+// override map (existing items) + a custom-violations array (new items the
+// user adds). Both are merged on top of VIOLATION_DATA at read time so the
+// underlying mock data stays untouched.
+
+const VIOLATION_OVERRIDES_KEY = 'tracksmart_violation_overrides_v1';
+const VIOLATION_CUSTOM_KEY    = 'tracksmart_violation_custom_v1';
+
+function loadViolationOverrides(): Record<string, Partial<ViolationItem>> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(VIOLATION_OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) as Record<string, Partial<ViolationItem>> : {};
+  } catch {
+    return {};
+  }
+}
+function saveViolationOverrides(map: Record<string, Partial<ViolationItem>>): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(VIOLATION_OVERRIDES_KEY, JSON.stringify(map)); } catch { /* ignore quota */ }
+}
+function loadCustomViolations(): ViolationItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(VIOLATION_CUSTOM_KEY);
+    return raw ? JSON.parse(raw) as ViolationItem[] : [];
+  } catch {
+    return [];
+  }
+}
+function saveCustomViolations(list: ViolationItem[]): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(VIOLATION_CUSTOM_KEY, JSON.stringify(list)); } catch { /* ignore quota */ }
 }
 
 
@@ -198,7 +272,7 @@ const COLUMN_GROUPS = [
       { id: 'vehPts',   label: 'Vehicle Pts',      desc: 'Carrier severity weight' },
       { id: 'dvrPts',   label: 'Driver Pts',       desc: 'Driver severity weight' },
       { id: 'carPts',   label: 'Carrier Pts',      desc: 'Combined carrier impact score' },
-      { id: 'tsPoints', label: 'TrackSmart Pts',   desc: 'Editable override used by the TrackSmart score (saved locally)' },
+      { id: 'tsPoints', label: 'TrackSmart Pts',   desc: 'Editable Driver / Asset / Carrier overrides used by the TrackSmart score (saved locally)' },
     ],
   },
   {
@@ -683,6 +757,663 @@ function _CategoryOverviewCard({ aggregate, onSelect }: { aggregate: CategoryAgg
 }
 void _CategoryOverviewCard;
 
+// ───────────────────────────────────────────────────────────────────────────
+// Violation Add / Edit Modal
+// ───────────────────────────────────────────────────────────────────────────
+// Single comprehensive form covering every field on the ViolationItem +
+// CanadaEnforcement contract:
+//   • Core           — id, code, group, description, risk, OOS, in-DSMS
+//   • Severity       — severityWeight (driver/carrier)
+//   • TrackSmart     — three editable points (driver / asset / carrier)
+//   • Impact         — telematics tags + ELD/VEDR device source
+//   • USA            — regulatory authority, CFR, statutes, description
+//   • Canada         — regulatory authority, references, provinces +
+//                      canadaEnforcement (act, section, ccmta, descriptions,
+//                      NSC/CVOR points)
+// In edit mode the form pre-fills from the merged item; on Save it stores
+// the modified fields as a `Partial<ViolationItem>` override (existing
+// items) or appends to the custom-violations array (new items).
+
+interface ViolationEditModalProps {
+  open: boolean;
+  mode: 'add' | 'edit';
+  /** Pre-fills the form in edit mode. */
+  source: ViolationItem | null;
+  /** The category the new violation belongs to (drives the BASIC tab). */
+  defaultCategoryKey?: string;
+  /** Current TrackSmart points for this item (D/A/C). */
+  tsPointsForItem?: TsPoints;
+  onClose: () => void;
+  onSave: (next: ViolationItem, tsPoints: TsPoints, categoryKey: string) => void;
+}
+
+const TELEMATICS_TAG_OPTIONS = [
+  'harsh_brake', 'harsh_acceleration', 'harsh_turn', 'speeding', 'crash', 'near_crash',
+  'tailgating', 'cell_phone', 'distracted', 'drowsiness', 'smoking', 'seat_belt_violation',
+  'stop_sign_violation', 'red_light_violation', 'unsafe_lane_change', 'camera_obstruction',
+  'eating_and_drinking', 'rolling_stop', 'unsafe_parking',
+] as const;
+
+const CANADA_PROVINCES = ['ON', 'BC', 'AB', 'SK', 'MB', 'QC', 'NB', 'NS', 'PE', 'NL', 'YT', 'NT', 'NU'];
+
+function emptyViolationItem(): ViolationItem {
+  return {
+    id: '',
+    violationCode: '',
+    violationDescription: '',
+    violationGroup: '',
+    severityWeight: { driver: 0, carrier: 0 },
+    crashLikelihoodPercent: 0,
+    driverRiskCategory: 3,
+    inDsms: false,
+    isOos: false,
+    regulatoryCodes: { usa: [], canada: [] },
+    canadaEnforcement: undefined,
+    telematicsTags: [],
+    deviceSource: undefined,
+  };
+}
+
+const ViolationEditModal: React.FC<ViolationEditModalProps> = ({
+  open, mode, source, defaultCategoryKey = 'unsafe_driving', tsPointsForItem, onClose, onSave,
+}) => {
+  const [draft, setDraft] = useState<ViolationItem>(() => source ?? emptyViolationItem());
+  const [ts, setTs] = useState<TsPoints>(() => tsPointsForItem ?? {});
+  const [categoryKey, setCategoryKey] = useState(defaultCategoryKey);
+  const [activeTab, setActiveTab] = useState<'core' | 'usa' | 'canada' | 'impact'>('core');
+
+  React.useEffect(() => {
+    if (!open) return;
+    setDraft(source ? structuredClone(source) : emptyViolationItem());
+    setTs(tsPointsForItem ?? {});
+    setCategoryKey(defaultCategoryKey);
+    setActiveTab('core');
+  }, [open, source, tsPointsForItem, defaultCategoryKey]);
+
+  // Resolve the FMCSA BASIC metadata for the picked category. VIOLATION_DATA
+  // uses a slightly wider key set (e.g. controlled_substances_alcohol) than
+  // FMCSA_BASIC_MAP (controlled_substances), so we normalize before lookup.
+  // Declared BEFORE the early return so hook order stays stable across renders.
+  const basicMeta = useMemo(() => {
+    const norm = (k: string): string => {
+      if (FMCSA_BASIC_MAP[k]) return k;
+      if (k === 'controlled_substances_alcohol') return 'controlled_substances';
+      if (k === 'hours_of_service')              return 'hos_compliance';
+      if (k === 'hazmat_compliance')             return 'hazmat';
+      if (k === 'canada_provincial')             return '';
+      return '';
+    };
+    const normKey = norm(categoryKey);
+    return normKey ? { key: normKey, meta: FMCSA_BASIC_MAP[normKey] } : null;
+  }, [categoryKey]);
+
+  if (!open) return null;
+
+  const labelCls = 'block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1';
+  const inputCls = 'w-full h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none transition';
+  const textareaCls = inputCls + ' h-20 py-2 resize-none';
+
+  // ── Setters
+  const patch = <K extends keyof ViolationItem>(key: K, value: ViolationItem[K]) =>
+    setDraft(prev => ({ ...prev, [key]: value }));
+  const patchSeverity = (key: 'driver' | 'carrier', value: number) =>
+    setDraft(prev => ({ ...prev, severityWeight: { ...prev.severityWeight, [key]: value } }));
+  const patchCanada = (key: keyof NonNullable<ViolationItem['canadaEnforcement']>, value: any) =>
+    setDraft(prev => ({
+      ...prev,
+      canadaEnforcement: { ...(prev.canadaEnforcement ?? { act: '', section: '', code: '', ccmtaCode: '', descriptions: { full: '' }, points: { nsc: null } }), [key]: value } as any,
+    }));
+  const patchCanadaDescriptions = (key: 'full' | 'conviction' | 'shortForm52', value: string) =>
+    setDraft(prev => {
+      const ce = prev.canadaEnforcement ?? { act: '', section: '', code: '', ccmtaCode: '', descriptions: { full: '' }, points: { nsc: null } };
+      return { ...prev, canadaEnforcement: { ...ce, descriptions: { ...ce.descriptions, [key]: value } } };
+    });
+  const patchCanadaPoints = (key: 'nsc' | 'revised', value: number | null) =>
+    setDraft(prev => {
+      const ce = prev.canadaEnforcement ?? { act: '', section: '', code: '', ccmtaCode: '', descriptions: { full: '' }, points: { nsc: null } };
+      return { ...prev, canadaEnforcement: { ...ce, points: { ...ce.points, [key]: value } } };
+    });
+  const patchCvor = (key: 'min' | 'max' | 'raw', value: any) =>
+    setDraft(prev => {
+      const ce = prev.canadaEnforcement ?? { act: '', section: '', code: '', ccmtaCode: '', descriptions: { full: '' }, points: { nsc: null } };
+      const cvor = ce.points.cvor ?? { raw: '', min: null, max: null };
+      return { ...prev, canadaEnforcement: { ...ce, points: { ...ce.points, cvor: { ...cvor, [key]: value } } } };
+    });
+
+  // ── USA / Canada regulatory rows
+  const addUsa = () =>
+    setDraft(prev => ({ ...prev, regulatoryCodes: { ...prev.regulatoryCodes, usa: [...prev.regulatoryCodes.usa, { authority: 'FMCSA', cfr: [], description: '', statute: [] }] } }));
+  const removeUsa = (i: number) =>
+    setDraft(prev => ({ ...prev, regulatoryCodes: { ...prev.regulatoryCodes, usa: prev.regulatoryCodes.usa.filter((_, idx) => idx !== i) } }));
+  const updateUsa = (i: number, patchObj: Partial<typeof draft.regulatoryCodes.usa[number]>) =>
+    setDraft(prev => ({ ...prev, regulatoryCodes: { ...prev.regulatoryCodes, usa: prev.regulatoryCodes.usa.map((r, idx) => idx === i ? { ...r, ...patchObj } : r) } }));
+
+  const addCa = () =>
+    setDraft(prev => ({ ...prev, regulatoryCodes: { ...prev.regulatoryCodes, canada: [...(prev.regulatoryCodes.canada ?? []), { authority: 'PROVINCIAL_HTA', reference: [], description: '', province: [] }] } }));
+  const removeCa = (i: number) =>
+    setDraft(prev => ({ ...prev, regulatoryCodes: { ...prev.regulatoryCodes, canada: (prev.regulatoryCodes.canada ?? []).filter((_, idx) => idx !== i) } }));
+  const updateCa = (i: number, patchObj: Partial<NonNullable<typeof draft.regulatoryCodes.canada>[number]>) =>
+    setDraft(prev => ({ ...prev, regulatoryCodes: { ...prev.regulatoryCodes, canada: (prev.regulatoryCodes.canada ?? []).map((r, idx) => idx === i ? { ...r, ...patchObj } : r) } }));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    let final = draft;
+    if (!final.id) final = { ...final, id: `custom_${Date.now()}` };
+    onSave(final, ts, categoryKey);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6" onClick={onClose}>
+      <form
+        onClick={e => e.stopPropagation()}
+        onSubmit={handleSubmit}
+        className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 my-4 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">{mode === 'add' ? 'Add Violation' : 'Edit Violation'}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {mode === 'add'
+                ? 'Define a new entry for the Violation Risk Matrix — fill the core fields then jump to the regulatory tabs.'
+                : <>Editing <span className="font-mono">{draft.violationCode || draft.id}</span></>}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Tab strip */}
+        <div className="flex items-center gap-0.5 px-3 pt-2 border-b border-slate-200 bg-white">
+          {([
+            { id: 'core',   label: 'Core & Risk',       icon: AlertOctagon },
+            { id: 'impact', label: 'Impact Analysis',   icon: Sigma },
+            { id: 'usa',    label: 'USA (FMCSA / SMS)', icon: Scale },
+            { id: 'canada', label: 'Canada (NSC / CVOR)', icon: Globe },
+          ] as const).map(t => {
+            const active = activeTab === t.id;
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-b-2 transition-colors -mb-px ${active ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+              >
+                <Icon size={14} />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="p-5 space-y-5 max-h-[60vh] overflow-y-auto">
+          {/* ── CORE & RISK */}
+          {activeTab === 'core' && (
+            <>
+              {/* ─── FMCSA BASIC Mapping (read-only meta from picked BASIC)
+                  Mirrors the chip strip on the violations list, plus the
+                  scoring metadata the FMCSA SMS uses (weight + OOS threshold
+                  + CFR parts). Updates live as the user changes the BASIC
+                  selection in the Identity card below. */}
+              {basicMeta?.meta && (
+                <div className="bg-indigo-50/40 border border-indigo-200 rounded-lg p-4">
+                  <h4 className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider mb-3">FMCSA BASIC Mapping</h4>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-2">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">BASIC Category</p>
+                      <p className="text-sm font-bold text-slate-900">{basicMeta.meta.label}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">{basicMeta.meta.description}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">SMS Weight</p>
+                      <p className="text-lg font-bold tabular-nums text-slate-900">{basicMeta.meta.smsWeight}%</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">OOS Threshold</p>
+                      <p className="text-lg font-bold tabular-nums text-rose-700">{basicMeta.meta.oosThreshold !== undefined ? `≥${basicMeta.meta.oosThreshold}%` : '—'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">CFR Parts</p>
+                      <div className="flex flex-wrap gap-1">
+                        {basicMeta.meta.cfrParts.length > 0 ? basicMeta.meta.cfrParts.map(part => (
+                          <span key={part} className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-white text-slate-700 border border-slate-200">
+                            49 CFR {part}
+                          </span>
+                        )) : <span className="text-[11px] text-slate-400 italic">No CFR parts</span>}
+                      </div>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Canada Equivalent</p>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-white text-slate-700 border border-slate-200">
+                        {basicMeta.meta.canadaEquivalent ?? '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Identity & Classification ───────────────────────────
+                  Mirrors the chips shown on the violations list:
+                  Group · FMCSA BASIC · Canada category · OOS · In DSMS.
+                  Edits here drive the display strip everywhere downstream. */}
+              <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-4">
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Identity &amp; Classification</h4>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-1">
+                    <label className={labelCls}>Violation Code</label>
+                    <input className={inputCls} placeholder="e.g. 392.5(a)(1)" value={draft.violationCode} onChange={e => patch('violationCode', e.target.value)} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={labelCls}>Description</label>
+                    <input className={inputCls} placeholder="Short violation description" value={draft.violationDescription} onChange={e => patch('violationDescription', e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-1">
+                    <label className={labelCls}>FMCSA BASIC (US)</label>
+                    <select className={inputCls} value={categoryKey} onChange={e => setCategoryKey(e.target.value)}>
+                      {Object.entries(VIOLATION_DATA.categories).map(([key, cat]) => (
+                        <option key={key} value={key}>{(cat as any).label ?? key.replace(/_/g, ' ')}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-1">
+                    <label className={labelCls}>Canada Category</label>
+                    <select className={inputCls} value={categoryKey} onChange={e => setCategoryKey(e.target.value)}>
+                      {Object.entries(VIOLATION_DATA.categories).map(([key, cat]) => (
+                        <option key={key} value={key}>{(cat as any).label ?? key.replace(/_/g, ' ')}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-1">
+                    <label className={labelCls}>Group</label>
+                    <input className={inputCls} placeholder="e.g. Alcohol Jumping OOS" value={draft.violationGroup} onChange={e => patch('violationGroup', e.target.value)} />
+                  </div>
+                </div>
+
+                {/* Live chip preview — what the violations list will show */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Preview</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-50 text-slate-700 border border-slate-200">
+                    Group: <span className="ml-1 font-mono text-slate-800">{draft.violationGroup || '—'}</span>
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                    FMCSA BASIC: <span className="ml-1">{((VIOLATION_DATA.categories as any)[categoryKey]?.label ?? categoryKey).replace(/_/g, ' ')}</span>
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Canada: <span className="ml-1 font-mono">{categoryKey}</span>
+                  </span>
+                  {draft.isOos && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
+                      OOS Trigger
+                    </span>
+                  )}
+                  {draft.inDsms && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      In DSMS
+                    </span>
+                  )}
+                </div>
+
+                {/* Flag toggles — paired with the chips above. Big, clear,
+                    horizontal so the user sees exactly which flags fire. */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => patch('isOos', !draft.isOos)}
+                    className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${draft.isOos ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <AlertOctagon size={14} />
+                      OOS Trigger
+                      <span className="text-[10px] font-medium text-slate-400">Out-of-Service qualifying</span>
+                    </span>
+                    <span className={`inline-flex h-5 w-9 rounded-full transition-colors ${draft.isOos ? 'bg-red-600' : 'bg-slate-300'}`}>
+                      <span className="h-4 w-4 rounded-full bg-white mt-0.5 transition-transform" style={{ transform: draft.isOos ? 'translateX(18px)' : 'translateX(2px)' }} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => patch('inDsms', !draft.inDsms)}
+                    className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${draft.inDsms ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Scale size={14} />
+                      In DSMS
+                      <span className="text-[10px] font-medium text-slate-400">FMCSA Driver SMS</span>
+                    </span>
+                    <span className={`inline-flex h-5 w-9 rounded-full transition-colors ${draft.inDsms ? 'bg-emerald-600' : 'bg-slate-300'}`}>
+                      <span className="h-4 w-4 rounded-full bg-white mt-0.5 transition-transform" style={{ transform: draft.inDsms ? 'translateX(18px)' : 'translateX(2px)' }} />
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ─── Crash & Incident Probability ─────────────────────── */}
+              <div className="bg-rose-50/30 border border-rose-200 rounded-lg p-4">
+                <h4 className="text-[11px] font-bold text-rose-700 uppercase tracking-wider mb-3">Crash &amp; Incident Probability</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Risk Category</label>
+                    <select className={inputCls} value={draft.driverRiskCategory} onChange={e => patch('driverRiskCategory', Number(e.target.value))}>
+                      <option value={1}>1 — High Risk</option>
+                      <option value={2}>2 — Moderate Risk</option>
+                      <option value={3}>3 — Lower Risk</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Crash Likelihood (%)</label>
+                    <input type="number" min={0} max={500} className={inputCls} value={draft.crashLikelihoodPercent ?? ''} onChange={e => patch('crashLikelihoodPercent', e.target.value === '' ? null : Number(e.target.value))} placeholder="Probability of crash in next 12 months" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2">Risk category drives the High / Moderate / Lower badge on the list view. Crash likelihood comes from FMCSA SMS correlation data (can exceed 100%).</p>
+              </div>
+
+              {/* ─── Driver & Carrier Impact ──────────────────────────── */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Driver &amp; Carrier Impact (Severity)</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Driver Severity (0–10)</label>
+                    <input type="number" min={0} max={10} className={inputCls} value={draft.severityWeight.driver} onChange={e => patchSeverity('driver', Number(e.target.value))} />
+                    <div className="h-1.5 mt-1 rounded-full bg-slate-200 overflow-hidden">
+                      <div className="h-full bg-rose-500 transition-all" style={{ width: `${Math.min(100, draft.severityWeight.driver * 10)}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Carrier Severity (0–10)</label>
+                    <input type="number" min={0} max={10} className={inputCls} value={draft.severityWeight.carrier} onChange={e => patchSeverity('carrier', Number(e.target.value))} />
+                    <div className="h-1.5 mt-1 rounded-full bg-slate-200 overflow-hidden">
+                      <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.min(100, draft.severityWeight.carrier * 10)}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2">Severity weights are used by the FMCSA SMS scoring model and our incident probability calc. Driver weight rolls up to the driver's safety score; carrier weight rolls up to the BASIC score.</p>
+              </div>
+
+              {/* ─── TrackSmart Points (D / A / C override) ───────────── */}
+              <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-4">
+                <h4 className="text-[11px] font-bold text-blue-700 uppercase tracking-wider mb-3">TrackSmart Points</h4>
+                <p className="text-[11px] text-slate-500 mb-3">Optional per-entity overrides used by the TrackSmart safety score. Leave a field blank to fall back to the data-driven default.</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelCls}>Driver Pts</label>
+                    <input type="number" min={0} className={inputCls} value={ts.driver ?? ''} onChange={e => setTs(prev => ({ ...prev, driver: e.target.value === '' ? undefined : Number(e.target.value) }))} placeholder="—" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Asset Pts</label>
+                    <input type="number" min={0} className={inputCls} value={ts.asset ?? ''} onChange={e => setTs(prev => ({ ...prev, asset: e.target.value === '' ? undefined : Number(e.target.value) }))} placeholder="—" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Carrier Pts</label>
+                    <input type="number" min={0} className={inputCls} value={ts.carrier ?? ''} onChange={e => setTs(prev => ({ ...prev, carrier: e.target.value === '' ? undefined : Number(e.target.value) }))} placeholder="—" />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── IMPACT ANALYSIS */}
+          {activeTab === 'impact' && (
+            <div className="space-y-5">
+              <div>
+                <label className={labelCls}>Device source (telematics)</label>
+                <div className="flex gap-3 mt-1">
+                  {(['ELD', 'VEDR', undefined] as const).map(opt => (
+                    <label key={String(opt)} className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer ${draft.deviceSource === opt ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      <input
+                        type="radio"
+                        className="hidden"
+                        checked={draft.deviceSource === opt}
+                        onChange={() => patch('deviceSource', opt)}
+                      />
+                      {opt ?? 'None'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className={labelCls}>Telematics tags — VEDR / ELD events that trigger this violation</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {TELEMATICS_TAG_OPTIONS.map(tag => {
+                    const on = draft.telematicsTags?.includes(tag) ?? false;
+                    return (
+                      <button
+                        type="button"
+                        key={tag}
+                        onClick={() => {
+                          setDraft(prev => {
+                            const cur = new Set(prev.telematicsTags ?? []);
+                            if (cur.has(tag)) cur.delete(tag); else cur.add(tag);
+                            return { ...prev, telematicsTags: Array.from(cur) as ViolationItem['telematicsTags'] };
+                          });
+                        }}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                      >
+                        {tag.replace(/_/g, ' ')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Inline summary of the risk math the engine will use. */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-[12px] text-slate-600 space-y-1">
+                <div className="flex items-center justify-between"><span>Severity (Driver / Carrier)</span><b className="text-slate-800 tabular-nums">{draft.severityWeight.driver} / {draft.severityWeight.carrier}</b></div>
+                <div className="flex items-center justify-between"><span>Crash likelihood</span><b className="text-slate-800 tabular-nums">{draft.crashLikelihoodPercent ?? 0}%</b></div>
+                <div className="flex items-center justify-between"><span>Risk category</span><b className="text-slate-800">{draft.driverRiskCategory === 1 ? 'High' : draft.driverRiskCategory === 2 ? 'Moderate' : 'Lower'}</b></div>
+                <div className="flex items-center justify-between"><span>OOS qualifying</span><b className={draft.isOos ? 'text-rose-700' : 'text-slate-700'}>{draft.isOos ? 'Yes' : 'No'}</b></div>
+                <div className="flex items-center justify-between"><span>TrackSmart points (D / A / C)</span><b className="text-slate-800 tabular-nums">{ts.driver ?? '—'} / {ts.asset ?? '—'} / {ts.carrier ?? '—'}</b></div>
+              </div>
+            </div>
+          )}
+
+          {/* ── USA */}
+          {activeTab === 'usa' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">USA Regulatory References</h4>
+                <button type="button" onClick={addUsa} className="inline-flex items-center gap-1 px-3 h-7 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500">
+                  <Plus className="w-3 h-3" /> Add reference
+                </button>
+              </div>
+              {draft.regulatoryCodes.usa.length === 0 && (
+                <p className="text-xs text-slate-400 italic">No USA references yet — click Add reference.</p>
+              )}
+              {draft.regulatoryCodes.usa.map((reg, i) => (
+                <div key={i} className="border border-slate-200 rounded-lg p-3 space-y-3 bg-white">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className={labelCls}>Authority</label>
+                      <select className={inputCls} value={reg.authority} onChange={e => updateUsa(i, { authority: e.target.value })}>
+                        <option value="FMCSA">FMCSA</option>
+                        <option value="DOT">DOT</option>
+                        <option value="STATE_LAW">State Law</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className={labelCls}>Description</label>
+                      <input className={inputCls} value={reg.description} onChange={e => updateUsa(i, { description: e.target.value })} placeholder="Authority's description for this code" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>CFR references (one per line)</label>
+                    <textarea className={textareaCls} value={reg.cfr.join('\n')} onChange={e => updateUsa(i, { cfr: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })} placeholder={"49 CFR 392.5(a)\n49 CFR 392.5(b)"} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Statute references (one per line)</label>
+                    <textarea className={textareaCls} value={reg.statute.join('\n')} onChange={e => updateUsa(i, { statute: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })} placeholder="State DUI / DWI statute references" />
+                  </div>
+                  <div className="text-right">
+                    <button type="button" onClick={() => removeUsa(i)} className="text-xs font-semibold text-rose-600 hover:text-rose-700 inline-flex items-center gap-1">
+                      <X className="w-3 h-3" /> Remove reference
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── CANADA */}
+          {activeTab === 'canada' && (
+            <div className="space-y-5">
+              {/* Regulatory codes list */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Canada Regulatory References</h4>
+                  <button type="button" onClick={addCa} className="inline-flex items-center gap-1 px-3 h-7 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500">
+                    <Plus className="w-3 h-3" /> Add reference
+                  </button>
+                </div>
+                {(draft.regulatoryCodes.canada ?? []).length === 0 && (
+                  <p className="text-xs text-slate-400 italic">No Canadian references yet — click Add reference.</p>
+                )}
+                {(draft.regulatoryCodes.canada ?? []).map((reg, i) => (
+                  <div key={i} className="border border-slate-200 rounded-lg p-3 space-y-3 bg-white">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className={labelCls}>Authority</label>
+                        <select className={inputCls} value={reg.authority} onChange={e => updateCa(i, { authority: e.target.value })}>
+                          <option value="PROVINCIAL_HTA">Provincial HTA</option>
+                          <option value="CCMTA">CCMTA</option>
+                          <option value="NSC">NSC</option>
+                          <option value="FEDERAL">Federal</option>
+                          <option value="OTHER">Other</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className={labelCls}>Description</label>
+                        <input className={inputCls} value={reg.description} onChange={e => updateCa(i, { description: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelCls}>References (one per line)</label>
+                      <textarea className={textareaCls} value={reg.reference.join('\n')} onChange={e => updateCa(i, { reference: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })} placeholder={"HTA s.84.1\nNSC Standard 11"} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Provinces</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {CANADA_PROVINCES.map(prov => {
+                          const on = reg.province?.includes(prov) ?? false;
+                          return (
+                            <button
+                              type="button"
+                              key={prov}
+                              onClick={() => {
+                                const cur = new Set(reg.province ?? []);
+                                if (cur.has(prov)) cur.delete(prov); else cur.add(prov);
+                                updateCa(i, { province: Array.from(cur) });
+                              }}
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold border ${on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                            >
+                              {prov}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <button type="button" onClick={() => removeCa(i)} className="text-xs font-semibold text-rose-600 hover:text-rose-700 inline-flex items-center gap-1">
+                        <X className="w-3 h-3" /> Remove reference
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Canada Enforcement detail */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Canada Enforcement (NSC / CVOR)</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Act</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.act ?? ''} onChange={e => patchCanada('act', e.target.value)} placeholder="HTA" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Section</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.section ?? ''} onChange={e => patchCanada('section', e.target.value)} placeholder="84.1" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Enforcement code</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.code ?? ''} onChange={e => patchCanada('code', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>CCMTA code</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.ccmtaCode ?? ''} onChange={e => patchCanada('ccmtaCode', e.target.value)} placeholder="OE / 1101 / etc" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={labelCls}>Category</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.category ?? ''} onChange={e => patchCanada('category', e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className={labelCls}>Full description</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.descriptions?.full ?? ''} onChange={e => patchCanadaDescriptions('full', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Conviction wording</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.descriptions?.conviction ?? ''} onChange={e => patchCanadaDescriptions('conviction', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Short form 52</label>
+                    <input className={inputCls} value={draft.canadaEnforcement?.descriptions?.shortForm52 ?? ''} onChange={e => patchCanadaDescriptions('shortForm52', e.target.value)} />
+                  </div>
+                </div>
+                <div className="pt-1 border-t border-slate-200 space-y-2">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className={labelCls}>NSC points</label>
+                      <input type="number" className={inputCls} value={draft.canadaEnforcement?.points?.nsc ?? ''} onChange={e => patchCanadaPoints('nsc', e.target.value === '' ? null : Number(e.target.value))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Revised pts</label>
+                      <input type="number" className={inputCls} value={draft.canadaEnforcement?.points?.revised ?? ''} onChange={e => patchCanadaPoints('revised', e.target.value === '' ? null : Number(e.target.value))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>CVOR raw</label>
+                      <input className={inputCls} value={draft.canadaEnforcement?.points?.cvor?.raw ?? ''} onChange={e => patchCvor('raw', e.target.value)} placeholder="2-5" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>CVOR min</label>
+                      <input type="number" className={inputCls} value={draft.canadaEnforcement?.points?.cvor?.min ?? ''} onChange={e => patchCvor('min', e.target.value === '' ? null : Number(e.target.value))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>CVOR max</label>
+                      <input type="number" className={inputCls} value={draft.canadaEnforcement?.points?.cvor?.max ?? ''} onChange={e => patchCvor('max', e.target.value === '' ? null : Number(e.target.value))} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-slate-500">
+            {mode === 'add' ? 'New violations are saved locally — they appear in the table next to the system data.' : 'Edits are stored locally and merged over the system data.'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50">Cancel</button>
+            <button type="submit" className="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500 shadow-sm inline-flex items-center gap-1.5">
+              <Save className="w-4 h-4" /> {mode === 'add' ? 'Add violation' : 'Save changes'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
+
 export function ViolationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -709,12 +1440,38 @@ export function ViolationsPage() {
   // Column Visibility State
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE));
 
-  // Editable TrackSmart Points (saved to localStorage)
-  const [tsPoints, setTsPoints] = useState<Record<string, number>>(() => loadTsPoints());
-  const [editingTsId, setEditingTsId] = useState<string | null>(null);
-  const [editTsValue, setEditTsValue] = useState<string>('');
+  // Editable TrackSmart Points (saved to localStorage). Each entry is an
+  // override for { driver, asset, carrier } — any field can be left blank
+  // to fall back to the data-driven default. Editing happens exclusively
+  // in the Add/Edit Violation form (no inline editor on the row).
+  const [tsPoints, setTsPoints] = useState<Record<string, TsPoints>>(() => loadTsPoints());
 
   React.useEffect(() => { saveTsPoints(tsPoints); }, [tsPoints]);
+
+  // Violation overrides + custom items (saved to localStorage). Both layer
+  // on top of VIOLATION_DATA when the table is rendered.
+  const [violationOverrides, setViolationOverrides] = useState<Record<string, Partial<ViolationItem>>>(() => loadViolationOverrides());
+  const [customViolations, setCustomViolations] = useState<ViolationItem[]>(() => loadCustomViolations());
+  React.useEffect(() => { saveViolationOverrides(violationOverrides); }, [violationOverrides]);
+  React.useEffect(() => { saveCustomViolations(customViolations); }, [customViolations]);
+
+  // Add / Edit modal state.
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'add' | 'edit'>('add');
+  const [editorSource, setEditorSource] = useState<ViolationItem | null>(null);
+  const [editorCategory, setEditorCategory] = useState<string>('unsafe_driving');
+  const openAddEditor = () => {
+    setEditorMode('add');
+    setEditorSource(null);
+    setEditorCategory(activeCategory === 'all' ? 'unsafe_driving' : activeCategory);
+    setEditorOpen(true);
+  };
+  const openEditEditor = (item: ViolationItem, categoryKey: string) => {
+    setEditorMode('edit');
+    setEditorSource(item);
+    setEditorCategory(categoryKey);
+    setEditorOpen(true);
+  };
 
   const data = VIOLATION_DATA;
 
@@ -740,31 +1497,6 @@ export function ViolationsPage() {
 
   // Pre-aggregated counts per Display Category + Sub-category (drives the KPI grid).
   const categoryAggregates = useMemo(() => buildCategoryAggregates(), []);
-
-  const startEditTs = (id: string, current: number | undefined) => {
-    setEditingTsId(id);
-    setEditTsValue(current !== undefined ? String(current) : '');
-  };
-  const commitEditTs = () => {
-    if (!editingTsId) return;
-    const v = parseInt(editTsValue, 10);
-    setTsPoints((prev) => {
-      const next = { ...prev };
-      if (Number.isFinite(v) && v >= 0) next[editingTsId] = v;
-      else delete next[editingTsId];
-      return next;
-    });
-    setEditingTsId(null);
-    setEditTsValue('');
-  };
-  const cancelEditTs = () => { setEditingTsId(null); setEditTsValue(''); };
-  const resetTs = (id: string) => {
-    setTsPoints((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  };
 
   const currentCategoryData = useMemo(() => {
     if (activeCategory === 'all') {
@@ -903,7 +1635,13 @@ export function ViolationsPage() {
           case 'vehPts': aVal = a.severityWeight.carrier; bVal = b.severityWeight.carrier; break;
           case 'dvrPts': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
           case 'carPts': aVal = (a.severityWeight.driver || 0) + (a.severityWeight.carrier || 0); bVal = (b.severityWeight.driver || 0) + (b.severityWeight.carrier || 0); break;
-          case 'tsPoints': aVal = tsPoints[a.id] ?? -1; bVal = tsPoints[b.id] ?? -1; break;
+          case 'tsPoints': {
+            const tA = tsPoints[a.id];
+            const tB = tsPoints[b.id];
+            aVal = tsPointsHasAny(tA) ? tsPointsTotal(tA) : -1;
+            bVal = tsPointsHasAny(tB) ? tsPointsTotal(tB) : -1;
+            break;
+          }
           case 'status': aVal = a.inDsms ? 1 : 0; bVal = b.inDsms ? 1 : 0; break;
           default: return 0;
         }
@@ -953,6 +1691,64 @@ export function ViolationsPage() {
     return <ArrowDown size={14} className="text-indigo-600" />;
   };
 
+  // ── CSV Export
+  // Builds a row for every visible violation × every visible column so the
+  // file reflects exactly what the user sees on screen. Encodes commas,
+  // quotes, and newlines inside cells per RFC 4180.
+  const handleExportCsv = () => {
+    const escape = (val: unknown): string => {
+      const s = val === null || val === undefined ? '' : String(val);
+      if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const cols = ALL_COLUMN_OPTIONS.filter(c => visibleColumns.has(c.id) && c.id !== 'actions');
+    const header = cols.map(c => c.label).join(',');
+    const cellValue = (item: ViolationItem, colId: string): unknown => {
+      const ts = tsPoints[item.id];
+      const usaCfr = (item.regulatoryCodes.usa ?? []).flatMap(r => r.cfr).join(' | ');
+      const usaAuth = (item.regulatoryCodes.usa ?? []).map(r => r.authority).join(' | ');
+      const cvor = item.canadaEnforcement?.points?.cvor;
+      const ccmta = item.canadaEnforcement?.ccmtaCode ?? '';
+      const display = displayMap.get(item.id);
+      const carrierPts = (item.severityWeight.driver || 0) + (item.severityWeight.carrier || 0);
+      switch (colId) {
+        case 'category':      return display?.category ?? itemCategoryMap.get(item.id) ?? '';
+        case 'group':         return display?.subCategory ?? item.violationGroup ?? '';
+        case 'code':          return item.violationCode;
+        case 'description':   return item.violationDescription;
+        case 'regulatory':    return usaAuth;
+        case 'ccmtaCode':     return ccmta;
+        case 'nscSystem':     return NSC_CODE_TO_SYSTEM[extractCcmtaNum(ccmta)]?.categoryLabel ?? CCMTA_ALPHA_CODE_MAP[extractCcmtaNum(ccmta)]?.nscCategoryLabel ?? '';
+        case 'nscPoints':     return item.canadaEnforcement?.points?.nsc ?? '';
+        case 'cvorPoints':    return cvor ? `${cvor.min ?? ''}-${cvor.max ?? ''}` : '';
+        case 'offenceCode':   return item.canadaEnforcement?.code ?? '';
+        case 'fmcsaBasic':    return getItemFmcsaBasic(item) ?? '';
+        case 'cfrCode':       return usaCfr;
+        case 'risk':          return item.driverRiskCategory === 1 ? 'High' : item.driverRiskCategory === 2 ? 'Moderate' : 'Lower';
+        case 'crashPct':      return item.crashLikelihoodPercent ?? '';
+        case 'severity':      return `${item.severityWeight.driver}/${item.severityWeight.carrier}`;
+        case 'vehPts':        return item.severityWeight.carrier;
+        case 'dvrPts':        return item.severityWeight.driver;
+        case 'carPts':        return carrierPts;
+        case 'tsPoints':      return ts ? `${ts.driver ?? ''}/${ts.asset ?? ''}/${ts.carrier ?? ''}` : '';
+        case 'telematicsTag': return (item.telematicsTags ?? []).join(' | ');
+        default:              return '';
+      }
+    };
+    const rows = filteredItems.map(it => cols.map(c => escape(cellValue(it, c.id))).join(',')).join('\n');
+    const csv = `${header}\n${rows}`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `violation-risk-matrix-${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const getAuthStyle = (auth: string) => {
     const a = auth.toUpperCase();
     if (a.includes('FMCSA')) return 'bg-blue-50 text-blue-700 border-blue-200';
@@ -995,9 +1791,23 @@ export function ViolationsPage() {
               <span>Risk-weighted by crash correlation, severity, and driver risk category (probability to cause crash in next 12 months).</span>
             </div>
           </div>
-          <button className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
-            <Plus size={15} /> Add Violation
-          </button>
+          <div className="shrink-0 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold py-2 px-3.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
+              title="Download the visible columns of the Violation Risk Matrix as CSV"
+            >
+              <Download size={14} /> Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={openAddEditor}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+            >
+              <Plus size={15} /> Add Violation
+            </button>
+          </div>
         </div>
 
       </div>
@@ -1217,8 +2027,11 @@ export function ViolationsPage() {
                   {visibleColumns.has('carPts') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-16 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('carPts')}>
                     <div className="flex items-center justify-center gap-1">Car {getSortIcon('carPts')}</div>
                   </th>}
-                  {visibleColumns.has('tsPoints') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-32 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('tsPoints')}>
-                    <div className="flex items-center justify-center gap-1">TrackSmart Pts {getSortIcon('tsPoints')}</div>
+                  {visibleColumns.has('tsPoints') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-40 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestSort('tsPoints')} title="TrackSmart points — Driver / Asset / Carrier">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="flex items-center gap-1">TrackSmart Pts {getSortIcon('tsPoints')}</span>
+                      <span className="text-[9px] font-medium text-slate-400 normal-case tracking-normal">Driver / Asset / Carrier</span>
+                    </div>
                   </th>}
                   {visibleColumns.has('actions') && <th scope="col" className="px-3 py-2.5 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider w-16">
                     Actions
@@ -1540,56 +2353,31 @@ export function ViolationsPage() {
                           </td>}
 
 
-                          {/* TrackSmart Points (editable, persisted to localStorage) */}
+                          {/* TrackSmart Points — read-only Driver / Asset /
+                              Carrier values. Edits happen in the violation
+                              form (click the pencil in the Actions column). */}
                           {visibleColumns.has('tsPoints') && <td className="px-3 py-2 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                            {editingTsId === item.id ? (
-                              <span className="inline-flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={editTsValue}
-                                  onChange={(e) => setEditTsValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') commitEditTs();
-                                    if (e.key === 'Escape') cancelEditTs();
-                                  }}
-                                  autoFocus
-                                  className="w-14 h-7 px-2 rounded border border-blue-500 bg-white text-center text-sm font-mono outline-none ring-2 ring-blue-500/20"
-                                />
-                                <button type="button" onClick={commitEditTs} className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 px-1">Save</button>
-                                <button type="button" onClick={cancelEditTs} className="text-[10px] font-bold text-slate-400 hover:text-slate-700 px-1">Cancel</button>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 group/ts">
-                                <span className={`font-mono font-bold tabular-nums text-sm ${tsPoints[item.id] !== undefined ? 'text-blue-700' : 'text-slate-300'}`}>
-                                  {tsPoints[item.id] !== undefined ? tsPoints[item.id] : '—'}
+                            {(() => {
+                              const p = tsPoints[item.id];
+                              return (
+                                <span className="inline-flex items-center gap-0.5 font-mono font-bold tabular-nums text-[11px]" title="Edit in the Add/Edit Violation form">
+                                  <span className={p?.driver  !== undefined ? 'text-blue-700'    : 'text-slate-300'} title="Driver pts">{p?.driver  ?? '—'}</span>
+                                  <span className="text-slate-300">/</span>
+                                  <span className={p?.asset   !== undefined ? 'text-emerald-700' : 'text-slate-300'} title="Asset pts">{p?.asset   ?? '—'}</span>
+                                  <span className="text-slate-300">/</span>
+                                  <span className={p?.carrier !== undefined ? 'text-violet-700'  : 'text-slate-300'} title="Carrier pts">{p?.carrier ?? '—'}</span>
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => startEditTs(item.id, tsPoints[item.id])}
-                                  className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 opacity-0 group-hover/ts:opacity-100 transition-opacity"
-                                  title="Edit TrackSmart points"
-                                >
-                                  <Edit2 size={12} />
-                                </button>
-                                {tsPoints[item.id] !== undefined && (
-                                  <button
-                                    type="button"
-                                    onClick={() => resetTs(item.id)}
-                                    className="text-[10px] font-bold text-slate-400 hover:text-rose-600 hover:underline opacity-0 group-hover/ts:opacity-100 transition-opacity"
-                                    title="Reset to default"
-                                  >
-                                    reset
-                                  </button>
-                                )}
-                              </span>
-                            )}
+                              );
+                            })()}
                           </td>}
 
                           {/* Actions Column */}
                           {visibleColumns.has('actions') && <td className="px-3 py-2 whitespace-nowrap text-center">
                             <button
-                              onClick={(e) => { e.stopPropagation(); console.log('Edit violation:', item.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditEditor(item, itemCategoryMap.get(item.id) ?? 'unsafe_driving');
+                              }}
                               className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                               title="Edit violation"
                             >
@@ -2286,6 +3074,41 @@ export function ViolationsPage() {
           )}
         </div>
       </main>
+
+      {/* ── Add / Edit Violation modal ─────────────────────────────────── */}
+      <ViolationEditModal
+        open={editorOpen}
+        mode={editorMode}
+        source={editorSource}
+        defaultCategoryKey={editorCategory}
+        tsPointsForItem={editorSource ? tsPoints[editorSource.id] : undefined}
+        onClose={() => setEditorOpen(false)}
+        onSave={(next, ts, _categoryKey) => {
+          // 1. Persist TrackSmart points if the user touched them.
+          setTsPoints(prev => {
+            const out = { ...prev };
+            if (tsPointsHasAny(ts)) out[next.id] = ts;
+            else delete out[next.id];
+            return out;
+          });
+          // 2. Persist the violation itself — overrides for existing system
+          //    entries, customViolations for net-new ids.
+          if (editorMode === 'edit' && editorSource) {
+            setViolationOverrides(prev => ({ ...prev, [next.id]: next }));
+          } else {
+            setCustomViolations(prev => {
+              const idx = prev.findIndex(p => p.id === next.id);
+              if (idx >= 0) {
+                const out = [...prev];
+                out[idx] = next;
+                return out;
+              }
+              return [next, ...prev];
+            });
+          }
+          setEditorOpen(false);
+        }}
+      />
     </div>
   );
 }

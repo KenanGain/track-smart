@@ -8,6 +8,70 @@ export interface TicketStats {
 export type TicketStatus = 'Due' | 'In Court' | 'Paid' | 'Closed';
 export type ViolationType = 'Speeding' | 'Overweight' | 'Logbook violation' | 'Equipment defect' | 'Insurance lapse' | 'Red Light' | 'Parking';
 
+/** Paper vs electronic citation. Each variant carries a different set of
+ *  detail fields (officer + court for Paper; portal / QR / device for
+ *  Electronic) — see `TicketRecord.ticketDetails` below. */
+export type TicketKind = 'Paper' | 'Electronic';
+
+export interface TicketDetails {
+    // Paper ticket fields
+    officerName?: string;
+    officerBadge?: string;
+    courtLocation?: string;
+    courtDate?: string;
+    // Electronic ticket fields
+    portalUrl?: string;
+    qrReference?: string;
+    eIssuingDevice?: string;
+}
+
+/** Regulatory + administrative identifiers carried on a ticket. Grouped
+ *  to match the form's collapsible-style sub-sections; every field is
+ *  optional because no real-world ticket will have all 24 at once.
+ *  Different jurisdictions use different naming conventions for the
+ *  primary citation reference — we keep them as separate fields so the
+ *  exported record matches the source paperwork verbatim. */
+export interface TicketIdentifiers {
+    // 1) Citation / Offence — the primary reference under various names
+    ticketNumber?: string;
+    citationNumber?: string;
+    violationTicketNumber?: string;
+    offenceNumber?: string;
+    offenceNoticeNumber?: string;
+    contraventionNumber?: string;
+
+    // 2) Court / Legal
+    docketNumber?: string;
+    courtCaseNumber?: string;
+    courtLocationCode?: string;
+    iconCourtCode?: string;       // ON's ICON system court code
+
+    // 3) Violation / Statute
+    violationCode?: string;
+    statuteSection?: string;
+
+    // 4) Driver / Asset (often pre-printed on the ticket)
+    driverLicenceNumber?: string;
+    plateNumber?: string;
+    vinNumber?: string;
+
+    // 5) Inspection / Officer
+    inspectionReportNumber?: string;
+    officerBadgeNumber?: string;
+
+    // 6) Carrier / Operator
+    usdotNumber?: string;
+    mcNumber?: string;
+    cvorNumber?: string;
+    nscNumber?: string;
+    carrierNumber?: string;
+
+    // 7) Financial
+    finePenaltyNumber?: string;
+    paymentReferenceNumber?: string;
+    receiptNumber?: string;
+}
+
 export interface TicketRecord {
     id: string;
     offenseNumber: string;
@@ -19,6 +83,19 @@ export interface TicketRecord {
     assetId: string;
     driverName: string;
     violationType: ViolationType;
+    /** Specific violation description picked from the master chart
+     *  (FMCSA SMS / CVOR / NSC). E.g. violationType="Speeding" with
+     *  violationSubtype="Speeding 6–10 mph over". Free-form on purpose
+     *  since the master chart text isn't a closed enum. */
+    violationSubtype?: string;
+    /** BASIC category label from VIOLATION_DATA (e.g. "Unsafe Driving"). */
+    violationCategory?: string;
+    /** Sub-category / violation group from VIOLATION_DATA
+     *  (e.g. "Speeding 6-10"). */
+    violationGroup?: string;
+    /** Out-of-service flag — mirrors the master chart's isOos for the
+     *  picked violation. Drives the OOS-qualifying chip on the form. */
+    isOos?: boolean;
     fineAmount: number;
     currency: 'USD' | 'CAD';
     status: TicketStatus;
@@ -26,6 +103,12 @@ export interface TicketRecord {
     hasReceiptFile: boolean;
     hasNoticeFile: boolean;
     assignedToThirdParty?: boolean;
+    /** Paper vs Electronic — defaults to 'Paper' for legacy records. */
+    ticketKind?: TicketKind;
+    /** Variant-specific detail fields. */
+    ticketDetails?: TicketDetails;
+    /** Grouped regulatory + administrative identifiers from the citation. */
+    identifiers?: TicketIdentifiers;
 }
 
 export const TICKET_STATS: TicketStats = {

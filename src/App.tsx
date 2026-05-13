@@ -388,7 +388,9 @@ function App() {
             return <PaystubsPage />
         }
         if (path === "/tickets") {
-            return <TicketsPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <TicketsPage accountId={account?.id} />
         }
         if (path === "/safety-events") {
             return <SafetyEventsPage />

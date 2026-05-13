@@ -2,11 +2,12 @@ import React, { useState, useMemo } from 'react';
 import {
   Search, Download, Plus, ChevronLeft, ChevronRight,
   AlertTriangle, LayoutGrid, FileWarning, Ban, Clock,
-  DollarSign, MapPin, Activity, ChevronDown, ChevronUp,
+  MapPin, Activity, ChevronDown, ChevronUp,
   X, Users, Truck, List, ShieldCheck, ShieldAlert, BellRing,
-  Calendar, Pencil, RefreshCw, Check,
+  Calendar, Pencil, RefreshCw, Trash2, AlertOctagon,
 } from 'lucide-react';
 import { getViolation, ALL_VIOLATIONS, type ViolationRecord } from './violations-list.data';
+import { syncTicketFromViolation } from '@/pages/tickets/tickets.store';
 import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
@@ -129,8 +130,6 @@ function toUnified(rec: CarrierViolationRecord, accountId: string): UnifiedViola
 
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
-const fmt = (n: number, cur: string) =>
-  `${cur === 'CAD' ? 'CA$' : '$'}${n.toLocaleString()}`;
 
 const fmtDate = (d: string) => {
   if (!d) return '—';
@@ -703,6 +702,9 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
   // (carrier-violations.data is a synthesized source — we don't mutate it.)
   const [userEdits, setUserEdits] = useState<Record<string, CarrierViolationRecord>>({});
   const [userAdds,  setUserAdds]  = useState<CarrierViolationRecord[]>([]);
+  // Locally-deleted ids — overlay the source data so removed records drop
+  // off the list (carrier-violations.data itself is read-only).
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
 
   // ── Live external feed entries pulled at runtime by the Sync button.
   // Each entry is an ExternalViolationRecord that augments the static
@@ -717,12 +719,12 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
   // Merged per-carrier records (user edits applied over static data; user
   // adds prepended). Rebuilds whenever the carrier or local state changes.
   const carrierRecords = useMemo(() => {
-    const base = getViolationsForCarrier(carrierId).map(r =>
-      userEdits[r.id] ? { ...userEdits[r.id], accountId: carrierId } : r,
-    );
-    const adds = userAdds.filter(r => r.accountId === carrierId);
+    const base = getViolationsForCarrier(carrierId)
+      .filter(r => !removedIds.has(r.id))
+      .map(r => userEdits[r.id] ? { ...userEdits[r.id], accountId: carrierId } : r);
+    const adds = userAdds.filter(r => r.accountId === carrierId && !removedIds.has(r.id));
     return [...adds, ...base];
-  }, [carrierId, userEdits, userAdds]);
+  }, [carrierId, userEdits, userAdds, removedIds]);
 
   // Quick lookup by id so the Edit button can hand the original record back
   // to the form in the right shape (ViolationRecord), not the unified one.
@@ -787,6 +789,8 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
   const [perPage, setPerPage]             = useState(20);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<any>(null);
+  // Violation pending a Remove confirmation. Null when the dialog is closed.
+  const [removeCandidate, setRemoveCandidate] = useState<CarrierViolationRecord | null>(null);
 
   // Active dataset based on pageView — always scoped to the active carrier.
   const activeDataset = pageView === 'drivers' ? carrierUnified.driver
@@ -966,6 +970,11 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
           } else {
             setUserAdds(prev => [next, ...prev]);
           }
+          // Promote any citation / ticket document attached to this
+          // violation into the Tickets page so finance / dispatch sees
+          // it on their list. No-op when the violation has no citation
+          // evidence (no doc, no fine, no ticket number).
+          syncTicketFromViolation({ ...updated, id });
           setEditModalOpen(false);
           setEditingRecord(null);
           setExpandedId(id);
@@ -1077,14 +1086,6 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
               barColor="bg-orange-500"
               textColor="text-orange-700"
             />
-            <KPICard
-              label="Total Fines"
-              value={`$${kpi.totalFines.toLocaleString()}`}
-              subtitle="USD + CAD combined"
-              icon={DollarSign}
-              barColor="bg-emerald-500"
-              textColor="text-emerald-700"
-            />
           </div>
 
           {/* ── Regulator-Feed Reconciliation Notification ─────────────── */}
@@ -1096,8 +1097,6 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
             const verifiedCount = reconciliation.verifiedById.size;
             const missing = reconciliation.missing;
             const missingCount = missing.length;
-            const totalExternal = verifiedCount + missingCount;
-            const matchPct = totalExternal === 0 ? 0 : Math.round((verifiedCount / totalExternal) * 100);
 
             const perSourceBreakdown = (Object.keys(VIOLATION_SOURCE_META) as ExternalViolationSource[]).map(src => {
               const ver = [...reconciliation.verifiedById.values()].filter(arr => arr.includes(src)).length;
@@ -1105,148 +1104,71 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
               return { src, ver, miss, total: ver + miss };
             }).filter(b => b.total > 0);
 
+            // Neutral white card with a thin amber/emerald accent strip —
+            // same shape as the KPI cards above so the page reads as one
+            // visual system. Mirrors the Tickets + Accidents banners.
             return (
-              <div className={cn(
-                "rounded-xl shadow-sm border overflow-hidden",
-                missingCount > 0 ? "border-amber-200 bg-white" : "border-emerald-200 bg-white",
-              )}>
-                {/* Header strip — strong title + actions, on a tinted band. */}
-                <div className={cn(
-                  "px-5 py-4 flex items-start justify-between gap-4 flex-wrap",
-                  missingCount > 0 ? "bg-amber-50" : "bg-emerald-50",
-                )}>
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={cn(
-                      "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
-                      missingCount > 0 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700",
-                    )}>
-                      {missingCount > 0
-                        ? <BellRing className="w-5 h-5" />
-                        : <ShieldCheck className="w-5 h-5" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className={cn(
-                          "text-base font-bold leading-tight",
-                          missingCount > 0 ? "text-amber-900" : "text-emerald-900",
-                        )}>
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex overflow-hidden">
+                <div className={cn('w-1.5 shrink-0', missingCount > 0 ? 'bg-amber-500' : 'bg-emerald-500')} />
+                <div className="flex-1 min-w-0">
+                  <div className="px-4 py-3 flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center shrink-0",
+                        missingCount > 0 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600",
+                      )}>
+                        {missingCount > 0 ? <BellRing className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-slate-900 leading-tight">
                           {missingCount > 0
                             ? `${missingCount} regulator-feed violation${missingCount === 1 ? '' : 's'} missing`
-                            : 'All regulator-feed violations are present'}
+                            : 'All regulator-feed violations reconciled'}
                         </h3>
-                        <span className={cn(
-                          "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums",
-                          matchPct >= 95 ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200"
-                            : matchPct >= 80 ? "bg-amber-100 text-amber-800 ring-1 ring-amber-200"
-                            : "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
-                        )}>
-                          {matchPct}% reconciled
-                        </span>
-                      </div>
-                      {/* Stat strip — readable inline numbers. */}
-                      <div className="flex items-center gap-x-4 gap-y-1 flex-wrap mt-1.5 text-[12px] text-slate-700">
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          <b className="tabular-nums text-emerald-700">{verifiedCount}</b> verified
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                          <b className="tabular-nums text-amber-700">{missingCount}</b> unmatched
-                        </span>
-                        <span className="text-slate-500">
-                          <b className="tabular-nums text-slate-700">{totalExternal}</b> total feed entries
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={handleSyncFeeds}
-                      className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
-                      title={
-                        perSourceBreakdown.length > 0
-                          ? `Pull a fresh batch from ${perSourceBreakdown.map(b => VIOLATION_SOURCE_META[b.src].short).join(' / ')}`
-                          : 'Pull a fresh batch of regulator-feed entries'
-                      }
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Sync feeds
-                    </button>
-                    {missingCount > 0 && (
-                      <button
-                        onClick={() => setShowMissing(s => !s)}
-                        className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-semibold rounded-lg bg-white border border-amber-200 text-amber-800 hover:bg-amber-50 shadow-sm"
-                      >
-                        {showMissing ? 'Hide' : 'Show'} missing
-                        {showMissing ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Body — explanation + per-source breakdown chips. The
-                    description text lists ONLY sources the active carrier
-                    actually has data for, so a US-only carrier never sees
-                    "Ontario CVOR" mentioned, etc. */}
-                <div className="px-5 py-3 border-t border-slate-100 space-y-3">
-                  {perSourceBreakdown.length > 0 ? (
-                    <p className="text-[12px] text-slate-600 leading-relaxed">
-                      {carrier && (
-                        <>For <span className="font-semibold text-slate-800">{carrier.legalName}</span>, c</>
-                      )}
-                      {!carrier && 'C'}ross-checked against{' '}
-                      {perSourceBreakdown.map((b, i) => (
-                        <React.Fragment key={b.src}>
-                          {i > 0 && (i === perSourceBreakdown.length - 1 ? ', and ' : ', ')}
-                          <span className="font-semibold text-slate-800" title={VIOLATION_SOURCE_META[b.src].agency}>
-                            {VIOLATION_SOURCE_META[b.src].label}
-                          </span>
-                          <span className="text-slate-500"> ({b.total})</span>
-                        </React.Fragment>
-                      ))}
-                      {' '}using date, time (±60 min), driver, and violation code.
-                    </p>
-                  ) : (
-                    <p className="text-[12px] text-slate-500 italic leading-relaxed">
-                      No regulator-feed entries received yet for{' '}
-                      {carrier ? <span className="font-semibold text-slate-700">{carrier.legalName}</span> : 'this carrier'}.
-                      Click <span className="font-semibold text-slate-700">Sync feeds</span> to pull a fresh batch.
-                    </p>
-                  )}
-
-                  {/* Per-source breakdown — split verified ✓ vs missing △
-                      into separate readable counts within each chip. */}
-                  {perSourceBreakdown.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {perSourceBreakdown.map(b => (
-                        <div
-                          key={b.src}
-                          className={cn(
-                            "inline-flex items-stretch rounded-md border text-xs overflow-hidden bg-white",
-                            VIOLATION_SOURCE_TONE[b.src],
+                        <p className="text-[12px] text-slate-500 mt-0.5">
+                          <span className="font-semibold text-slate-700 tabular-nums">{verifiedCount}</span> verified by external feeds
+                          {perSourceBreakdown.length > 0 && (
+                            <>
+                              <span className="mx-1.5 text-slate-300">·</span>
+                              Found in{' '}
+                              {perSourceBreakdown.map((b, i) => (
+                                <React.Fragment key={b.src}>
+                                  {i > 0 && <span className="text-slate-300">, </span>}
+                                  <span
+                                    className="text-slate-700"
+                                    title={`${VIOLATION_SOURCE_META[b.src].agency} — ${b.ver} verified, ${b.miss} missing`}
+                                  >
+                                    {VIOLATION_SOURCE_META[b.src].short}
+                                  </span>
+                                  <span className="text-slate-400 tabular-nums"> ({b.total})</span>
+                                </React.Fragment>
+                              ))}
+                            </>
                           )}
-                          title={`${VIOLATION_SOURCE_META[b.src].agency} — ${b.ver} verified, ${b.miss} missing`}
-                        >
-                          <span className="px-2 py-1 font-bold uppercase tracking-wider text-[10px] flex items-center">
-                            {VIOLATION_SOURCE_META[b.src].short}
-                          </span>
-                          <span className="flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 border-l border-current/10 tabular-nums font-semibold">
-                            <Check className="w-3 h-3" />
-                            {b.ver}
-                          </span>
-                          <span className={cn(
-                            "flex items-center gap-1 px-2 py-1 border-l border-current/10 tabular-nums font-semibold",
-                            b.miss > 0 ? "bg-rose-50 text-rose-700" : "bg-slate-50 text-slate-500",
-                          )}>
-                            <AlertTriangle className="w-3 h-3" />
-                            {b.miss}
-                          </span>
-                        </div>
-                      ))}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <button
+                        onClick={handleSyncFeeds}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
+                        title="Pull a fresh batch of regulator-feed entries"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Sync feeds
+                      </button>
+                      {missingCount > 0 && (
+                        <button
+                          onClick={() => setShowMissing(s => !s)}
+                          className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+                        >
+                          {showMissing ? 'Hide' : 'Show'} missing
+                          {showMissing ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
                 {/* Missing list — selectable rows with pagination */}
                 {missingCount > 0 && showMissing && (() => {
@@ -1317,6 +1239,10 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                         </div>
                       )}
 
+                      {/* Compact 5-column table — only renders the data each
+                          regulator feed actually carries. Severity, fine, and
+                          conviction live inside the Reference cell so the
+                          row stays narrow regardless of source. */}
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead className="bg-amber-50/95">
@@ -1331,31 +1257,29 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                                   aria-label="Select all on page"
                                 />
                               </th>
-                              <th className="px-3 py-2 font-semibold">Date / Time</th>
-                              <th className="px-3 py-2 font-semibold">Source</th>
-                              <th className="px-3 py-2 font-semibold">Code</th>
-                              <th className="px-3 py-2 font-semibold">Description</th>
+                              <th className="px-3 py-2 font-semibold w-[140px]">Source / Date</th>
                               <th className="px-3 py-2 font-semibold">Driver</th>
-                              <th className="px-3 py-2 font-semibold">Location</th>
-                              <th className="px-3 py-2 font-semibold">Severity</th>
-                              <th className="px-3 py-2 font-semibold text-right">Fine</th>
-                              <th className="px-3 py-2 font-semibold">Conviction</th>
-                              <th className="px-3 py-2" />
+                              <th className="px-3 py-2 font-semibold">Violation</th>
+                              <th className="px-3 py-2 font-semibold">Reference</th>
+                              <th className="px-3 py-2 font-semibold text-right">Action</th>
                             </tr>
                           </thead>
                           <tbody>
                             {pageSlice.map((m: ExternalViolationRecord) => {
                               const meta = VIOLATION_SOURCE_META[m.source];
                               const checked = selectedMissingIds.has(m.externalId);
+                              // Pick the strongest reference the source carries.
+                              const primaryRef = m.citationNumber
+                                ? { label: 'Citation #', value: m.citationNumber }
+                                : m.convictionNumber
+                                  ? { label: 'Conviction #', value: m.convictionNumber }
+                                  : null;
                               return (
                                 <tr
                                   key={m.externalId}
                                   role="button"
                                   tabIndex={0}
                                   onClick={() => {
-                                    // Open the violation form with everything
-                                    // we can pull from the regulator feed pre-
-                                    // filled. User then chooses Save or Cancel.
                                     setEditingRecord(buildPrefillFromExternal(m, carrierId));
                                     setEditModalOpen(true);
                                   }}
@@ -1372,7 +1296,7 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                                     checked ? 'bg-blue-50/40 hover:bg-blue-50/60' : 'hover:bg-amber-50/60',
                                   )}
                                 >
-                                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                                  <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
                                     <input
                                       type="checkbox"
                                       className="rounded border-amber-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
@@ -1381,11 +1305,8 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                                       aria-label={`Select ${m.externalId}`}
                                     />
                                   </td>
-                                  <td className="px-3 py-2 whitespace-nowrap">
-                                    <p className="font-medium text-slate-700">{fmtDate(m.date)}</p>
-                                    <p className="text-slate-400">{m.time}</p>
-                                  </td>
-                                  <td className="px-3 py-2">
+                                  {/* Source + Date */}
+                                  <td className="px-3 py-2.5 whitespace-nowrap">
                                     <span
                                       className={cn(
                                         'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border',
@@ -1395,57 +1316,56 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                                     >
                                       {meta.short}
                                     </span>
+                                    <p className="text-[11px] text-slate-600 mt-1">{fmtDate(m.date)}</p>
+                                    {m.time && <p className="text-[10px] text-slate-400">{m.time}</p>}
                                   </td>
-                                  <td className="px-3 py-2">
-                                    <code className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-mono font-bold whitespace-nowrap">
-                                      {m.violationCode}
-                                    </code>
+                                  {/* Driver */}
+                                  <td className="px-3 py-2.5 max-w-[160px]">
+                                    <p className="text-slate-700 truncate" title={m.driverName}>{m.driverName}</p>
+                                    {m.driverLicense && (
+                                      <p className="text-slate-400 font-mono text-[10px] truncate" title={m.driverLicense}>DL {m.driverLicense}</p>
+                                    )}
                                   </td>
-                                  <td className="px-3 py-2 max-w-[260px]">
-                                    <p className="text-slate-700 truncate" title={m.violationDescription}>
+                                  {/* Violation — code + severity + description */}
+                                  <td className="px-3 py-2.5 max-w-[280px]">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <code className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-mono font-bold whitespace-nowrap">
+                                        {m.violationCode}
+                                      </code>
+                                      <span className={cn(
+                                        'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border',
+                                        m.severity === 'OOS' ? 'bg-red-100 text-red-700 border-red-200'
+                                          : m.severity === 'Critical' ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                          : m.severity === 'Serious' ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                          : 'bg-slate-100 text-slate-600 border-slate-200',
+                                      )}>
+                                        {m.severity}
+                                      </span>
+                                    </div>
+                                    <p className="text-slate-700 mt-1 truncate" title={m.violationDescription}>
                                       {m.violationDescription}
                                     </p>
-                                    <p className="text-slate-400 text-[11px] truncate">{m.rawDescription}</p>
                                   </td>
-                                  <td className="px-3 py-2 max-w-[140px]">
-                                    <p className="text-slate-700 truncate">{m.driverName}</p>
-                                    {m.driverLicense && (
-                                      <p className="text-slate-400 font-mono text-[11px] truncate">{m.driverLicense}</p>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 whitespace-nowrap">
-                                    <p className="text-slate-600">{m.city}</p>
-                                    <p className="text-slate-400">{m.state} · {m.country}</p>
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <span className={cn(
-                                      'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border',
-                                      m.severity === 'OOS' ? 'bg-red-100 text-red-700 border-red-200'
-                                        : m.severity === 'Critical' ? 'bg-rose-100 text-rose-700 border-rose-200'
-                                        : m.severity === 'Serious' ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                        : 'bg-slate-100 text-slate-600 border-slate-200',
-                                    )}>
-                                      {m.severity}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                                    {m.fineAmount > 0
-                                      ? <span className="font-bold text-slate-700">{fmt(m.fineAmount, m.currency)}</span>
-                                      : <span className="text-slate-300">—</span>}
-                                  </td>
-                                  <td className="px-3 py-2 whitespace-nowrap">
-                                    {m.convictionNumber ? (
+                                  {/* Reference + secondary fields the source carried */}
+                                  <td className="px-3 py-2.5 whitespace-nowrap">
+                                    {primaryRef ? (
                                       <>
-                                        <p className="text-slate-600 font-mono text-[11px]">{m.convictionNumber}</p>
-                                        {m.convictionDate && (
-                                          <p className="text-slate-400 text-[11px]">{fmtDate(m.convictionDate)}</p>
-                                        )}
+                                        <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">{primaryRef.label}</p>
+                                        <p className="font-mono text-[11px] text-slate-800">{primaryRef.value}</p>
                                       </>
                                     ) : (
-                                      <span className="text-slate-300">—</span>
+                                      <span className="text-slate-300 text-[11px]">No reference #</span>
+                                    )}
+                                    {(m.city || m.state) && (
+                                      <p className="text-[10px] text-slate-500 mt-1">
+                                        {[m.city, m.state].filter(Boolean).join(', ')}
+                                      </p>
+                                    )}
+                                    {m.convictionDate && primaryRef?.label !== 'Conviction #' && (
+                                      <p className="text-[10px] text-slate-400">Convicted {fmtDate(m.convictionDate)}</p>
                                     )}
                                   </td>
-                                  <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                                  <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                                     <button
                                       onClick={() => {
                                         setEditingRecord(buildPrefillFromExternal(m, carrierId));
@@ -1453,7 +1373,7 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                                       }}
                                       className="text-xs font-semibold text-amber-700 hover:text-amber-900 inline-flex items-center gap-1"
                                     >
-                                      <Plus className="w-3 h-3" /> Add to log
+                                      <Plus className="w-3 h-3" /> Add
                                     </button>
                                   </td>
                                 </tr>
@@ -1501,6 +1421,7 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                     </div>
                   );
                 })()}
+                </div>
               </div>
             );
           })()}
@@ -1776,16 +1697,6 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
               </select>
               <select
                 className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={statusFilter}
-                onChange={e => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1); }}
-              >
-                <option value="all">All Statuses</option>
-                <option value="Open">Open</option>
-                <option value="Closed">Closed</option>
-                <option value="Under Review">Under Review</option>
-              </select>
-              <select
-                className="h-9 px-2 text-sm border border-slate-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 value={resultFilter}
                 onChange={e => { setResultFilter(e.target.value as typeof resultFilter); setPage(1); }}
               >
@@ -1833,8 +1744,6 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Risk</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">OOS</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Result</th>
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fine</th>
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                     <th className="w-8" />
                     <th className="w-8" />
                   </tr>
@@ -1842,7 +1751,7 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                 <tbody>
                   {pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="text-center py-12 text-slate-400 text-sm">
+                      <td colSpan={11} className="text-center py-12 text-slate-400 text-sm">
                         No violations match the current filters.
                       </td>
                     </tr>
@@ -1920,35 +1829,39 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <Badge label={v.result} cls={RESULT_BADGE[v.result] ?? 'bg-slate-100 text-slate-600'} />
                           </td>
-                          {/* Fine */}
-                          <td className="px-3 py-2.5 whitespace-nowrap">
-                            {v.fineAmount > 0
-                              ? <span className="font-bold text-slate-700 text-xs">{fmt(v.fineAmount, v.currency)}</span>
-                              : <span className="text-slate-300 text-xs">—</span>
-                            }
-                          </td>
-                          {/* Status */}
-                          <td className="px-3 py-2.5 whitespace-nowrap">
-                            <Badge label={v.status} cls={STATUS_BADGE[v.status] ?? 'bg-slate-100 text-slate-600'} />
-                          </td>
-                          {/* Inline edit (pencil) */}
+                          {/* Inline edit (pencil) + remove (trash) */}
                           <td className="px-2 py-2.5">
-                            <button
-                              type="button"
-                              title="Edit violation"
-                              aria-label="Edit violation"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const original = recordsById.get(v.id);
-                                if (original) {
-                                  setEditingRecord(original);
-                                  setEditModalOpen(true);
-                                }
-                              }}
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                title="Edit violation"
+                                aria-label="Edit violation"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const original = recordsById.get(v.id);
+                                  if (original) {
+                                    setEditingRecord(original);
+                                    setEditModalOpen(true);
+                                  }
+                                }}
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Remove violation"
+                                aria-label="Remove violation"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const original = recordsById.get(v.id);
+                                  if (original) setRemoveCandidate(original);
+                                }}
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                           {/* Chevron */}
                           <td className="px-2 py-2.5">
@@ -2013,6 +1926,59 @@ export function ViolationsListPage({ accountId }: ViolationsListPageProps = {}) 
       </div>
 
       {/* Add/Edit form is rendered as a dedicated page above (early return). */}
+
+      {/* ── Remove confirmation dialog — asks the user to confirm before
+          destructively removing a violation from the carrier ledger. */}
+      {removeCandidate && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setRemoveCandidate(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-5 flex items-start gap-3">
+              <div className="h-10 w-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertOctagon className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-slate-900">Remove this violation?</h3>
+                <p className="text-sm text-slate-600 mt-1">
+                  <span className="font-mono font-semibold">{removeCandidate.violationCode}</span>
+                  {removeCandidate.ticketNumber && (
+                    <> (ticket <span className="font-mono">{removeCandidate.ticketNumber}</span>)</>
+                  )} will be removed from your violation log. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveCandidate(null)}
+                className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRemovedIds(prev => {
+                    const next = new Set(prev);
+                    next.add(removeCandidate.id);
+                    return next;
+                  });
+                  setRemoveCandidate(null);
+                  setExpandedId(null);
+                }}
+                className="h-9 px-4 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 shadow-sm inline-flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" /> Remove violation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

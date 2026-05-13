@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { MOCK_DRIVERS } from "@/data/mock-app-data";
 import { INITIAL_ASSETS } from "../assets/assets.data";
 import { Toggle } from "@/components/ui/toggle";
@@ -33,6 +33,8 @@ import {
   Search,
   Calendar,
   Edit,
+  Trash2,
+  AlertOctagon,
   MapPin,
 
   SlidersHorizontal,
@@ -2487,102 +2489,97 @@ function ComplianceReconciliationBanner({
     setSelectedIds(new Set());
   };
 
+  // Neutral white card with a thin amber/emerald accent strip — same
+  // shape used on Tickets + Violations, so the missing-records banner
+  // reads consistently across all three pages.
   return (
     <div className="mb-6">
-      <div
-        className={`rounded-xl border overflow-hidden shadow-sm ${
-          hasMissing ? "border-amber-200" : "border-emerald-200"
-        }`}
-      >
-        {/* Banner (header). Rounded corners come from the outer wrapper. */}
-        <div
-          className={`px-5 py-3.5 flex items-center justify-between gap-4 flex-wrap ${
-            hasMissing ? "bg-amber-50" : "bg-emerald-50"
-          } ${expanded ? "border-b border-amber-200" : ""}`}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${hasMissing ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
-              <AlertTriangle size={18} />
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex overflow-hidden">
+        <div className={`w-1.5 shrink-0 ${hasMissing ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+        <div className="flex-1 min-w-0">
+          <div className="px-4 py-3 flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${hasMissing ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                <AlertTriangle size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                  {hasMissing
+                    ? `${missing.length} external record${missing.length === 1 ? "" : "s"} missing`
+                    : verifiedCount > 0
+                      ? "Accident log reconciled with external feeds"
+                      : "No external feed entries received yet"}
+                </h3>
+                <p className="text-[12px] text-slate-500 mt-0.5">
+                  {verifiedCount > 0 && (
+                    <>
+                      <span className="font-semibold text-slate-700 tabular-nums">{verifiedCount}</span> verified by external feeds
+                    </>
+                  )}
+                  {hasMissing && (
+                    <>
+                      {verifiedCount > 0 && <span className="mx-1.5 text-slate-300">·</span>}
+                      Found in{' '}
+                      {Array.from(bySource.entries()).map(([s, n], i) => (
+                        <React.Fragment key={s}>
+                          {i > 0 && <span className="text-slate-300">, </span>}
+                          <span className="text-slate-700">{s}</span>
+                          <span className="text-slate-400 tabular-nums"> ({n})</span>
+                        </React.Fragment>
+                      ))}
+                    </>
+                  )}
+                  {!hasMissing && verifiedCount === 0 && (
+                    <span className="italic text-slate-400">
+                      Click Sync feeds to pull a fresh batch from FMCSA / CVOR / NSC.
+                    </span>
+                  )}
+                  {presentSources.length > 0 && !hasMissing && (
+                    <>
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      Sources:{' '}
+                      {presentSources.map((s, i) => (
+                        <React.Fragment key={s}>
+                          {i > 0 && <span className="text-slate-300">, </span>}
+                          <span className="text-slate-700">{s}</span>
+                        </React.Fragment>
+                      ))}
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-slate-900">
-                {hasMissing
-                  ? `${missing.length} external record${missing.length === 1 ? "" : "s"} missing from your accident log`
-                  : verifiedCount > 0
-                    ? "Accident log is in sync with external feeds"
-                    : "No external feed entries received yet"}
-              </h3>
-              <p className="text-xs text-slate-600 mt-0.5 leading-snug">
-                {verifiedCount > 0 && (
-                  <span className="mr-2">
-                    <span className="font-semibold text-emerald-700">{verifiedCount}</span> verified by external feeds
-                  </span>
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                {onSyncFeeds && (
+                  <button
+                    type="button"
+                    onClick={onSyncFeeds}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
+                    title="Pull a fresh batch of regulator-feed entries (FMCSA / CVOR / NSC)"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Sync feeds
+                  </button>
                 )}
                 {hasMissing && (
-                  <>
-                    <span className="text-slate-400 mx-1">·</span>
-                    Found in
-                    {Array.from(bySource.entries()).map(([s, n]) => (
-                      <span key={s} className={`ml-1 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${SOURCE_TONE[s]}`}>
-                        {s} ({n})
-                      </span>
-                    ))}
-                    <span className="text-slate-500 ml-1.5">— matched on date, time (±60min) and location.</span>
-                  </>
+                  <button
+                    type="button"
+                    onClick={onToggle}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+                  >
+                    {showMissing ? 'Hide' : 'Show'} missing
+                    {showMissing ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
                 )}
-                {!hasMissing && verifiedCount === 0 && (
-                  <span className="italic text-slate-500">
-                    Click <span className="font-semibold text-slate-700">Sync feeds</span> to pull a fresh batch of FMCSA / CVOR / NSC entries.
-                  </span>
-                )}
-                {presentSources.length > 0 && !hasMissing && (
-                  <>
-                    <span className="text-slate-400 mx-1">·</span>
-                    <span className="text-slate-500">Sources:</span>
-                    {presentSources.map(s => (
-                      <span key={s} className={`ml-1 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${SOURCE_TONE[s]}`}>
-                        {s}
-                      </span>
-                    ))}
-                  </>
-                )}
-              </p>
-            </div>
-          </div>
-          {/* Action buttons — single side-by-side row, exactly mirroring
-              the Violations page (h-9 buttons, gap-2, primary blue + amber
-              outlined). Timestamp sits below the row when present. */}
-          <div className="shrink-0 flex flex-col items-end gap-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              {onSyncFeeds && (
-                <button
-                  type="button"
-                  onClick={onSyncFeeds}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
-                  title="Pull a fresh batch of regulator-feed entries (FMCSA / CVOR / NSC)"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Sync feeds
-                </button>
-              )}
-              {hasMissing && (
-                <button
-                  type="button"
-                  onClick={onToggle}
-                  className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-semibold rounded-lg bg-white border border-amber-200 text-amber-800 hover:bg-amber-50 shadow-sm"
-                >
-                  {showMissing ? 'Hide' : 'Show'} missing
-                  {showMissing ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
+              </div>
+              {lastSyncedAt && (
+                <span className="text-[10px] text-slate-400 tabular-nums">
+                  Last synced {new Date(lastSyncedAt).toLocaleTimeString()}
+                </span>
               )}
             </div>
-            {lastSyncedAt && (
-              <span className="text-[10px] text-slate-500 tabular-nums">
-                Last synced {new Date(lastSyncedAt).toLocaleTimeString()}
-              </span>
-            )}
           </div>
-        </div>
 
         {/* Table — flush with the banner above, sharing the outer border. */}
         {expanded && (
@@ -2613,12 +2610,16 @@ function ComplianceReconciliationBanner({
                   onClick={logAllSelected}
                   className="inline-flex items-center gap-1 px-3 h-7 text-xs font-bold rounded-md bg-blue-600 text-white hover:bg-blue-500 shadow-sm"
                 >
-                  <Plus size={12} /> Log {selectedCount} accident{selectedCount === 1 ? "" : "s"}
+                  <Plus size={12} /> Add {selectedCount} accident{selectedCount === 1 ? "" : "s"}
                 </button>
               </div>
             </div>
           )}
 
+          {/* Compact 5-column table — only renders fields each source
+              actually carries. Vehicle + severity + reportedBy live inside
+              the Reference cell so the row stays narrow regardless of
+              whether the feed produced them. */}
           <table className="w-full text-sm">
             <thead className="bg-amber-50/60 border-b border-amber-200 text-[10px] uppercase font-bold tracking-wider text-amber-800">
               <tr>
@@ -2633,13 +2634,11 @@ function ComplianceReconciliationBanner({
                     aria-label="Select all on page"
                   />
                 </th>
-                <th className="px-3 py-2 text-left w-[110px]">Source</th>
-                <th className="px-3 py-2 text-left w-[150px]">Date / Time</th>
-                <th className="px-3 py-2 text-left">Location</th>
-                <th className="px-3 py-2 text-left">Vehicle</th>
+                <th className="px-3 py-2 text-left w-[140px]">Source / Date</th>
                 <th className="px-3 py-2 text-left">Driver</th>
-                <th className="px-3 py-2 text-left w-[180px]">Severity</th>
-                <th className="px-3 py-2 text-right w-[180px]">Action</th>
+                <th className="px-3 py-2 text-left">Severity</th>
+                <th className="px-3 py-2 text-left">Reference</th>
+                <th className="px-3 py-2 text-right w-[140px]">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-amber-100">
@@ -2655,7 +2654,7 @@ function ComplianceReconciliationBanner({
                   title="Click to log this accident with pre-filled details"
                   className={`group/row hover:bg-amber-50/50 cursor-pointer transition-colors ${checked ? "bg-blue-50/40" : ""}`}
                 >
-                  <td className="w-8 px-2 py-2 align-top" onClick={(e) => e.stopPropagation()}>
+                  <td className="w-8 px-2 py-2.5 align-top" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       className="rounded border-amber-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
@@ -2664,42 +2663,54 @@ function ComplianceReconciliationBanner({
                       aria-label={`Select ${rec.externalId}`}
                     />
                   </td>
-                  <td className="px-3 py-2 align-top">
+                  {/* Source + Date */}
+                  <td className="px-3 py-2.5 align-top whitespace-nowrap">
                     <div className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${SOURCE_TONE[rec.source]}`}>
                       {SOURCE_META[rec.source].short}
                     </div>
-                    <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[110px]" title={rec.externalId}>{rec.externalId}</div>
-                  </td>
-                  <td className="px-3 py-2 align-top whitespace-nowrap">
-                    <div className="text-[12px] font-semibold text-slate-900">
-                      {new Date(rec.occurredAt).toLocaleDateString()}
-                    </div>
-                    <div className="text-[11px] text-slate-500 tabular-nums">
+                    <div className="text-[11px] text-slate-600 mt-1">{new Date(rec.occurredAt).toLocaleDateString()}</div>
+                    <div className="text-[10px] text-slate-400 tabular-nums">
                       {new Date(rec.occurredAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="text-[12px] text-slate-700 leading-tight">
-                      {rec.city}, {rec.stateOrProvince}
-                    </div>
-                    <div className="text-[10px] text-slate-400">{rec.country}</div>
+                  {/* Driver — name + licence (only when carried) */}
+                  <td className="px-3 py-2.5 align-top max-w-[160px]">
+                    {rec.driverName ? (
+                      <p className="text-slate-700 truncate" title={rec.driverName}>{rec.driverName}</p>
+                    ) : (
+                      <span className="text-slate-300 text-[11px]">No driver info</span>
+                    )}
+                    {rec.driverLicense && (
+                      <p className="text-slate-400 font-mono text-[10px] truncate" title={rec.driverLicense}>DL {rec.driverLicense}</p>
+                    )}
                   </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="text-[12px] font-mono text-slate-700">{rec.vehiclePlate ?? "—"}</div>
-                    {rec.vehicleMakeModel && <div className="text-[10px] text-slate-500 truncate max-w-[180px]">{rec.vehicleMakeModel}</div>}
-                    {rec.vehicleVin && <div className="text-[10px] font-mono text-slate-400 truncate max-w-[180px]" title={rec.vehicleVin}>{rec.vehicleVin}</div>}
+                  {/* Severity + reporting agency */}
+                  <td className="px-3 py-2.5 align-top max-w-[200px]">
+                    <p className="text-[12px] font-semibold text-slate-900 capitalize">{rec.severitySummary}</p>
+                    <p className="text-[10px] text-slate-400 truncate" title={rec.reportedBy}>{rec.reportedBy}</p>
                   </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="text-[12px] text-slate-700 truncate max-w-[180px]">{rec.driverName ?? "—"}</div>
-                    {rec.driverLicense && <div className="text-[10px] font-mono text-slate-400 truncate max-w-[180px]">{rec.driverLicense}</div>}
+                  {/* Reference — externalId + vehicle + location, all
+                      conditional on the source actually carrying them. */}
+                  <td className="px-3 py-2.5 align-top whitespace-nowrap">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">{SOURCE_META[rec.source].short} ID</p>
+                    <p className="font-mono text-[11px] text-slate-800 truncate max-w-[180px]" title={rec.externalId}>{rec.externalId}</p>
+                    {(rec.city || rec.stateOrProvince) && (
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        {[rec.city, rec.stateOrProvince].filter(Boolean).join(', ')}
+                      </p>
+                    )}
+                    {rec.vehiclePlate && (
+                      <p className="text-[10px] text-slate-500">
+                        Plate <span className="font-mono text-slate-700">{rec.vehiclePlate}</span>
+                      </p>
+                    )}
+                    {rec.vehicleMakeModel && (
+                      <p className="text-[10px] text-slate-400 truncate max-w-[180px]">{rec.vehicleMakeModel}</p>
+                    )}
                   </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="text-[12px] font-semibold text-slate-900 capitalize">{rec.severitySummary}</div>
-                    <div className="text-[10px] text-slate-400 truncate max-w-[180px]" title={rec.reportedBy}>{rec.reportedBy}</div>
-                  </td>
-                  <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+                  <td className="px-3 py-2.5 align-top text-right whitespace-nowrap">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600 group-hover/row:bg-blue-700 text-white text-[11px] font-bold transition-colors">
-                      <Plus size={11} /> Log accident
+                      <Plus size={11} /> Add
                     </span>
                     <button
                       type="button"
@@ -2754,6 +2765,7 @@ function ComplianceReconciliationBanner({
           </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -2832,6 +2844,11 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
   const [colMenu, setColMenu] = useState(false);
   const [detail, setDetail] = useState<any>(null);
   const [editing, setEditing] = useState<any>(null);
+  // Accident pending a Remove confirmation. Null when the dialog is closed.
+  const [removeCandidate, setRemoveCandidate] = useState<any>(null);
+  // Locally-removed incident ids — overlay the source data so removed
+  // accidents drop off the list (CARRIER_INCIDENTS_ALL is read-only).
+  const [removedIncidentIds, setRemovedIncidentIds] = useState<Set<string>>(new Set());
 
   // Filters
   const [dateRange, setDateRange] = useState({
@@ -2840,7 +2857,10 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
   });
   const [driverFilter, setDriverFilter] = useState("All");
   const [driverMenu, setDriverMenu] = useState(false);
-
+  // Source filter — derived from the accident's jurisdiction
+  // (US → SMS / FMCSA, ON → CVOR, other CA → NSC). Same routing the
+  // regulator feeds use.
+  const [sourceFilter, setSourceFilter] = useState<'All Sources' | 'SMS' | 'CVOR' | 'NSC'>('All Sources');
 
   const [activeTab, setActiveTab] = useState("all");
   const driverOptions = useMemo(
@@ -2850,6 +2870,8 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
 
   const filtered = useMemo(() => {
     return data.filter((item) => {
+      // 0. Drop locally-removed accidents
+      if (removedIncidentIds.has(item.incidentId)) return false;
       // 1. Text Search
       if (q) {
         const s = q.toLowerCase();
@@ -2876,9 +2898,20 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
       // 4. Driver Filter
       if (driverFilter !== "All" && item.driver.name !== driverFilter) return false;
 
+      // 5. Source / jurisdiction filter — same routing as the regulator
+      //    feeds: US state → SMS, ON → CVOR, other CA → NSC.
+      if (sourceFilter !== "All Sources") {
+        const state = (item.location?.stateOrProvince ?? "").toUpperCase();
+        const country = item.location?.country ?? "";
+        const sourceForItem = country === "Canada"
+          ? (state === "ON" ? "CVOR" : "NSC")
+          : "SMS";
+        if (sourceForItem !== sourceFilter) return false;
+      }
+
       return true;
     });
-  }, [data, q, activeTab, dateRange, driverFilter]);
+  }, [data, q, activeTab, dateRange, driverFilter, sourceFilter, removedIncidentIds]);
 
   // Sorting
   const [sortCol] = useState("date");
@@ -3039,6 +3072,7 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
   const resetFilters = () => {
     setDateRange({ start: "", end: "" });
     setDriverFilter("All");
+    setSourceFilter("All Sources");
     setQ("");
   };
 
@@ -3081,21 +3115,8 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
         </div>
       </div>
 
-      {/* ── Compliance reconciliation banner ───────────────────────────── */}
-      <ComplianceReconciliationBanner
-        verifiedCount={matchResult.verifiedByIncidentId.size}
-        missing={visibleMissing}
-        showMissing={showMissing}
-        onToggle={() => setShowMissing((v) => !v)}
-        onLog={(rec) => setEditing(externalRecordToFormSeed(rec))}
-        onDismiss={(externalId) => setDismissedMissing((prev) => {
-          const next = new Set(prev); next.add(externalId); return next;
-        })}
-        onSyncFeeds={handleSyncAccidentFeeds}
-        lastSyncedAt={lastAccidentSyncedAt}
-      />
-
-      {/* KPI Cards */}
+      {/* KPI Cards — moved above the reconciliation banner so the
+          page leads with the at-a-glance accident metrics. */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <KpiCard
           icon={AlertTriangle}
@@ -3133,6 +3154,20 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
           accent="bg-gray-900/10 text-gray-900"
         />
       </div>
+
+      {/* ── Compliance reconciliation banner ───────────────────────────── */}
+      <ComplianceReconciliationBanner
+        verifiedCount={matchResult.verifiedByIncidentId.size}
+        missing={visibleMissing}
+        showMissing={showMissing}
+        onToggle={() => setShowMissing((v) => !v)}
+        onLog={(rec) => setEditing(externalRecordToFormSeed(rec))}
+        onDismiss={(externalId) => setDismissedMissing((prev) => {
+          const next = new Set(prev); next.add(externalId); return next;
+        })}
+        onSyncFeeds={handleSyncAccidentFeeds}
+        lastSyncedAt={lastAccidentSyncedAt}
+      />
 
       {/* ── Continuous block: Tabs + Sub-category KPIs + Controls + Table ── */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -3376,6 +3411,21 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
                 </div>
               )}
             </div>
+
+            {/* Source / regulator-jurisdiction filter — SMS / CVOR / NSC.
+                Matches the Tickets + Violations pages so safety/compliance
+                can scope all three surfaces by feed origin. */}
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as typeof sourceFilter)}
+              className="h-[38px] px-3 text-sm border border-gray-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-gray-700"
+              title="Filter by regulator source"
+            >
+              <option value="All Sources">All Sources</option>
+              <option value="SMS">SMS (FMCSA)</option>
+              <option value="CVOR">CVOR (Ontario)</option>
+              <option value="NSC">NSC (Canada)</option>
+            </select>
 
             <div className="relative" ref={colRef}>
               <button
@@ -3744,12 +3794,22 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
                       )}
                       
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            onClick={() => setEditing(item)}
-                            className="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600"
-                        >
-                            <Edit size={16} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                              onClick={() => setEditing(item)}
+                              className="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600"
+                              title="Edit accident"
+                          >
+                              <Edit size={16} />
+                          </button>
+                          <button
+                              onClick={() => setRemoveCandidate(item)}
+                              className="p-1.5 hover:bg-rose-50 rounded text-gray-500 hover:text-rose-600"
+                              title="Remove accident"
+                          >
+                              <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -3861,6 +3921,59 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
       />
       
       {/* Add/Edit form is rendered as a dedicated page above (early return). */}
+
+      {/* ── Remove confirmation dialog — asks the user to confirm before
+          destructively removing an accident from the carrier ledger. */}
+      {removeCandidate && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setRemoveCandidate(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-5 flex items-start gap-3">
+              <div className="h-10 w-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertOctagon className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-slate-900">Remove this accident?</h3>
+                <p className="text-sm text-slate-600 mt-1">
+                  <span className="font-mono font-semibold">{removeCandidate.incidentId}</span>
+                  {removeCandidate.driver?.name && (
+                    <> (driver <span className="font-semibold">{removeCandidate.driver.name}</span>)</>
+                  )} will be removed from your accident log. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveCandidate(null)}
+                className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRemovedIncidentIds(prev => {
+                    const next = new Set(prev);
+                    next.add(removeCandidate.incidentId);
+                    return next;
+                  });
+                  setRemoveCandidate(null);
+                  if (detail?.incidentId === removeCandidate.incidentId) setDetail(null);
+                }}
+                className="h-9 px-4 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-500 shadow-sm inline-flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" /> Remove accident
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
