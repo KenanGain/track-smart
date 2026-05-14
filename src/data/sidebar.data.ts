@@ -119,6 +119,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/tickets",
     },
     {
+        key: "safety-analysis-beta",
+        label: "Beta Safety Analysis",
+        icon: FlaskConical,
+        path: "/safety-analysis/beta",
+    },
+    {
         key: "safety-events",
         label: "Safety Events",
         icon: Activity,
@@ -135,12 +141,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Old Safety Analysis",
         icon: History,
         path: "/safety-analysis/legacy",
-    },
-    {
-        key: "safety-analysis-beta",
-        label: "Beta Safety Analysis",
-        icon: FlaskConical,
-        path: "/safety-analysis/beta",
     },
     {
         key: "settings",

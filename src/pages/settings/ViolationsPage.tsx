@@ -119,10 +119,83 @@ function tsPointsHasAny(p: TsPoints | undefined): boolean {
   return !!p && (p.driver !== undefined || p.asset !== undefined || p.carrier !== undefined);
 }
 
-/** Sum of the three TS-point fields. Used for the existing column sort + display. */
-function tsPointsTotal(p: TsPoints | undefined): number {
-  if (!p) return 0;
-  return (p.driver ?? 0) + (p.asset ?? 0) + (p.carrier ?? 0);
+/** Default TrackSmart points derived from the violation's own severity /
+ *  OOS / risk-category data. Returned values stand in whenever the user
+ *  hasn't supplied an explicit override on a given field.
+ *
+ *  The split follows the rule of thumb our risk engine uses elsewhere:
+ *    • Driver pts  ≈ severityWeight.driver  + OOS premium + crash-likelihood bump
+ *    • Carrier pts ≈ severityWeight.carrier + OOS premium + DSMS multiplier
+ *    • Asset pts   derived from category — vehicle-maintenance / brake /
+ *      light / tire / loading violations weight the asset heavily; driver-
+ *      fitness / HOS / drug-and-alcohol violations weight it lightly. */
+function defaultTsPointsFor(item: any): TsPoints {
+    const sevD = Number(item?.severityWeight?.driver  ?? 0);
+    const sevC = Number(item?.severityWeight?.carrier ?? 0);
+    const isOos = !!item?.isOos;
+    const inDsms = !!item?.inDsms;
+    const crashPct = Number(item?.crashLikelihoodPercent ?? 0);
+    const riskCat = Number(item?.driverRiskCategory ?? 3);
+    const group = String(item?.violationGroup ?? '').toLowerCase();
+
+    // Driver pts = base severity + OOS premium + high-crash bump (cap 10).
+    const driverBase = sevD || (riskCat === 1 ? 6 : riskCat === 2 ? 3 : 1);
+    const driver = clampInt(
+        driverBase
+        + (isOos ? 2 : 0)
+        + (crashPct >= 200 ? 2 : crashPct >= 100 ? 1 : 0),
+        0, 10,
+    );
+
+    // Carrier pts = base severity + DSMS multiplier + OOS premium (cap 10).
+    const carrierBase = sevC || (riskCat === 1 ? 5 : riskCat === 2 ? 3 : 1);
+    const carrier = clampInt(
+        carrierBase
+        + (inDsms ? 2 : 0)
+        + (isOos ? 2 : 0),
+        0, 10,
+    );
+
+    // Asset pts — weighted by category (cap 10).
+    const vehicleHeavy =
+        group.includes('vehicle')   || group.includes('maint') ||
+        group.includes('brake')     || group.includes('light') ||
+        group.includes('tire')      || group.includes('lamp')  ||
+        group.includes('load')      || group.includes('cargo') ||
+        group.includes('hazmat')    || group.includes('hm ')   ||
+        group.includes('placard')   || group.includes('coupl') ||
+        group.includes('air brak')  || group.includes('emergency') ||
+        group.includes('inspection');
+    const vehicleLight =
+        group.includes('driver fitness') || group.includes('license') ||
+        group.includes('medical')        || group.includes('cdl')    ||
+        group.includes('hours')          || group.includes('hos')    ||
+        group.includes('logbook')        || group.includes('eld')    ||
+        group.includes('drug')           || group.includes('alcohol')||
+        group.includes('controlled');
+    const assetBase = vehicleHeavy
+        ? Math.max(sevC, riskCat === 1 ? 6 : 4)
+        : vehicleLight
+            ? Math.max(1, Math.min(2, Math.round(sevC / 2)))
+            : Math.max(2, Math.round(sevC * 0.6));
+    const asset = clampInt(assetBase + (isOos ? 2 : 0), 0, 10);
+
+    return { driver, asset, carrier };
+}
+
+function clampInt(n: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, Math.round(Number.isFinite(n) ? n : 0)));
+}
+
+/** Returns the effective TS points for a row: per-field user overrides win,
+ *  otherwise we fall back to the data-driven default. */
+function effectiveTsPoints(item: any, override: TsPoints | undefined): TsPoints {
+    const d = defaultTsPointsFor(item);
+    return {
+        driver:  override?.driver  ?? d.driver,
+        asset:   override?.asset   ?? d.asset,
+        carrier: override?.carrier ?? d.carrier,
+    };
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1636,10 +1709,10 @@ export function ViolationsPage() {
           case 'dvrPts': aVal = a.severityWeight.driver; bVal = b.severityWeight.driver; break;
           case 'carPts': aVal = (a.severityWeight.driver || 0) + (a.severityWeight.carrier || 0); bVal = (b.severityWeight.driver || 0) + (b.severityWeight.carrier || 0); break;
           case 'tsPoints': {
-            const tA = tsPoints[a.id];
-            const tB = tsPoints[b.id];
-            aVal = tsPointsHasAny(tA) ? tsPointsTotal(tA) : -1;
-            bVal = tsPointsHasAny(tB) ? tsPointsTotal(tB) : -1;
+            const eA = effectiveTsPoints(a, tsPoints[a.id]);
+            const eB = effectiveTsPoints(b, tsPoints[b.id]);
+            aVal = (eA.driver ?? 0) + (eA.asset ?? 0) + (eA.carrier ?? 0);
+            bVal = (eB.driver ?? 0) + (eB.asset ?? 0) + (eB.carrier ?? 0);
             break;
           }
           case 'status': aVal = a.inDsms ? 1 : 0; bVal = b.inDsms ? 1 : 0; break;
@@ -2354,18 +2427,21 @@ export function ViolationsPage() {
 
 
                           {/* TrackSmart Points — read-only Driver / Asset /
-                              Carrier values. Edits happen in the violation
-                              form (click the pencil in the Actions column). */}
+                              Carrier values. User overrides win; otherwise
+                              defaults are derived from the violation's own
+                              severity / OOS / crash-likelihood / category. */}
                           {visibleColumns.has('tsPoints') && <td className="px-3 py-2 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                             {(() => {
-                              const p = tsPoints[item.id];
+                              const override = tsPoints[item.id];
+                              const eff = effectiveTsPoints(item, override);
+                              const isOver = (key: keyof TsPoints) => override?.[key] !== undefined;
                               return (
-                                <span className="inline-flex items-center gap-0.5 font-mono font-bold tabular-nums text-[11px]" title="Edit in the Add/Edit Violation form">
-                                  <span className={p?.driver  !== undefined ? 'text-blue-700'    : 'text-slate-300'} title="Driver pts">{p?.driver  ?? '—'}</span>
+                                <span className="inline-flex items-center gap-0.5 font-mono font-bold tabular-nums text-[11px]" title="Driver / Asset / Carrier — derived from severity + OOS + category. Override per row in the edit form.">
+                                  <span className={`text-blue-700 ${!isOver('driver') ? 'opacity-70' : ''}`} title="Driver pts">{eff.driver}</span>
                                   <span className="text-slate-300">/</span>
-                                  <span className={p?.asset   !== undefined ? 'text-emerald-700' : 'text-slate-300'} title="Asset pts">{p?.asset   ?? '—'}</span>
+                                  <span className={`text-emerald-700 ${!isOver('asset') ? 'opacity-70' : ''}`} title="Asset pts">{eff.asset}</span>
                                   <span className="text-slate-300">/</span>
-                                  <span className={p?.carrier !== undefined ? 'text-violet-700'  : 'text-slate-300'} title="Carrier pts">{p?.carrier ?? '—'}</span>
+                                  <span className={`text-violet-700 ${!isOver('carrier') ? 'opacity-70' : ''}`} title="Carrier pts">{eff.carrier}</span>
                                 </span>
                               );
                             })()}

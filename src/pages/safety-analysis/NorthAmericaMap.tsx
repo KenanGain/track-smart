@@ -85,6 +85,8 @@ interface Props {
     title?: string;
     /** Subtitle / hint line. */
     subtitle?: string;
+    /** Render the bottom "Top jurisdictions" list (default true). */
+    showTopList?: boolean;
 }
 
 export function NorthAmericaMap({
@@ -93,6 +95,7 @@ export function NorthAmericaMap({
     country = 'NA',
     title = 'Geographic distribution',
     subtitle,
+    showTopList = true,
 }: Props) {
     const [usFc, setUsFc] = useState<FeatureCollection | null>(cachedUs);
     const [caFc, setCaFc] = useState<FeatureCollection | null>(cachedCa);
@@ -280,7 +283,7 @@ export function NorthAmericaMap({
             </div>
 
             {/* Top jurisdictions table */}
-            <TopList stats={stats.slice(0, 6)} />
+            {showTopList && <TopList stats={stats.slice(0, 6)} />}
         </div>
     );
 }

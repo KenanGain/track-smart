@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import React from 'react';
 import { Download, Upload, Clock, Route, Truck, User, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { HOS_DAILY_LOGS, type HosDailyLog } from './hos.data';
+import { getHosForCarrier } from './carrier-hos.data';
 import { StatCard, ViewBtn, DetailModal, fmtMs, fmtDatetime, miToKm } from './hos-components';
 
 const DAILY_TIME_OPTIONS = ['All', '00:00-05:59', '06:00-11:59', '12:00-17:59', '18:00-23:59'];
@@ -218,10 +219,30 @@ function EldChart({ log, useKm }: { log: HosDailyLog; useKm: boolean }) {
   );
 }
 
-// ── Unique drivers for filters ──────────────────────────────────────────
-const ALL_DRIVERS = [...new Set(HOS_DAILY_LOGS.map(l => `${l.driver.firstName} ${l.driver.lastName}`))].sort();
+// ── Page ────────────────────────────────────────────────────────────────
+// HoursOfServicePage now takes an optional `accountId` and rescopes its
+// data + driver dropdown to the carrier-scoped HOS feed. When no carrier
+// is selected (super-admin view), it falls back to the global mock data
+// so existing surfaces keep working.
+interface HoursOfServicePageProps {
+  accountId?: string;
+}
 
-export function HoursOfServicePage() {
+export function HoursOfServicePage({ accountId }: HoursOfServicePageProps = {}) {
+  // Pull this carrier's HOS data when an accountId is supplied; otherwise
+  // use the original demo dataset so the page still renders.
+  const dailyLogs = useMemo<HosDailyLog[]>(() => {
+    if (!accountId) return HOS_DAILY_LOGS;
+    const carrier = getHosForCarrier(accountId).dailyLogs;
+    // If a carrier has no synthesised data yet, fall back to demo so the
+    // page doesn't render as an empty shell.
+    return carrier.length > 0 ? carrier : HOS_DAILY_LOGS;
+  }, [accountId]);
+
+  const allDrivers = useMemo(
+    () => [...new Set(dailyLogs.map(l => `${l.driver.firstName} ${l.driver.lastName}`))].sort(),
+    [dailyLogs]
+  );
   const [selected, setSelected] = useState<{ item: any; type: 'daily' | 'log' | 'trip' } | null>(null);
   const [useKm, setUseKm] = useState(false);
   const [expandedDaily, setExpandedDaily] = useState<Set<string>>(new Set());
@@ -268,7 +289,7 @@ export function HoursOfServicePage() {
 
   // ── Filtered data ──
   const filteredDaily = useMemo(() => {
-    let data = [...HOS_DAILY_LOGS];
+    let data = [...dailyLogs];
     if (driverFilter !== 'All') data = data.filter(r => `${r.driver.firstName} ${r.driver.lastName}` === driverFilter);
     if (dailyFromDate) data = data.filter(r => r.date >= dailyFromDate);
     if (dailyToDate) data = data.filter(r => r.date <= dailyToDate);
@@ -288,13 +309,13 @@ export function HoursOfServicePage() {
       if (dailySortF === 'driver') return dailySortD === 'desc' ? b.driver.lastName.localeCompare(a.driver.lastName) : a.driver.lastName.localeCompare(b.driver.lastName);
       return 0;
     });
-  }, [dailySearch, dailySortF, dailySortD, driverFilter, dailyFromDate, dailyToDate, dailyTimeSection, dailyHosHours]);
+  }, [dailyLogs, dailySearch, dailySortF, dailySortD, driverFilter, dailyFromDate, dailyToDate, dailyTimeSection, dailyHosHours]);
 
   // KPI stats
-  const totalDriving = HOS_DAILY_LOGS.reduce((a, l) => a + (l.statusDurations?.driving || 0), 0);
-  const totalDist = HOS_DAILY_LOGS.reduce((a, l) => a + (l.distances?.total || 0), 0);
-  const activeDrivers = new Set(HOS_DAILY_LOGS.map(l => l.driver.id)).size;
-  const totalRecords = HOS_DAILY_LOGS.length;
+  const totalDriving = dailyLogs.reduce((a, l) => a + (l.statusDurations?.driving || 0), 0);
+  const totalDist = dailyLogs.reduce((a, l) => a + (l.distances?.total || 0), 0);
+  const activeDrivers = new Set(dailyLogs.map(l => l.driver.id)).size;
+  const totalRecords = dailyLogs.length;
 
   const thCls = 'px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider';
 
@@ -353,7 +374,7 @@ export function HoursOfServicePage() {
             </div>
             {/* Row 2: Filters */}
             <div className="flex items-center gap-2 flex-wrap">
-              <FilterSelect label="Drivers" value={driverFilter} options={['All', ...ALL_DRIVERS]} onChange={v => { setDriverFilter(v); setDailyPage(1); }} />
+              <FilterSelect label="Drivers" value={driverFilter} options={['All', ...allDrivers]} onChange={v => { setDriverFilter(v); setDailyPage(1); }} />
               <input
                 type="date"
                 value={dailyFromDate}

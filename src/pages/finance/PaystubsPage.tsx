@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search,
   Plus,
@@ -26,6 +26,7 @@ import {
 import { MOCK_DRIVERS } from '../../data/mock-app-data';
 import { INITIAL_PAYSTUBS } from '../../data/paystubs.data';
 import type { Paystub } from '../../data/paystubs.data';
+import { getPaystubsForCarrier } from '../../data/carrier-paystubs.data';
 
 // --- Components ---
 
@@ -163,13 +164,30 @@ const InputGroup = ({ label, type = "text", placeholder, name, value, onChange, 
 );
 
 interface PaystubsPageProps {
+    /** Driver scope — used by the embedded driver-profile view. */
     driverId?: string;
+    /** Carrier scope — driven by the navbar carrier dropdown. */
+    accountId?: string;
     onPaystubChange?: () => void;
 }
 
 export const PaystubsPage = (props: PaystubsPageProps) => {
-  const { driverId } = props;
-  const [paystubs, setPaystubs] = useState<Paystub[]>(INITIAL_PAYSTUBS);
+  const { driverId, accountId } = props;
+  // Pull this carrier's paystubs when an accountId is supplied. Fall back
+  // to the global demo dataset when no carrier is active or the carrier
+  // has no synthesised paystubs yet (super-admin landing view).
+  const seedPaystubs = useMemo<Paystub[]>(() => {
+    if (!accountId) return INITIAL_PAYSTUBS;
+    const carrier = getPaystubsForCarrier(accountId);
+    return carrier.length > 0 ? carrier : INITIAL_PAYSTUBS;
+  }, [accountId]);
+  const [paystubs, setPaystubs] = useState<Paystub[]>(seedPaystubs);
+  // Re-seed the local list whenever the carrier changes so add/edit
+  // history from a previous carrier doesn't leak across.
+  useEffect(() => {
+    setPaystubs(seedPaystubs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("All Paystubs");
   const [dateRange, setDateRange] = useState({ start: "", end: "" });

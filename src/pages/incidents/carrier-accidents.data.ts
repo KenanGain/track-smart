@@ -300,6 +300,164 @@ function buildForCarrier(account: AccountRecord) {
     return out;
 }
 
+// ── Per-jurisdiction coverage ─────────────────────────────────────────────
+// For every Canadian jurisdiction the carrier is registered in (Ontario CVOR
+// or any provincial NSC abstract), we guarantee at least 2 accidents land in
+// that province so the downstream regulator views — CVOR Performance, the
+// NSC fact sheets, and the accident-derived violations on the Violations
+// list — always have data to render. Without this, a US carrier with NSC
+// abstracts on the side would show empty NSC cards even when it's "live".
+
+function buildJurisdictionCoverage(account: AccountRecord): any[] {
+    const provinces = new Set<string>();
+    if (account.cvorNumber) provinces.add("ON");
+    if (account.nscNumber) {
+        const p = account.nscNumber.split("-")[0]?.toUpperCase();
+        if (p) provinces.add(p);
+    }
+    for (const n of account.nscNumbers ?? []) {
+        const p = n.split("-")[0]?.toUpperCase();
+        if (p) provinces.add(p);
+    }
+    if (provinces.size === 0) return [];
+
+    const r = mulberry32(hash(`accident-coverage:${account.id}`));
+    const drivers = CARRIER_DRIVERS[account.id] ?? [];
+    const assets  = CARRIER_ASSETS[account.id]  ?? [];
+    if (drivers.length === 0 || assets.length === 0) return [];
+
+    const out: any[] = [];
+    let idx = 1000; // high index so IDs don't collide with buildForCarrier records
+    for (const province of provinces) {
+        const provLocations = LOCATIONS_CA.filter(l => l.state === province);
+        const locations = provLocations.length > 0
+            ? provLocations
+            : [{ city: provinceCityFallback(province), state: province, zip: "—", lat: 0, lng: 0 }];
+
+        // 2 accidents per registered province — enough to populate both the
+        // collision + accident NSC violation flavours.
+        for (let i = 0; i < 2; i++) {
+            const driver = pick(r, drivers) as any;
+            const asset  = pick(r, assets)  as any;
+            const loc    = pick(r, locations);
+            const cause  = pick(r, PRIMARY_CAUSES);
+            const status = pick(r, STATUS_VALS);
+            const prev   = pick(r, PREVENTABILITY);
+            const accidentType = pick(r, ACCIDENT_TYPES);
+            const daysAgo = 30 + Math.floor(r() * 600);
+            const occurredAt = isoOffset(daysAgo);
+            const occurredDate = occurredAt.slice(0, 10);
+
+            const fatalities = i === 0 ? 0 : (r() < 0.15 ? 1 : 0);
+            const injuries   = r() < 0.4 ? 1 + Math.floor(r() * 2) : 0;
+            const towAway    = r() < 0.6;
+            const vehiclesTowed = towAway ? 1 + Math.floor(r() * 2) : 0;
+            const hazmat = accidentType.id === "hazmat_release";
+
+            const companyCost   = 1000 + Math.floor(r() * 9000);
+            const insurancePaid = 5000 + Math.floor(r() * 30000);
+            const reserves      = 1000 + Math.floor(r() * 12000);
+
+            const isCanada = true;
+
+            out.push({
+                accountId: account.id,
+                incidentId: `INC-${account.id.toUpperCase().replace("ACCT-", "C")}-${province}-${String(idx + i).padStart(3, "0")}`,
+                insuranceClaimNumber: `CLM-${account.id.replace("acct-", "")}${1000 + Math.floor(r() * 9000)}`,
+                occurredAt,
+                occurredDate,
+                incidentKind: [i === 0 ? "crash_report" : (r() < 0.5 ? "crash_report" : "operational_accident")],
+                driver: {
+                    driverId: driver.driverId,
+                    name: driver.name,
+                    ageBand: driver.ageBand ?? "31 - 35",
+                    driverType: driver.driverType ?? "Long Haul Driver",
+                    drivingExperience: driver.experienceYears ? `${driver.experienceYears} Years` : "4 Years",
+                    lengthOfEmployment: driver.tenureYears ? `${driver.tenureYears} Year${driver.tenureYears === 1 ? "" : "s"}` : "1 Year",
+                    hrsDriving: 2 + Math.floor(r() * 9),
+                    hrsOnDuty: 3 + Math.floor(r() * 9),
+                    email: driver.email ?? `${(driver.name || "driver").toLowerCase().replace(/\s+/g, ".")}@${account.id}.example`,
+                    phone: driver.phone ?? "(555) 000-0000",
+                    license: driver.licenseNumber ?? `${(driver.name || "DRV").slice(0, 3).toUpperCase()}${Math.floor(r() * 99999999)}`,
+                    licenseState: driver.licenseStateProvince ?? loc.state,
+                },
+                location: {
+                    unit: "",
+                    streetAddress: `${100 + Math.floor(r() * 9000)} ${pick(r, ["Industrial", "Highway", "Centre", "Main", "Commerce"])} ${pick(r, ["Rd", "Ave", "Blvd", "Dr"])}`,
+                    city: loc.city,
+                    stateOrProvince: loc.state,
+                    country: "Canada",
+                    zip: loc.zip,
+                    full: `${loc.city}, ${loc.state}`,
+                    geo: { lat: loc.lat, lng: loc.lng },
+                    locationType: pick(r, ["Industrial Area", "Urban Area", "Rural Area", "Highway", "Parking Lot"]),
+                },
+                vehicles: [{
+                    assetId: asset.id,
+                    vin: asset.vin ?? "1XXXXXXXXXXXXXXXX",
+                    licenseNumber: asset.licensePlate ?? `${loc.state}-${1000 + Math.floor(r() * 9000)}`,
+                    licenseStateOrProvince: asset.licenseStateOrProvince ?? loc.state,
+                    vehicleType: asset.vehicleType ?? asset.assetType ?? "Power Unit",
+                    make: asset.make ?? "Freightliner",
+                    model: asset.model ?? "Cascadia",
+                    year: asset.year ?? 2021,
+                    commodityType: asset.commodityType ?? "General Dry Freight",
+                    assetCategory: asset.assetCategory ?? "CMV",
+                }],
+                severity: {
+                    fatalities, injuriesNonFatal: injuries, towAway, vehiclesTowed,
+                    hazmatReleased: hazmat,
+                    hazardousCommodity:    hazmat ? "Class 3 Flammable Liquid" : "",
+                    hazmatClass:           hazmat ? "3 — Flammable Liquids" : "",
+                    hazmatUnNumber:        hazmat ? `UN${1200 + Math.floor(r() * 800)}` : "",
+                    hazmatQuantityReleased: hazmat ? `${50 + Math.floor(r() * 450)} L` : "",
+                    hazmatPlacarded:       hazmat,
+                },
+                roadway: {
+                    postedSpeedLimitKmh: pick(r, [40, 50, 60, 70, 80, 90, 100, 110]),
+                    roadType:        pick(r, ROAD_TYPES),
+                    trafficControl:  pick(r, TRAFFIC_CTRL),
+                    weatherConditions: pick(r, WEATHER),
+                    roadConditions:  pick(r, ROAD_COND),
+                    light:           pick(r, LIGHT),
+                    terrain:         pick(r, TERRAIN),
+                },
+                classification: {
+                    fmcsaReportable: fatalities > 0 || injuries > 0 || towAway,
+                    accidentType: towAway ? "Tow Away" : (injuries > 0 ? "Injury" : "Property Damage Only"),
+                    policeReport: r() < 0.7,
+                },
+                preventability: { value: prev.value, isPreventable: prev.isPreventable, notes: prev.notes },
+                cause: { primaryCause: cause, incidentType: accidentType.displayName },
+                costs: {
+                    currency: isCanada ? "CAD" : "USD",
+                    companyCostsFromDollarOne: companyCost,
+                    insuranceCostsPaid: insurancePaid,
+                    insuranceReserves: reserves,
+                    totalAccidentCosts: companyCost + insurancePaid + reserves,
+                },
+                followUp: { action: "Driver retraining scheduled; vehicle inspected.", comments: "Telematics review completed." },
+                status: { value: status.value, label: status.label },
+                sources: ["fmcsa_crash_feed", "ui_accident_table"],
+                documents: [] as string[],
+                references: {},
+                equipment: {},
+                insurance: {},
+                otherParty: {},
+            });
+        }
+        idx += 10;
+    }
+    return out;
+}
+
+function provinceCityFallback(prov: string): string {
+    const map: Record<string, string> = {
+        NB: "Moncton", NL: "St. John's", SK: "Regina", QC: "Quebec City", YT: "Whitehorse", NT: "Yellowknife", NU: "Iqaluit",
+    };
+    return map[prov] ?? prov;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 const built = (() => {
@@ -307,14 +465,19 @@ const built = (() => {
     const byCarrier: Record<string, any[]> = {};
     // Acme (acct-001) keeps the hand-curated demo records.
     const acmeId = "acct-001";
-    const acme = INCIDENTS.map((rec) => ({ ...rec, accountId: acmeId }));
+    const acmeAccount = ACCOUNTS_DB.find(a => a.id === acmeId);
+    const acmeCurated = INCIDENTS.map((rec) => ({ ...rec, accountId: acmeId }));
+    const acmeCoverage = acmeAccount ? buildJurisdictionCoverage(acmeAccount) : [];
+    const acme = [...acmeCurated, ...acmeCoverage];
     byCarrier[acmeId] = acme;
     all.push(...acme);
     for (const account of ACCOUNTS_DB) {
         if (account.id === acmeId) continue;
-        const list = buildForCarrier(account);
-        byCarrier[account.id] = list;
-        all.push(...list);
+        const list      = buildForCarrier(account);
+        const coverage  = buildJurisdictionCoverage(account);
+        const combined  = [...list, ...coverage];
+        byCarrier[account.id] = combined;
+        all.push(...combined);
     }
     return { all, byCarrier };
 })();

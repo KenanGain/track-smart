@@ -211,7 +211,9 @@ function App() {
             )
         }
         if (path === "/compliance") {
-            return <ComplianceDocumentsPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <ComplianceDocumentsPage accountId={account?.id} />
         }
         if (path === "/account/profile") {
             // Fall back to the user's default carrier if none has been picked yet
@@ -287,7 +289,9 @@ function App() {
             )
         }
         if (path === "/inventory/items/new") {
-            return <AddInventoryItemPage onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <AddInventoryItemPage onNavigate={handleNavigate} accountId={account?.id} />
         }
         if (path === "/inventory/vendors") {
             const account = selectedAccount
@@ -367,7 +371,9 @@ function App() {
             return <InspectionsSettingsPage />
         }
         if (path === "/settings/fuel") {
-            return <FuelPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <FuelPage accountId={account?.id} />
         }
 
         if (path === "/settings/trainings") {
@@ -385,7 +391,9 @@ function App() {
             return <AssetMaintenancePage account={account ?? undefined} />
         }
         if (path === "/paystubs") {
-            return <PaystubsPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <PaystubsPage accountId={account?.id} />
         }
         if (path === "/tickets") {
             const account = selectedAccount
@@ -411,13 +419,19 @@ function App() {
             return <SafetyAnalysisPage />
         }
         if (path === "/safety-analysis/beta") {
-            return <BetaSafetyAnalysisPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <BetaSafetyAnalysisPage accountId={account?.id} onNavigate={handleNavigate} />
         }
         if (path === "/hours-of-service") {
-            return <HoursOfServicePage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <HoursOfServicePage accountId={account?.id} />
         }
         if (path === "/fuel") {
-            return <FuelPage />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <FuelPage accountId={account?.id} />
         }
         if (path === "/compliance") {
             return (

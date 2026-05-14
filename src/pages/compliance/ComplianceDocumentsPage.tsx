@@ -33,6 +33,8 @@ import type { KeyNumberConfig } from '@/types/key-numbers.types';
 import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { INITIAL_ASSETS as MOCK_ASSETS, type Asset, type Driver } from '@/pages/assets/assets.data';
 import { MOCK_DRIVERS } from '@/pages/profile/carrier-profile.data';
+import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
+import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
@@ -155,7 +157,28 @@ const ComplianceStatsButton = ({
     );
 };
 
-export const ComplianceDocumentsPage = () => {
+interface ComplianceDocumentsPageProps {
+    /** Carrier scope — drives the driver + asset rosters used by the
+     *  compliance dashboards and document lists. */
+    accountId?: string;
+}
+
+export const ComplianceDocumentsPage = ({ accountId }: ComplianceDocumentsPageProps = {}) => {
+    // Carrier-scoped rosters — fall back to the global demo data when no
+    // carrier is selected or the carrier has no synthesised roster yet.
+    // Typed loosely (typeof MOCK_DRIVERS) so we keep the rich fields
+    // (email, phone, licenseNumber, hiredDate, …) the page reads.
+    const drivers = useMemo<typeof MOCK_DRIVERS>(() => {
+        if (!accountId) return MOCK_DRIVERS;
+        const list = CARRIER_DRIVERS[accountId];
+        return (list && list.length > 0 ? (list as unknown as typeof MOCK_DRIVERS) : MOCK_DRIVERS);
+    }, [accountId]);
+    const seededAssets = useMemo<Asset[]>(() => {
+        if (!accountId) return MOCK_ASSETS;
+        const list = CARRIER_ASSETS[accountId];
+        return (list && list.length > 0 ? (list as unknown as Asset[]) : MOCK_ASSETS);
+    }, [accountId]);
+
     // --- STATE ---
     const [activeTab, setActiveTab] = useState<'compliance' | 'documents'>('compliance');
     // New sub-filter for Entity Type
@@ -197,7 +220,13 @@ export const ComplianceDocumentsPage = () => {
     }, [activeEntityFilter]);
 
     // --- ASSET STATE ---
-    const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
+    // Seeded from the carrier-scoped roster; re-synced whenever the
+    // navbar carrier dropdown changes.
+    const [assets, setAssets] = useState<Asset[]>(seededAssets);
+    React.useEffect(() => {
+        setAssets(seededAssets);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [accountId]);
     const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
 
@@ -255,16 +284,16 @@ export const ComplianceDocumentsPage = () => {
 
     const driverStats = useMemo(() => {
         return {
-            total: MOCK_DRIVERS.length,
-            active: MOCK_DRIVERS.filter(d => d.status === 'Active').length,
-            inactive: MOCK_DRIVERS.filter(d => d.status === 'Inactive').length,
-            terminated: MOCK_DRIVERS.filter(d => d.status === 'Terminated').length,
-            onLeave: MOCK_DRIVERS.filter(d => d.status === 'On Leave').length
+            total: drivers.length,
+            active: drivers.filter(d => d.status === 'Active').length,
+            inactive: drivers.filter(d => d.status === 'Inactive').length,
+            terminated: drivers.filter(d => d.status === 'Terminated').length,
+            onLeave: drivers.filter(d => d.status === 'On Leave').length
         };
-    }, []);
+    }, [drivers]);
 
     const filteredDriversList = useMemo(() => {
-        let result = MOCK_DRIVERS.filter(driver => {
+        let result = drivers.filter(driver => {
             const matchesSearch = (
                 driver.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
                 driver.id.toLowerCase().includes(driverSearch.toLowerCase()) ||
@@ -1300,7 +1329,7 @@ export const ComplianceDocumentsPage = () => {
                             </div>
                             <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
                                 <div className="text-xs text-slate-500">
-                                    Showing <span className="font-medium text-slate-900">{filteredDriversList.length}</span> of <span className="font-medium text-slate-900">{MOCK_DRIVERS.length}</span> drivers
+                                    Showing <span className="font-medium text-slate-900">{filteredDriversList.length}</span> of <span className="font-medium text-slate-900">{drivers.length}</span> drivers
                                 </div>
                                 <div className="flex gap-2">
                                     <button disabled className="px-3 py-1 text-xs font-medium text-slate-400 bg-white border border-slate-200 rounded shadow-sm opacity-50 cursor-not-allowed">Previous</button>

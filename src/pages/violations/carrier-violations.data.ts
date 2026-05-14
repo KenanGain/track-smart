@@ -18,6 +18,7 @@ import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-fleet.data";
 import { hash, mulberry32, pick } from "@/pages/accounts/carrier-fleet-shared.data";
 import { ALL_VIOLATIONS, MOCK_VIOLATION_RECORDS, type ViolationRecord } from "./violations-list.data";
+import { getAccidentsForCarrier } from "@/pages/incidents/carrier-accidents.data";
 
 /** Adds an `accountId` to the existing ViolationRecord shape — no schema change. */
 export interface CarrierViolationRecord extends ViolationRecord {
@@ -249,6 +250,147 @@ function buildForCarrier(account: AccountRecord, countOverride?: number): Carrie
     return out;
 }
 
+// ── Accident-derived violations ───────────────────────────────────────────
+// In addition to roadside / inspection-flavoured violations, every recorded
+// accident produces a corresponding violation record. The carrier's actual
+// accidents drive these so the totals line up with the Accidents page.
+//
+// Source classification (mirrors `sourceForRecord` in ViolationsListPage):
+//   • US-state accident                  → FMCSA SMS · "Crash Indicator"
+//   • Ontario CA accident                → CVOR · "CVOR Collision"
+//   • non-Ontario CA accident, collision → NSC  · "NSC Collision"
+//   • non-Ontario CA accident, op-only   → NSC  · "NSC Accident"
+
+interface AccidentSeed {
+    occurredAt?: string;
+    occurredDate?: string;
+    incidentId?: string;
+    driver?: { driverId?: string; name?: string; driverType?: string };
+    vehicles?: { assetId?: string; licenseNumber?: string }[];
+    location?: { city?: string; stateOrProvince?: string; country?: string; zip?: string; streetAddress?: string };
+    severity?: { fatalities?: number; injuriesNonFatal?: number; towAway?: boolean; hazmatReleased?: boolean };
+    incidentKind?: string[];
+    preventability?: { isPreventable?: boolean | null; value?: string };
+}
+
+function accidentDerivedViolation(account: AccountRecord, accident: AccidentSeed, idx: number, r: () => number): CarrierViolationRecord {
+    const country = accident.location?.country === "Canada" || accident.location?.country === "CA" ? "CA" : "US";
+    const state = (accident.location?.stateOrProvince ?? "").toUpperCase();
+    const isCA = country === "CA";
+    const isOntario = isCA && state === "ON";
+
+    // Pick the violation flavour — collision vs operational accident.
+    const isCollision = (accident.incidentKind ?? []).includes("crash_report")
+        || (accident.severity?.fatalities ?? 0) > 0
+        || (accident.severity?.injuriesNonFatal ?? 0) > 0
+        || accident.severity?.towAway === true;
+    const flavour: "FMCSA_CRASH" | "CVOR_COLLISION" | "NSC_COLLISION" | "NSC_ACCIDENT" =
+        !isCA           ? "FMCSA_CRASH"
+      : isOntario       ? "CVOR_COLLISION"
+      : isCollision     ? "NSC_COLLISION"
+      :                   "NSC_ACCIDENT";
+
+    const violationGroup =
+        flavour === "FMCSA_CRASH"    ? "Crash Indicator"
+      : flavour === "CVOR_COLLISION" ? "CVOR Collision"
+      : flavour === "NSC_COLLISION"  ? "NSC Collision"
+      :                                 "NSC Accident";
+    const violationType =
+        flavour === "FMCSA_CRASH"    ? "FMCSA reportable crash — Crash Indicator BASIC"
+      : flavour === "CVOR_COLLISION" ? "Ontario CVOR — Reportable collision"
+      : flavour === "NSC_COLLISION"  ? `NSC — Reportable collision (${state || 'CA'})`
+      :                                 `NSC — Operational accident (${state || 'CA'})`;
+
+    const synthCode =
+        flavour === "FMCSA_CRASH"    ? "390.5T"
+      : flavour === "CVOR_COLLISION" ? "HTA s.199"
+      : flavour === "NSC_COLLISION"  ? "NSC s.18(1)"
+      :                                 "NSC s.18(2)";
+
+    const issuingAgency =
+        flavour === "FMCSA_CRASH"    ? `${state || "FED"} State Patrol — Crash Indicator`
+      : flavour === "CVOR_COLLISION" ? "Ontario MTO — CVOR Carrier Enforcement"
+      :                                 `${state || "CA"} Highway Safety — NSC Enforcement`;
+
+    const occurredAt = accident.occurredAt ?? accident.occurredDate ?? new Date().toISOString();
+    const date = occurredAt.slice(0, 10);
+    const hour   = 6 + Math.floor(r() * 16);
+    const minute = Math.floor(r() * 59);
+
+    const driver  = accident.driver ?? {};
+    const vehicle = (accident.vehicles ?? [])[0] ?? {};
+    const sev = accident.severity ?? {};
+
+    // Risk model: fatalities → high risk, injuries/towaway → moderate, else lower.
+    const driverRiskCategory: 1 | 2 | 3 =
+        (sev.fatalities ?? 0) > 0 ? 1
+      : ((sev.injuriesNonFatal ?? 0) > 0 || sev.towAway) ? 2
+      : 3;
+    const crashLikelihood = (sev.fatalities ?? 0) > 0 ? 100
+        : (sev.injuriesNonFatal ?? 0) > 0 ? 75
+        : sev.towAway ? 55 : 30;
+
+    const isOos = (sev.fatalities ?? 0) > 0 || sev.hazmatReleased === true;
+    const result: ViolationRecord["result"] =
+        isOos ? "OOS Order" : isCollision ? "Citation Issued" : "Warning";
+    const status: ViolationRecord["status"] = accident.preventability?.value === "preventable" ? "Closed" : "Under Review";
+
+    const convNum = `CN-${state || "US"}-${100000 + Math.floor(r() * 899999)}`;
+    const convDate = (() => {
+        const d = new Date(`${date}T12:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 30 + Math.floor(r() * 90));
+        return d.toISOString().slice(0, 10);
+    })();
+
+    return {
+        id: `V-COL-${account.id.toUpperCase().replace("ACCT-", "C")}-${String(idx + 1).padStart(3, "0")}`,
+        date,
+        time: isoTime(hour, minute),
+        driverId: driver.driverId ?? "drv-unknown",
+        driverName: driver.name ?? "Driver",
+        driverType: driver.driverType ?? "Long Haul Driver",
+        driverExperience: "—",
+        assetId: vehicle.assetId,
+        assetName: vehicle.licenseNumber,
+        locationState: state,
+        locationCity: accident.location?.city,
+        locationStreet: accident.location?.streetAddress,
+        locationZip: accident.location?.zip,
+        locationCountry: country,
+        violationCode: synthCode,
+        violationDataId: `accident:${accident.incidentId ?? idx}`,
+        violationType,
+        violationGroup,
+        crashLikelihood,
+        driverRiskCategory,
+        isOos,
+        result,
+        fineAmount: 0,
+        expenseAmount: 0,
+        currency: isCA ? "CAD" : "USD",
+        expenses: 0,
+        status,
+        accountId: account.id,
+        citationNumber: `CT-${state || "US"}-${10000 + Math.floor(r() * 89999)}`,
+        ticketNumber:   `TKT-${state || "US"}-${100000 + Math.floor(r() * 899999)}`,
+        microfilmNumber:`MF-${isCA ? "CA" : "US"}${1000000 + Math.floor(r() * 8999999)}`,
+        offence:        violationType,
+        charge:         violationType,
+        natCode:        flavour === "NSC_COLLISION" ? "F-04" : flavour === "NSC_ACCIDENT" ? "F-05" : "",
+        actSection:     synthCode,
+        issuingAgency,
+        convictionDate:   convDate,
+        convictionNumber: convNum,
+    };
+}
+
+function buildAccidentDerivedForCarrier(account: AccountRecord): CarrierViolationRecord[] {
+    const accidents = getAccidentsForCarrier(account.id) as AccidentSeed[];
+    if (accidents.length === 0) return [];
+    const r = mulberry32(hash(`accident-violations:${account.id}`));
+    return accidents.map((a, i) => accidentDerivedViolation(account, a, i, r));
+}
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 const built = (() => {
@@ -270,15 +412,23 @@ const built = (() => {
     const acmeCrossBorder: CarrierViolationRecord[] = acmeAccount
         ? buildForCarrier(acmeAccount, 14)
         : [];
-    const acmeRecords = [...acmeHistorical, ...acmeCrossBorder];
+    // Accident-derived records — Crash Indicator (FMCSA), CVOR Collisions,
+    // NSC Collisions, NSC Accidents — so the regulator filters in the list
+    // actually carry real per-incident rows.
+    const acmeAccidentDerived: CarrierViolationRecord[] = acmeAccount
+        ? buildAccidentDerivedForCarrier(acmeAccount)
+        : [];
+    const acmeRecords = [...acmeHistorical, ...acmeCrossBorder, ...acmeAccidentDerived];
     byCarrier[acmeId] = acmeRecords;
     all.push(...acmeRecords);
 
     for (const account of ACCOUNTS_DB) {
         if (account.id === acmeId) continue;
         const list = buildForCarrier(account);
-        byCarrier[account.id] = list;
-        all.push(...list);
+        const accDerived = buildAccidentDerivedForCarrier(account);
+        const records = [...list, ...accDerived];
+        byCarrier[account.id] = records;
+        all.push(...records);
     }
 
     return { all, byCarrier };

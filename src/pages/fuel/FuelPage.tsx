@@ -8,6 +8,7 @@ import {
   DRIVER_VEHICLE_ASSIGNMENTS,
   type TripRecord, type FuelPurchase, type IdlingEvent, type DriverFuelSummary,
 } from './fuel.data';
+import { getFuelForCarrier } from './carrier-fuel.data';
 import {
   IFTA_SUMMARY_RESULTS,
   IFTA_AVAILABLE_YEARS,
@@ -326,7 +327,30 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutGrid }[] = [
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
-export function FuelPage() {
+// FuelPage rescopes to the carrier currently selected in the navbar.
+// When no carrier is given (super-admin view) it falls back to the global
+// demo data so the page never renders empty.
+interface FuelPageProps {
+  accountId?: string;
+}
+
+export function FuelPage({ accountId }: FuelPageProps = {}) {
+  // Per-carrier seed — driver/asset assignments, trips, purchases, idling
+  // events all key off CARRIER_DRIVERS + CARRIER_ASSETS. If the carrier
+  // has no synthesised data yet, we fall back to the demo dataset.
+  const carrierSeed = useMemo(() => {
+    if (!accountId) return null;
+    const f = getFuelForCarrier(accountId);
+    if (f.trips.length === 0 && f.purchases.length === 0 && f.idlingEvents.length === 0) {
+      return null;
+    }
+    return f;
+  }, [accountId]);
+  const seedTrips     = carrierSeed?.trips        ?? TRIP_RECORDS;
+  const seedPurchases = carrierSeed?.purchases    ?? FUEL_PURCHASES;
+  const seedIdling    = carrierSeed?.idlingEvents ?? IDLING_EVENTS;
+  const seedAssignments = carrierSeed?.assignments ?? DRIVER_VEHICLE_ASSIGNMENTS;
+
   const [activeTab, setActiveTab] = useState<TabId>('overview');
 
   // Filters
@@ -374,9 +398,17 @@ export function FuelPage() {
   const [bulkCountry, setBulkCountry] = useState<'US' | 'Canada'>('US');
 
   // ── Local data (growable) ──
-  const [localTrips, setLocalTrips] = useState<TripRecord[]>(TRIP_RECORDS);
-  const [localPurchases, setLocalPurchases] = useState<FuelPurchase[]>(FUEL_PURCHASES);
-  const [localIdling, setLocalIdling] = useState<IdlingEvent[]>(IDLING_EVENTS);
+  // Seeded from the carrier-scoped feed, then mutable for user add/edit
+  // actions on this surface. Re-syncs whenever the active carrier changes.
+  const [localTrips, setLocalTrips] = useState<TripRecord[]>(seedTrips);
+  const [localPurchases, setLocalPurchases] = useState<FuelPurchase[]>(seedPurchases);
+  const [localIdling, setLocalIdling] = useState<IdlingEvent[]>(seedIdling);
+  useEffect(() => {
+    setLocalTrips(seedTrips);
+    setLocalPurchases(seedPurchases);
+    setLocalIdling(seedIdling);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   // ── Add form state: Trip ──
   const [addTripDate, setAddTripDate] = useState('');
@@ -552,8 +584,8 @@ export function FuelPage() {
 
   // ── Helper: find driver for a vehicle ──
   function driverForVehicle(unitNumber: string) {
-    const a = DRIVER_VEHICLE_ASSIGNMENTS.find(d => d.unitNumber === unitNumber && d.primary);
-    return a || DRIVER_VEHICLE_ASSIGNMENTS.find(d => d.unitNumber === unitNumber);
+    const a = seedAssignments.find(d => d.unitNumber === unitNumber && d.primary);
+    return a || seedAssignments.find(d => d.unitNumber === unitNumber);
   }
 
   // ── Save handlers ──

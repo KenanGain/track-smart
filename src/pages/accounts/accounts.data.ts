@@ -12,7 +12,12 @@ export interface AccountRecord {
     dbaName: string;
     dotNumber: string;
     cvorNumber: string;   // Ontario Commercial Vehicle Operator's Registration
-    nscNumber: string;    // Canadian National Safety Code carrier #
+    nscNumber: string;    // Canadian National Safety Code carrier # (primary)
+    /** Additional provincial NSC registrations for cross-border carriers
+     *  operating in multiple Canadian jurisdictions. Each entry is a province-
+     *  prefixed NSC abstract number (e.g. "AB-99012", "BC-66543"). When set,
+     *  the Safety Analysis dashboard renders one NSC card per entry. */
+    nscNumbers?: string[];
     rinNumber: string;    // Registered Importer Number (cross-border)
     status: AccountStatus;
     city: string;
@@ -35,8 +40,9 @@ export const ACCOUNTS_DB: AccountRecord[] = [
         legalName: 'Acme Trucking Inc.',
         dbaName: 'Acme Logistics',
         dotNumber: '1234567',
-        cvorNumber: '',
-        nscNumber: '',
+        cvorNumber: 'CVOR-78124',
+        nscNumber: 'ON-44218',
+        nscNumbers: ['AB-99012', 'PE-44021', 'NS-37810', 'BC-66543'],
         rinNumber: 'RIN-0099',
         status: 'Active',
         city: 'Wilmington',

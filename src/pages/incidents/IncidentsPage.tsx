@@ -6,6 +6,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { INCIDENTS } from "./incidents.data";
 import { CARRIER_INCIDENTS_ALL, getAccidentsForCarrier } from "./carrier-accidents.data";
 import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
+import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
 import {
   EXTERNAL_ACCIDENT_FEEDS_ALL,
   generateLiveAccidentBatch,
@@ -3091,29 +3092,47 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
     );
   }
 
+  // Carrier metadata for the breadcrumb subtitle — mirrors the Tickets +
+  // Violations page header so all three Safety surfaces share one shape.
+  const carrier = accountId ? ACCOUNTS_DB.find(a => a.id === accountId) : null;
+
   return (
-    <div className="p-6 max-w-[1600px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Accidents</h1>
-          <p className="text-sm text-gray-500">
-            Track and manage vehicle accidents and safety events.
-          </p>
+    <div className="bg-slate-50 min-h-screen">
+      {/* Header — full-width white shell with bottom border, matching the
+          Tickets + Violations pages so the three Safety surfaces share one
+          consistent chrome. */}
+      <header className="bg-white border-b border-slate-200">
+        <div className="px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <nav className="flex items-center gap-2 mb-1 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
+              <span>Safety</span>
+              <span className="text-slate-300">/</span>
+              <span className="text-slate-900">Accidents</span>
+            </nav>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Accidents</h1>
+            <p className="mt-1 text-xs text-slate-500">
+              {carrier ? <><span className="font-semibold text-slate-700">{carrier.legalName}</span> · </> : null}
+              {data.length.toLocaleString()} records · Vehicle accidents &amp; safety events
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 transition-all"
+            >
+              <Upload size={16} /> Export
+            </button>
+            <button
+              onClick={() => setEditing({})}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all"
+            >
+              <Plus size={16} /> Log Accident
+            </button>
+          </div>
         </div>
-        <div className="flex gap-3">
-          <button
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 shadow-sm"
-          >
-            <Upload size={16} /> Export
-          </button>
-          <button
-             onClick={() => setEditing({})}
-             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-sm shadow-blue-200">
-            <Plus size={16} /> Log Accident
-          </button>
-        </div>
-      </div>
+      </header>
+
+      {/* Scrollable content area — same padding rhythm as before. */}
+      <div className="p-6 max-w-[1600px] mx-auto">
 
       {/* KPI Cards — moved above the reconciliation banner so the
           page leads with the at-a-glance accident metrics. */}
@@ -3974,6 +3993,7 @@ export function AccidentsPage({ accountId }: AccidentsPageProps = {}) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

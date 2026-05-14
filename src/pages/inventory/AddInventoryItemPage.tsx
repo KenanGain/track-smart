@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 
 type Props = {
     onNavigate: (path: string) => void;
+    /** Carrier scope — drives the vendor dropdown + assignment picker. */
+    accountId?: string;
 };
 
 export type InventoryFormPayload = {
@@ -40,9 +42,18 @@ const KIND_OPTIONS: { value: AssignmentKind; label: string; helper: string }[] =
     { value: "driver",  label: "Driver",  helper: "Assign directly to a driver" },
 ];
 
-export function AddInventoryItemPage({ onNavigate }: Props) {
+export function AddInventoryItemPage({ onNavigate, accountId }: Props) {
+    // Vendor dropdown is scoped to the active carrier. Each Vendor row in
+    // VENDORS carries an accountId, so we filter directly. Falls back to
+    // the global list when no carrier is active.
+    const vendors = useMemo(() => {
+        if (!accountId) return VENDORS;
+        const carrierVendors = VENDORS.filter(v => v.accountId === accountId);
+        return carrierVendors.length > 0 ? carrierVendors : VENDORS;
+    }, [accountId]);
+
     // §1 Inventory Details
-    const [vendorId, setVendorId] = useState(VENDORS[0]?.id ?? "");
+    const [vendorId, setVendorId] = useState(vendors[0]?.id ?? "");
     const [serial, setSerial] = useState("");
     const [pin, setPin] = useState("");
     const [issueDate, setIssueDate] = useState("");
@@ -55,7 +66,7 @@ export function AddInventoryItemPage({ onNavigate }: Props) {
     const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>("cmv");
     const [targetId, setTargetId] = useState<string>("");
 
-    const selectedVendor = useMemo(() => VENDORS.find((v) => v.id === vendorId), [vendorId]);
+    const selectedVendor = useMemo(() => vendors.find((v) => v.id === vendorId), [vendorId, vendors]);
 
     const isValid =
         !!vendorId && serial.trim().length > 0 && !!issueDate && !!expiryDate;
