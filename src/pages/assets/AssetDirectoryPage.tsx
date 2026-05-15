@@ -169,6 +169,7 @@ export function AssetDirectoryPage({
     isEmbedded = false,
     assets: assetsProp,
     onDetailViewChange,
+    accountId,
 }: {
     isEmbedded?: boolean;
     assets?: Asset[];
@@ -176,6 +177,9 @@ export function AssetDirectoryPage({
      *  the parent (CarrierProfilePage) hide its own breadcrumb/tabs while
      *  the user is on the detail page. */
     onDetailViewChange?: (active: boolean) => void;
+    /** Active carrier — threaded down to AssetDetailView so its safety
+     *  analysis breakdown can be computed for the right scorecard bucket. */
+    accountId?: string;
 }) {
     const [assets, setAssets] = useState<Asset[]>(assetsProp ?? INITIAL_ASSETS);
     const [activeTab, setActiveTab] = useState('all');
@@ -319,6 +323,7 @@ export function AssetDirectoryPage({
                         setEditingAsset(selectedAsset);
                         setIsModalOpen(true);
                     }}
+                    accountId={accountId}
                 />
             ) : (
                 <div className={isEmbedded ? "w-full flex flex-col bg-[#F8FAFC] text-slate-900" : "h-full flex flex-col bg-[#F8FAFC] text-slate-900 overflow-hidden"}>

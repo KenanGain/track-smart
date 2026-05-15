@@ -22,6 +22,7 @@ import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLa
 import { type SubTab } from '@/components/ui/SubTabs';
 import { getSafetyEventsForDriver } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
+import { computeDriverScorecards, type DriverScorecard } from '@/pages/safety-analysis/fleet-safety-score.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -740,7 +741,198 @@ const Badge = ({ children, variant = 'default', className }: { children: React.R
   );
 };
 
-export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, onUpdate }: any) => {
+// ── Driver Safety Analysis panel ──────────────────────────────────────────
+// Mirrors the per-driver breakdown surfaced in the Beta Safety Analysis page
+// (large overall ring + 6 sub-score rings + counts strip + component bar).
+// Embedded into the Overview tab so the driver profile page is the single
+// source of truth — the Beta "View profile" button deep-links right here.
+
+function DriverRing({
+    label, score, size = 'small', palette = 'auto', subtitle,
+}: {
+    label: string;
+    score: number;
+    size?: 'large' | 'small';
+    palette?: 'auto' | 'blue' | 'green';
+    subtitle?: string;
+}) {
+    const clamped = Math.max(0, Math.min(score, 100));
+    const ringSize = size === 'large' ? 'w-32 h-32 lg:w-36 lg:h-36' : 'w-20 h-20';
+    const numberSize = size === 'large' ? 'text-4xl' : 'text-2xl';
+    const colour = palette === 'blue'
+        ? 'text-blue-600'
+        : palette === 'green'
+            ? 'text-emerald-500'
+            : clamped >= 90 ? 'text-emerald-500'
+            : clamped >= 80 ? 'text-blue-600'
+            : clamped >= 70 ? 'text-amber-500'
+            : 'text-red-500';
+    const riskLabel = clamped >= 80 ? 'Low Risk' : clamped >= 70 ? 'Moderate Risk' : 'High Risk';
+    const riskTone  = clamped >= 80 ? 'text-emerald-700' : clamped >= 70 ? 'text-amber-700' : 'text-red-700';
+    return (
+        <div className="w-full flex flex-col items-center text-center">
+            <div className={cn('text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 leading-tight', size === 'large' ? '' : 'min-h-[1.75rem] flex items-center justify-center px-1')}>
+                {label}
+            </div>
+            <div className={cn('relative flex items-center justify-center', ringSize)}>
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                    <path className="text-slate-200"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none" stroke="currentColor" strokeWidth={size === 'large' ? 3 : 4} />
+                    <path className={colour}
+                          strokeDasharray={`${clamped.toFixed(2)}, 100`}
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none" stroke="currentColor" strokeWidth={size === 'large' ? 3 : 4} strokeLinecap="round" />
+                </svg>
+                <div className="absolute flex flex-col items-center">
+                    <span className={cn(numberSize, 'font-black text-slate-900 leading-none')}>{Math.round(clamped)}</span>
+                    {size === 'large' && <span className="text-[10px] font-bold text-slate-400">/ 100</span>}
+                </div>
+            </div>
+            <div className={cn('mt-2 text-[10px] font-bold uppercase tracking-wide', riskTone)}>{riskLabel}</div>
+            {subtitle && <div className="mt-0.5 text-[10px] text-slate-500">{subtitle}</div>}
+        </div>
+    );
+}
+
+function DriverSafetyAnalysisSection({
+    accountId, driverId,
+}: {
+    accountId?: string;
+    driverId: string;
+}) {
+    const scorecard: DriverScorecard | null = (() => {
+        try {
+            const all = computeDriverScorecards(accountId);
+            return all.find(d => d.driverId === driverId) ?? null;
+        } catch { return null; }
+    })();
+    if (!scorecard) return null;
+
+    const overallTone = scorecard.overall >= 80 ? 'text-emerald-600' : scorecard.overall >= 70 ? 'text-amber-600' : 'text-red-600';
+
+    // Weighted component breakdown — same shape as the Beta panel's bar.
+    const components = [
+        { id: 'driver',     label: 'Driver events',       score: scorecard.violations,  weight: 0.22, events: scorecard.counts.violations },
+        { id: 'hos',        label: 'HOS / ELD',           score: scorecard.eld,         weight: 0.16, events: scorecard.counts.hosBreaks },
+        { id: 'vedr',       label: 'Telematics / VEDR',   score: scorecard.vedr,        weight: 0.12, events: scorecard.counts.vedrEvents },
+        { id: 'inspection', label: 'Roadside inspections',score: scorecard.inspections, weight: 0.18, events: 0 },
+        { id: 'incidents',  label: 'Incidents',           score: scorecard.accidents,   weight: 0.22, events: scorecard.counts.accidents },
+        { id: 'training',   label: 'Training / docs',     score: 75,                    weight: 0.10, events: 0 },
+    ];
+    const colorFor = (s: number) =>
+        s >= 90 ? { bar: 'bg-emerald-500', track: 'bg-emerald-100', txt: 'text-emerald-700' }
+      : s >= 70 ? { bar: 'bg-lime-500',    track: 'bg-lime-100',    txt: 'text-lime-700' }
+      : s >= 55 ? { bar: 'bg-orange-500',  track: 'bg-orange-100',  txt: 'text-orange-700' }
+      :           { bar: 'bg-red-500',     track: 'bg-red-100',     txt: 'text-red-700' };
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-start justify-between gap-3 bg-gradient-to-b from-blue-50/40 to-white">
+                <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Driver Safety Analysis</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                        Composite score and per-domain breakdown · same data shown in Safety Analysis &rsaquo; Driver.
+                    </div>
+                </div>
+                <div className={cn('text-[12px] font-bold tabular-nums', scorecard.delta30d >= 0 ? 'text-emerald-600' : 'text-rose-600')}>
+                    {scorecard.delta30d >= 0 ? '+' : ''}{scorecard.delta30d.toFixed(2)}
+                    <span className="ml-1 text-[9px] font-semibold text-slate-400 uppercase tracking-wider">vs prior 30d</span>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-5 px-5 py-5">
+                {/* Big overall ring */}
+                <div className="flex flex-col items-center justify-center">
+                    <DriverRing
+                        size="large"
+                        label="Driver Safety Score"
+                        score={scorecard.overall}
+                        palette={scorecard.band === 'Excellent' || scorecard.band === 'Good' ? 'blue' : 'auto'}
+                        subtitle={`${scorecard.overall.toFixed(1)} / 100`}
+                    />
+                    <div className={cn('mt-2 text-xs font-bold', overallTone)}>{scorecard.band}</div>
+                </div>
+
+                {/* 6 sub-score rings */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 self-start">
+                    {[
+                        { label: 'Accidents',   value: scorecard.accidents,   sub: `${scorecard.counts.accidents} on record` },
+                        { label: 'ELD / HOS',   value: scorecard.eld,         sub: `${scorecard.counts.hosBreaks} rule break${scorecard.counts.hosBreaks === 1 ? '' : 's'}` },
+                        { label: 'Inspections', value: scorecard.inspections, sub: 'roadside outcome' },
+                        { label: 'VEDR',        value: scorecard.vedr,        sub: `${scorecard.counts.vedrEvents} event${scorecard.counts.vedrEvents === 1 ? '' : 's'}` },
+                        { label: 'Violations',  value: scorecard.violations,  sub: `${scorecard.counts.violations} total · ${scorecard.counts.oos} OOS` },
+                        { label: 'Status',      value: scorecard.status === 'active' ? 100 : 0, sub: scorecard.status === 'active' ? 'Active driver' : 'Inactive' },
+                    ].map(c => (
+                        <div key={c.label} className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col items-center text-center">
+                            <DriverRing label={c.label} score={c.value} palette="green" />
+                            <div className="text-[10px] text-slate-500 mt-1">{c.sub}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* KPI counts strip */}
+            <div className="px-5 pb-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                    { value: scorecard.counts.accidents,  label: 'Accidents',   bad: scorecard.counts.accidents  > 0 },
+                    { value: scorecard.counts.violations, label: 'Violations',  bad: scorecard.counts.violations > 0 },
+                    { value: scorecard.counts.oos,        label: 'OOS',         bad: scorecard.counts.oos        > 0 },
+                    { value: scorecard.counts.hosBreaks,  label: 'HOS Breaks',  bad: scorecard.counts.hosBreaks  > 0 },
+                    { value: scorecard.counts.vedrEvents, label: 'VEDR Events', bad: scorecard.counts.vedrEvents > 0 },
+                ].map(k => (
+                    <div key={k.label} className="bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+                        <div className={cn('text-xl font-black tabular-nums leading-none', k.bad ? 'text-amber-600' : 'text-slate-900')}>{k.value}</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{k.label}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Component breakdown bar */}
+            <div className="px-5 pb-5">
+                <div className="bg-white border border-slate-200 rounded-lg p-4">
+                    <div className="mb-3">
+                        <h4 className="text-sm font-bold text-slate-900">Component breakdown</h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Weighted contribution of each domain to the composite score.</p>
+                    </div>
+                    {/* Stacked weight bar */}
+                    <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 mb-4">
+                        {components.map(c => {
+                            const tone = colorFor(c.score);
+                            return (
+                                <div
+                                    key={c.id}
+                                    className={cn('h-full', tone.bar)}
+                                    style={{ width: `${c.weight * 100}%` }}
+                                    title={`${c.label} · weight ×${c.weight.toFixed(2)} · score ${c.score.toFixed(0)}`}
+                                />
+                            );
+                        })}
+                    </div>
+                    {/* Per-row breakdown */}
+                    <div className="space-y-1.5">
+                        {components.map(c => {
+                            const tone = colorFor(c.score);
+                            return (
+                                <div key={c.id} className="grid items-center gap-2" style={{ gridTemplateColumns: '128px minmax(0,1fr) 52px 44px 44px' }}>
+                                    <span className="text-[11px] font-semibold text-slate-700 truncate">{c.label}</span>
+                                    <div className={cn('h-2 rounded-full overflow-hidden', tone.track)}>
+                                        <div className={cn('h-full rounded-full', tone.bar)} style={{ width: `${c.score}%` }} />
+                                    </div>
+                                    <span className={cn('text-[11px] font-bold tabular-nums text-right', tone.txt)}>{c.score.toFixed(1)}</span>
+                                    <span className="text-[10px] font-mono text-slate-400 text-right">×{c.weight.toFixed(2)}</span>
+                                    <span className="text-[10px] text-slate-500 tabular-nums text-right">{c.events} ev</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, onUpdate, accountId }: any) => {
   const [activeTab, setActiveTab] = useState('Overview'); // Default to Overview
   const [driverData, setDriverData] = useState(initialDriverData);
   const { keyNumbers, documents, tagSections, getDocumentTypeById } = useAppData();
@@ -2011,6 +2203,14 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                         {/* (Status / Tenure / CDL / Terminal moved to the
                              persistent header — kept off the Overview tab to
                              avoid duplicating the cards visible just above.) */}
+
+                        {/* Driver Safety Analysis — same breakdown surfaced in
+                            Safety Analysis > Driver. Deep-linked here when the
+                            user clicks "View profile" from the Beta panel. */}
+                        <DriverSafetyAnalysisSection
+                            accountId={accountId}
+                            driverId={driverData.id}
+                        />
 
                         {/* Compliance KPI row */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

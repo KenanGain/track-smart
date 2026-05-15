@@ -87,6 +87,16 @@ interface Props {
     subtitle?: string;
     /** Render the bottom "Top jurisdictions" list (default true). */
     showTopList?: boolean;
+    /** When set, the projection zooms to just this jurisdiction code. */
+    focusCode?: string | null;
+    /** Called when the user clicks the back-to-overview button. */
+    onResetFocus?: () => void;
+    /** Called when the user clicks a state / province path on the map. */
+    onSelectCode?: (code: string) => void;
+    /** Hide the title row, inner back button, focus summary, legend, and the
+     *  outer card frame — used when the parent already owns its own chrome
+     *  (e.g. embedded inside GeographicDistributionPanel). */
+    embedded?: boolean;
 }
 
 export function NorthAmericaMap({
@@ -96,6 +106,10 @@ export function NorthAmericaMap({
     title = 'Geographic distribution',
     subtitle,
     showTopList = true,
+    focusCode = null,
+    onResetFocus,
+    onSelectCode,
+    embedded = false,
 }: Props) {
     const [usFc, setUsFc] = useState<FeatureCollection | null>(cachedUs);
     const [caFc, setCaFc] = useState<FeatureCollection | null>(cachedCa);
@@ -146,6 +160,18 @@ export function NorthAmericaMap({
             (usFc?.features ?? []).filter((f) => RENDER_FILTER((f.properties as { name?: string })?.name ?? ''));
         const caForFit = country === 'US' ? [] : (caFc?.features ?? []);
 
+        // Drill-down: when a single jurisdiction is selected, fit the
+        // projection to just that feature so the user sees a zoomed view.
+        if (focusCode) {
+            const focusUs = usForFit.find((f) => US_NAME_TO_CODE[(f.properties as { name?: string })?.name ?? ''] === focusCode);
+            const focusCa = caForFit.find((f) => CA_NAME_TO_CODE[(f.properties as { name?: string })?.name ?? ''] === focusCode);
+            const focusFeature = focusUs ?? focusCa;
+            if (focusFeature) {
+                proj.fitExtent([[36, 36], [width - 36, height - 36]], focusFeature as Feature<Geometry>);
+                return proj;
+            }
+        }
+
         const fitFeatures: FeatureCollection = {
             type: 'FeatureCollection',
             features: [...usForFit, ...caForFit],
@@ -154,7 +180,7 @@ export function NorthAmericaMap({
             proj.fitExtent([[24, 24], [width - 24, height - 24]], fitFeatures);
         }
         return proj;
-    }, [usFc, caFc, country]);
+    }, [usFc, caFc, country, focusCode]);
 
     const usPath = useMemo(() => geoPath(projection), [projection]);
     const caPath = usPath; // Same projection — borders align exactly.
@@ -177,16 +203,43 @@ export function NorthAmericaMap({
     const totalEvents = stats.reduce((a, b) => a + b.eventCount, 0);
     const enrichedSubtitle = subtitle ?? `${totalEvents} event${totalEvents === 1 ? '' : 's'} across ${stats.length} jurisdiction${stats.length === 1 ? '' : 's'}`;
 
-    return (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 relative">
-            <div className="flex items-center justify-between mb-1">
-                <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-                <Legend max={maxCount} />
-            </div>
-            <p className="text-xs text-slate-500 mb-4">{enrichedSubtitle}</p>
+    const focusedStat = focusCode ? statsByCode.get(focusCode) : null;
+    const isCodeFocused = (code: string | undefined) => !focusCode || code === focusCode;
 
-            <div className="relative">
-                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+    return (
+        <div className={embedded ? 'relative w-full h-full' : 'bg-white rounded-xl border border-slate-200 p-5 relative'}>
+            {!embedded && (
+                <>
+                    <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                            {focusCode && onResetFocus && (
+                                <button
+                                    type="button"
+                                    onClick={onResetFocus}
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600
+                                               border border-slate-200 hover:bg-slate-50 hover:text-slate-900
+                                               rounded-md px-2 py-1 transition-colors"
+                                    aria-label="Back to North America view"
+                                >
+                                    <span aria-hidden>←</span> Back
+                                </button>
+                            )}
+                            <h3 className="text-base font-semibold text-slate-900 truncate">
+                                {focusedStat ? `${focusedStat.code} · ${focusedStat.country}` : title}
+                            </h3>
+                        </div>
+                        <Legend max={maxCount} />
+                    </div>
+                    <p className="text-xs text-slate-500 mb-4">{enrichedSubtitle}</p>
+                </>
+            )}
+
+            <div className={embedded ? 'absolute inset-0' : 'relative w-full h-full'}>
+                <svg
+                    viewBox={`0 0 ${width} ${height}`}
+                    className={embedded ? 'w-full h-full block' : 'w-full h-auto'}
+                    preserveAspectRatio="xMidYMid meet"
+                >
                     {/* CA layer */}
                     <g>
                         {caFeatures.map((f, i) => {
@@ -196,16 +249,19 @@ export function NorthAmericaMap({
                             const fill = fillForCount(stat?.eventCount ?? 0, maxCount);
                             const d = caPath(f as Feature<Geometry>);
                             if (!d) return null;
+                            const focused = isCodeFocused(code);
                             return (
                                 <path
                                     key={`ca-${i}`}
                                     d={d}
                                     fill={fill}
-                                    stroke="#cbd5e1"
-                                    strokeWidth={0.5}
+                                    stroke={focusCode && focused ? '#0f172a' : '#cbd5e1'}
+                                    strokeWidth={focusCode && focused ? 1.4 : 0.5}
+                                    opacity={focused ? 1 : 0.18}
                                     onMouseEnter={(e) => code && setHover({ code, x: e.clientX, y: e.clientY })}
                                     onMouseLeave={() => setHover(null)}
-                                    style={{ cursor: stat ? 'pointer' : 'default', transition: 'fill 200ms ease' }}
+                                    onClick={() => code && onSelectCode?.(code)}
+                                    style={{ cursor: stat ? 'pointer' : 'default', transition: 'fill 200ms ease, opacity 200ms ease' }}
                                 />
                             );
                         })}
@@ -219,16 +275,19 @@ export function NorthAmericaMap({
                             const fill = fillForCount(stat?.eventCount ?? 0, maxCount);
                             const d = usPath(f as Feature<Geometry>);
                             if (!d) return null;
+                            const focused = isCodeFocused(code);
                             return (
                                 <path
                                     key={`us-${i}`}
                                     d={d}
                                     fill={fill}
-                                    stroke="#cbd5e1"
-                                    strokeWidth={0.5}
+                                    stroke={focusCode && focused ? '#0f172a' : '#cbd5e1'}
+                                    strokeWidth={focusCode && focused ? 1.4 : 0.5}
+                                    opacity={focused ? 1 : 0.18}
                                     onMouseEnter={(e) => code && setHover({ code, x: e.clientX, y: e.clientY })}
                                     onMouseLeave={() => setHover(null)}
-                                    style={{ cursor: stat ? 'pointer' : 'default', transition: 'fill 200ms ease' }}
+                                    onClick={() => code && onSelectCode?.(code)}
+                                    style={{ cursor: stat ? 'pointer' : 'default', transition: 'fill 200ms ease, opacity 200ms ease' }}
                                 />
                             );
                         })}
@@ -244,6 +303,7 @@ export function NorthAmericaMap({
                                 if (!code) return null;
                                 const stat = statsByCode.get(code);
                                 if (!stat || stat.eventCount === 0) return null;
+                                if (focusCode && code !== focusCode) return null;
 
                                 const path = isCa ? caPath : usPath;
                                 const c = path.centroid(f as Feature<Geometry>);
@@ -278,7 +338,16 @@ export function NorthAmericaMap({
 
                 {/* Hover tooltip */}
                 {hover && statsByCode.get(hover.code) && (
-                    <HoverCard stat={statsByCode.get(hover.code)!} />
+                    <HoverCard stat={statsByCode.get(hover.code)!} totalEvents={totalEvents} />
+                )}
+
+                {/* When drilled-down: show a persistent stat summary card so the
+                    user always sees the focused jurisdiction's numbers even
+                    after the mouse leaves the path. The embedded variant
+                    suppresses this card because the outer panel renders its
+                    own breadcrumb / chips with the same info. */}
+                {!embedded && focusedStat && !hover && (
+                    <FocusSummaryCard stat={focusedStat} totalEvents={totalEvents} />
                 )}
             </div>
 
@@ -288,14 +357,77 @@ export function NorthAmericaMap({
     );
 }
 
-function HoverCard({ stat }: { stat: JurisdictionStats }) {
+function HoverCard({ stat, totalEvents }: { stat: JurisdictionStats; totalEvents: number }) {
+    const share = totalEvents > 0 ? (stat.eventCount / totalEvents) * 100 : 0;
+    const oosRate = stat.eventCount > 0 ? (stat.oosCount / stat.eventCount) * 100 : 0;
     return (
-        <div className="absolute top-2 right-2 bg-slate-900 text-white text-xs rounded-md px-2.5 py-2 shadow-lg pointer-events-none">
-            <div className="font-bold">{stat.code} · {stat.country}</div>
-            <div className="opacity-80 mt-0.5">{stat.eventCount} events · {stat.oosCount} OOS</div>
-            <div className="opacity-80">σ avg {stat.severityAvg.toFixed(1)}</div>
+        <div className="absolute top-2 right-2 z-10 bg-slate-900 text-white text-xs rounded-md px-3 py-2 shadow-lg pointer-events-none min-w-[200px]">
+            <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-700">
+                <span className="font-bold">{stat.code}</span>
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{stat.country}</span>
+            </div>
+            <div className="space-y-0.5">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">Events</span>
+                    <span className="font-black tabular-nums">{stat.eventCount.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">OOS</span>
+                    <span className={stat.oosCount > 0 ? 'font-bold tabular-nums text-rose-300' : 'tabular-nums text-slate-300'}>
+                        {stat.oosCount.toLocaleString()}{stat.eventCount > 0 ? ` (${oosRate.toFixed(0)}%)` : ''}
+                    </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">Avg severity</span>
+                    <span className="font-bold tabular-nums">σ {stat.severityAvg.toFixed(1)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400">Share</span>
+                    <span className="tabular-nums">{share.toFixed(1)}%</span>
+                </div>
+            </div>
             {stat.topSource && (
-                <div className="opacity-60 text-[10px] mt-0.5">{stat.topSource}</div>
+                <div className="text-[10px] text-slate-400 mt-1.5 pt-1.5 border-t border-slate-700">
+                    Top source · <span className="font-bold text-slate-200 uppercase tracking-wider">{stat.topSource}</span>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function FocusSummaryCard({ stat, totalEvents }: { stat: JurisdictionStats; totalEvents: number }) {
+    const share = totalEvents > 0 ? (stat.eventCount / totalEvents) * 100 : 0;
+    const oosRate = stat.eventCount > 0 ? (stat.oosCount / stat.eventCount) * 100 : 0;
+    return (
+        <div className="absolute top-2 right-2 z-10 bg-white border border-slate-200 shadow-md rounded-lg px-3 py-2 text-xs min-w-[200px]">
+            <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-100">
+                <span className="font-bold text-slate-900">{stat.code}</span>
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{stat.country}</span>
+            </div>
+            <div className="space-y-0.5">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Events</span>
+                    <span className="font-black tabular-nums text-slate-900">{stat.eventCount.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">OOS</span>
+                    <span className={stat.oosCount > 0 ? 'font-bold tabular-nums text-rose-600' : 'tabular-nums text-slate-700'}>
+                        {stat.oosCount.toLocaleString()}{stat.eventCount > 0 ? ` (${oosRate.toFixed(0)}%)` : ''}
+                    </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Avg severity</span>
+                    <span className="font-bold tabular-nums text-slate-800">σ {stat.severityAvg.toFixed(1)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Share of fleet</span>
+                    <span className="tabular-nums text-slate-700">{share.toFixed(1)}%</span>
+                </div>
+            </div>
+            {stat.topSource && (
+                <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-100">
+                    Top source · <span className="font-bold text-slate-700 uppercase tracking-wider">{stat.topSource}</span>
+                </div>
             )}
         </div>
     );

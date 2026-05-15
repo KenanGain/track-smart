@@ -910,6 +910,31 @@ export function CarrierProfilePage({
     // --- DRIVER LIST LOGIC ---
     const [drivers, setDrivers] = useState(profileBundle?.drivers ?? MOCK_DRIVERS);
 
+    // Return path captured from the Beta Safety Analysis deep-link. When set,
+    // the driver-view Back button navigates back there instead of clearing
+    // local state.
+    const [deepLinkReturnPath, setDeepLinkReturnPath] = useState<string | null>(null);
+
+    // Beta Safety Analysis deep-link: when the user clicks "View profile" on a
+    // driver detail card there, it stashes the driver id in sessionStorage and
+    // routes here. Auto-open that driver's profile on mount.
+    useEffect(() => {
+        const deepLinkId = sessionStorage.getItem('beta-deep-link-driver-id');
+        if (!deepLinkId) return;
+        const returnPath = sessionStorage.getItem('beta-return-path');
+        sessionStorage.removeItem('beta-deep-link-driver-id');
+        sessionStorage.removeItem('beta-return-path');
+        const driver = drivers.find((d: any) => d.id === deepLinkId);
+        if (driver) {
+            setSelectedDriverData(driver);
+            setViewingDriverId(deepLinkId);
+            if (returnPath) setDeepLinkReturnPath(returnPath);
+            window.scrollTo(0, 0);
+        }
+    // Run once on mount — once drivers are loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Reset to page 1 whenever filters change so the user lands on visible results.
     useEffect(() => {
         setDriverPage(1);
@@ -992,6 +1017,18 @@ export function CarrierProfilePage({
     };
 
     const handleBackFromDriver = () => {
+        // If the user arrived via a Beta Safety Analysis deep-link, route them
+        // back to the page they came from instead of just clearing the driver
+        // view to land on the carrier profile.
+        if (deepLinkReturnPath && onNavigate) {
+            const target = deepLinkReturnPath;
+            setDeepLinkReturnPath(null);
+            setViewingDriverId(null);
+            setIsAddingDriver(false);
+            setEditingDriverData(null);
+            onNavigate(target);
+            return;
+        }
         setViewingDriverId(null);
         setIsAddingDriver(false);
         setEditingDriverData(null);
@@ -1016,6 +1053,7 @@ export function CarrierProfilePage({
             initialDriverData={selectedDriverData || MOCK_DRIVER_DETAILED_TEMPLATE}
             onEditProfile={handleEditProfileInit}
             onUpdate={handleDriverUpdate}
+            accountId={accountId}
         />;
     }
 
@@ -1456,6 +1494,7 @@ export function CarrierProfilePage({
                             isEmbedded={true}
                             assets={profileBundle?.assets}
                             onDetailViewChange={setIsAssetDetailActive}
+                            accountId={accountId}
                         />
                     </div>
                 )}

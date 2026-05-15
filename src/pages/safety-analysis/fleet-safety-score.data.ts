@@ -2584,3 +2584,401 @@ export function computeMaintenanceForecast(
     };
 }
 
+// ── Per-regulatory-regime forecasts ──────────────────────────────────────
+// Build a 12-month-history / 12-month-forecast trajectory for each regime the
+// carrier participates in (FMCSA SMS, Ontario CVOR, NSC AB/BC/PE/NS). Same
+// OLS-with-damping approach as the carrier-wide forecast, but the monthly
+// signal is scoped to the regime's jurisdiction so the trend reads the way
+// the regulator's own scoring model would.
+
+export type RegimeKey = 'fmcsa' | 'cvor' | 'nsc-ab' | 'nsc-bc' | 'nsc-ns' | 'nsc-pe';
+
+export interface RegimeRecommendation {
+    id: string;
+    priority: 'High' | 'Medium' | 'Low';
+    title: string;
+    detail: string;
+}
+
+export interface RegimeForecast {
+    key: RegimeKey;
+    label: string;          // "FMCSA SMS", "Ontario CVOR", …
+    short: string;          // "FMCSA", "CVOR", "AB", "BC", …
+    regulator: string;      // "Federal Motor Carrier Safety Administration"
+    description: string;    // One-line plain-language definition
+    applies: boolean;       // Carrier holds the matching registration
+    currentScore: number;   // Higher = safer (0–100)
+    horizonScore: number;
+    horizonLower: number;
+    horizonUpper: number;
+    slope: number;          // pts / month change in safety score
+    trend: 'Improving' | 'Stable' | 'Degrading';
+    rSquared: number;
+    confidence: 'Low' | 'Medium' | 'High';
+    historyMonths: number;
+    points: ForecastPoint[];      // Same shape as CarrierForecast.points
+    signals: {
+        events: number;       // Last-12-month event count within the regime
+        oos: number;          // Out-of-service findings
+        accidents: number;    // Reportable collisions
+        inspections: number;  // Roadside inspections
+        cleanRate: number;    // 0–100
+    };
+    recommendations: RegimeRecommendation[];
+}
+
+const REGIME_META: Record<RegimeKey, { label: string; short: string; regulator: string; description: string }> = {
+    'fmcsa':  { label: 'FMCSA SMS',         short: 'FMCSA', regulator: 'Federal Motor Carrier Safety Administration', description: 'US federal Safety Measurement System — BASIC percentiles roll up to SMS score.' },
+    'cvor':   { label: 'Ontario CVOR',      short: 'CVOR',  regulator: 'Ontario Ministry of Transportation',          description: 'Commercial Vehicle Operator’s Registration rating + 3-bucket impact.' },
+    'nsc-ab': { label: 'NSC Alberta',       short: 'AB',    regulator: 'Alberta Transportation',                      description: 'R-Factor stage progression (Stage 1 → Stage 4).' },
+    'nsc-bc': { label: 'NSC British Columbia', short: 'BC', regulator: 'BC CVSE',                                     description: 'Carrier Profile Score against the satisfactory threshold.' },
+    'nsc-ns': { label: 'NSC Nova Scotia',   short: 'NS',    regulator: 'Nova Scotia Registry of Motor Vehicles',      description: 'Indexed demerit against the Level-3 cap.' },
+    'nsc-pe': { label: 'NSC Prince Edward Island', short: 'PE', regulator: 'PEI Highway Safety',                      description: 'Schedule 3 point totals across the rolling profile period.' },
+};
+
+interface RegimeFilter {
+    /** Does this jurisdiction "belong" to the regime? */
+    matchesJurisdiction: (state: string | undefined, country: string | undefined) => boolean;
+}
+
+const FMCSA_JURISDICTIONS = new Set([
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+    'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+    'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC',
+]);
+
+const REGIME_FILTERS: Record<RegimeKey, RegimeFilter> = {
+    'fmcsa': {
+        matchesJurisdiction: (s, c) => {
+            const code = (s ?? '').toUpperCase();
+            const ctry = (c ?? '').toUpperCase();
+            if (ctry === 'CA' || ctry === 'CANADA') return false;
+            return FMCSA_JURISDICTIONS.has(code) || ctry === 'US' || ctry === 'USA';
+        },
+    },
+    'cvor':   { matchesJurisdiction: (s) => (s ?? '').toUpperCase() === 'ON' },
+    'nsc-ab': { matchesJurisdiction: (s) => (s ?? '').toUpperCase() === 'AB' },
+    'nsc-bc': { matchesJurisdiction: (s) => (s ?? '').toUpperCase() === 'BC' },
+    'nsc-ns': { matchesJurisdiction: (s) => (s ?? '').toUpperCase() === 'NS' },
+    'nsc-pe': { matchesJurisdiction: (s) => (s ?? '').toUpperCase() === 'PE' },
+};
+
+/** Recommended actions per regime — chosen from the carrier's actual signal
+ *  mix so the suggestions always match the underlying numbers. */
+function buildRegimeRecommendations(
+    regime: RegimeKey,
+    signals: RegimeForecast['signals'],
+    trend: RegimeForecast['trend'],
+): RegimeRecommendation[] {
+    const out: RegimeRecommendation[] = [];
+
+    // Universal trend-driven advice first.
+    if (trend === 'Degrading') {
+        out.push({
+            id: 'trend-degrading',
+            priority: 'High',
+            title: 'Reverse the negative trend',
+            detail: 'Safety score is trending downward. Schedule a fleet-wide compliance review and pull a 90-day root-cause report on the categories driving the slope.',
+        });
+    } else if (trend === 'Stable' && signals.events > 0) {
+        out.push({
+            id: 'trend-stable',
+            priority: 'Medium',
+            title: 'Convert stable to improving',
+            detail: 'Score is flat — focus the next quarter on the highest-volume category to bend the slope downward.',
+        });
+    }
+
+    // OOS-driven escalation.
+    if (signals.oos > 0) {
+        out.push({
+            id: 'oos',
+            priority: signals.oos >= 3 ? 'High' : 'Medium',
+            title: `Close ${signals.oos} OOS finding${signals.oos === 1 ? '' : 's'}`,
+            detail: 'Out-of-service findings carry the heaviest penalty in every regime. Triage the open OOS list and complete corrective actions before the next audit cycle.',
+        });
+    }
+
+    // Clean-rate driven coaching.
+    if (signals.inspections > 0 && signals.cleanRate < 70) {
+        out.push({
+            id: 'clean-rate',
+            priority: 'Medium',
+            title: `Lift clean-inspection rate above 70% (currently ${signals.cleanRate}%)`,
+            detail: 'Improve pre-trip discipline and post-trip defect resolution. Drivers with two or more recent findings should book a roadside-readiness coaching session.',
+        });
+    }
+
+    if (signals.accidents > 0) {
+        out.push({
+            id: 'accidents',
+            priority: signals.accidents >= 3 ? 'High' : 'Medium',
+            title: `Review ${signals.accidents} reportable collision${signals.accidents === 1 ? '' : 's'}`,
+            detail: 'File preventability rulings on each event. Non-preventable rulings can be challenged at the regulator and removed from the rating window.',
+        });
+    }
+
+    // Regime-specific guidance.
+    if (regime === 'fmcsa') {
+        out.push({
+            id: 'sms-basics',
+            priority: 'Low',
+            title: 'Watch the four heaviest BASICs',
+            detail: 'Unsafe Driving, HOS Compliance, Vehicle Maintenance, and Driver Fitness drive the bulk of intervention thresholds. Pull SMS percentile reports monthly.',
+        });
+    } else if (regime === 'cvor') {
+        out.push({
+            id: 'cvor-buckets',
+            priority: 'Low',
+            title: 'Balance the three CVOR buckets',
+            detail: 'Inspections, collisions, and convictions each contribute up to 33%. Keep none of them above 60% to stay under the audit threshold.',
+        });
+    } else if (regime === 'nsc-ab') {
+        out.push({
+            id: 'ab-rfactor',
+            priority: 'Low',
+            title: 'Hold the R-Factor below the Stage-2 line',
+            detail: 'Crossing into Stage 2 triggers monitoring; staying below buys the carrier room to absorb a single bad month without re-triggering the cycle.',
+        });
+    } else if (regime === 'nsc-bc') {
+        out.push({
+            id: 'bc-profile',
+            priority: 'Low',
+            title: 'Keep the Carrier Profile in the satisfactory band',
+            detail: 'BC weighs contraventions heavier than inspections — tackle each Schedule-2 contravention rather than batching them.',
+        });
+    } else if (regime === 'nsc-ns') {
+        out.push({
+            id: 'ns-demerit',
+            priority: 'Low',
+            title: 'Drive indexed demerit toward zero',
+            detail: 'Nova Scotia indexes against the Level-3 cap. Each cleared demerit point during the rolling window improves headroom.',
+        });
+    } else if (regime === 'nsc-pe') {
+        out.push({
+            id: 'pe-schedule3',
+            priority: 'Low',
+            title: 'Trim Schedule 3 point accumulation',
+            detail: 'PEI scoring grows with every Schedule 3 conviction — minor offence remediation has outsize impact on the rolling profile.',
+        });
+    }
+
+    if (signals.events === 0 && signals.inspections === 0) {
+        out.unshift({
+            id: 'no-data',
+            priority: 'Low',
+            title: 'No events recorded this period',
+            detail: 'Maintain current programs. Continue monthly compliance pulls so a clean record is documented when the next audit runs.',
+        });
+    }
+
+    // Keep the High-priority items first.
+    out.sort((a, b) => {
+        const rank = (p: RegimeRecommendation['priority']) => p === 'High' ? 0 : p === 'Medium' ? 1 : 2;
+        return rank(a.priority) - rank(b.priority);
+    });
+
+    return out.slice(0, 5);
+}
+
+function regimeApplies(key: RegimeKey, identity: CarrierIdentity): boolean {
+    if (key === 'fmcsa') return !!identity.dotNumber;
+    if (key === 'cvor')  return !!identity.cvorNumber;
+    const prov = key.slice(4).toUpperCase(); // 'AB' | 'BC' | 'NS' | 'PE'
+    return identity.nscNumbers.some(n => n.split('-')[0]?.toUpperCase() === prov);
+}
+
+function computeOneRegimeForecast(
+    accountId: string | undefined,
+    key: RegimeKey,
+    horizonMonths: number,
+    historyMonths: number,
+): RegimeForecast {
+    const id = accountId ?? 'acct-001';
+    const account = ACCOUNTS_DB.find(a => a.id === id);
+    const identity: CarrierIdentity = {
+        legalName: account?.legalName ?? 'Unknown Carrier',
+        country: (account?.country ?? 'US') as 'US' | 'CA',
+        stateOrProvince: account?.state ?? '',
+        dotNumber: account?.dotNumber ?? '',
+        cvorNumber: account?.cvorNumber ?? '',
+        nscNumber: account?.nscNumber ?? '',
+        nscNumbers: account?.nscNumbers ?? [],
+    };
+    const meta = REGIME_META[key];
+
+    const accidents  = getAccidentsForCarrier(id);
+    const violations = getViolationsForCarrier(id);
+    const inspections = getInspectionsForCarrier(id);
+    const drivers    = CARRIER_DRIVERS[id] ?? [];
+    const filter = REGIME_FILTERS[key];
+
+    // Regime-scoped slices.
+    const scopedViolations = violations.filter((v: any) =>
+        filter.matchesJurisdiction(v?.locationState, v?.locationCountry),
+    );
+    const scopedAccidents = accidents.filter((a: any) => {
+        const loc = a?.location ?? {};
+        return filter.matchesJurisdiction(loc?.stateProvince ?? loc?.state, loc?.country);
+    });
+    const scopedInspections = (inspections ?? []).filter((i: any) =>
+        filter.matchesJurisdiction(i?.state ?? i?.stateProvince ?? i?.jurisdiction, i?.country),
+    );
+
+    // Per-month safety score for the regime — higher = safer. Penalty model
+    // chosen so a clean month sits ≥ 95 and every OOS pulls the score down
+    // hardest.
+    const today = new Date();
+    today.setDate(1);
+    today.setHours(0, 0, 0, 0);
+
+    const monthlyPoints: ForecastPoint[] = [];
+    for (let i = historyMonths - 1; i >= 0; i--) {
+        const monthStart = new Date(today);
+        monthStart.setMonth(monthStart.getMonth() - i);
+        const monthEnd = new Date(monthStart);
+        monthEnd.setMonth(monthEnd.getMonth() + 1);
+
+        const inMonth = (iso: string | undefined): boolean => {
+            if (!iso) return false;
+            const t = new Date(iso).getTime();
+            return t >= monthStart.getTime() && t < monthEnd.getTime();
+        };
+
+        const mv = scopedViolations.filter((v: any) => inMonth(v?.date));
+        const ma = scopedAccidents.filter((a: any) => inMonth(a?.occurredAt));
+        const mi = scopedInspections.filter((i: any) => inMonth(i?.date));
+
+        const mvOos = mv.filter((v: any) => v.isOos).length;
+        const score = clamp(
+            100
+            - mv.length * 1.2
+            - mvOos * 5
+            - ma.length * 6
+            - mi.filter((i: any) => i.hasOOS).length * 3,
+        );
+
+        monthlyPoints.push({
+            date: monthStart.toISOString().slice(0, 10),
+            riskScore: score,
+            isForecast: false,
+        });
+    }
+
+    if (monthlyPoints.length === 0) {
+        const empty: RegimeForecast = {
+            key,
+            label: meta.label,
+            short: meta.short,
+            regulator: meta.regulator,
+            description: meta.description,
+            applies: regimeApplies(key, identity),
+            currentScore: 100,
+            horizonScore: 100,
+            horizonLower: 100,
+            horizonUpper: 100,
+            slope: 0,
+            trend: 'Stable',
+            rSquared: 0,
+            confidence: 'Low',
+            historyMonths: 0,
+            points: [],
+            signals: { events: 0, oos: 0, accidents: 0, inspections: 0, cleanRate: 100 },
+            recommendations: [{
+                id: 'no-data', priority: 'Low',
+                title: 'No regime activity on record',
+                detail: 'Continue monthly compliance pulls so a clean record is documented for the next audit.',
+            }],
+        };
+        return empty;
+    }
+
+    // OLS regression on the regime-scoped safety series.
+    const ys = monthlyPoints.map(p => p.riskScore);
+    const { slope, intercept, rSquared, residuals } = linreg(ys);
+    const n = ys.length;
+    const residualVar = residuals.reduce((a, b) => a + b * b, 0) / Math.max(1, n - 2);
+    const residualStdDev = Math.sqrt(residualVar);
+    const longRunMean = ys.reduce((a, b) => a + b, 0) / n;
+
+    const points: ForecastPoint[] = [...monthlyPoints];
+    const lastDate = new Date(monthlyPoints[monthlyPoints.length - 1].date);
+    for (let k = 1; k <= horizonMonths; k++) {
+        const d = new Date(lastDate);
+        d.setMonth(d.getMonth() + k);
+        const xIdx = n - 1 + k;
+        const linear = intercept + slope * xIdx;
+        const dampW = Math.min(1, k / 36);
+        const value = linear * (1 - dampW) + longRunMean * dampW;
+        const widen = residualStdDev * 1.28 * Math.sqrt(1 + k / Math.max(2, n));
+        points.push({
+            date: d.toISOString().slice(0, 10),
+            riskScore: clamp(value),
+            isForecast: true,
+            lower: clamp(value - widen),
+            upper: clamp(value + widen),
+        });
+    }
+
+    const last = points[points.length - 1];
+    const currentScore = ys[ys.length - 1];
+
+    const trend: RegimeForecast['trend'] =
+        slope < -0.15 ? 'Degrading' :     // lower score = worse
+        slope >  0.15 ? 'Improving' :
+        'Stable';
+    const confidence: RegimeForecast['confidence'] =
+        n >= 18 && rSquared >= 0.55 ? 'High' :
+        n >=  9 && rSquared >= 0.30 ? 'Medium' : 'Low';
+
+    // 12-month signal totals (used by KPI tiles + recommendations).
+    const since = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const recentViolations = scopedViolations.filter((v: any) => new Date(v?.date ?? 0).getTime() >= since);
+    const recentAccidents  = scopedAccidents.filter((a: any) => new Date(a?.occurredAt ?? 0).getTime() >= since);
+    const recentInspections = scopedInspections.filter((i: any) => new Date(i?.date ?? 0).getTime() >= since);
+    const recentOos = recentViolations.filter((v: any) => v.isOos).length
+                    + recentInspections.filter((i: any) => i.hasOOS).length;
+    const clean = recentInspections.filter((i: any) => i.isClean).length;
+    const cleanRate = recentInspections.length > 0
+        ? Math.round((clean / recentInspections.length) * 100)
+        : 100;
+    const signals: RegimeForecast['signals'] = {
+        events: recentViolations.length,
+        oos: recentOos,
+        accidents: recentAccidents.length,
+        inspections: recentInspections.length,
+        cleanRate,
+    };
+    void drivers; // signal that we considered roster size for future tuning
+
+    return {
+        key,
+        label: meta.label,
+        short: meta.short,
+        regulator: meta.regulator,
+        description: meta.description,
+        applies: regimeApplies(key, identity),
+        currentScore: Math.round(currentScore),
+        horizonScore: Math.round(last.riskScore),
+        horizonLower: Math.round(last.lower ?? last.riskScore),
+        horizonUpper: Math.round(last.upper ?? last.riskScore),
+        slope: Number(slope.toFixed(3)),
+        trend,
+        rSquared: Number(rSquared.toFixed(3)),
+        confidence,
+        historyMonths: n,
+        points,
+        signals,
+        recommendations: buildRegimeRecommendations(key, signals, trend),
+    };
+}
+
+export function computeAllRegimeForecasts(
+    accountId: string | undefined,
+    horizonMonths: number = 12,
+    historyMonths: number = 12,
+): RegimeForecast[] {
+    const all: RegimeKey[] = ['fmcsa', 'cvor', 'nsc-ab', 'nsc-bc', 'nsc-ns', 'nsc-pe'];
+    return all.map(key => computeOneRegimeForecast(accountId, key, horizonMonths, historyMonths));
+}
+

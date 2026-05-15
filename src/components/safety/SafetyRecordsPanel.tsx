@@ -1,5 +1,5 @@
-import { useMemo, useState, Fragment } from 'react';
-import { ClipboardCheck, Truck, Scale, ShieldAlert, ChevronRight, ChevronDown } from 'lucide-react';
+import { useMemo, useState, useEffect, Fragment } from 'react';
+import { ClipboardCheck, Truck, Scale, ShieldAlert, ChevronRight, ChevronDown, Search, Filter, FileCheck, AlertOctagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     type SafetyEvent,
@@ -11,6 +11,7 @@ import {
     parseSourceKey,
 } from '@/data/safety-records';
 import { SourceSubTabs } from './SourceSubTabs';
+import { PaginationBar } from '@/components/ui/DataListToolbar';
 
 type SafetyRecordsPanelProps = {
     /** Pre-filtered events for the current entity (driver / asset / carrier). */
@@ -117,13 +118,134 @@ const KIND_BADGE: Record<SafetyEventKind, { label: string; cls: string; Icon: Re
     accident:   { label: 'Accident',   cls: 'bg-rose-50 text-rose-700 border-rose-200',     Icon: Truck },
 };
 
+type DateWindow = 'all' | '3m' | '6m' | '12m' | '24m' | '60m';
+type ResultFilter = 'all' | 'clean' | 'oos' | 'violations';
+
+const DATE_OPTIONS: { id: DateWindow; label: string; months: number | null }[] = [
+    { id: 'all', label: 'All time',    months: null },
+    { id: '3m',  label: 'Last 3 mo',   months: 3   },
+    { id: '6m',  label: 'Last 6 mo',   months: 6   },
+    { id: '12m', label: 'Last 12 mo',  months: 12  },
+    { id: '24m', label: 'Last 24 mo',  months: 24  },
+    { id: '60m', label: 'Last 5 yrs',  months: 60  },
+];
+
+function withinWindow(dateISO: string | undefined, months: number | null): boolean {
+    if (!months) return true;
+    if (!dateISO) return false;
+    const t = new Date(dateISO).getTime();
+    if (Number.isNaN(t)) return false;
+    return Date.now() - t <= months * 30 * 24 * 60 * 60 * 1000;
+}
+
+/** Pull useful stats out of an event so KPI tiles + result filter can use
+ *  them without re-walking the source-specific raw payloads each time. */
+function eventStats(e: SafetyEvent): { isClean: boolean; hasOos: boolean; violationCount: number; defectCount: number; points: number } {
+    const r = e.raw as Record<string, unknown>;
+    const { source } = parseSourceKey(e.sourceKey);
+    if (source === 'cvor') {
+        if (e.kind === 'inspection') {
+            const oos = (r.oosCount as number) ?? 0;
+            const def = (r.totalDefects as number) ?? 0;
+            const vp = (r.vehiclePoints as number) ?? 0;
+            const dp = (r.driverPoints as number) ?? 0;
+            return { isClean: oos === 0 && def === 0, hasOos: oos > 0, violationCount: 0, defectCount: def, points: vp + dp };
+        }
+        const pts = (r.pointsTotal as number) ?? 0;
+        return { isClean: false, hasOos: false, violationCount: 1, defectCount: 0, points: pts };
+    }
+    if (source === 'nsc') {
+        const oosRows = (r.oosRows as unknown[] | undefined) ?? [];
+        const reqRows = (r.reqRows as unknown[] | undefined) ?? [];
+        return {
+            isClean: oosRows.length === 0 && reqRows.length === 0,
+            hasOos: oosRows.length > 0,
+            violationCount: reqRows.length,
+            defectCount: oosRows.length + reqRows.length,
+            points: 0,
+        };
+    }
+    // FMCSA
+    const isClean = !!r.isClean;
+    const hasOos = !!r.hasOOS;
+    const violCount = Array.isArray(r.violations) ? (r.violations as unknown[]).length : 0;
+    const sms = r.smsPoints as { vehicle?: number; driver?: number; carrier?: number } | undefined;
+    const smsTotal = (sms?.vehicle ?? 0) + (sms?.driver ?? 0) + (sms?.carrier ?? 0);
+    return { isClean, hasOos, violationCount: violCount, defectCount: violCount, points: smsTotal };
+}
+
 function SourceTable({ events, sourceKey }: { events: SafetyEvent[]; sourceKey: SafetySourceKey }) {
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [query, setQuery] = useState('');
+    const [dateWin, setDateWin] = useState<DateWindow>('all');
+    const [result, setResult] = useState<ResultFilter>('all');
+    const [page, setPage] = useState(1);
+    const [rpp, setRpp] = useState(10);
+
+    // Reset filters / paging when source switches.
+    useEffect(() => {
+        setQuery('');
+        setDateWin('all');
+        setResult('all');
+        setPage(1);
+        setExpandedId(null);
+    }, [sourceKey]);
+    // Reset paging when filters narrow the list.
+    useEffect(() => { setPage(1); }, [query, dateWin, result]);
+
     const sorted = useMemo(
         () => events.slice().sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')),
         [events]
     );
 
+    // KPI roll-ups over the *unfiltered* per-source set so the user always
+    // sees the underlying counts regardless of the active filter.
+    const kpi = useMemo(() => {
+        const init = { total: sorted.length, clean: 0, oos: 0, violations: 0, points: 0 };
+        for (const e of sorted) {
+            const s = eventStats(e);
+            if (s.isClean) init.clean += 1;
+            if (s.hasOos) init.oos += 1;
+            if (s.violationCount > 0 || s.defectCount > 0) init.violations += 1;
+            init.points += s.points;
+        }
+        return init;
+    }, [sorted]);
+
+    const months = DATE_OPTIONS.find(o => o.id === dateWin)?.months ?? null;
+    const q = query.trim().toLowerCase();
+
+    const filtered = useMemo(() => {
+        return sorted.filter(e => {
+            if (!withinWindow(e.date, months)) return false;
+
+            if (result !== 'all') {
+                const s = eventStats(e);
+                if (result === 'clean' && !s.isClean) return false;
+                if (result === 'oos' && !s.hasOos) return false;
+                if (result === 'violations' && !(s.violationCount > 0 || s.defectCount > 0)) return false;
+            }
+
+            if (q) {
+                const r = e.raw as Record<string, unknown>;
+                const ref =
+                    (r.cvir as string) || (r.ticket as string)
+                    || (r.inspectionNumber as string) || (r.id as string) || '';
+                const hay = [
+                    e.driverName, e.licenseNumber, e.plateNumber, e.unitNumber, e.vin,
+                    e.location, e.jurisdiction, ref,
+                ].filter(Boolean).join(' ').toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+    }, [sorted, months, result, q]);
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / rpp));
+    const safePage = Math.min(page, totalPages);
+    const paged = filtered.slice((safePage - 1) * rpp, safePage * rpp);
+
+    // Whole-source empty state — keep the previous look.
     if (sorted.length === 0) {
         return (
             <div className="px-5 py-12 text-center">
@@ -141,39 +263,159 @@ function SourceTable({ events, sourceKey }: { events: SafetyEvent[]; sourceKey: 
     }
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-                <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
-                    <tr>
-                        <th className="px-3 py-2.5 font-semibold w-8" />
-                        <th className="px-4 py-2.5 font-semibold">Type</th>
-                        <th className="px-4 py-2.5 font-semibold">Date</th>
-                        <th className="px-4 py-2.5 font-semibold">Driver</th>
-                        <th className="px-4 py-2.5 font-semibold">Vehicle</th>
-                        <th className="px-4 py-2.5 font-semibold">Location</th>
-                        <th className="px-4 py-2.5 font-semibold">Reference</th>
-                        <th className="px-4 py-2.5 font-semibold">Status</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {sorted.map((e) => (
-                        <Fragment key={e.id}>
-                            <SummaryRow
-                                event={e}
-                                expanded={expandedId === e.id}
-                                onToggle={() => setExpandedId(expandedId === e.id ? null : e.id)}
-                            />
-                            {expandedId === e.id && (
-                                <tr className="bg-slate-50/40">
-                                    <td colSpan={8} className="px-4 py-3">
-                                        <DetailPanel event={e} />
-                                    </td>
-                                </tr>
-                            )}
-                        </Fragment>
-                    ))}
-                </tbody>
-            </table>
+        <>
+            {/* KPI strip */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-5 pt-4">
+                <KpiTile
+                    icon={<FileCheck size={14} />}
+                    label="Records"
+                    value={kpi.total}
+                    tone="blue"
+                />
+                <KpiTile
+                    icon={<ShieldAlert size={14} />}
+                    label="Clean"
+                    value={kpi.clean}
+                    tone="emerald"
+                />
+                <KpiTile
+                    icon={<AlertOctagon size={14} />}
+                    label="OOS"
+                    value={kpi.oos}
+                    tone="rose"
+                />
+                <KpiTile
+                    icon={<Scale size={14} />}
+                    label={kpi.points > 0 ? 'Points' : 'Violations'}
+                    value={kpi.points > 0 ? kpi.points : kpi.violations}
+                    tone="amber"
+                />
+            </div>
+
+            {/* Filter row */}
+            <div className="flex items-center gap-2 flex-wrap px-5 py-3 mt-3 border-y border-slate-100 bg-slate-50/50">
+                <div className="relative flex-1 min-w-[180px] max-w-md">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                        type="text"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search driver, plate, location, reference…"
+                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white
+                                   placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <Filter size={14} className="text-slate-400" />
+                    <select
+                        value={dateWin}
+                        onChange={(e) => setDateWin(e.target.value as DateWindow)}
+                        className="text-xs rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-medium
+                                   shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        {DATE_OPTIONS.map(o => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                        ))}
+                    </select>
+                </div>
+                <select
+                    value={result}
+                    onChange={(e) => setResult(e.target.value as ResultFilter)}
+                    className="text-xs rounded-lg border border-slate-200 bg-white px-2 py-1.5 font-medium
+                               shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    <option value="all">All results</option>
+                    <option value="clean">Clean only</option>
+                    <option value="oos">OOS only</option>
+                    <option value="violations">With violations</option>
+                </select>
+                <span className="ml-auto text-[11px] font-medium text-slate-500">
+                    {filtered.length === sorted.length
+                        ? `${filtered.length} records`
+                        : `${filtered.length} of ${sorted.length} records`}
+                </span>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                    <thead className="text-[11px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th className="px-3 py-2.5 font-semibold w-8" />
+                            <th className="px-4 py-2.5 font-semibold">Type</th>
+                            <th className="px-4 py-2.5 font-semibold">Date</th>
+                            <th className="px-4 py-2.5 font-semibold">Driver</th>
+                            <th className="px-4 py-2.5 font-semibold">Vehicle</th>
+                            <th className="px-4 py-2.5 font-semibold">Location</th>
+                            <th className="px-4 py-2.5 font-semibold">Reference</th>
+                            <th className="px-4 py-2.5 font-semibold">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {paged.length === 0 ? (
+                            <tr>
+                                <td colSpan={8} className="px-4 py-10 text-center">
+                                    <div className="text-xs text-slate-500">
+                                        No records match your filters.
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : paged.map((e) => (
+                            <Fragment key={e.id}>
+                                <SummaryRow
+                                    event={e}
+                                    expanded={expandedId === e.id}
+                                    onToggle={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                                />
+                                {expandedId === e.id && (
+                                    <tr className="bg-slate-50/40">
+                                        <td colSpan={8} className="px-4 py-3">
+                                            <DetailPanel event={e} />
+                                        </td>
+                                    </tr>
+                                )}
+                            </Fragment>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            <PaginationBar
+                totalItems={filtered.length}
+                currentPage={safePage}
+                rowsPerPage={rpp}
+                onPageChange={setPage}
+                onRowsPerPageChange={(r) => { setRpp(r); setPage(1); }}
+            />
+        </>
+    );
+}
+
+function KpiTile({
+    icon, label, value, tone,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value: number;
+    tone: 'blue' | 'emerald' | 'rose' | 'amber';
+}) {
+    const tones: Record<typeof tone, { ring: string; chip: string; text: string }> = {
+        blue:    { ring: 'border-l-blue-500',    chip: 'bg-blue-50 text-blue-600',       text: 'text-slate-900' },
+        emerald: { ring: 'border-l-emerald-500', chip: 'bg-emerald-50 text-emerald-600', text: 'text-slate-900' },
+        rose:    { ring: 'border-l-rose-500',    chip: 'bg-rose-50 text-rose-600',       text: 'text-slate-900' },
+        amber:   { ring: 'border-l-amber-500',   chip: 'bg-amber-50 text-amber-600',     text: 'text-slate-900' },
+    };
+    const t = tones[tone];
+    return (
+        <div className={cn('flex items-center justify-between gap-3 p-3 bg-white rounded-lg border border-l-4 border-slate-200', t.ring)}>
+            <div className="flex items-center gap-2 min-w-0">
+                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center shrink-0', t.chip)}>
+                    {icon}
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight">
+                    {label}
+                </span>
+            </div>
+            <span className={cn('text-lg font-bold tabular-nums', t.text)}>{value.toLocaleString()}</span>
         </div>
     );
 }

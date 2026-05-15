@@ -7,7 +7,8 @@ import {
   X, UploadCloud, FileDown, FileKey, FileCheck, AlertOctagon,
   Search, Calendar, CalendarClock,
   ArrowUp, ArrowDown, ArrowUpDown, ArrowLeft,
-  User, Activity
+  User, Activity,
+  LayoutDashboard, History,
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
@@ -32,6 +33,7 @@ import { getInventoryByAssetId, getVendorById, VENDOR_CATEGORIES, getCategoryLab
 import { Boxes } from 'lucide-react';
 import { getSafetyEventsForAsset } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
+import { computeAssetScorecards, type AssetScorecard } from '@/pages/safety-analysis/fleet-safety-score.data';
 
 // Banner shown above the Schedule / Work Order forms when launched from an
 // asset detail page — makes the pre-selected vehicle visually unmistakable so
@@ -264,14 +266,209 @@ const MetadataItem = ({ label, value, sub, warning, copyable }: { label: string;
   );
 };
 
+// ── Asset Safety Analysis panel ──────────────────────────────────────────
+// Mirrors the per-asset breakdown surfaced in the Beta Safety Analysis page
+// (large overall ring + 6 sub-score rings + counts strip + component bar).
+// Embedded into the Overview tab so the asset profile page becomes the single
+// source of truth for the same numbers.
+
+function AssetRing({
+    label, score, size = 'small', palette = 'auto', subtitle,
+}: {
+    label: string;
+    score: number;
+    size?: 'large' | 'small';
+    palette?: 'auto' | 'blue' | 'green';
+    subtitle?: string;
+}) {
+    const clamped = Math.max(0, Math.min(score, 100));
+    const ringSize = size === 'large' ? 'w-32 h-32 lg:w-36 lg:h-36' : 'w-20 h-20';
+    const numberSize = size === 'large' ? 'text-4xl' : 'text-2xl';
+    const colour = palette === 'blue'
+        ? 'text-blue-600'
+        : palette === 'green'
+            ? 'text-emerald-500'
+            : clamped >= 90 ? 'text-emerald-500'
+            : clamped >= 80 ? 'text-blue-600'
+            : clamped >= 70 ? 'text-amber-500'
+            : 'text-red-500';
+    const riskLabel = clamped >= 80 ? 'Low Risk' : clamped >= 70 ? 'Moderate Risk' : 'High Risk';
+    const riskTone  = clamped >= 80 ? 'text-emerald-700' : clamped >= 70 ? 'text-amber-700' : 'text-red-700';
+    return (
+        <div className="w-full flex flex-col items-center text-center">
+            <div className={`text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 leading-tight ${size === 'large' ? '' : 'min-h-[1.75rem] flex items-center justify-center px-1'}`}>
+                {label}
+            </div>
+            <div className={`relative flex items-center justify-center ${ringSize}`}>
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                    <path className="text-slate-200"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none" stroke="currentColor" strokeWidth={size === 'large' ? 3 : 4} />
+                    <path className={colour}
+                          strokeDasharray={`${clamped.toFixed(2)}, 100`}
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          fill="none" stroke="currentColor" strokeWidth={size === 'large' ? 3 : 4} strokeLinecap="round" />
+                </svg>
+                <div className="absolute flex flex-col items-center">
+                    <span className={`${numberSize} font-black text-slate-900 leading-none`}>{Math.round(clamped)}</span>
+                    {size === 'large' && <span className="text-[10px] font-bold text-slate-400">/ 100</span>}
+                </div>
+            </div>
+            <div className={`mt-2 text-[10px] font-bold uppercase tracking-wide ${riskTone}`}>{riskLabel}</div>
+            {subtitle && <div className="mt-0.5 text-[10px] text-slate-500">{subtitle}</div>}
+        </div>
+    );
+}
+
+function AssetSafetyAnalysisSection({
+    accountId, assetId,
+}: {
+    accountId?: string;
+    assetId: string;
+}) {
+    const scorecard: AssetScorecard | null = (() => {
+        try {
+            const all = computeAssetScorecards(accountId);
+            return all.find(a => a.assetId === assetId) ?? null;
+        } catch { return null; }
+    })();
+    if (!scorecard) return null;
+
+    const overallTone = scorecard.overall >= 80 ? 'text-emerald-600' : scorecard.overall >= 70 ? 'text-amber-600' : 'text-red-600';
+
+    // Synthesise a Status sub-score (0-100) using the same logic the Beta
+    // panel uses — active assets sit at 95, anything else at 60.
+    const statusScore = String(scorecard.operationalStatus).toLowerCase() === 'active' ? 95 : 60;
+
+    const components = [
+        { id: 'maintenance', label: 'Maintenance',          score: scorecard.maintenance, weight: 0.25, events: scorecard.counts.overdueWorkOrders },
+        { id: 'inspections', label: 'Roadside inspections', score: scorecard.inspections, weight: 0.20, events: 0 },
+        { id: 'violations',  label: 'Violations',           score: scorecard.violations,  weight: 0.20, events: scorecard.counts.violations },
+        { id: 'accidents',   label: 'Incidents',            score: scorecard.accidents,   weight: 0.20, events: scorecard.counts.accidents },
+        { id: 'vedr',        label: 'Telematics / VEDR',    score: scorecard.vedr,        weight: 0.10, events: 0 },
+        { id: 'status',      label: 'Status / readiness',   score: statusScore,           weight: 0.05, events: 0 },
+    ];
+    const colorFor = (s: number) =>
+        s >= 90 ? { bar: 'bg-emerald-500', track: 'bg-emerald-100', txt: 'text-emerald-700' }
+      : s >= 70 ? { bar: 'bg-lime-500',    track: 'bg-lime-100',    txt: 'text-lime-700' }
+      : s >= 55 ? { bar: 'bg-orange-500',  track: 'bg-orange-100',  txt: 'text-orange-700' }
+      :           { bar: 'bg-red-500',     track: 'bg-red-100',     txt: 'text-red-700' };
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-start justify-between gap-3 bg-gradient-to-b from-blue-50/40 to-white">
+                <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Asset Safety Analysis</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                        Composite score and per-domain breakdown · same data shown in Safety Analysis &rsaquo; Asset.
+                    </div>
+                </div>
+                <div className={`text-[12px] font-bold tabular-nums ${scorecard.delta30d >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {scorecard.delta30d >= 0 ? '+' : ''}{scorecard.delta30d.toFixed(2)}
+                    <span className="ml-1 text-[9px] font-semibold text-slate-400 uppercase tracking-wider">vs prior 30d</span>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-5 px-5 py-5">
+                {/* Big overall ring */}
+                <div className="flex flex-col items-center justify-center">
+                    <AssetRing
+                        size="large"
+                        label="Asset Safety Score"
+                        score={scorecard.overall}
+                        palette={scorecard.band === 'Excellent' || scorecard.band === 'Good' ? 'blue' : 'auto'}
+                        subtitle={`${scorecard.overall.toFixed(1)} / 100`}
+                    />
+                    <div className={`mt-2 text-xs font-bold ${overallTone}`}>{scorecard.band}</div>
+                </div>
+
+                {/* 6 sub-score rings */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 self-start">
+                    {[
+                        { label: 'Maintenance', value: scorecard.maintenance, sub: `${scorecard.counts.overdueWorkOrders}/${scorecard.counts.totalWorkOrders} overdue` },
+                        { label: 'Inspections', value: scorecard.inspections, sub: 'roadside outcome' },
+                        { label: 'Violations',  value: scorecard.violations,  sub: `${scorecard.counts.violations} - ${scorecard.counts.oos} OOS` },
+                        { label: 'Accidents',   value: scorecard.accidents,   sub: `${scorecard.counts.accidents} on record` },
+                        { label: 'VEDR',        value: scorecard.vedr,        sub: 'telematics' },
+                        { label: 'Status',      value: statusScore,           sub: scorecard.operationalStatus },
+                    ].map(c => (
+                        <div key={c.label} className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col items-center text-center">
+                            <AssetRing label={c.label} score={c.value} palette="green" />
+                            <div className="text-[10px] text-slate-500 mt-1">{c.sub}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* KPI counts strip */}
+            <div className="px-5 pb-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                    { value: scorecard.counts.accidents,              label: 'Accidents',     bad: scorecard.counts.accidents              > 0 },
+                    { value: scorecard.counts.violations,             label: 'Violations',    bad: scorecard.counts.violations             > 0 },
+                    { value: scorecard.counts.oos,                    label: 'OOS',           bad: scorecard.counts.oos                    > 0 },
+                    { value: scorecard.counts.vehicleMaintViolations, label: 'Veh Maint Viol',bad: scorecard.counts.vehicleMaintViolations > 0 },
+                    { value: `${scorecard.counts.overdueWorkOrders}/${scorecard.counts.totalWorkOrders}`, label: 'Overdue WO', bad: scorecard.counts.overdueWorkOrders > 0 },
+                ].map(k => (
+                    <div key={k.label} className="bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+                        <div className={`text-xl font-black tabular-nums leading-none ${k.bad ? 'text-amber-600' : 'text-slate-900'}`}>{k.value}</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{k.label}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Component breakdown bar */}
+            <div className="px-5 pb-5">
+                <div className="bg-white border border-slate-200 rounded-lg p-4">
+                    <div className="mb-3">
+                        <h4 className="text-sm font-bold text-slate-900">Component breakdown</h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Weighted contribution of each domain to the composite score.</p>
+                    </div>
+                    {/* Stacked weight bar */}
+                    <div className="flex h-3 rounded-full overflow-hidden bg-slate-100 mb-4">
+                        {components.map(c => {
+                            const tone = colorFor(c.score);
+                            return (
+                                <div
+                                    key={c.id}
+                                    className={`h-full ${tone.bar}`}
+                                    style={{ width: `${c.weight * 100}%` }}
+                                    title={`${c.label} · weight ×${c.weight.toFixed(2)} · score ${c.score.toFixed(0)}`}
+                                />
+                            );
+                        })}
+                    </div>
+                    {/* Per-row breakdown */}
+                    <div className="space-y-1.5">
+                        {components.map(c => {
+                            const tone = colorFor(c.score);
+                            return (
+                                <div key={c.id} className="grid items-center gap-2" style={{ gridTemplateColumns: '160px minmax(0,1fr) 52px 44px 44px' }}>
+                                    <span className="text-[11px] font-semibold text-slate-700 truncate">{c.label}</span>
+                                    <div className={`h-2 rounded-full overflow-hidden ${tone.track}`}>
+                                        <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${c.score}%` }} />
+                                    </div>
+                                    <span className={`text-[11px] font-bold tabular-nums text-right ${tone.txt}`}>{c.score.toFixed(1)}</span>
+                                    <span className="text-[10px] font-mono text-slate-400 text-right">×{c.weight.toFixed(2)}</span>
+                                    <span className="text-[10px] text-slate-500 tabular-nums text-right">{c.events} ev</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 interface AssetDetailViewProps {
     asset: DetailedAsset;
     onBack: () => void;
     onEdit: () => void;
+    accountId?: string;
 }
 
-export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps) {
-  const [activeTab, setActiveTab] = useState('Compliance Monitoring');
+export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetailViewProps) {
+  const [activeTab, setActiveTab] = useState('Overview');
   
   const inventoryRecords = useMemo(() => getInventoryByAssetId(asset.id), [asset.id]);
 
@@ -293,6 +490,8 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
     alert?: boolean;
     icon: React.ComponentType<{ size?: number; className?: string }>;
   }> = [
+    // 0. At-a-glance summary
+    { name: 'Overview',              count: 0,                              group: 'identity',   icon: LayoutDashboard },
     // 1. Compliance & Documents
     { name: 'Compliance Monitoring', count: 0,                              group: 'compliance', icon: ShieldCheck },
     { name: 'Documents',             count: 0,                              group: 'compliance', icon: FileText },
@@ -1485,6 +1684,353 @@ export function AssetDetailView({ asset, onBack, onEdit }: AssetDetailViewProps)
         {/* Tab content — slate-50 page background visible around the content,
             same outer padding as MyProfilePage. */}
         <div className="px-8 py-8">
+            {/* ── Overview tab — at-a-glance health card for this asset ─── */}
+            {activeTab === 'Overview' && (() => {
+                // Pull asset-scoped slices once. Same filters the Inspections /
+                // Violations / Accidents tabs use further down so the numbers
+                // tally exactly with the badged counts.
+                const aInspections = inspectionsData.filter((ins: any) =>
+                    ins.assetId === currentVehicle.id
+                    || ins.vehiclePlate === currentVehicle.plateNumber
+                    || ins.units?.some((u: any) => u.vin === currentVehicle.vin));
+                const aViolations = MOCK_ASSET_VIOLATION_RECORDS.filter((v: any) =>
+                    v.assetId === currentVehicle.id
+                    || v.assetName === currentVehicle.unitNumber
+                    || v.assetName === currentVehicle.plateNumber);
+                const aIncidents = INCIDENTS.filter((inc: any) =>
+                    inc.vehicleId === currentVehicle.id
+                    || inc.unitNumber === currentVehicle.unitNumber);
+                const insOos = aInspections.filter((i: any) => i.hasOOS).length;
+                const insClean = aInspections.filter((i: any) => i.isClean).length;
+                const violOpen = aViolations.filter((v: any) => v.status === 'Open').length;
+                const violOos = aViolations.filter((v: any) => v.isOos).length;
+                const incPreventable = aIncidents.filter((i: any) => i.preventability?.value === 'preventable').length;
+
+                // Composite asset safety score. Mirrors the driver Overview
+                // formula — starts at 100, penalised by open / OOS / preventable.
+                const safetyScore = Math.max(0, 100
+                    - violOpen * 8
+                    - insOos * 5
+                    - violOos * 6
+                    - incPreventable * 10
+                    - aIncidents.length * 4);
+                const safetyTone = safetyScore >= 85 ? 'emerald' : safetyScore >= 65 ? 'amber' : 'red';
+                const safetyBorderCls = safetyTone === 'emerald' ? 'border-l-emerald-600'
+                                      : safetyTone === 'amber'   ? 'border-l-amber-500'
+                                      :                            'border-l-red-600';
+                const safetyIconCls = safetyTone === 'emerald' ? 'bg-emerald-50 text-emerald-600'
+                                    : safetyTone === 'amber'   ? 'bg-amber-50 text-amber-600'
+                                    :                            'bg-red-50 text-red-600';
+                const safetyValueCls = safetyTone === 'emerald' ? 'text-emerald-600'
+                                     : safetyTone === 'amber'   ? 'text-amber-600'
+                                     :                            'text-red-600';
+
+                // Asset age (from year)
+                const assetYear = typeof currentVehicle.year === 'number' ? currentVehicle.year : Number(currentVehicle.year);
+                const ageYrs = Number.isFinite(assetYear) ? Math.max(0, new Date().getFullYear() - assetYear) : null;
+
+                // Maintenance roll-ups from the existing assetTasks / assetOrders.
+                const overdueTasks = assetTasks.filter((t: any) => t.status === 'overdue').length;
+                const dueTasks = assetTasks.filter((t: any) => t.status === 'due').length;
+                const upcomingTasks = assetTasks.filter((t: any) => t.status === 'upcoming' || t.status === 'in_progress').length;
+                const openOrders = assetOrders.filter((o: any) => o.status === 'open').length;
+                const completedOrders = assetOrders.filter((o: any) => o.status === 'completed').length;
+                const recentOrderCost = assetOrders
+                    .filter((o: any) => o.status === 'completed' && o.totalCost)
+                    .reduce((s: number, o: any) => s + (Number(o.totalCost) || 0), 0);
+
+                // Recent activity feed — combined inspections / violations /
+                // incidents, sorted by date, capped at 6.
+                type ActivityItem = { kind: 'inspection' | 'violation' | 'incident' | 'maintenance'; date: string; title: string; subtitle?: string; tone: string };
+                const activity: ActivityItem[] = [];
+                for (const i of aInspections as any[]) {
+                    const stateLabel = typeof i.state === 'string' ? i.state : (i.state?.raw ?? '');
+                    activity.push({
+                        kind: 'inspection',
+                        date: i.date,
+                        title: i.isClean ? 'Clean inspection' : `Inspection — ${(i.violations?.length || 0)} violation${(i.violations?.length || 0) === 1 ? '' : 's'}`,
+                        subtitle: i.location ?? stateLabel,
+                        tone: i.isClean ? 'emerald' : (i.hasOOS ? 'red' : 'amber'),
+                    });
+                }
+                for (const v of aViolations as any[]) {
+                    activity.push({
+                        kind: 'violation',
+                        date: v.date,
+                        title: v.violationType ?? 'Violation',
+                        subtitle: `${v.result ?? ''}${v.fineAmount ? ` · $${v.fineAmount}` : ''}`,
+                        tone: v.isOos ? 'red' : 'amber',
+                    });
+                }
+                for (const inc of aIncidents as any[]) {
+                    activity.push({
+                        kind: 'incident',
+                        date: inc.occurredAt ?? inc.occurredDate ?? '',
+                        title: 'Incident reported',
+                        subtitle: inc.cause?.primaryCause ?? inc.severity ?? '',
+                        tone: 'red',
+                    });
+                }
+                for (const o of assetOrders.filter((x: any) => x.status === 'completed') as any[]) {
+                    activity.push({
+                        kind: 'maintenance',
+                        date: o.completedAt ?? o.scheduledAt ?? '',
+                        title: o.serviceName ?? o.taskName ?? 'Service completed',
+                        subtitle: o.totalCost ? `$${Number(o.totalCost).toLocaleString()}` : '',
+                        tone: 'emerald',
+                    });
+                }
+                activity.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                const recentActivity = activity.filter(a => a.date).slice(0, 6);
+
+                const activityIcon = (k: ActivityItem['kind']) => {
+                    if (k === 'inspection') return FileCheck;
+                    if (k === 'violation') return AlertTriangle;
+                    if (k === 'incident') return AlertOctagon;
+                    return Wrench;
+                };
+                const toneIconCls = (tone: string) => tone === 'emerald'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : tone === 'red'
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-amber-50 text-amber-600';
+
+                const totalAlerts = assetAlerts.length;
+
+                return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {/* Asset Safety Analysis — same breakdown surfaced in
+                            Safety Analysis > Asset. Renders nothing if the asset
+                            isn't in the carrier scorecard list. */}
+                        <AssetSafetyAnalysisSection
+                            accountId={accountId}
+                            assetId={currentVehicle.id}
+                        />
+
+                        {/* ── KPI row — single source of truth for the asset's health ── */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Inspections')}
+                                className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-slate-200 shadow-sm transition-all hover:shadow text-left ${safetyBorderCls}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${safetyIconCls}`}>
+                                        <ShieldCheck className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Safety<br />Score</span>
+                                </div>
+                                <div className={`text-lg font-bold ${safetyValueCls}`}>{safetyScore}</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Inspections')}
+                                className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-blue-600 border-slate-200 shadow-sm transition-all hover:shadow text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                                        <FileCheck className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Inspections<br /><span className="text-emerald-600">{insClean} clean</span> / {insOos} OOS</span>
+                                </div>
+                                <div className="text-lg font-bold text-slate-900">{aInspections.length}</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Violations')}
+                                className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-red-600 border-slate-200 shadow-sm transition-all hover:shadow text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center flex-shrink-0">
+                                        <AlertTriangle className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Violations<br />{violOpen} open / {violOos} OOS</span>
+                                </div>
+                                <div className="text-lg font-bold text-slate-900">{aViolations.length}</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('Accidents')}
+                                className="flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 border-l-amber-600 border-slate-200 shadow-sm transition-all hover:shadow text-left"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                                        <AlertOctagon className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight text-left">Incidents<br />{incPreventable} preventable</span>
+                                </div>
+                                <div className="text-lg font-bold text-slate-900">{aIncidents.length}</div>
+                            </button>
+                        </div>
+
+                        {/* ── Two-column body: Maintenance summary + Recent activity ── */}
+                        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-5">
+                            {/* Maintenance summary */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/60">
+                                    <div className="flex items-center gap-2">
+                                        <Wrench size={14} className="text-slate-500" />
+                                        <span className="text-sm font-bold text-slate-900">Maintenance</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('Maintenance')}
+                                        className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                        Open →
+                                    </button>
+                                </div>
+                                <div className="p-4 space-y-3">
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div className="bg-rose-50 border border-rose-200 rounded-md py-2 px-1">
+                                            <div className="text-xl font-black text-rose-700 tabular-nums leading-none">{overdueTasks}</div>
+                                            <div className="text-[9px] font-bold text-rose-600 uppercase tracking-wider mt-1">Overdue</div>
+                                        </div>
+                                        <div className="bg-amber-50 border border-amber-200 rounded-md py-2 px-1">
+                                            <div className="text-xl font-black text-amber-700 tabular-nums leading-none">{dueTasks}</div>
+                                            <div className="text-[9px] font-bold text-amber-600 uppercase tracking-wider mt-1">Due</div>
+                                        </div>
+                                        <div className="bg-blue-50 border border-blue-200 rounded-md py-2 px-1">
+                                            <div className="text-xl font-black text-blue-700 tabular-nums leading-none">{upcomingTasks}</div>
+                                            <div className="text-[9px] font-bold text-blue-600 uppercase tracking-wider mt-1">Upcoming</div>
+                                        </div>
+                                    </div>
+                                    <div className="border-t border-slate-100 pt-3 space-y-2">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-500">Open work orders</span>
+                                            <span className="font-bold text-slate-900 tabular-nums">{openOrders}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-500">Completed orders</span>
+                                            <span className="font-bold text-slate-900 tabular-nums">{completedOrders}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-slate-500">Total service cost</span>
+                                            <span className="font-bold text-slate-900 tabular-nums">${recentOrderCost.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Recent activity */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/60">
+                                    <div className="flex items-center gap-2">
+                                        <History size={14} className="text-slate-500" />
+                                        <span className="text-sm font-bold text-slate-900">Recent activity</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                        Last {recentActivity.length} events
+                                    </span>
+                                </div>
+                                {recentActivity.length === 0 ? (
+                                    <div className="px-4 py-12 text-center text-xs text-slate-400">
+                                        No events recorded for this asset.
+                                    </div>
+                                ) : (
+                                    <ul className="divide-y divide-slate-100">
+                                        {recentActivity.map((a, idx) => {
+                                            const Icon = activityIcon(a.kind);
+                                            return (
+                                                <li key={`${a.kind}-${idx}-${a.date}`} className="px-4 py-2.5 flex items-start gap-3">
+                                                    <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${toneIconCls(a.tone)}`}>
+                                                        <Icon className="w-3.5 h-3.5" />
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-[12px] font-bold text-slate-900 truncate">{a.title}</div>
+                                                        {a.subtitle && (
+                                                            <div className="text-[10px] text-slate-500 truncate">{a.subtitle}</div>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] font-mono text-slate-400 shrink-0 whitespace-nowrap">
+                                                        {a.date ? new Date(a.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                                    </span>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── Specs + Alerts row ─────────────────────────────── */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                            {/* Specs */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2 bg-slate-50/60">
+                                    <Truck size={14} className="text-slate-500" />
+                                    <span className="text-sm font-bold text-slate-900">Asset specs</span>
+                                </div>
+                                <div className="p-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                                    {[
+                                        { label: 'Unit #',       value: currentVehicle.unitNumber ?? '—' },
+                                        { label: 'Plate',        value: currentVehicle.plateNumber ?? '—' },
+                                        { label: 'VIN',          value: currentVehicle.vin ?? '—' },
+                                        { label: 'Make / Model', value: `${currentVehicle.make ?? '—'} ${currentVehicle.model ?? ''}`.trim() || '—' },
+                                        { label: 'Year',         value: currentVehicle.year ? `${currentVehicle.year}${ageYrs != null ? ` · ${ageYrs} yr${ageYrs === 1 ? '' : 's'}` : ''}` : '—' },
+                                        { label: 'Odometer',     value: currentVehicle.odometer != null ? `${Number(currentVehicle.odometer).toLocaleString()} mi` : '—' },
+                                        { label: 'Status',       value: currentVehicle.operationalStatus ?? '—' },
+                                        { label: 'Ownership',    value: currentVehicle.financialStructure ?? '—' },
+                                    ].map(s => (
+                                        <div key={s.label}>
+                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{s.label}</div>
+                                            <div className="text-[12px] font-semibold text-slate-900 mt-0.5 truncate">{String(s.value)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Alerts */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/60">
+                                    <div className="flex items-center gap-2">
+                                        <AlertCircle size={14} className="text-slate-500" />
+                                        <span className="text-sm font-bold text-slate-900">Alerts</span>
+                                    </div>
+                                    {totalAlerts > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveTab('Notifications')}
+                                            className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 transition-colors"
+                                        >
+                                            See all →
+                                        </button>
+                                    )}
+                                </div>
+                                {totalAlerts === 0 ? (
+                                    <div className="px-4 py-10 text-center text-xs text-slate-400">
+                                        Nothing requires attention right now.
+                                    </div>
+                                ) : (
+                                    <ul className="divide-y divide-slate-100">
+                                        {assetAlerts.slice(0, 5).map((a, idx) => {
+                                            const sevTone = a.severity === 'high' ? 'bg-rose-50 text-rose-600'
+                                                          : a.severity === 'medium' ? 'bg-amber-50 text-amber-600'
+                                                          :                            'bg-slate-50 text-slate-500';
+                                            return (
+                                                <li key={idx} className="px-4 py-2.5 flex items-start gap-3 hover:bg-slate-50 cursor-pointer"
+                                                    onClick={() => setActiveTab(a.tabTarget)}>
+                                                    <span className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${sevTone}`}>
+                                                        <AlertCircle className="w-3.5 h-3.5" />
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-[12px] font-bold text-slate-900 truncate">{a.title}</div>
+                                                        {a.detail && <div className="text-[10px] text-slate-500 truncate">{a.detail}</div>}
+                                                    </div>
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                                                        {a.category}
+                                                    </span>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Compliance Monitoring Content - NOW IN LIST VIEW */}
             {activeTab === 'Compliance Monitoring' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">

@@ -7,7 +7,9 @@ import {
     Calendar, SlidersHorizontal,
     AlertTriangle, FileWarning, ChevronDown, ChevronLeft, ChevronRight, Flag,
     Activity, UserX, Info, Users, Wrench,
+    ArrowLeft, Lightbulb,
 } from "lucide-react";
+import { US_STATE_ABBREVS, CA_PROVINCE_ABBREVS } from "@/data/geo-data";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +33,7 @@ import {
     computeAssetMaintenanceForecasts,
     computeMonthlyTsPoints,
     computeMaintenanceForecast,
+    computeAllRegimeForecasts,
     type FleetSafetyScore,
     type NscBreakdown,
     type TrendPoint,
@@ -40,11 +43,13 @@ import {
     type AssetScorecard,
     type CarrierForecast,
     type MonthlyTsPoint,
+    type RegimeForecast,
 } from "./fleet-safety-score.data";
 import { getAccidentsForCarrier } from "@/pages/incidents/carrier-accidents.data";
 import { getViolationsForCarrier } from "@/pages/violations/carrier-violations.data";
 import { getHosForCarrier } from "@/pages/hos/carrier-hos.data";
 import { ACCOUNTS_DB } from "@/pages/accounts/accounts.data";
+import { CARRIER_ASSETS as CARRIER_ASSETS_DB } from "@/pages/accounts/carrier-assets.data";
 import { NorthAmericaMap } from "./NorthAmericaMap";
 import type { JurisdictionStats } from "./risk-geo";
 import { cn } from "@/lib/utils";
@@ -131,6 +136,11 @@ export function BetaSafetyAnalysisPage({ accountId, onNavigate }: BetaSafetyAnal
         <div className="min-h-screen bg-slate-50">
             {/* Header */}
             <div className="bg-white border-b border-slate-200 px-8 py-5">
+                <nav className="flex items-center gap-2 mb-2 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
+                    <span>Safety</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="text-slate-900">Safety Analysis (Beta)</span>
+                </nav>
                 <div className="flex items-center gap-3 flex-wrap">
                     <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white flex items-center justify-center shadow-sm">
                         <FlaskConical size={20} />
@@ -520,6 +530,9 @@ function DriversAnalysisView({ accountId, onNavigate }: { accountId?: string; on
                     {/* Driver distribution histogram (full carrier — unfiltered) */}
                     <DriverDistributionPanel drivers={drivers} />
 
+                    {/* High / Moderate / Lower risk violations grouped by driver */}
+                    <DriverRiskViolationsPanel accountId={accountId} />
+
                     {/* Filter bar */}
                     <div className="mb-5 px-4 py-3 bg-slate-50/60 border border-slate-200 rounded-lg flex items-center gap-3 flex-wrap">
                         <div className="relative w-full sm:w-80 shrink-0">
@@ -609,6 +622,245 @@ function BandChip({ active, label, count, onClick, tone }: { active: boolean; la
                 {count}
             </span>
         </button>
+    );
+}
+
+// ── Driver risk-violation breakdown panel ───────────────────────────────
+// Splits the carrier's violation ledger into High / Moderate / Lower risk
+// buckets per driver. Risk = `driverRiskCategory` already stamped on each
+// violation row (1 = High, 2 = Moderate, 3 = Lower). The user can pick a
+// bucket on the left and see the driver list (most-affected first) plus
+// every individual violation row on the right.
+function DriverRiskViolationsPanel({ accountId }: { accountId?: string }) {
+    const id = accountId ?? 'acct-001';
+    const all = useMemo(() => getViolationsForCarrier(id), [id]);
+
+    type Risk = 'all' | 'high' | 'moderate' | 'lower';
+    const [risk, setRisk] = useState<Risk>('high');
+    const [search, setSearch] = useState('');
+    const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
+
+    const counts = useMemo(() => {
+        let high = 0, mod = 0, low = 0;
+        for (const v of all) {
+            const r = v?.driverRiskCategory ?? 3;
+            if (r === 1) high += 1;
+            else if (r === 2) mod += 1;
+            else low += 1;
+        }
+        return { high, moderate: mod, lower: low, all: all.length };
+    }, [all]);
+
+    const filteredByRisk = useMemo(() => {
+        if (risk === 'all') return all;
+        const target = risk === 'high' ? 1 : risk === 'moderate' ? 2 : 3;
+        return all.filter(v => (v?.driverRiskCategory ?? 3) === target);
+    }, [all, risk]);
+
+    // Aggregate by driver — sorted by violation count descending.
+    const byDriver = useMemo(() => {
+        const map = new Map<string, { driverId: string; driverName: string; count: number; oos: number; mostRecent: string; rows: any[] }>();
+        for (const v of filteredByRisk) {
+            const did = v?.driverId ?? v?.driverName ?? '—';
+            const name = v?.driverName ?? v?.driverId ?? '—';
+            let entry = map.get(did);
+            if (!entry) {
+                entry = { driverId: did, driverName: name, count: 0, oos: 0, mostRecent: '', rows: [] };
+                map.set(did, entry);
+            }
+            entry.count += 1;
+            if (v?.isOos) entry.oos += 1;
+            const d = String(v?.date ?? '');
+            if (d > entry.mostRecent) entry.mostRecent = d;
+            entry.rows.push(v);
+        }
+        const rows = Array.from(map.values()).sort((a, b) => b.count - a.count || b.oos - a.oos);
+        const q = search.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(r => r.driverName.toLowerCase().includes(q) || r.driverId.toLowerCase().includes(q));
+    }, [filteredByRisk, search]);
+
+    // Auto-select the top driver when the active bucket changes.
+    useEffect(() => {
+        if (byDriver.length === 0) { setSelectedDriver(null); return; }
+        if (!selectedDriver || !byDriver.find(d => d.driverId === selectedDriver)) {
+            setSelectedDriver(byDriver[0].driverId);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [risk, byDriver.length]);
+
+    const selectedRows = useMemo(() => {
+        const sel = byDriver.find(d => d.driverId === selectedDriver);
+        return sel ? [...sel.rows].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''))) : [];
+    }, [byDriver, selectedDriver]);
+
+    const riskTones: Record<Exclude<Risk, 'all'>, { active: string; idle: string; pill: string; bar: string; text: string }> = {
+        high:     { active: 'bg-rose-600 text-white border-rose-600',     idle: 'border-slate-200 text-slate-600 hover:bg-slate-50', pill: 'bg-rose-100 text-rose-700',       bar: 'bg-rose-500',     text: 'text-rose-700' },
+        moderate: { active: 'bg-amber-600 text-white border-amber-600',   idle: 'border-slate-200 text-slate-600 hover:bg-slate-50', pill: 'bg-amber-100 text-amber-700',     bar: 'bg-amber-500',    text: 'text-amber-700' },
+        lower:    { active: 'bg-emerald-600 text-white border-emerald-600', idle: 'border-slate-200 text-slate-600 hover:bg-slate-50', pill: 'bg-emerald-100 text-emerald-700', bar: 'bg-emerald-500',  text: 'text-emerald-700' },
+    };
+    const activeTone = risk === 'all' ? riskTones.high : riskTones[risk];
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-5">
+            <div className="px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                    <h3 className="text-sm font-bold text-slate-900">Violations by driver risk</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                        Carrier violations bucketed by driver-risk category — click a bucket to drill in.
+                    </p>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                    {([
+                        { id: 'high',     label: 'High Risk',     count: counts.high,     tone: riskTones.high },
+                        { id: 'moderate', label: 'Moderate Risk', count: counts.moderate, tone: riskTones.moderate },
+                        { id: 'lower',    label: 'Lower Risk',    count: counts.lower,    tone: riskTones.lower },
+                    ] as const).map(b => {
+                        const active = risk === b.id;
+                        return (
+                            <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => setRisk(b.id)}
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-[11px] font-bold border transition-colors',
+                                    active ? b.tone.active : b.tone.idle,
+                                )}
+                            >
+                                <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-white/80' : b.tone.bar)} />
+                                {b.label}
+                                <span className={cn('inline-flex items-center justify-center min-w-[18px] h-4 rounded-full px-1 text-[9px] font-bold',
+                                    active ? 'bg-white/20 text-white' : b.tone.pill)}>{b.count}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+                {/* Driver list (left) */}
+                <div className="border-b lg:border-b-0 lg:border-r border-slate-100 flex flex-col" style={{ maxHeight: 460 }}>
+                    <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2 shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Drivers · {byDriver.length}
+                        </span>
+                        <div className="relative w-44">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Search driver…"
+                                className="w-full h-6 pl-6 pr-2 text-[10px] border border-slate-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                            />
+                        </div>
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                        {byDriver.length === 0 ? (
+                            <div className="px-5 py-10 text-center text-xs text-slate-400">
+                                No {risk === 'all' ? '' : risk + '-risk '}violations on record.
+                            </div>
+                        ) : byDriver.map((d, i) => {
+                            const isActive = selectedDriver === d.driverId;
+                            const max = byDriver[0]?.count ?? 1;
+                            const pct = max > 0 ? (d.count / max) * 100 : 0;
+                            return (
+                                <button
+                                    key={d.driverId + i}
+                                    type="button"
+                                    onClick={() => setSelectedDriver(d.driverId)}
+                                    className={cn(
+                                        'w-full text-left px-4 py-2.5 flex items-center gap-3 border-b border-slate-50 transition-colors',
+                                        isActive ? 'bg-blue-50/70' : 'hover:bg-slate-50',
+                                    )}
+                                >
+                                    <div className={cn('text-[10px] font-bold tabular-nums w-5 shrink-0',
+                                        isActive ? 'text-blue-600' : 'text-slate-400')}>#{i + 1}</div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn('text-[12px] font-bold truncate', isActive ? 'text-blue-700' : 'text-slate-900')}>
+                                                {d.driverName}
+                                            </span>
+                                            {d.oos > 0 && (
+                                                <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 tabular-nums">
+                                                    {d.oos} OOS
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                            <div className={cn('h-full rounded-full', activeTone.bar)} style={{ width: `${Math.min(100, pct)}%` }} />
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-slate-500 truncate">
+                                            Last · {d.mostRecent ? d.mostRecent.slice(0, 10) : '—'}
+                                        </div>
+                                    </div>
+                                    <div className={cn('text-base font-black tabular-nums shrink-0', isActive ? 'text-blue-700' : 'text-slate-900')}>
+                                        {d.count}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Violation rows for the selected driver (right) */}
+                <div className="flex flex-col" style={{ maxHeight: 460 }}>
+                    <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2 shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            {selectedDriver
+                                ? `Violations · ${byDriver.find(d => d.driverId === selectedDriver)?.driverName ?? selectedDriver}`
+                                : 'Violations'}
+                        </span>
+                        <span className={cn('inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider', activeTone.pill)}>
+                            {risk === 'all' ? 'All buckets' : `${risk} risk`}
+                        </span>
+                    </div>
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                        {selectedRows.length === 0 ? (
+                            <div className="px-5 py-10 text-center text-xs text-slate-400">
+                                Pick a driver on the left to see their violations.
+                            </div>
+                        ) : selectedRows.map((v, i) => (
+                            <div key={(v.id ?? `${v.violationCode ?? v.violationGroup ?? 'v'}-${i}`)} className="px-4 py-2.5 hover:bg-slate-50">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[11px] font-bold text-slate-900 truncate">
+                                                {v.violationType ?? v.violationGroup ?? 'Violation'}
+                                            </span>
+                                            {v.violationCode && (
+                                                <code className="text-[9px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                                                    {v.violationCode}
+                                                </code>
+                                            )}
+                                            {v.isOos && (
+                                                <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">OOS</span>
+                                            )}
+                                            {v.status && (
+                                                <span className="text-[9px] font-semibold text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">{v.status}</span>
+                                            )}
+                                        </div>
+                                        <div className="mt-0.5 text-[10px] text-slate-500 truncate">
+                                            {v.violationGroup ?? 'Other'}
+                                            {v.location ? ` · ${v.location}` : ''}
+                                            {v.source ? ` · ${v.source}` : ''}
+                                        </div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <div className="text-[10px] font-mono text-slate-500">{v.date ?? '—'}</div>
+                                        {(v.fineAmount ?? 0) > 0 && (
+                                            <div className="text-[10px] font-bold text-slate-700 tabular-nums">
+                                                ${Number(v.fineAmount).toLocaleString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -1155,6 +1407,9 @@ function AssetsAnalysisView({ accountId, onNavigate }: { accountId?: string; onN
                     {/* Asset distribution histogram (full carrier — unfiltered) */}
                     <AssetDistributionPanel assets={assets} />
 
+                    {/* Maintenance tasks grouped by asset and urgency bucket */}
+                    <AssetMaintenancePanel accountId={accountId} />
+
                     {/* Filter bar */}
                     <div className="mb-5 px-4 py-3 bg-slate-50/60 border border-slate-200 rounded-lg flex items-center gap-3 flex-wrap">
                         <div className="relative w-full sm:w-80 shrink-0">
@@ -1212,6 +1467,289 @@ function AssetsAnalysisView({ accountId, onNavigate }: { accountId?: string; onN
                             onPageChange: setPage,
                             onPageSizeChange: setPageSize,
                         }} />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Asset maintenance breakdown panel ───────────────────────────────────
+// Per-asset list of upcoming + overdue + due maintenance tasks, bucketed by
+// urgency. Backed by the same `computeMaintenanceForecast` used by the
+// Forecast tab so numbers line up exactly. Click an asset on the left to see
+// every task row on the right.
+function AssetMaintenancePanel({ accountId }: { accountId?: string }) {
+    const id = accountId ?? 'acct-001';
+    // 24-month horizon so the panel surfaces every recurring task, not just
+    // the next 12 months that the Forecast tab uses by default.
+    const forecast = useMemo(() => computeMaintenanceForecast(id, 24), [id]);
+
+    type Bucket = 'all' | 'overdue' | 'due' | 'upcoming';
+    const [bucket, setBucket] = useState<Bucket>('overdue');
+    const [search, setSearch] = useState('');
+    const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+
+    const counts = useMemo(() => {
+        let overdue = 0, due = 0, upcoming = 0;
+        for (const r of forecast.rows) {
+            if (r.status === 'overdue') overdue += 1;
+            else if (r.status === 'due') due += 1;
+            else if (r.status === 'upcoming' || r.status === 'in_progress') upcoming += 1;
+        }
+        return { all: forecast.rows.length, overdue, due, upcoming };
+    }, [forecast]);
+
+    const filteredByBucket = useMemo(() => {
+        if (bucket === 'all') return forecast.rows;
+        if (bucket === 'overdue') return forecast.rows.filter(r => r.status === 'overdue');
+        if (bucket === 'due') return forecast.rows.filter(r => r.status === 'due');
+        return forecast.rows.filter(r => r.status === 'upcoming' || r.status === 'in_progress');
+    }, [forecast, bucket]);
+
+    // Pull the per-asset roster so we can show unit numbers / make / model.
+    const assetMeta = useMemo(() => {
+        const list = (CARRIER_ASSETS_DB as Record<string, any[]>)[id] ?? [];
+        const m = new Map<string, { unitNumber: string; make: string; model: string; year: number | string; plate: string }>();
+        for (const a of list) {
+            m.set(a.id, {
+                unitNumber: a.unitNumber ?? a.id,
+                make: a.make ?? '—',
+                model: a.model ?? '—',
+                year: a.year ?? '—',
+                plate: a.plateNumber ?? '—',
+            });
+        }
+        return m;
+    }, [id]);
+
+    const byAsset = useMemo(() => {
+        const map = new Map<string, { assetId: string; meta: { unitNumber: string; make: string; model: string; year: number | string; plate: string }; count: number; overdue: number; due: number; upcoming: number; estCost: number; soonest: string; rows: typeof forecast.rows }>();
+        for (const r of filteredByBucket) {
+            let entry = map.get(r.assetId);
+            if (!entry) {
+                entry = {
+                    assetId: r.assetId,
+                    meta: assetMeta.get(r.assetId) ?? { unitNumber: r.assetId, make: '—', model: '—', year: '—', plate: '—' },
+                    count: 0, overdue: 0, due: 0, upcoming: 0, estCost: 0, soonest: '',
+                    rows: [],
+                };
+                map.set(r.assetId, entry);
+            }
+            entry.count += 1;
+            if (r.status === 'overdue') entry.overdue += 1;
+            else if (r.status === 'due') entry.due += 1;
+            else if (r.status === 'upcoming' || r.status === 'in_progress') entry.upcoming += 1;
+            entry.estCost += r.estCost || 0;
+            if (!entry.soonest || r.predictedDue < entry.soonest) entry.soonest = r.predictedDue;
+            entry.rows.push(r);
+        }
+        const rows = Array.from(map.values()).sort((a, b) =>
+            b.overdue - a.overdue || b.due - a.due || b.count - a.count
+        );
+        const q = search.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(r =>
+            r.meta.unitNumber.toLowerCase().includes(q)
+            || r.meta.make.toLowerCase().includes(q)
+            || r.meta.model.toLowerCase().includes(q)
+            || r.assetId.toLowerCase().includes(q)
+            || r.meta.plate.toLowerCase().includes(q)
+        );
+    }, [filteredByBucket, assetMeta, search]);
+
+    useEffect(() => {
+        if (byAsset.length === 0) { setSelectedAsset(null); return; }
+        if (!selectedAsset || !byAsset.find(a => a.assetId === selectedAsset)) {
+            setSelectedAsset(byAsset[0].assetId);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bucket, byAsset.length]);
+
+    const selectedRows = useMemo(() => {
+        const sel = byAsset.find(a => a.assetId === selectedAsset);
+        if (!sel) return [];
+        return [...sel.rows].sort((a, b) => a.days - b.days);
+    }, [byAsset, selectedAsset]);
+
+    const bucketTones: Record<Exclude<Bucket, 'all'>, { active: string; idle: string; pill: string; bar: string }> = {
+        overdue:  { active: 'bg-rose-600 text-white border-rose-600',   idle: 'border-slate-200 text-slate-600 hover:bg-slate-50', pill: 'bg-rose-100 text-rose-700',   bar: 'bg-rose-500' },
+        due:      { active: 'bg-amber-600 text-white border-amber-600', idle: 'border-slate-200 text-slate-600 hover:bg-slate-50', pill: 'bg-amber-100 text-amber-700', bar: 'bg-amber-500' },
+        upcoming: { active: 'bg-blue-600 text-white border-blue-600',   idle: 'border-slate-200 text-slate-600 hover:bg-slate-50', pill: 'bg-blue-100 text-blue-700',   bar: 'bg-blue-500' },
+    };
+    const activeTone = bucket === 'all' ? bucketTones.overdue : bucketTones[bucket];
+
+    const statusBadge = (s: typeof forecast.rows[number]['status']) =>
+        s === 'overdue'     ? 'bg-rose-100 text-rose-700 border-rose-200'
+      : s === 'due'         ? 'bg-amber-100 text-amber-700 border-amber-200'
+      : s === 'in_progress' ? 'bg-violet-100 text-violet-700 border-violet-200'
+      : s === 'upcoming'    ? 'bg-blue-100 text-blue-700 border-blue-200'
+      :                       'bg-slate-100 text-slate-600 border-slate-200';
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-5">
+            <div className="px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                    <h3 className="text-sm font-bold text-slate-900">Maintenance by asset</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                        Tasks bucketed by urgency — click a bucket to drill in.
+                    </p>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                    {([
+                        { id: 'overdue',  label: 'Overdue',  count: counts.overdue,  tone: bucketTones.overdue },
+                        { id: 'due',      label: 'Due',      count: counts.due,      tone: bucketTones.due },
+                        { id: 'upcoming', label: 'Upcoming', count: counts.upcoming, tone: bucketTones.upcoming },
+                    ] as const).map(b => {
+                        const active = bucket === b.id;
+                        return (
+                            <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => setBucket(b.id)}
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-[11px] font-bold border transition-colors',
+                                    active ? b.tone.active : b.tone.idle,
+                                )}
+                            >
+                                <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-white/80' : b.tone.bar)} />
+                                {b.label}
+                                <span className={cn('inline-flex items-center justify-center min-w-[18px] h-4 rounded-full px-1 text-[9px] font-bold',
+                                    active ? 'bg-white/20 text-white' : b.tone.pill)}>{b.count}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+                {/* Asset list (left) */}
+                <div className="border-b lg:border-b-0 lg:border-r border-slate-100 flex flex-col" style={{ maxHeight: 460 }}>
+                    <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2 shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Assets · {byAsset.length}
+                        </span>
+                        <div className="relative w-44">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Search unit / plate…"
+                                className="w-full h-6 pl-6 pr-2 text-[10px] border border-slate-200 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                            />
+                        </div>
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                        {byAsset.length === 0 ? (
+                            <div className="px-5 py-10 text-center text-xs text-slate-400">
+                                No {bucket === 'all' ? '' : bucket + ' '}maintenance tasks.
+                            </div>
+                        ) : byAsset.map((a, i) => {
+                            const isActive = selectedAsset === a.assetId;
+                            const max = byAsset[0]?.count ?? 1;
+                            const pct = max > 0 ? (a.count / max) * 100 : 0;
+                            return (
+                                <button
+                                    key={a.assetId}
+                                    type="button"
+                                    onClick={() => setSelectedAsset(a.assetId)}
+                                    className={cn(
+                                        'w-full text-left px-4 py-2.5 flex items-center gap-3 border-b border-slate-50 transition-colors',
+                                        isActive ? 'bg-blue-50/70' : 'hover:bg-slate-50',
+                                    )}
+                                >
+                                    <div className={cn('text-[10px] font-bold tabular-nums w-5 shrink-0',
+                                        isActive ? 'text-blue-600' : 'text-slate-400')}>#{i + 1}</div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn('text-[12px] font-bold truncate', isActive ? 'text-blue-700' : 'text-slate-900')}>
+                                                {a.meta.unitNumber}
+                                            </span>
+                                            <span className="text-[10px] font-mono text-slate-500 truncate">
+                                                {a.meta.make} {a.meta.model} {a.meta.year}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                            <div className={cn('h-full rounded-full', activeTone.bar)} style={{ width: `${Math.min(100, pct)}%` }} />
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-slate-500 truncate flex items-center gap-2">
+                                            {a.overdue > 0 && <span className="text-rose-600 font-semibold tabular-nums">{a.overdue} overdue</span>}
+                                            {a.due > 0 && <span className="text-amber-600 font-semibold tabular-nums">{a.due} due</span>}
+                                            {a.upcoming > 0 && <span className="text-blue-600 font-semibold tabular-nums">{a.upcoming} upcoming</span>}
+                                            <span className="text-slate-400 ml-auto tabular-nums">${a.estCost.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                    <div className={cn('text-base font-black tabular-nums shrink-0', isActive ? 'text-blue-700' : 'text-slate-900')}>
+                                        {a.count}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Maintenance rows for the selected asset (right) */}
+                <div className="flex flex-col" style={{ maxHeight: 460 }}>
+                    <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2 shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            {selectedAsset
+                                ? `Tasks · ${byAsset.find(a => a.assetId === selectedAsset)?.meta.unitNumber ?? selectedAsset}`
+                                : 'Tasks'}
+                        </span>
+                        <span className={cn('inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider', activeTone.pill)}>
+                            {bucket === 'all' ? 'All buckets' : bucket}
+                        </span>
+                    </div>
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                        {selectedRows.length === 0 ? (
+                            <div className="px-5 py-10 text-center text-xs text-slate-400">
+                                Pick an asset on the left to see its maintenance tasks.
+                            </div>
+                        ) : selectedRows.map((r) => {
+                            const daysLabel = r.days < 0
+                                ? `${Math.abs(r.days)}d overdue`
+                                : r.days === 0 ? 'Due today'
+                                : `in ${r.days}d`;
+                            return (
+                                <div key={r.taskId} className="px-4 py-2.5 hover:bg-slate-50">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-[11px] font-bold text-slate-900 truncate">
+                                                    {r.serviceLabel}
+                                                </span>
+                                                <span className={cn('inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border', statusBadge(r.status))}>
+                                                    {r.status === 'in_progress' ? 'In progress' : r.status}
+                                                </span>
+                                                <span className="text-[9px] font-semibold text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">
+                                                    {r.category}
+                                                </span>
+                                                {r.confidence !== 'High' && (
+                                                    <span className="text-[9px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+                                                        {r.confidence} conf
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="mt-0.5 text-[10px] text-slate-500 truncate">
+                                                {r.method.replace('-', ' ')} · task <code className="font-mono text-slate-400">{r.taskId}</code>
+                                            </div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <div className={cn('text-[10px] font-bold tabular-nums', r.days < 0 ? 'text-rose-700' : r.days <= 7 ? 'text-amber-700' : 'text-slate-700')}>
+                                                {daysLabel}
+                                            </div>
+                                            <div className="text-[10px] font-mono text-slate-500">{r.predictedDue}</div>
+                                            {r.estCost > 0 && (
+                                                <div className="text-[10px] font-bold text-slate-700 tabular-nums">
+                                                    ${r.estCost.toLocaleString()}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -1951,6 +2489,9 @@ function ForecastAnalysisView({ accountId }: { accountId?: string }) {
                         <RiskForecastChart forecast={forecast} />
                     </div>
 
+                    {/* ── Per-regime forecasts (FMCSA / CVOR / NSC-AB/BC/PE/NS) ── */}
+                    <RegimeForecastsSection accountId={id} horizonMonths={horizonMonths} />
+
                     {/* ── Driver crash + Asset maintenance side by side ── */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         {/* Driver crash probability */}
@@ -2042,8 +2583,567 @@ function ForecastKpi({
     );
 }
 
+/** Track the rendered pixel width of a container so a chart's viewBox can be
+ *  driven by the real width — keeps strokes / text from being stretched by
+ *  preserveAspectRatio="none". */
+function useElementWidth(
+    ref: React.RefObject<HTMLElement | null>,
+    fallback: number,
+): number {
+    const [width, setWidth] = useState(fallback);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const measure = () => setWidth(Math.max(fallback, Math.round(el.clientWidth)));
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [ref, fallback]);
+    return width;
+}
+
+// ── Per-regulatory-regime forecasts ──────────────────────────────────────
+// One card per regime the carrier participates in (FMCSA / CVOR / NSC by
+// province). Each card carries a compact safety-score line chart, three
+// signal KPIs, the projected horizon score with a confidence band, and a
+// recommendation list driven by the underlying counts.
+function RegimeForecastsSection({
+    accountId, horizonMonths,
+}: {
+    accountId: string | undefined;
+    horizonMonths: number;
+}) {
+    const [open, setOpen] = useState(true);
+    const all = useMemo(
+        () => computeAllRegimeForecasts(accountId, horizonMonths, 12),
+        [accountId, horizonMonths],
+    );
+    const applicable = all.filter(r => r.applies);
+
+    if (applicable.length === 0) {
+        return null;
+    }
+
+    // ── Aggregate KPIs across every applicable regime — all derived from
+    // the real per-regime numbers so the strip always agrees with the cards
+    // below it.
+    const totalOos        = applicable.reduce((s, r) => s + r.signals.oos, 0);
+    const totalAccidents  = applicable.reduce((s, r) => s + r.signals.accidents, 0);
+    const totalEvents     = applicable.reduce((s, r) => s + r.signals.events, 0);
+    const totalInsp       = applicable.reduce((s, r) => s + r.signals.inspections, 0);
+    const avgCurrent      = Math.round(applicable.reduce((s, r) => s + r.currentScore, 0) / applicable.length);
+    const avgHorizon      = Math.round(applicable.reduce((s, r) => s + r.horizonScore, 0) / applicable.length);
+    const avgDelta        = avgHorizon - avgCurrent;
+    const degrading       = applicable.filter(r => r.trend === 'Degrading').length;
+    const improving       = applicable.filter(r => r.trend === 'Improving').length;
+    const stable          = applicable.filter(r => r.trend === 'Stable').length;
+    const highRiskRegimes = applicable.filter(r => r.currentScore < 70).length;
+    const highPriorityRecs = applicable.reduce((s, r) => s + r.recommendations.filter(x => x.priority === 'High').length, 0);
+
+    const scoreColor = (s: number) =>
+        s >= 90 ? 'text-emerald-700' :
+        s >= 80 ? 'text-blue-700' :
+        s >= 70 ? 'text-amber-700' :
+                  'text-rose-700';
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            {/* ── Collapsible header ─────────────────────────────────────── */}
+            <button
+                type="button"
+                onClick={() => setOpen(v => !v)}
+                aria-expanded={open}
+                className="w-full text-left flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                title={open ? 'Collapse regulatory regime forecasts' : 'Expand regulatory regime forecasts'}
+            >
+                <div className="h-9 w-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                    <Flag size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold text-slate-900">Regulatory regime forecasts</div>
+                    <div className="text-[11px] text-slate-500 truncate">
+                        Per-regime projection + prescriptive guide for {applicable.length} active regime{applicable.length === 1 ? '' : 's'}.
+                    </div>
+                </div>
+                {/* Quiet summary chips — neutral by default, coloured only when something needs attention */}
+                <div className="hidden sm:flex items-center gap-3 text-[10px] font-bold whitespace-nowrap text-slate-500">
+                    <span title={`${applicable.length} regulatory regimes apply to this carrier`}>
+                        <span className="tabular-nums text-slate-900">{applicable.length}</span> active
+                    </span>
+                    {degrading > 0 && (
+                        <span className="text-rose-600" title="Regimes trending worse">
+                            <span className="tabular-nums">{degrading}</span> degrading
+                        </span>
+                    )}
+                    {totalOos > 0 && (
+                        <span className="text-rose-600" title="Out-of-service findings across all regimes (last 12 mo)">
+                            <span className="tabular-nums">{totalOos}</span> OOS
+                        </span>
+                    )}
+                </div>
+                <ChevronDown
+                    size={16}
+                    className={cn('text-slate-400 shrink-0 transition-transform duration-200', open && 'rotate-180')}
+                />
+            </button>
+
+            {open && (
+                <div className="border-t border-slate-200">
+                    {/* ── Top-of-section KPI cards (live aggregates) ───── */}
+                    <div className="px-5 py-4 border-b border-slate-100 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <RegimeAggKpi
+                            label="Avg current"
+                            value={avgCurrent}
+                            tone={scoreColor(avgCurrent)}
+                            accent="bg-blue-500"
+                            hover={`Mean of the current safety scores across ${applicable.length} active regime${applicable.length === 1 ? '' : 's'}.`}
+                        />
+                        <RegimeAggKpi
+                            label={`Avg @ ${horizonMonths}mo`}
+                            value={avgHorizon}
+                            tone={scoreColor(avgHorizon)}
+                            accent="bg-indigo-500"
+                            badge={`${avgDelta > 0 ? '+' : ''}${avgDelta}`}
+                            badgeTone={avgDelta > 0 ? 'emerald' : avgDelta < 0 ? 'rose' : 'slate'}
+                            hover={`Projected mean score in ${horizonMonths} months across every applicable regime.`}
+                        />
+                        <RegimeAggKpi
+                            label="Degrading"
+                            value={degrading}
+                            tone="text-rose-600"
+                            accent="bg-rose-500"
+                            hover={`Regimes whose monthly trend is currently negative (slope < -0.15 pts/mo).`}
+                            secondary={`${improving} improving · ${stable} stable`}
+                        />
+                        <RegimeAggKpi
+                            label="High-risk"
+                            value={highRiskRegimes}
+                            tone="text-amber-600"
+                            accent="bg-amber-500"
+                            hover={`Regimes whose current score is below 70 (conditional / unsatisfactory band).`}
+                        />
+                        <RegimeAggKpi
+                            label="OOS findings"
+                            value={totalOos}
+                            tone={totalOos > 0 ? 'text-rose-700' : 'text-slate-900'}
+                            accent="bg-rose-500"
+                            secondary={`${totalEvents} events · ${totalInsp} insp`}
+                            hover={`Total out-of-service findings recorded across every applicable regime over the last 12 months.`}
+                        />
+                        <RegimeAggKpi
+                            label="High-priority actions"
+                            value={highPriorityRecs}
+                            tone={highPriorityRecs > 0 ? 'text-rose-700' : 'text-slate-900'}
+                            accent="bg-orange-500"
+                            secondary={`${totalAccidents} accident${totalAccidents === 1 ? '' : 's'} (12mo)`}
+                            hover={`Number of "High" priority recommendations the system surfaces across all regime cards below.`}
+                        />
+                    </div>
+
+                    {/* ── Per-regime cards (one row each, individually collapsible) ── */}
+                    <div className="p-4 space-y-3">
+                        {applicable.map(rf => (
+                            <RegimeForecastCard key={rf.key} forecast={rf} />
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Top-of-section aggregate KPI tile. Mirrors the regime card mini KPIs but
+ *  bigger and with an `accent` strip + hover tooltip. */
+function RegimeAggKpi({
+    label, value, tone, accent, hover, secondary, badge, badgeTone,
+}: {
+    label: string;
+    value: React.ReactNode;
+    tone: string;
+    accent: string;
+    hover: string;
+    secondary?: string;
+    badge?: string;
+    badgeTone?: 'emerald' | 'rose' | 'slate';
+}) {
+    const badgeCls = badgeTone === 'emerald' ? 'bg-emerald-100 text-emerald-700'
+                   : badgeTone === 'rose'    ? 'bg-rose-100 text-rose-700'
+                   :                           'bg-slate-100 text-slate-600';
+    return (
+        <div
+            className="group relative bg-white border border-slate-200 rounded-lg overflow-hidden hover:shadow-sm hover:border-slate-300 transition-all"
+            tabIndex={0}
+            aria-label={`${label}: ${value}. ${hover}`}
+        >
+            <div className={cn('h-0.5 w-full', accent)} />
+            <div className="px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                    <span className={cn('text-xl font-black leading-none tabular-nums', tone)}>{value}</span>
+                    {badge && (
+                        <span className={cn('text-[10px] font-bold tabular-nums leading-none px-1.5 py-0.5 rounded', badgeCls)}>
+                            {badge}
+                        </span>
+                    )}
+                </div>
+                <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mt-1">{label}</div>
+                {secondary && (
+                    <div className="text-[9px] text-slate-400 mt-0.5 truncate" title={secondary}>{secondary}</div>
+                )}
+            </div>
+            {/* Hover tooltip — explains the aggregate in plain language */}
+            <div className="pointer-events-none absolute z-20 bottom-full left-0 right-0 mb-1.5
+                            opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0
+                            group-focus-within:opacity-100 group-focus-within:translate-y-0
+                            transition duration-150
+                            bg-slate-900 text-white text-[10px] rounded-md shadow-lg px-2.5 py-1.5 leading-snug">
+                {hover}
+            </div>
+        </div>
+    );
+}
+
+function RegimeForecastCard({ forecast }: { forecast: RegimeForecast }) {
+    const [open, setOpen] = useState(false);
+    const delta = forecast.horizonScore - forecast.currentScore;
+
+    // Single tone variable drives the whole row. Keeps the visual quiet.
+    const trendTone =
+        forecast.trend === 'Improving' ? 'text-emerald-600' :
+        forecast.trend === 'Degrading' ? 'text-rose-600'    :
+                                         'text-slate-500';
+    const trendIcon =
+        forecast.trend === 'Improving' ? <TrendingUp size={12} /> :
+        forecast.trend === 'Degrading' ? <TrendingUp size={12} className="rotate-180" /> :
+                                         <Activity size={12} />;
+    const scoreColor = (s: number) =>
+        s >= 90 ? 'text-emerald-600' :
+        s >= 80 ? 'text-blue-600' :
+        s >= 70 ? 'text-amber-600' :
+                  'text-rose-600';
+    const deltaCls =
+        delta > 0 ? 'bg-emerald-50 text-emerald-700' :
+        delta < 0 ? 'bg-rose-50 text-rose-700'       :
+                    'bg-slate-100 text-slate-500';
+
+    return (
+        <div className={cn(
+            'border border-slate-200 rounded-lg bg-white overflow-hidden transition-shadow',
+            open && 'shadow-sm',
+        )}>
+            {/* ── One-row collapsible header ────────────────────────────────
+                Grid layout keeps every regime row in vertical alignment:
+                [identity] [trend] [score] [chevron]. No flex-wrap chaos. */}
+            <button
+                type="button"
+                onClick={() => setOpen(v => !v)}
+                aria-expanded={open}
+                className="w-full text-left grid items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors"
+                style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto 16px' }}
+                title={open ? 'Collapse' : 'Expand for chart, KPIs and recommended actions'}
+            >
+                {/* Identity */}
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900 truncate">{forecast.label}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 shrink-0">
+                            {forecast.short}
+                        </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 truncate" title={forecast.regulator}>
+                        {forecast.regulator}
+                    </div>
+                </div>
+
+                {/* Trend (just the icon + tiny label, no pill background) */}
+                <div className={cn('inline-flex items-center gap-1 text-[11px] font-bold whitespace-nowrap', trendTone)}
+                     title={`${forecast.trend} · slope ${forecast.slope > 0 ? '+' : ''}${forecast.slope.toFixed(2)} pts/mo · ${forecast.confidence} confidence`}>
+                    {trendIcon}
+                    {forecast.trend}
+                </div>
+
+                {/* Score progression — the dominant visual on the row */}
+                <div className="flex items-baseline gap-1.5 whitespace-nowrap"
+                     title={`Current ${forecast.currentScore} → projected ${forecast.horizonScore} at horizon`}>
+                    <span className={cn('text-xl font-black tabular-nums leading-none', scoreColor(forecast.currentScore))}>
+                        {forecast.currentScore}
+                    </span>
+                    <ChevronRight size={11} className="text-slate-300" />
+                    <span className={cn('text-lg font-bold tabular-nums leading-none', scoreColor(forecast.horizonScore))}>
+                        {forecast.horizonScore}
+                    </span>
+                    <span className={cn('text-[10px] font-bold tabular-nums leading-none px-1.5 py-0.5 rounded ml-0.5', deltaCls)}>
+                        {delta > 0 ? '+' : ''}{delta}
+                    </span>
+                </div>
+
+                <ChevronDown
+                    size={16}
+                    className={cn('text-slate-400 shrink-0 transition-transform duration-200', open && 'rotate-180')}
+                />
+            </button>
+
+            {open && (
+                <div className="border-t border-slate-200">
+                    {/* Full KPI strip + chart in a two-column layout */}
+                    <div className="px-4 py-3 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+                        <div>
+                            <div className="grid grid-cols-4 gap-2 text-center mb-3">
+                                <RegimeKpi
+                                    label="Events"
+                                    value={forecast.signals.events}
+                                    tone={forecast.signals.events > 0 ? 'amber' : 'slate'}
+                                    hover={`${forecast.signals.events} violation${forecast.signals.events === 1 ? '' : 's'} attributed to ${forecast.short} in the last 12 months.`}
+                                />
+                                <RegimeKpi
+                                    label="OOS"
+                                    value={forecast.signals.oos}
+                                    tone={forecast.signals.oos > 0 ? 'red' : 'slate'}
+                                    hover={`${forecast.signals.oos} out-of-service finding${forecast.signals.oos === 1 ? '' : 's'} under ${forecast.short} (last 12 months).`}
+                                />
+                                <RegimeKpi
+                                    label="Acc."
+                                    value={forecast.signals.accidents}
+                                    tone={forecast.signals.accidents > 0 ? 'red' : 'slate'}
+                                    hover={`${forecast.signals.accidents} reportable collision${forecast.signals.accidents === 1 ? '' : 's'} in ${forecast.short} jurisdiction (last 12 months).`}
+                                />
+                                <RegimeKpi
+                                    label="Clean %"
+                                    value={`${forecast.signals.cleanRate}%`}
+                                    tone={forecast.signals.cleanRate >= 80 ? 'emerald' : forecast.signals.cleanRate >= 60 ? 'amber' : 'red'}
+                                    hover={`${forecast.signals.cleanRate}% of the ${forecast.signals.inspections} roadside inspection${forecast.signals.inspections === 1 ? '' : 's'} in this regime came back clean.`}
+                                />
+                            </div>
+                            <div className="bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-[11px] text-slate-600 leading-relaxed">
+                                <span className="font-semibold text-slate-800">{forecast.description}</span>
+                                <span className="text-slate-500"> Slope <span className="font-mono tabular-nums">{forecast.slope > 0 ? '+' : ''}{forecast.slope.toFixed(2)}</span> pts/mo · R² <span className="font-mono tabular-nums">{forecast.rSquared.toFixed(2)}</span> · {forecast.historyMonths} mo history.</span>
+                            </div>
+                        </div>
+                        <div>
+                            <RegimeForecastSparkline forecast={forecast} />
+                        </div>
+                    </div>
+
+                    {/* Recommendations */}
+                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/40">
+                        <div className="flex items-center gap-1.5 mb-2">
+                            <Lightbulb size={12} className="text-amber-500" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Recommended actions · {forecast.recommendations.length}
+                            </span>
+                        </div>
+                        <ul className="space-y-1.5">
+                            {forecast.recommendations.map(r => (
+                                <li key={r.id} className="flex items-start gap-2">
+                                    <span className={cn(
+                                        'inline-flex items-center justify-center min-w-[44px] h-4 px-1.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 mt-0.5',
+                                        r.priority === 'High'   ? 'bg-rose-100 text-rose-700' :
+                                        r.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                                                                  'bg-slate-100 text-slate-600',
+                                    )}>{r.priority}</span>
+                                    <div className="min-w-0">
+                                        <div className="text-[11px] font-bold text-slate-900">{r.title}</div>
+                                        <div className="text-[10px] text-slate-500 leading-snug">{r.detail}</div>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function RegimeKpi({
+    label, value, tone, hover,
+}: {
+    label: string;
+    value: React.ReactNode;
+    tone: 'slate' | 'amber' | 'red' | 'emerald';
+    hover?: string;
+}) {
+    const tones = {
+        slate:   'text-slate-900',
+        amber:   'text-amber-700',
+        red:     'text-rose-700',
+        emerald: 'text-emerald-700',
+    };
+    return (
+        <div
+            className="group relative bg-slate-50 border border-slate-200 rounded-md py-1.5 px-1 hover:border-slate-300 transition-colors"
+            tabIndex={hover ? 0 : -1}
+            aria-label={hover ? `${label}: ${value}. ${hover}` : undefined}
+        >
+            <div className={cn('text-sm font-black tabular-nums leading-none', tones[tone])}>{value}</div>
+            <div className="text-[8px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">{label}</div>
+            {hover && (
+                <div className="pointer-events-none absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-1.5
+                                opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0
+                                group-focus-within:opacity-100 group-focus-within:translate-y-0
+                                transition duration-150 w-44
+                                bg-slate-900 text-white text-[10px] rounded-md shadow-lg px-2 py-1.5 leading-snug">
+                    {hover}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Compact line chart for one regime — history (solid) + forecast (dashed with
+ *  shaded confidence band). Hovering reveals the actual data for that month:
+ *  date · score · history-or-forecast tag · confidence-band edges when in the
+ *  forecast portion. */
+function RegimeForecastSparkline({ forecast }: { forecast: RegimeForecast }) {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const W = useElementWidth(containerRef, 480);
+    const H = 130, padL = 28, padR = 12, padT = 10, padB = 22;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    const pts = forecast.points;
+    const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+    if (pts.length === 0) {
+        return <div ref={containerRef} className="h-28 flex items-center justify-center text-[10px] text-slate-400">No data</div>;
+    }
+
+    const y = (v: number) => padT + innerH * (1 - v / 100);
+    const x = (i: number) => padL + (pts.length <= 1 ? innerW / 2 : (innerW * i) / (pts.length - 1));
+
+    const hist = pts.filter(p => !p.isForecast);
+    const fcst = pts.filter(p =>  p.isForecast);
+    const histPath = hist
+        .map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(pts.indexOf(p)).toFixed(1)} ${y(p.riskScore).toFixed(1)}`)
+        .join(' ');
+    const lastHistIdx = hist.length - 1;
+    const fcstPath = fcst.length > 0
+        ? `M ${x(lastHistIdx).toFixed(1)} ${y(hist[lastHistIdx].riskScore).toFixed(1)} ` +
+          fcst.map(p => `L ${x(pts.indexOf(p)).toFixed(1)} ${y(p.riskScore).toFixed(1)}`).join(' ')
+        : '';
+    const bandPath = fcst.length > 0
+        ? `M ${x(lastHistIdx).toFixed(1)} ${y(hist[lastHistIdx].riskScore).toFixed(1)} ` +
+          fcst.map(p => `L ${x(pts.indexOf(p)).toFixed(1)} ${y(p.upper ?? p.riskScore).toFixed(1)}`).join(' ') +
+          ' ' + [...fcst].reverse().map(p => `L ${x(pts.indexOf(p)).toFixed(1)} ${y(p.lower ?? p.riskScore).toFixed(1)}`).join(' ') +
+          ` L ${x(lastHistIdx).toFixed(1)} ${y(hist[lastHistIdx].riskScore).toFixed(1)} Z`
+        : '';
+
+    const yTicks = [0, 50, 100];
+
+    const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const cursorX = ((e.clientX - rect.left) / rect.width) * W;
+        let best = 0, bestD = Infinity;
+        for (let i = 0; i < pts.length; i++) {
+            const d = Math.abs(x(i) - cursorX);
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        setHoverIdx(best);
+    };
+
+    const hovered = hoverIdx != null ? pts[hoverIdx] : null;
+
+    return (
+        <div
+            ref={containerRef}
+            className="relative w-full h-28"
+            onMouseMove={onMove}
+            onMouseLeave={() => setHoverIdx(null)}
+        >
+            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full">
+                {yTicks.map(v => (
+                    <g key={v}>
+                        <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="#e2e8f0" strokeDasharray={v === 0 ? '0' : '2 3'} />
+                        <text x={padL - 4} y={y(v) + 3} fontSize="8" textAnchor="end" fill="#94a3b8" fontWeight="600">{v}</text>
+                    </g>
+                ))}
+                {/* Confidence band */}
+                {bandPath && <path d={bandPath} fill="#3b82f6" fillOpacity={0.12} />}
+                {/* History line */}
+                <path d={histPath} stroke="#0f172a" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                {/* Forecast line (dashed) */}
+                {fcstPath && (
+                    <path d={fcstPath} stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="4 3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                )}
+                {/* Hover crosshair + dot */}
+                {hovered && hoverIdx != null && (
+                    <>
+                        <line
+                            x1={x(hoverIdx)} x2={x(hoverIdx)} y1={padT} y2={padT + innerH}
+                            stroke="#94a3b8" strokeWidth={1} strokeDasharray="3 3"
+                        />
+                        <circle
+                            cx={x(hoverIdx)} cy={y(hovered.riskScore)} r={3.5}
+                            fill={hovered.isForecast ? '#3b82f6' : '#0f172a'}
+                            stroke="#fff" strokeWidth={1.5}
+                        />
+                    </>
+                )}
+                {/* History tail dot */}
+                {hist.length > 0 && hoverIdx == null && (
+                    <circle cx={x(lastHistIdx)} cy={y(hist[lastHistIdx].riskScore)} r={2.6} fill="#0f172a" stroke="#fff" strokeWidth={1} />
+                )}
+                {/* Forecast tail dot */}
+                {fcst.length > 0 && hoverIdx == null && (
+                    <circle cx={x(pts.length - 1)} cy={y(pts[pts.length - 1].riskScore)} r={2.6} fill="#3b82f6" stroke="#fff" strokeWidth={1} />
+                )}
+                {/* X labels — first / last */}
+                <text x={x(0)} y={H - 6} fontSize="8" textAnchor="start" fill="#94a3b8" fontWeight="600">{pts[0].date.slice(0, 7)}</text>
+                <text x={x(pts.length - 1)} y={H - 6} fontSize="8" textAnchor="end" fill="#3b82f6" fontWeight="600">{pts[pts.length - 1].date.slice(0, 7)}</text>
+            </svg>
+
+            {/* Hover tooltip — actual values from the regime's point series */}
+            {hovered && hoverIdx != null && (() => {
+                const leftPct = (x(hoverIdx) / W) * 100;
+                const flip = leftPct > 65;
+                return (
+                    <div
+                        className="pointer-events-none absolute z-10"
+                        style={{
+                            left:  flip ? 'auto' : `calc(${leftPct}% + 8px)`,
+                            right: flip ? `calc(${100 - leftPct}% + 8px)` : 'auto',
+                            top: 4,
+                        }}
+                    >
+                        <div className="bg-slate-900 text-white rounded-md shadow-lg px-2.5 py-1.5 text-[10px] min-w-[130px]">
+                            <div className="font-bold text-[11px] mb-1 flex items-center gap-1.5">
+                                {hovered.date.slice(0, 7)}
+                                <span className={cn(
+                                    'inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider',
+                                    hovered.isForecast ? 'bg-blue-500/30 text-blue-200' : 'bg-slate-700 text-slate-200',
+                                )}>
+                                    {hovered.isForecast ? 'Forecast' : 'History'}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 leading-tight">
+                                <span className="text-slate-400">Score</span>
+                                <span className="font-black tabular-nums">{Math.round(hovered.riskScore)}</span>
+                            </div>
+                            {hovered.isForecast && hovered.lower != null && hovered.upper != null && (
+                                <div className="flex items-center justify-between gap-3 leading-tight mt-0.5">
+                                    <span className="text-slate-400">80% PI</span>
+                                    <span className="font-mono tabular-nums text-slate-300">
+                                        {Math.round(hovered.lower)} – {Math.round(hovered.upper)}
+                                    </span>
+                                </div>
+                            )}
+                            {hoverIdx === 0 ? (
+                                <div className="text-[9px] text-slate-400 mt-1">Series start</div>
+                            ) : hoverIdx === pts.length - 1 ? (
+                                <div className="text-[9px] text-slate-400 mt-1">Horizon end</div>
+                            ) : null}
+                        </div>
+                    </div>
+                );
+            })()}
+        </div>
+    );
+}
+
 function RiskForecastChart({ forecast }: { forecast: CarrierForecast }) {
-    const W = 720, H = 260, padL = 40, padR = 16, padT = 12, padB = 28;
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const W = useElementWidth(containerRef, 720);
+    const H = 240, padL = 40, padR = 16, padT = 12, padB = 28;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
     const pts = forecast.points;
@@ -2083,7 +3183,6 @@ function RiskForecastChart({ forecast }: { forecast: CarrierForecast }) {
     ];
 
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-    const containerRef = useRef<HTMLDivElement | null>(null);
     const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
@@ -2099,8 +3198,13 @@ function RiskForecastChart({ forecast }: { forecast: CarrierForecast }) {
     const hovered = hoverIdx != null ? pts[hoverIdx] : null;
 
     return (
-        <div ref={containerRef} className="relative w-full" style={{ aspectRatio: `${W} / ${H}` }} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
-            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+        <div
+            ref={containerRef}
+            className="relative w-full h-56 sm:h-64 mx-auto"
+            onMouseMove={onMove}
+            onMouseLeave={() => setHoverIdx(null)}
+        >
+            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full">
                 {/* Y gridlines */}
                 {[0, 25, 50, 75, 100].map(v => (
                     <g key={v}>
@@ -3485,6 +4589,10 @@ function aggregateGeoStats(
 }
 
 /** Collapsible Geographic distribution card — map left, top jurisdictions right. */
+function jurisdictionDisplayName(code: string, country: 'US' | 'CA'): string {
+    return (country === 'CA' ? CA_PROVINCE_ABBREVS[code] : US_STATE_ABBREVS[code]) ?? code;
+}
+
 function GeographicDistributionPanel({
     stats, subtitle,
 }: {
@@ -3492,10 +4600,20 @@ function GeographicDistributionPanel({
     subtitle?: string;
 }) {
     const [open, setOpen] = useState(false);
+    const [focusCode, setFocusCode] = useState<string | null>(null);
     const totalEvents = stats.reduce((s, x) => s + x.eventCount, 0);
     const totalOos    = stats.reduce((s, x) => s + x.oosCount, 0);
+    // Reset drill-down when the underlying carrier-scoped data set changes.
+    useEffect(() => { setFocusCode(null); }, [stats]);
+
+    const focused = focusCode ? stats.find(s => s.code === focusCode) ?? null : null;
+    const focusedName = focused ? jurisdictionDisplayName(focused.code, focused.country) : null;
+    const focusedShare = focused && totalEvents > 0 ? (focused.eventCount / totalEvents) * 100 : 0;
+    const focusedOosRate = focused && focused.eventCount > 0 ? (focused.oosCount / focused.eventCount) * 100 : 0;
+
     return (
         <div className="mb-5 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            {/* ── Collapsible header ─────────────────────────────────────── */}
             <button
                 type="button"
                 onClick={() => setOpen(v => !v)}
@@ -3519,66 +4637,187 @@ function GeographicDistributionPanel({
                     ? <ChevronDown size={16} className="text-slate-400 shrink-0" />
                     : <ChevronRight size={16} className="text-slate-400 shrink-0" />}
             </button>
+
             {open && (
-                <div className="border-t border-slate-200 p-4">
-                    {stats.length === 0 ? (
-                        <div className="px-4 py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
-                            No geographic data to map.
+                <>
+                    {/* ── Breadcrumb / context bar ─────────────────────────
+                        Always visible when expanded so the user always knows
+                        whether they're on the continental view or drilled into
+                        a single jurisdiction. The back-arrow button is the
+                        canonical way to leave drill-in mode. */}
+                    <div className="border-t border-slate-200 bg-slate-50/60 px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                        {focused ? (
+                            <button
+                                type="button"
+                                onClick={() => setFocusCode(null)}
+                                className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700
+                                           bg-white border border-slate-200 hover:bg-slate-100 hover:text-slate-900
+                                           rounded-md px-2.5 py-1 transition-colors shadow-sm"
+                                aria-label="Back to North America view"
+                            >
+                                <ArrowLeft size={12} />
+                                Back
+                            </button>
+                        ) : (
+                            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 px-1">
+                                <MapPin size={12} />
+                                North America
+                            </div>
+                        )}
+
+                        {focused && (
+                            <>
+                                <ChevronRight size={12} className="text-slate-300" />
+                                <span className="text-[11px] font-bold text-slate-500">North America</span>
+                                <ChevronRight size={12} className="text-slate-300" />
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-900">
+                                    {focusedName}
+                                    <span className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
+                                        {focused.code} · {focused.country}
+                                    </span>
+                                </span>
+                            </>
+                        )}
+
+                        {/* Right-aligned summary chips — reflect the current scope */}
+                        <div className="ml-auto flex items-center gap-2 flex-wrap">
+                            {focused ? (
+                                <>
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-200 rounded px-2 py-0.5">
+                                        <span className="tabular-nums text-slate-900">{focused.eventCount.toLocaleString()}</span> events
+                                    </span>
+                                    {focused.oosCount > 0 && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-0.5">
+                                            <span className="tabular-nums">{focused.oosCount.toLocaleString()}</span> OOS
+                                            <span className="text-rose-500 font-normal">({focusedOosRate.toFixed(0)}%)</span>
+                                        </span>
+                                    )}
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-white border border-slate-200 rounded px-2 py-0.5">
+                                        σ {focused.severityAvg.toFixed(1)}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                                        {focusedShare.toFixed(1)}% of fleet
+                                    </span>
+                                </>
+                            ) : (
+                                <span className="text-[10px] text-slate-400 italic">
+                                    Click a state / province on the map or in the list to drill in.
+                                </span>
+                            )}
                         </div>
-                    ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)] gap-4 items-start">
-                            {/* Map on the left — capped at ~440px tall so it doesn't dwarf the panel */}
-                            <div className="min-w-0">
-                                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                                    <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between gap-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">North America heatmap</span>
-                                        <span className="text-[10px] text-slate-400">Hover a state / province for details</span>
-                                    </div>
-                                    <div
-                                        className="relative w-full mx-auto"
-                                        style={{ maxWidth: 720, aspectRatio: '16 / 9' }}
-                                    >
-                                        <div className="absolute inset-0 [&>div]:!p-0 [&>div]:!border-0 [&>div]:!bg-transparent [&>div]:!rounded-none">
+                    </div>
+
+                    <div className="p-4">
+                        {stats.length === 0 ? (
+                            <div className="px-4 py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
+                                No geographic data to map.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] gap-4 items-stretch">
+                                {/* ── Map (left) ──────────────────────────── */}
+                                <div className="min-w-0 flex">
+                                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-w-0">
+                                        <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/60 shrink-0">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                {focused ? `${focused.code} · ${focusedName}` : 'North America heatmap'}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">
+                                                {focused
+                                                    ? 'Zoomed view · hover for details'
+                                                    : 'Click a state / province to drill in'}
+                                            </span>
+                                        </div>
+                                        <div className="relative w-full bg-white h-[420px] sm:h-[460px]">
                                             <NorthAmericaMap
                                                 stats={stats}
                                                 title=""
                                                 subtitle=""
                                                 showTopList={false}
+                                                focusCode={focusCode}
+                                                onResetFocus={() => setFocusCode(null)}
+                                                onSelectCode={(c) => setFocusCode(c)}
+                                                embedded
                                             />
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Top jurisdictions on the right — bounded to match map height */}
-                            <div className="min-w-0 border border-slate-200 rounded-lg bg-white flex flex-col" style={{ maxHeight: 440 }}>
-                                <div className="px-3 py-2 border-b border-slate-100 shrink-0">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Top jurisdictions</span>
-                                </div>
-                                <div className="overflow-y-auto p-2.5 space-y-2 flex-1">
-                                    {stats.slice(0, 12).map((s, i) => (
-                                        <div key={s.code} className="bg-slate-50 ring-1 ring-slate-200 rounded-md px-3 py-2 flex items-center gap-3">
-                                            <div className="text-[10px] font-bold text-slate-400 tabular-nums w-5 shrink-0">#{i + 1}</div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-[12px] font-bold text-slate-800">{s.code}</span>
-                                                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">{s.country}</span>
-                                                </div>
-                                                <div className="text-[10px] text-slate-500 truncate">
-                                                    {s.oosCount > 0 && <span className="text-rose-600 font-semibold">{s.oosCount} OOS · </span>}
-                                                    σ {s.severityAvg.toFixed(1)}
-                                                </div>
-                                            </div>
-                                            <div className="text-lg font-black text-slate-900 tabular-nums shrink-0">
-                                                {s.eventCount.toLocaleString()}
-                                            </div>
+                                {/* ── Top jurisdictions (right) ───────────── */}
+                                <div className="min-w-0 border border-slate-200 rounded-lg bg-white flex flex-col" style={{ maxHeight: 500 }}>
+                                    <div className="px-3 py-2 border-b border-slate-100 shrink-0 flex items-center justify-between gap-2 bg-slate-50/60">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Top jurisdictions</span>
+                                            <span className="text-[10px] text-slate-400">· {Math.min(stats.length, 12)}</span>
                                         </div>
-                                    ))}
+                                        {focusCode && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setFocusCode(null)}
+                                                className="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                                            >
+                                                Reset
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="overflow-y-auto p-2 space-y-1 flex-1">
+                                        {stats.slice(0, 12).map((s, i) => {
+                                            const isActive = focusCode === s.code;
+                                            const share = totalEvents > 0 ? (s.eventCount / totalEvents) * 100 : 0;
+                                            const name = jurisdictionDisplayName(s.code, s.country);
+                                            return (
+                                                <button
+                                                    key={s.code}
+                                                    type="button"
+                                                    onClick={() => setFocusCode(isActive ? null : s.code)}
+                                                    className={cn(
+                                                        'w-full text-left rounded-md px-2.5 py-1.5 flex items-center gap-2.5 transition-all border',
+                                                        isActive
+                                                            ? 'bg-blue-50 border-blue-400 hover:bg-blue-100 shadow-sm'
+                                                            : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300',
+                                                    )}
+                                                    title={`${name} · ${s.eventCount} events · ${s.oosCount} OOS`}
+                                                >
+                                                    <div className={cn(
+                                                        'text-[10px] font-bold tabular-nums w-5 shrink-0 text-center',
+                                                        isActive ? 'text-blue-600' : 'text-slate-400',
+                                                    )}>#{i + 1}</div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={cn(
+                                                                'text-[11px] font-bold tabular-nums',
+                                                                isActive ? 'text-blue-700' : 'text-slate-900',
+                                                            )}>{s.code}</span>
+                                                            <span className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">{s.country}</span>
+                                                            <span className="text-[10px] text-slate-600 truncate min-w-0">{name}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-0.5 text-[9px]">
+                                                            {s.oosCount > 0 && (
+                                                                <span className="text-rose-600 font-semibold tabular-nums">{s.oosCount} OOS</span>
+                                                            )}
+                                                            <span className="text-slate-500 tabular-nums">σ {s.severityAvg.toFixed(1)}</span>
+                                                            <span className="text-slate-400 tabular-nums">{share.toFixed(1)}%</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end shrink-0">
+                                                        <span className={cn(
+                                                            'text-[15px] font-black tabular-nums leading-none',
+                                                            isActive ? 'text-blue-700' : 'text-slate-900',
+                                                        )}>
+                                                            {s.eventCount.toLocaleString()}
+                                                        </span>
+                                                        <span className="text-[8px] uppercase tracking-wider text-slate-400 font-bold mt-0.5">
+                                                            events
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                </>
             )}
         </div>
     );
@@ -3990,14 +5229,25 @@ function getScoreColor(score: number): string {
 function FleetSafetyScorePanel({ score, accountId }: { score: FleetSafetyScore; accountId: string | undefined }) {
     const overall = score.overall;
     const cards = score.cards;
-    const subRings = [
-        { id: 'accident',   label: 'Accident Score',           value: cards.accident.score,          purpose: 'Measures preventable and reportable accidents against fleet exposure.',                    focus: 'Improve by challenging non-preventable rulings and reducing high-severity events.' },
-        { id: 'eld',        label: 'ELD Score',                value: cards.eld.score,               purpose: 'Tracks Hours of Service compliance, ELD integrity, and logbook discipline.',                focus: 'Keep unassigned miles, form-and-manner errors, and HOS violations near zero.' },
-        { id: 'inspection', label: 'Inspection Score',         value: cards.inspection.score,        purpose: 'Reflects clean roadside inspection outcomes over the scoring period.',                       focus: 'Increase clean inspections by improving pre-trip checks and defect resolution.' },
-        { id: 'driver',     label: 'Driver Score',             value: cards.driver.score,            purpose: 'Aggregates individual driver behavior, incidents, and compliance consistency.',             focus: 'Target coaching and training on the lowest half of drivers first.' },
-        { id: 'vedr',       label: 'VEDR Score',               value: cards.vedr.score,              purpose: 'Scores camera and telematics events such as distraction, following distance, and speeding.', focus: 'Review events quickly and close corrective actions for repeat trigger patterns.' },
-        { id: 'roadside',   label: 'Roadside Violation Score', value: cards.roadsideViolation.score, purpose: 'Measures violation-free inspection rate with heavier impact for OOS findings.',             focus: 'Prioritize OOS root-cause fixes to prevent severe point impact.' },
+    const subRingsRaw = [
+        { id: 'accident',   label: 'Accident Score',           value: cards.accident.score,          events: cards.accident.contributorCount,          purpose: 'Measures preventable and reportable accidents against fleet exposure.',                    focus: 'Improve by challenging non-preventable rulings and reducing high-severity events.' },
+        { id: 'eld',        label: 'ELD Score',                value: cards.eld.score,               events: cards.eld.contributorCount,               purpose: 'Tracks Hours of Service compliance, ELD integrity, and logbook discipline.',                focus: 'Keep unassigned miles, form-and-manner errors, and HOS violations near zero.' },
+        { id: 'inspection', label: 'Inspection Score',         value: cards.inspection.score,        events: cards.inspection.contributorCount,        purpose: 'Reflects clean roadside inspection outcomes over the scoring period.',                       focus: 'Increase clean inspections by improving pre-trip checks and defect resolution.' },
+        { id: 'driver',     label: 'Driver Score',             value: cards.driver.score,            events: cards.driver.contributorCount,            purpose: 'Aggregates individual driver behavior, incidents, and compliance consistency.',             focus: 'Target coaching and training on the lowest half of drivers first.' },
+        { id: 'vedr',       label: 'VEDR Score',               value: cards.vedr.score,              events: cards.vedr.contributorCount,              purpose: 'Scores camera and telematics events such as distraction, following distance, and speeding.', focus: 'Review events quickly and close corrective actions for repeat trigger patterns.' },
+        { id: 'roadside',   label: 'Roadside Violation Score', value: cards.roadsideViolation.score, events: cards.roadsideViolation.contributorCount, purpose: 'Measures violation-free inspection rate with heavier impact for OOS findings.',             focus: 'Prioritize OOS root-cause fixes to prevent severe point impact.' },
     ];
+    // Per-card contribution share — each card's "shortfall from a perfect 100"
+    // as a percentage of the total shortfall across all six cards. Higher %
+    // means this component is responsible for a larger slice of the fleet's
+    // overall risk. Matches the contribution semantics used by the Violation
+    // category rings panel.
+    const totalShortfall = subRingsRaw.reduce((s, r) => s + Math.max(0, 100 - r.value), 0);
+    const subRings = subRingsRaw.map(r => {
+        const shortfall = Math.max(0, 100 - r.value);
+        const contributionPct = totalShortfall > 0 ? (shortfall / totalShortfall) * 100 : 0;
+        return { ...r, contributionPct };
+    });
 
     const s = score.signals;
     const r = score.regimes;
@@ -4115,6 +5365,12 @@ function FleetSafetyScorePanel({ score, accountId }: { score: FleetSafetyScore; 
                 </div>
             </div>
 
+            {/* ── Contribution mapping bar — same pattern as the Violations
+                "Overall Contribution Mapping" bar, but rendered above the
+                sub-score rings so the user sees how each component weighs into
+                the fleet score at a glance. ─────────────────────────────────── */}
+            <SubScoreContributionBar components={score.components} />
+
             {/* ── Fleet ring + 6 sub-score rings ────────────────────────── */}
             <div className="grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] gap-4 items-stretch">
                 {/* Main blue ring */}
@@ -4155,19 +5411,39 @@ function FleetSafetyScorePanel({ score, accountId }: { score: FleetSafetyScore; 
                     {subRings.map(metric => (
                         <div
                             key={metric.id}
-                            className="relative group bg-gradient-to-b from-emerald-50/60 to-slate-50 border border-emerald-100 rounded-2xl p-4 min-h-[190px] flex flex-col justify-start"
+                            className="relative group bg-gradient-to-b from-emerald-50/60 to-slate-50 border border-emerald-100 rounded-2xl p-4 min-h-[210px] flex flex-col justify-start"
+                            title={`${metric.label} — ${metric.events.toLocaleString()} events · ${metric.contributionPct.toFixed(1)}% of fleet risk`}
                         >
                             <SafetyRingChart label={metric.label} score={metric.value} palette="green" />
                             <div className={cn('mt-2 text-center text-sm font-bold', getScoreColor(metric.value))}>
                                 {metric.value.toFixed(2)}%
                             </div>
-                            <div className="mt-1 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                                Hover for more details
+                            <div className="mt-1 text-center text-[10px] text-slate-500">
+                                {metric.events.toLocaleString()} events
+                            </div>
+                            {/* Inline contribution bar — mirrors the Violation
+                                category rings. Percentage = this component's
+                                share of the total shortfall-from-100 across
+                                all six sub-scores. */}
+                            <div className="mt-2">
+                                <div className="flex items-center justify-between text-[9px] mb-0.5">
+                                    <span className="font-bold uppercase tracking-wider text-slate-400">Contribution</span>
+                                    <span className="font-bold tabular-nums text-slate-600">{metric.contributionPct.toFixed(1)}%</span>
+                                </div>
+                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-emerald-500"
+                                        style={{ width: `${Math.min(100, metric.contributionPct)}%` }}
+                                    />
+                                </div>
                             </div>
                             <div className="hidden md:block pointer-events-none absolute left-3 right-3 top-3 z-10 rounded-xl border border-emerald-200 bg-white/95 backdrop-blur-sm p-3 shadow-sm opacity-0 translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
                                 <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">{metric.label}</div>
                                 <p className="text-xs text-slate-600 leading-relaxed mb-1">{metric.purpose}</p>
-                                <p className="text-xs text-slate-500 leading-relaxed">{metric.focus}</p>
+                                <p className="text-xs text-slate-500 leading-relaxed mb-1">{metric.focus}</p>
+                                <p className="text-[10px] text-slate-400 mt-1.5 pt-1.5 border-t border-emerald-100">
+                                    Contributes <span className="font-bold text-emerald-700">{metric.contributionPct.toFixed(1)}%</span> of total fleet risk · {metric.events.toLocaleString()} contributing events
+                                </p>
                             </div>
                         </div>
                     ))}
@@ -4191,6 +5467,48 @@ function FleetSafetyScorePanel({ score, accountId }: { score: FleetSafetyScore; 
 
             {/* ── Regulatory Details: SMS BASIC + CVOR ────────────────────────────── */}
             <RegulatoryDetailsSection score={score} />
+        </div>
+    );
+}
+
+// ── Contribution bar rendered above the 6 sub-score rings ────────────────
+// Mirrors the "Overall Contribution Mapping" bar in ScoreBreakdownSection so
+// the contribution view is visible next to the sub-rings without scrolling.
+function SubScoreContributionBar({ components }: { components: FleetSafetyScore["components"] }) {
+    const totalScore = components.reduce((s, c) => s + c.score, 0);
+    return (
+        <div className="mb-5">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Contribution Mapping
+                </h4>
+                <div className="flex items-center gap-2 flex-wrap text-[10px] font-semibold text-slate-500">
+                    {components.map(c => (
+                        <span key={c.label} className="inline-flex items-center gap-1">
+                            <span className={cn('h-2 w-2 rounded-sm', c.color)} />
+                            <span className="text-slate-700">{c.label}</span>
+                            <span className="text-slate-400 tabular-nums">{c.score.toFixed(0)}</span>
+                        </span>
+                    ))}
+                </div>
+            </div>
+            <div className="flex h-7 rounded-lg overflow-hidden border border-slate-200 shadow-inner">
+                {components.map(c => {
+                    const pct = totalScore > 0 ? (c.score / totalScore) * 100 : 100 / components.length;
+                    return (
+                        <div
+                            key={c.label}
+                            className={cn(c.color, 'h-full flex items-center justify-center transition-all hover:opacity-90 group relative cursor-pointer')}
+                            style={{ width: `${Math.max(4, pct)}%` }}
+                            title={`${c.label} · ${c.score.toFixed(0)} / 100`}
+                        >
+                            <span className="text-[10px] font-black text-white opacity-0 group-hover:opacity-100 transition-opacity truncate px-1">
+                                {c.label} · {c.score.toFixed(0)}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -4394,7 +5712,9 @@ function TsPointsLineChart({
     points: MonthlyTsPoint[];
     series?: TsSeriesKey[];
 }) {
-    const W = 720, H = 220, padL = 36, padR = 16, padT = 14, padB = 26;
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const W = useElementWidth(containerRef, 720);
+    const H = 200, padL = 36, padR = 16, padT = 14, padB = 26;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
     if (points.length === 0) {
@@ -4433,7 +5753,6 @@ function TsPointsLineChart({
     const yTicks = [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax].map(v => Math.round(v));
 
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-    const containerRef = useRef<HTMLDivElement | null>(null);
     const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
@@ -4448,8 +5767,13 @@ function TsPointsLineChart({
     const hovered = hoverIdx != null ? points[hoverIdx] : null;
 
     return (
-        <div ref={containerRef} className="relative w-full" style={{ aspectRatio: `${W} / ${H}` }} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
-            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+        <div
+            ref={containerRef}
+            className="relative w-full h-48 sm:h-56 mx-auto"
+            onMouseMove={onMove}
+            onMouseLeave={() => setHoverIdx(null)}
+        >
+            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full">
                 <defs>
                     {series.map(s => (
                         <linearGradient key={s.fillId} id={s.fillId} x1="0" y1="0" x2="0" y2="1">
@@ -4596,8 +5920,11 @@ function FleetScoreTrendChartSection({ accountId }: { accountId: string | undefi
 }
 
 function TrendChart({ points }: { points: TrendPoint[] }) {
-    // Responsive viewBox-based chart. Width=720, Height=240, padding for axes.
-    const W = 720, H = 240, padL = 40, padR = 20, padT = 20, padB = 30;
+    // Responsive viewBox-based chart. Width tracks the container so strokes
+    // and text don't get horizontally stretched. Height fixed via Tailwind.
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const W = useElementWidth(containerRef, 720);
+    const H = 220, padL = 40, padR = 20, padT = 20, padB = 30;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
 
@@ -4626,7 +5953,6 @@ function TrendChart({ points }: { points: TrendPoint[] }) {
     const xLabelStride = Math.max(1, Math.ceil(points.length / 7));
 
     // ── Hover state (tracks the index of the focused data point) ────────
-    const containerRef = useRef<HTMLDivElement | null>(null);
     const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
     const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -4667,12 +5993,11 @@ function TrendChart({ points }: { points: TrendPoint[] }) {
     return (
         <div
             ref={containerRef}
-            className="relative w-full select-none"
-            style={{ aspectRatio: `${W} / ${H}`, maxHeight: 320 }}
+            className="relative w-full h-56 sm:h-64 mx-auto select-none"
             onMouseMove={handleMove}
             onMouseLeave={handleLeave}
         >
-            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full">
                 <defs>
                     <linearGradient id="fleetScoreFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%"   stopColor="#3b82f6" stopOpacity="0.18" />
