@@ -2,6 +2,23 @@
 
 All notable changes to TrackSmart Dashboard.
 
+## 2026-05-15 — Beta Safety Analysis documentation refresh
+
+### Added (Obsidian vault)
+- `obsidian-vault/02 - Pages/Beta Safety Analysis.md` — full spec of the new `/safety-analysis/beta` hub: header + breadcrumb, the six sub-tabs (Safety Dashboard · Accidents · Violations · Driver · Assets · Forecast), every panel rendered inside each tab (`FleetSafetyScorePanel`, `ViolationScoreRingsPanel`, `DriverRiskViolationsPanel`, `AssetMaintenancePanel`, `RiskForecastChart`, `RegimeForecastsSection`, `MaintenanceCostDonut`, `VehicleMaintenanceForecastTable`, etc.), data-source helpers, and the geographic-distribution drill-in.
+- `obsidian-vault/05 - Features & Specs/Regime Forecasts.md` — per-regulatory-regime forecast model: regime catalogue, jurisdiction filters, `RegimeForecast` shape, OLS-with-damping math, trend / confidence thresholds, prescriptive recommendation engine (`buildRegimeRecommendations`), UI shell (`RegimeForecastsSection`, `RegimeForecastCard`, `RegimeAggKpi`, `RegimeForecastSparkline`), and a file map.
+- `obsidian-vault/02 - Pages/Driver Profile View.md` — driver profile page, deep-link flow from Beta Safety Analysis, Overview tab `DriverSafetyAnalysisSection` (large ring + 6 sub-rings + counts + component breakdown), and other tabs.
+- `obsidian-vault/02 - Pages/Asset Detail View.md` — asset detail page, tab order (Overview default), Overview tab `AssetSafetyAnalysisSection` (large ring + 6 sub-rings + KPI strip + component breakdown), and other tabs.
+
+### Updated
+- `README.md` — expanded Safety Analysis (Beta) bullet with the six sub-tabs and per-tab feature list.
+- `obsidian-vault/00 - Home/Home.md` — added a "What's new" subsection linking to Beta Safety Analysis, Regime Forecasts, Driver Profile View, and Asset Detail View.
+- `obsidian-vault/02 - Pages/Pages Index.md` — added `/safety-analysis/beta`, a "Driver detail" section, and an `[[Asset Detail View]]` link from the Asset Directory entry.
+
+### Notes
+- No source code was changed.
+- The vault structure (`00 - Home/` through `09 - References/`) was preserved; new notes were added under the existing folders.
+
 ## 2026-05-06 — Documentation and Obsidian Vault Update
 
 ### Added

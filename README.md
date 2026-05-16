@@ -96,7 +96,13 @@ scripts/                        Active CVOR data-prep scripts + Python PDF highl
 - **Violations** (`/violations`, `/settings/violations`)
 - **Accidents/Incidents** (`/accidents`)
 - **Safety Events** (`/safety-events`)
-- **Safety Analysis** (`/safety-analysis`) — SMS engine + scoring + Excel export
+- **Safety Analysis** (`/safety-analysis`) — legacy CVOR-style dashboard (SMS engine + scoring + Excel export)
+- **Safety Analysis (Beta)** (`/safety-analysis/beta`) — composite Fleet Safety Score with six sub-tabs:
+  - **Safety Dashboard** — fleet ring + 6 sub-score rings (Accident / ELD-HOS / Inspection / Driver / VEDR / Roadside) each with a Contribution bar, score breakdown table, Fleet Score Trend chart, monthly TrackSmart-points trend, jurisdictional regime cards, and a collapsible Geographic distribution panel with click-to-drill-in.
+  - **Accidents · Violations** — heatmap, top-jurisdictions list, distribution histograms, and a `SafetyRecordsPanel` paginated table.
+  - **Driver** — per-driver scorecards (grid / list), distribution histogram, and a `DriverRiskViolationsPanel` (High / Moderate / Lower risk drill-in).
+  - **Assets** — per-asset scorecards (grid / list), distribution histogram, and an `AssetMaintenancePanel` (Overdue / Due / Upcoming drill-in).
+  - **Forecast** — main risk-score forecast chart, **per-regime forecasts** (FMCSA / CVOR / NSC AB-BC-NS-PE) with aggregate KPI strip and prescriptive recommendation engine, driver crash probability list (Poisson tail), asset maintenance probability list (hazard-rate), maintenance-cost donut, vehicle-maintenance forecast table.
 - **Hours of Service** (`/hours-of-service`)
 - **Fuel** (`/fuel`, `/settings/fuel`) — IFTA summaries
 - **Paystubs** (`/paystubs`), **Tickets** (`/tickets`)

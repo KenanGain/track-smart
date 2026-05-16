@@ -38,6 +38,8 @@ import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPag
 import { SafetySettingsPage } from '@/pages/settings/SafetySettingsPage'
 
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
+import { AtsPage } from '@/pages/ats/AtsPage'
+import { HiringTemplatesAdminPage } from '@/pages/ats/HiringTemplatesAdminPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -394,6 +396,12 @@ function App() {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <PaystubsPage accountId={account?.id} />
+        }
+        if (path === "/ats") {
+            return <AtsPage />
+        }
+        if (path === "/settings/ats-templates") {
+            return <HiringTemplatesAdminPage />
         }
         if (path === "/tickets") {
             const account = selectedAccount

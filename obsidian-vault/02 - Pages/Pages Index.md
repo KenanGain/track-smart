@@ -52,7 +52,8 @@ Every UI page in the app, grouped by area. Routes are the `path` strings handled
 ## Safety
 
 - `/safety-events` → [[Safety Events]]
-- `/safety-analysis` → [[Safety Analysis]]
+- `/safety-analysis` → [[Safety Analysis]] (legacy CVOR-style dashboard)
+- `/safety-analysis/beta` → [[Beta Safety Analysis]] (composite Fleet Score + sub-tabs: Safety Dashboard · Accidents · Violations · Driver · Assets · Forecast)
 - `/inspections` → [[Inspections]]
 - `/violations` → [[Violations]]
 - `/accidents` → [[Incidents]]
@@ -66,8 +67,14 @@ Every UI page in the app, grouped by area. Routes are the `path` strings handled
 
 ## Assets
 
-- `/assets/directory` → [[Asset Directory]]
+- `/assets/directory` → [[Asset Directory]] (opens [[Asset Detail View]] when an asset is selected)
 - `/maintenance` → [[Asset Maintenance]]
+
+## Driver detail
+
+Opens inside [[Carrier Profile]] when a driver is selected, or via deep-link from [[Beta Safety Analysis]].
+
+- → [[Driver Profile View]]
 
 ## Settings
 

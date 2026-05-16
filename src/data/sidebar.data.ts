@@ -82,6 +82,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/paystubs",
     },
     {
+        key: "ats",
+        label: "Hiring (ATS)",
+        icon: Briefcase,
+        path: "/ats",
+    },
+    {
         key: "hours-of-service",
         label: "Hours of Service",
         icon: Clock3,
@@ -161,7 +167,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "inspections-settings", label: "Inspections", icon: ClipboardCheck, path: "/settings/inspections" },
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
-            { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" }
+            { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" },
+            { key: "ats-templates", label: "Hiring Templates (ATS)", icon: FileText, path: "/settings/ats-templates" }
         ],
     },
     {

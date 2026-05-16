@@ -1,3 +1,5 @@
+
+
 # legacy-scripts/
 
 One-off Python and Node scripts collected from the project root. **None of these are used by the live web app** (the React/Vite TrackSmart dashboard under `src/`). They are kept here for history and occasional reference.

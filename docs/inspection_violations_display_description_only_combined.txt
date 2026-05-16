@@ -221,33 +221,6 @@ Description: Total count of violations, in the last rolling 24 months, in each o
 Display Name: Hazmat - Improper Placarding
 Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
 
-Display Name: Hazmat - No Remote Shutoff Control
-Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
-
-Display Name: Hazmat - No Retest and Inspection (Cargo Tank)
-Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
-
-Display Name: Hazmat - Shipping Paper
-Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
-
-Display Name: Hazmat - Use of Non-Specification Container
-Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
-
-
-Other
-=====
-
-Display Name: Other Violation Total
-Description: Total count of all Other violations in the last rolling 24 months.
-
-Display Name: Other Violations Ratio
-Description: Percent (ratio) of total violations, in the last 24 rolling months, that are in the Other category.
-
-Display Name: Driver - Size and Weight
-Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
-
-Display Name: Driver - All Other Driver Violations
-Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
 
 Display Name: Unknown
 Description: Total count of violations, in the last rolling 24 months, in each of the individual violation categories.
@@ -275,7 +248,12 @@ Display Name: Accidents w/Injuries
 Description: Total count of accidents involving an injury in the last rolling 24 months.
 
 Display Name: Accidents Total Injuries
-Description: Total injury count in the last rolling 24 months.
+Description: Total injury count in the last 
+
+
+
+
+rolling 24 months.
 
 Display Name: Accidents w/Property Damage
 Description: Total count of accidents involving property damage in the last rolling 24 months.

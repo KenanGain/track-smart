@@ -21,6 +21,12 @@ Welcome. This vault is the second brain for the **TrackSmart Dashboard** — a f
 - [[Agent Instructions]] · [[Vault Changelog]]
 - [[Decisions Index]] · [[CVOR Upload Reference]] · [[CVOR PDF Extraction Map]]
 
+### What's new
+
+- [[Beta Safety Analysis]] — composite Fleet Safety Score + sub-tabs (Safety Dashboard · Accidents · Violations · Driver · Assets · Forecast)
+- [[Regime Forecasts]] — per-regulator (FMCSA / CVOR / NSC AB-BC-NS-PE) forecast model with prescriptive recommendations
+- [[Driver Profile View]] · [[Asset Detail View]] — Overview tabs now host the same per-entity safety breakdown surfaced in Beta Safety Analysis
+
 ## Sections
 
 | Folder | Purpose |
