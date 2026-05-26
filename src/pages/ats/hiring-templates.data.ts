@@ -124,6 +124,9 @@ export interface HiringTemplate {
     description: string;
     appliesToLicense: 'CDL-A' | 'CDL-B' | 'CDL' | 'Non-CDL' | 'all';
     isDefault: boolean;
+    /** Application form (from the Docu/Form Generator library) this template
+     *  uses. Optional — falls back to the default form when unset. */
+    applicationFormId?: string;
     /** Application-form fields shown to the applicant. */
     formFields: TemplateFormField[];
     steps: TemplateStep[];

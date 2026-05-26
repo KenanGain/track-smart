@@ -29,6 +29,8 @@ import {
     Lock,
     History,
     FlaskConical,
+    FileSignature,
+    LayoutTemplate,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -168,7 +170,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
             { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" },
-            { key: "ats-templates", label: "Hiring Templates (ATS)", icon: FileText, path: "/settings/ats-templates" }
+            { key: "docu-form", label: "Docu/Form Generator", icon: FileSignature, path: "/settings/docu-form" },
+            { key: "templates", label: "Hiring Templates (ATS)", icon: LayoutTemplate, path: "/settings/templates" },
         ],
     },
     {

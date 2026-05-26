@@ -6,6 +6,7 @@ import {
     AlertCircle, AlertOctagon, FileText, ClipboardList,
     StickyNote, Bell, History, Printer, SkipForward, Save,
     User, ShieldAlert, ShieldCheck, BadgeCheck, Eye, Pencil, Upload, CalendarClock,
+    Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -22,6 +23,9 @@ import {
 import { SignaturePad, PhotoUpload } from "./SignaturePad";
 import { useCompanyBranding } from "./company-branding.data";
 import { downloadConsentPdf } from "./generateConsentPdf";
+import { DriverApplicationWizard } from "./DriverApplicationWizard";
+import { CustomFormWizard } from "./CustomFormWizard";
+import { loadApplicationForms, type ApplicationFormDef } from "./application-forms.data";
 import { FileDown } from "lucide-react";
 
 /**
@@ -57,6 +61,9 @@ function ApplicantListView({ onOpen }: { onOpen: (id: string) => void }) {
     const [typeFilter, setTypeFilter] = useState<LicenseType | 'all'>('all');
     const [stepFilter, setStepFilter] = useState<PipelineStepId | 'all'>('all');
     const [search, setSearch] = useState('');
+    // Add Applicant flow: pick a form, then open the wizard with it.
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [wizardForm, setWizardForm] = useState<ApplicationFormDef | null>(null);
 
     const counts = useMemo(() => {
         const out: Record<Stage, number> = { applications_received: 0, in_progress: 0, hired: 0, not_hired: 0 };
@@ -105,7 +112,7 @@ function ApplicantListView({ onOpen }: { onOpen: (id: string) => void }) {
                         <button type="button" className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
                             <Download size={14} /> Export
                         </button>
-                        <button type="button" className="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-blue-700 shadow-sm">
+                        <button type="button" onClick={() => setPickerOpen(true)} className="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-blue-700 shadow-sm">
                             <Plus size={14} /> Add Applicant
                         </button>
                     </div>
@@ -296,6 +303,76 @@ function ApplicantListView({ onOpen }: { onOpen: (id: string) => void }) {
                     )}
                 </div>
             </div>
+
+            {pickerOpen && (
+                <ApplicationFormPicker
+                    onPick={(f) => { setWizardForm(f); setPickerOpen(false); }}
+                    onClose={() => setPickerOpen(false)}
+                />
+            )}
+            {wizardForm && wizardForm.kind === 'standard' && (
+                <DriverApplicationWizard
+                    appForm={wizardForm}
+                    onClose={() => setWizardForm(null)}
+                />
+            )}
+            {wizardForm && wizardForm.kind === 'custom' && (
+                <CustomFormWizard
+                    appForm={wizardForm}
+                    onClose={() => setWizardForm(null)}
+                />
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Add Applicant — application-form picker
+// ─────────────────────────────────────────────────────────────────────────
+
+function ApplicationFormPicker({ onPick, onClose }: {
+    onPick: (form: ApplicationFormDef) => void;
+    onClose: () => void;
+}) {
+    const forms = loadApplicationForms();
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-6" onClick={onClose}>
+            <div className="w-full max-w-md rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
+                    <h2 className="text-sm font-bold text-slate-900">Choose an application form</h2>
+                    <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                        <XIcon size={16} />
+                    </button>
+                </div>
+                <div className="max-h-[60vh] space-y-2 overflow-y-auto p-4">
+                    {forms.map((f) => (
+                        <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => onPick(f)}
+                            className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left hover:border-blue-300 hover:bg-blue-50/50"
+                        >
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-100">
+                                <FileText size={16} className="text-slate-400" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[13px] font-semibold text-slate-900">{f.name}</span>
+                                    {f.isDefault && (
+                                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                            Default
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="truncate text-[11px] text-slate-500">
+                                    {f.description || '13 standard steps'}
+                                </div>
+                            </div>
+                            <ChevronRight size={15} className="shrink-0 text-slate-300" />
+                        </button>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }
@@ -332,37 +409,46 @@ function ApplicantDetailView({ applicant, onBack }: { applicant: Applicant; onBa
     return (
         <div className="flex-1 bg-slate-50 min-h-screen">
             {/* ── Header ─────────────────────────────────────────────── */}
-            <div className="bg-white border-b border-slate-200 px-8 py-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 rounded-md px-2.5 py-1 shadow-sm">
-                            <ArrowLeft size={12} /> Back to List
-                        </button>
-                        <div className="flex items-center gap-3 min-w-0">
-                            <ApplicantAvatar name={`${applicant.firstName} ${applicant.lastName}`} url={photo} onChange={setPhoto} />
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Application file</div>
-                                <h1 className="text-xl font-semibold text-slate-900 truncate">
-                                    {applicant.firstName} {applicant.middleName ? applicant.middleName + ' ' : ''}{applicant.lastName}
-                                </h1>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                    {applicant.positionApplied} · Applied {applicant.appliedDate} · {applicant.daysInPipeline}d in pipeline
-                                </p>
-                            </div>
+            <div className="bg-white border-b border-slate-200 px-8 pt-4 pb-5">
+                {/* Breadcrumb row — Back link sits on its own line, matching
+                    the rest of the app's detail-page convention. */}
+                <button
+                    type="button"
+                    onClick={onBack}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors mb-3"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to List
+                </button>
+
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                    {/* Identity block */}
+                    <div className="flex items-center gap-4 min-w-0">
+                        <ApplicantAvatar name={`${applicant.firstName} ${applicant.lastName}`} url={photo} onChange={setPhoto} />
+                        <div className="min-w-0">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-blue-700 mb-0.5">Application file</div>
+                            <h1 className="text-xl font-semibold text-slate-900 truncate">
+                                {applicant.firstName} {applicant.middleName ? applicant.middleName + ' ' : ''}{applicant.lastName}
+                            </h1>
+                            <p className="text-xs text-slate-500 mt-1">
+                                {applicant.positionApplied} · Applied {applicant.appliedDate} · {applicant.daysInPipeline}d in pipeline
+                            </p>
                         </div>
                     </div>
+
+                    {/* Action toolbar */}
                     <div className="flex items-center gap-2 flex-wrap">
-                        <button type="button" className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
-                            <Printer size={14} /> Print
+                        <button type="button" className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-sm font-medium inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
+                            <Printer className="h-4 w-4" /> Print
                         </button>
-                        <button type="button" className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
-                            <SkipForward size={14} /> Skip / Complete
+                        <button type="button" className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-sm font-medium inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
+                            <SkipForward className="h-4 w-4" /> Skip / Complete
                         </button>
-                        <button type="button" className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
-                            <Save size={14} /> Save
+                        <button type="button" className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-sm font-medium inline-flex items-center gap-1.5 hover:bg-slate-50 shadow-sm">
+                            <Save className="h-4 w-4" /> Save
                         </button>
-                        <button type="button" className="h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold inline-flex items-center gap-1.5 hover:bg-blue-700 shadow-sm">
-                            Next Step <ChevronRight size={14} />
+                        <button type="button" className="h-9 px-4 rounded-md bg-blue-600 text-white text-sm font-medium inline-flex items-center gap-1.5 hover:bg-blue-700 shadow-sm">
+                            Next Step <ChevronRight className="h-4 w-4" />
                         </button>
                     </div>
                 </div>
@@ -1415,11 +1501,16 @@ function ApplicantAvatar({ name, url, onChange }: { name: string; url?: string; 
             <button
                 type="button"
                 onClick={onPick}
-                title="Tap to upload applicant photo"
-                className="relative h-14 w-14 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-sm shrink-0 overflow-hidden hover:ring-2 hover:ring-blue-300"
+                title="Click to upload applicant photo"
+                className="group relative h-14 w-14 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-sm shrink-0 overflow-hidden hover:ring-2 hover:ring-blue-300 transition"
             >
-                {url ? <img src={url} alt={name} className="h-full w-full object-cover" /> : <span className="text-lg font-bold">{initials || '?'}</span>}
-                <span className="absolute bottom-0 right-0 bg-white text-slate-700 rounded-tl-md px-1 py-0.5 text-[8px] font-bold border-l border-t border-slate-200">EDIT</span>
+                {url
+                    ? <img src={url} alt={name} className="h-full w-full object-cover" />
+                    : <span className="text-base font-semibold">{initials || '?'}</span>}
+                {/* Hover overlay — camera icon, no permanent "EDIT" badge */}
+                <span className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Camera className="h-4 w-4 text-white" />
+                </span>
             </button>
             <input ref={ref} type="file" accept="image/*" className="hidden" onChange={onFile} />
         </>

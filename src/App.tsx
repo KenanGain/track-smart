@@ -36,10 +36,11 @@ import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsP
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
 import { SafetySettingsPage } from '@/pages/settings/SafetySettingsPage'
+import { DocuFormGeneratorPage } from '@/pages/settings/DocuFormGeneratorPage'
+import { TemplatesPage } from '@/pages/settings/TemplatesPage'
 
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { AtsPage } from '@/pages/ats/AtsPage'
-import { HiringTemplatesAdminPage } from '@/pages/ats/HiringTemplatesAdminPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -400,8 +401,11 @@ function App() {
         if (path === "/ats") {
             return <AtsPage />
         }
-        if (path === "/settings/ats-templates") {
-            return <HiringTemplatesAdminPage />
+        if (path === "/settings/docu-form") {
+            return <DocuFormGeneratorPage />
+        }
+        if (path === "/settings/templates") {
+            return <TemplatesPage />
         }
         if (path === "/tickets") {
             const account = selectedAccount

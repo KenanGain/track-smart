@@ -12,9 +12,10 @@ import {
     type HiringTemplate, type TemplateStep, type TemplateConsent,
     type TemplateDocument, type BookingSlot,
     type RequirementMode, type DocumentCategory,
-    type TemplateFormField, type FormFieldType,
+    type TemplateFormField,
     type DocumentMonitoring,
 } from "./hiring-templates.data";
+import { loadApplicationForms } from "./application-forms.data";
 import { SignaturePad, PhotoUpload } from "./SignaturePad";
 import { Check, Download, FileDown } from "lucide-react";
 import { useCompanyBranding } from "./company-branding.data";
@@ -178,18 +179,17 @@ function TemplateTabsEditor({
     const [tab, setTab] = useState<EditorTab>('preview');
 
     const consentCount  = template.steps.reduce((s, x) => s + (x.enabled ? x.consents.length  : 0), 0);
-    const formFieldCount = template.formFields.length;
     const documentCount = template.steps.reduce((s, x) => s + (x.enabled ? x.documents.length : 0), 0);
     const bookingCount  = template.steps.reduce((s, x) => s + (x.enabled ? x.bookings.length  : 0), 0);
     const enabledSteps  = template.steps.filter(s => s.enabled).length;
 
     const tabs: { id: EditorTab; label: string; Icon: React.ElementType; count: number }[] = [
-        { id: 'preview',   label: 'Preview',          Icon: Eye,           count: 0 },
-        { id: 'consents',  label: 'Consent Forms',    Icon: FileSignature, count: consentCount },
-        { id: 'form',      label: 'Application Form', Icon: FileText,      count: formFieldCount },
-        { id: 'documents', label: 'Documents',        Icon: FileText,      count: documentCount },
-        { id: 'bookings',  label: 'Bookings',         Icon: CalendarClock, count: bookingCount },
-        { id: 'steps',     label: 'Steps',            Icon: Briefcase,     count: enabledSteps },
+        { id: 'preview',    label: 'Preview',             Icon: Eye,            count: 0 },
+        { id: 'consents',   label: 'Consent Forms',       Icon: FileSignature,  count: consentCount },
+        { id: 'form',       label: 'Application Form',    Icon: FileText,       count: 0 },
+        { id: 'documents',  label: 'Documents',           Icon: FileText,       count: documentCount },
+        { id: 'bookings',   label: 'Bookings',            Icon: CalendarClock,  count: bookingCount },
+        { id: 'steps',      label: 'Steps',               Icon: Briefcase,      count: enabledSteps },
     ];
 
     return (
@@ -387,7 +387,7 @@ function FlatConsentsTab({
     );
 }
 
-// ── Tab: Application Form fields ────────────────────────────────────────
+// ── Tab: Application Form (form picker) ─────────────────────────────────
 
 function ApplicationFormTab({
     template, onUpdate,
@@ -395,101 +395,69 @@ function ApplicationFormTab({
     template: HiringTemplate;
     onUpdate: (t: HiringTemplate) => void;
 }) {
-    const setField = (id: string, patch: Partial<TemplateFormField>) =>
-        onUpdate({ ...template, formFields: template.formFields.map(f => f.id === id ? { ...f, ...patch } : f) });
-    const remove = (id: string) => onUpdate({ ...template, formFields: template.formFields.filter(f => f.id !== id) });
-    const addNew = () => onUpdate({
-        ...template,
-        formFields: [
-            ...template.formFields,
-            {
-                id: `ff-${Math.random().toString(36).slice(2, 8)}`,
-                label: 'New field',
-                type: 'text',
-                required: false,
-                section: 'Other',
-            },
-        ],
-    });
-
-    const grouped = useMemo(() => {
-        const m = new Map<TemplateFormField['section'], TemplateFormField[]>();
-        for (const f of template.formFields) {
-            const arr = m.get(f.section) ?? [];
-            arr.push(f);
-            m.set(f.section, arr);
-        }
-        return m;
-    }, [template.formFields]);
+    const forms = loadApplicationForms();
+    const selectedId = template.applicationFormId
+        ?? forms.find(f => f.isDefault)?.id
+        ?? forms[0]?.id;
 
     return (
         <div>
-            <SectionHeader icon={FileText} title="Application Form" subtitle="Fields the applicant fills out on the Application Review step. Drag-drop coming soon — for now, edit inline." count={template.formFields.length} />
+            <SectionHeader
+                icon={FileText}
+                title="Application Form"
+                subtitle="Choose which application form applicants fill out for this hiring path. Forms are built in the Docu/Form Generator."
+                count={forms.length}
+            />
 
-            <div className="space-y-5">
-                {(['Identity', 'Contact', 'Address', 'Employment', 'Driving Experience', 'Other'] as TemplateFormField['section'][]).map(section => {
-                    const fields = grouped.get(section) ?? [];
-                    if (fields.length === 0) return null;
+            <div className="space-y-2">
+                {forms.map(f => {
+                    const active = f.id === selectedId;
                     return (
-                        <div key={section}>
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 px-1">{section}</div>
-                            <div className="space-y-2">
-                                <div className="hidden md:grid grid-cols-[minmax(0,1.5fr)_120px_90px_minmax(0,1.5fr)_40px] gap-2 px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                                    <span>Label</span>
-                                    <span>Type</span>
-                                    <span className="text-center">Required</span>
-                                    <span>Helper</span>
-                                    <span />
-                                </div>
-                                {fields.map(f => (
-                                    <div key={f.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 grid grid-cols-1 md:grid-cols-[minmax(0,1.5fr)_120px_90px_minmax(0,1.5fr)_40px] gap-2 items-center">
-                                        <input
-                                            type="text"
-                                            value={f.label}
-                                            onChange={e => setField(f.id, { label: e.target.value })}
-                                            className="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-300 w-full"
-                                        />
-                                        <select
-                                            value={f.type}
-                                            onChange={e => setField(f.id, { type: e.target.value as FormFieldType })}
-                                            className="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-300 w-full"
-                                        >
-                                            {(['text','email','phone','date','select','textarea','ssn','address'] as FormFieldType[]).map(t => (
-                                                <option key={t} value={t}>{t}</option>
-                                            ))}
-                                        </select>
-                                        <label className="h-9 inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
-                                            <input
-                                                type="checkbox"
-                                                checked={f.required}
-                                                onChange={e => setField(f.id, { required: e.target.checked })}
-                                                className="accent-blue-600 h-3.5 w-3.5"
-                                            />
-                                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                                {f.required ? 'Required' : 'Optional'}
-                                            </span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={f.helper ?? ''}
-                                            onChange={e => setField(f.id, { helper: e.target.value })}
-                                            placeholder="Helper text shown under the field"
-                                            className="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-300"
-                                        />
-                                        <button type="button" onClick={() => remove(f.id)} className="h-9 w-9 rounded-md border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-200 inline-flex items-center justify-center justify-self-end" aria-label="Remove">
-                                            <Trash2 size={13} />
-                                        </button>
-                                    </div>
-                                ))}
+                        <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => onUpdate({ ...template, applicationFormId: f.id })}
+                            className={cn(
+                                'flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
+                                active
+                                    ? 'border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20'
+                                    : 'border-slate-200 bg-white hover:bg-slate-50',
+                            )}
+                        >
+                            <span className={cn(
+                                'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+                                active ? 'border-blue-600 bg-blue-600' : 'border-slate-300',
+                            )}>
+                                {active && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                            </span>
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-100">
+                                <FileText className="h-4 w-4 text-slate-400" />
                             </div>
-                        </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[13px] font-bold text-slate-900">{f.name}</span>
+                                    {f.isDefault && (
+                                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                            Default
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="truncate text-[11px] text-slate-500">
+                                    {f.description || (f.kind === 'standard' ? 'Standard 13-step form' : 'Custom form')}
+                                    {' · '}
+                                    {f.kind === 'standard'
+                                        ? '13 fixed steps'
+                                        : `${f.fields.length} field${f.fields.length === 1 ? '' : 's'}`}
+                                </div>
+                            </div>
+                        </button>
                     );
                 })}
             </div>
 
-            <Button variant="outline" size="sm" onClick={addNew} className="mt-4 gap-1.5">
-                <Plus className="h-4 w-4" /> Add form field
-            </Button>
+            <p className="mt-4 text-[11px] text-slate-400">
+                Forms, their fields, and logos are managed in Settings → Docu/Form Generator.
+            </p>
         </div>
     );
 }
@@ -1924,31 +1892,12 @@ function ConsentPreviewModal({ consent, onClose }: { consent: ConsentForm; onClo
 // Lives in the left column above the template list. Logo + company name +
 // contact + accent color are baked into every generated consent PDF.
 
-function BrandingPanel() {
+export function BrandingPanel({ flat = false }: { flat?: boolean }) {
     const [branding, update] = useCompanyBranding();
     const [open, setOpen] = useState(true);
 
-    return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <button
-                type="button"
-                onClick={() => setOpen(v => !v)}
-                className="w-full text-left px-4 py-3 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between gap-2"
-            >
-                <div className="flex items-center gap-2 min-w-0">
-                    <span className="h-7 w-7 rounded-md bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-                        <ShieldCheck size={14} />
-                    </span>
-                    <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-slate-900 truncate">Company branding</h3>
-                        <p className="text-[10px] text-slate-500 truncate">Logo + name printed on every form.</p>
-                    </div>
-                </div>
-                {open ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
-            </button>
-
-            {open && (
-                <div className="p-4 space-y-3">
+    const fields = (
+        <div className={cn('space-y-3', !flat && 'p-4')}>
                     <PhotoUpload
                         label="Company logo"
                         value={branding.logoDataUrl ?? null}
@@ -1999,8 +1948,30 @@ function BrandingPanel() {
                         </div>
                         <p className="text-xs text-slate-500">Used as the PDF header bar colour.</p>
                     </div>
+        </div>
+    );
+
+    if (flat) return fields;
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setOpen(v => !v)}
+                className="w-full text-left px-4 py-3 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between gap-2"
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="h-7 w-7 rounded-md bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+                        <ShieldCheck size={14} />
+                    </span>
+                    <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-slate-900 truncate">Company branding</h3>
+                        <p className="text-[10px] text-slate-500 truncate">Logo + name printed on every form.</p>
+                    </div>
                 </div>
-            )}
+                {open ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+            </button>
+            {open && fields}
         </div>
     );
 }
