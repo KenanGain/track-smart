@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, X, Eye, Info, FileText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, X, Eye, Info, FileText, ShieldCheck, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SignaturePad } from "@/pages/ats/SignaturePad";
@@ -102,9 +102,9 @@ export function TemplateTestRunner({ template, onClose }: {
     const progressPct = Math.round(((stepIdx + 1) / total) * 100);
 
     return (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50">
+        <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50 print:static print:bg-white">
             {/* ── Header band ───────────────────────────────────────── */}
-            <div className="border-b border-slate-200 bg-white px-6 py-3">
+            <div className="border-b border-slate-200 bg-white px-6 py-3 print:hidden">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex min-w-0 items-center gap-3">
                         <div
@@ -120,16 +120,27 @@ export function TemplateTestRunner({ template, onClose }: {
                             <h1 className="truncate text-base font-bold text-slate-900">{template.name}</h1>
                         </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={onClose} className="gap-1.5">
-                        <X className="h-4 w-4" /> Close
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.print()}
+                            className="gap-1.5"
+                            title="Print this step (browser print dialog)"
+                        >
+                            <Printer className="h-4 w-4" /> Print
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={onClose} className="gap-1.5">
+                            <X className="h-4 w-4" /> Close
+                        </Button>
+                    </div>
                 </div>
             </div>
 
             {/* ── Main: sidebar + content ───────────────────────────── */}
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 overflow-hidden print:block print:overflow-visible">
                 {/* Left sidebar — full step list */}
-                <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white">
+                <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white print:hidden">
                     <div className="border-b border-slate-100 px-5 py-3.5">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                             Steps
@@ -202,11 +213,11 @@ export function TemplateTestRunner({ template, onClose }: {
                     </ul>
                 </aside>
 
-                {/* Right side — form / consent content */}
-                <main className="flex-1 overflow-y-auto">
-                    <div className="mx-auto max-w-5xl px-10 py-8">
+                {/* Right side — form / consent content. Uses the full remaining width. */}
+                <main className="flex-1 overflow-y-auto print:overflow-visible">
+                    <div className="w-full px-8 py-8 lg:px-12 print:px-0 print:py-0">
                         {/* Step title block */}
-                        <div className="mb-6">
+                        <div className="mb-6 print:mb-4">
                             <div className={cn(
                                 "mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider",
                                 current.kind === 'consent' ? "text-amber-700" : "text-blue-600",
@@ -214,7 +225,7 @@ export function TemplateTestRunner({ template, onClose }: {
                                 {current.kind === 'consent' ? <ShieldCheck size={12} /> : <FileText size={12} />}
                                 Step {stepIdx + 1} of {total} · {current.kind === 'consent' ? 'Consent' : 'Form'}
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900">{headerTitle}</h2>
+                            <h2 className="text-2xl font-bold text-slate-900 print:text-xl">{headerTitle}</h2>
                             {current.kind === 'form' && current.form?.introText && (
                                 <p className="mt-2 whitespace-pre-line text-sm text-slate-500">
                                     {current.form.introText}
@@ -231,7 +242,7 @@ export function TemplateTestRunner({ template, onClose }: {
                                 </p>
                             )}
                             {current.step.helperText && (
-                                <div className="mt-3 flex items-start gap-2 rounded-md border-l-4 border-blue-400 bg-blue-50/60 px-3 py-2 text-sm text-blue-900">
+                                <div className="mt-3 flex items-start gap-2 rounded-md border-l-4 border-blue-400 bg-blue-50/60 px-3 py-2 text-sm text-blue-900 print:hidden">
                                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
                                     <span>{current.step.helperText}</span>
                                 </div>
@@ -239,7 +250,7 @@ export function TemplateTestRunner({ template, onClose }: {
                         </div>
 
                         {/* Body card — either Form fields or Consent text + signature */}
-                        <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+                        <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm print:border-0 print:p-0 print:shadow-none lg:p-10">
                             {current.kind === 'form' && current.form && (
                                 current.form.fields.length === 0 ? (
                                     <p className="py-8 text-center text-sm text-slate-400">
@@ -262,7 +273,7 @@ export function TemplateTestRunner({ template, onClose }: {
                                     </div>
 
                                     {/* Acknowledgement */}
-                                    <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50/40 p-5">
+                                    <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50/40 p-5 print:border-slate-300 print:bg-white">
                                         <label className="flex cursor-pointer items-start gap-3">
                                             <input
                                                 type="checkbox"
@@ -304,7 +315,7 @@ export function TemplateTestRunner({ template, onClose }: {
             </div>
 
             {/* ── Footer nav ────────────────────────────────────────── */}
-            <div className="border-t border-slate-200 bg-white px-6 py-3">
+            <div className="border-t border-slate-200 bg-white px-6 py-3 print:hidden">
                 <div className="flex items-center justify-between gap-4">
                     <div className="text-xs text-slate-500">
                         <span className="font-semibold text-slate-700">Step {stepIdx + 1}</span>

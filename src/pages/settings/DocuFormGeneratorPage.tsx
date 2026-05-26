@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileSignature, FileText, ShieldCheck, Files } from 'lucide-react';
+import { FileSignature, FileText, ShieldCheck, Files, GitBranch } from 'lucide-react';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import {
     loadApplicationForms, saveApplicationForms,
@@ -13,12 +13,12 @@ import { DocumentsTab } from './docu-form/DocumentsTab';
 /**
  * Docu/Form Generator (Settings).
  *
- * Form type ("Hiring Driver") with four tabs, each rendered as a dedicated
+ * Form type ("Hiring Driver") with five tabs, each rendered as a dedicated
  * full-width page (no Panel card wrapper):
  *   • Company Branding  — logo + company details printed on every form
  *   • Consent Forms     — the consent-form library
- *   • Application Forms — the form library; each form is edited in a full
- *                         builder (details + steps/fields + documents).
+ *   • Application Forms — main applicant-facing forms
+ *   • Subforms          — forms embedded inside other forms via popup pickers
  *   • Documents         — the Document Types library
  */
 
@@ -26,7 +26,7 @@ const FORM_TYPES = [
     { id: 'hiring-driver', label: 'Hiring Driver' },
 ];
 
-type Tab = 'branding' | 'consents' | 'forms' | 'documents';
+type Tab = 'branding' | 'consents' | 'forms' | 'subforms' | 'documents';
 
 export const DocuFormGeneratorPage = () => {
     const [formType, setFormType] = useState('hiring-driver');
@@ -42,6 +42,7 @@ export const DocuFormGeneratorPage = () => {
         { id: 'branding',  label: 'Company Branding',  icon: ShieldCheck },
         { id: 'consents',  label: 'Consent Forms',     icon: FileSignature },
         { id: 'forms',     label: 'Application Forms', icon: FileText },
+        { id: 'subforms',  label: 'Subforms',          icon: GitBranch },
         { id: 'documents', label: 'Documents',         icon: Files },
     ];
 
@@ -92,7 +93,8 @@ export const DocuFormGeneratorPage = () => {
             <div className="px-8 py-6">
                 {tab === 'branding'  && <BrandingTab />}
                 {tab === 'consents'  && <ConsentFormsSection />}
-                {tab === 'forms'     && <ApplicationFormsSection forms={forms} onCommit={commit} />}
+                {tab === 'forms'     && <ApplicationFormsSection forms={forms} onCommit={commit} mode="main" />}
+                {tab === 'subforms'  && <ApplicationFormsSection forms={forms} onCommit={commit} mode="subform" />}
                 {tab === 'documents' && <DocumentsTab />}
             </div>
         </div>

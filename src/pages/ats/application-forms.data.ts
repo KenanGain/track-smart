@@ -18,12 +18,14 @@ export type FormFieldType =
     | 'select' | 'toggle' | 'radio' | 'checklist' | 'document'
     | 'license-list' | 'address-list' | 'disqualification-list' | 'accident-list'
     | 'violation-list' | 'driving-experience-list' | 'employment-list' | 'education-list'
+    | 'subform-button'
     | 'heading' | 'paragraph' | 'bullet-list' | 'alert' | 'signature';
 
 export const FORM_FIELD_TYPES: FormFieldType[] = [
     'text', 'textarea', 'date', 'number', 'select', 'toggle', 'radio', 'checklist', 'document',
     'license-list', 'address-list', 'disqualification-list', 'accident-list',
     'violation-list', 'driving-experience-list', 'employment-list', 'education-list',
+    'subform-button',
     'heading', 'paragraph', 'bullet-list', 'alert', 'signature',
 ];
 
@@ -44,6 +46,10 @@ export interface FormField {
     /** For type === 'document': references a row in the Document Types library; the type's
      *  flags drive which extra inputs the upload component renders (expiry / issue date / etc.). */
     documentTypeId?: string;
+    /** For type === 'subform-button': references an Application Form marked as a subform.
+     *  The button is rendered with the subform's `buttonName` (falls back to its name) and
+     *  opens a popup containing every field on the linked subform. */
+    subformId?: string;
 }
 
 /** Value captured by a typed document upload field. */
@@ -359,6 +365,8 @@ export interface FormDocument {
      *   • `'after:{fieldId}'`  → inline, immediately after that field
      *   • `'inline-end'`       → inline, after every field, before the Required Documents section. */
     placement?: string;
+    /** Conditional reveal: hide this document upload until a toggle on the form matches. */
+    showWhen?: { fieldId: string; equals: boolean | string };
 }
 
 // ── Form definition ───────────────────────────────────────────────────────
@@ -381,10 +389,17 @@ export interface ApplicationFormDef {
     documents: FormDocument[];
     /** Built-in form — locked against deletion. */
     isDefault: boolean;
+    /** Subform = embedded inside another form via a list-with-popup field (e.g. Employer Details
+     *  is the body of the Employment Details popup). Subforms are still editable Application
+     *  Forms — they just get a SUBFORM badge so admins can tell them apart at a glance. */
+    isSubform?: boolean;
+    /** For subforms — the label shown on the button that opens the subform's popup in any
+     *  Application Form that references it (e.g. "Add Employer", "Add Address"). */
+    buttonName?: string;
     updatedAt: string;
 }
 
-const FORMS_KEY = 'ats:application-forms-v21';
+const FORMS_KEY = 'ats:application-forms-v26';
 
 /** Backfill the `showWhen` mapping for known seed field IDs in case older
  *  saved data was written before conditional reveal was added. */
@@ -401,6 +416,18 @@ const KNOWN_FIELD_TYPES: Record<string, FormFieldType> = {
     'f-lic-other-list': 'license-list',
 };
 
+/** Built-in form IDs that should be tagged as subforms (used inside another form via a popup). */
+const KNOWN_SUBFORM_IDS = new Set([
+    'form-employer-details',
+    'form-sub-address',
+    'form-sub-license',
+    'form-sub-disqualification',
+    'form-sub-accident',
+    'form-sub-violation',
+    'form-sub-driving-experience',
+    'form-sub-education',
+]);
+
 /** Built-in form IDs that should always be marked as default (locked). */
 const KNOWN_DEFAULT_FORM_IDS = new Set([
     'form-applicant-information',
@@ -412,10 +439,19 @@ const KNOWN_DEFAULT_FORM_IDS = new Set([
     'form-medical-details',
     'form-driving-experience',
     'form-employment-details',
+    'form-employer-details',
     'form-education-details',
     'form-cross-border-details',
     'form-additional-details',
     'form-acknowledgment',
+    // Subforms (one record each — opened via the "+ Add X" button on parent forms)
+    'form-sub-address',
+    'form-sub-license',
+    'form-sub-disqualification',
+    'form-sub-accident',
+    'form-sub-violation',
+    'form-sub-driving-experience',
+    'form-sub-education',
 ]);
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -520,23 +556,12 @@ function seedForms(): ApplicationFormDef[] {
                 ],
                 showWhen: { fieldId: 'f-lic-has-rest', equals: true },
             },
+            { id: 'f-lic-front', type: 'document', required: true,  options: [], instruction: '', label: 'Driving License Front', documentTypeId: 'dt-lic-front' },
+            { id: 'f-lic-back',  type: 'document', required: false, options: [], instruction: '', label: 'Driving License Back',  documentTypeId: 'dt-lic-back'  },
             { id: 'f-lic-other', label: 'Any Other Licenses (Last 3 Years)?', type: 'toggle', required: false, instruction: '', options: [] },
             { id: 'f-lic-other-list', label: 'Previous Licenses', type: 'license-list', required: false, instruction: 'Add each prior license held in the last 3 years.', options: [], showWhen: { fieldId: 'f-lic-other', equals: true } },
         ],
-        documents: [
-            {
-                id: 'doc-lic-front', label: 'Driving License Front', category: 'License', required: true,
-                allowMultiple: false, expiryRequired: true, issueDateRequired: true,
-                issueStateRequired: true, issueCountryRequired: true,
-                status: 'Active', addedDate: today(),
-            },
-            {
-                id: 'doc-lic-back', label: 'Driving License Back', category: 'License', required: false,
-                allowMultiple: false, expiryRequired: false, issueDateRequired: false,
-                issueStateRequired: false, issueCountryRequired: false,
-                status: 'Active', addedDate: today(),
-            },
-        ],
+        documents: [],
         isDefault: true,
         updatedAt: today(),
     }, {
@@ -751,6 +776,60 @@ function seedForms(): ApplicationFormDef[] {
         isDefault: true,
         updatedAt: today(),
     }, {
+        id: 'form-employer-details',
+        kind: 'custom',
+        name: 'Employer Details',
+        displayTitle: 'Employer Details',
+        description: 'Single-employer record — every field from the Employment Details "Add Employer" popup, available as a standalone form.',
+        introText: 'Provide complete details for one employer. Fields are grouped by section so each piece of the popup wizard is editable here.',
+        isSubform: true,
+        buttonName: 'Add Employer',
+        fields: [
+            /* ── Section 1 — Employment Details ─────────────────────────── */
+            { id: 'f-emper-heading-1', type: 'heading', required: false, options: [], label: 'Employment Details', instruction: 'Basic employer + role information.' },
+            { id: 'f-emper-employer-name', type: 'text', required: true, options: [], instruction: '', label: 'Employer Name' },
+            { id: 'f-emper-start-date',    type: 'date', required: true, options: [], instruction: '', label: 'Start Date' },
+            { id: 'f-emper-end-date',      type: 'date', required: true, options: [], instruction: '', label: 'End Date' },
+            { id: 'f-emper-position', type: 'radio', required: false, instruction: '', label: 'Position Held', options: ['Contract Employee', 'Owner Operator'] },
+
+            /* ── Section 2 — Contact Person ─────────────────────────────── */
+            { id: 'f-emper-heading-2', type: 'heading', required: false, options: [], label: 'Contact Person', instruction: 'Who can we contact for employment verification?' },
+            { id: 'f-emper-contact-name',  type: 'text', required: true, options: [], instruction: '', label: 'Name' },
+            { id: 'f-emper-contact-phone', type: 'text', required: true, options: [], instruction: '', label: 'Phone Number' },
+            { id: 'f-emper-contact-email', type: 'text', required: false, options: [], instruction: '', label: 'Email' },
+
+            /* ── Section 3 — Address ────────────────────────────────────── */
+            { id: 'f-emper-heading-3', type: 'heading', required: false, options: [], label: 'Employer Address', instruction: '' },
+            { id: 'f-emper-street', type: 'text', required: false, options: [], instruction: '', label: 'Street' },
+            { id: 'f-emper-unit',   type: 'text', required: false, options: [], instruction: '', label: 'Unit Number' },
+            { id: 'f-emper-city',   type: 'text', required: false, options: [], instruction: '', label: 'City' },
+            { id: 'f-emper-zip',    type: 'text', required: false, options: [], instruction: '', label: 'Zipcode' },
+            { id: 'f-emper-country', type: 'radio', required: false, instruction: '', label: 'Country', options: ['Canada', 'United States'] },
+            { id: 'f-emper-state',  type: 'text', required: false, options: [], instruction: '', label: 'State / Province' },
+
+            /* ── Section 4 — Additional Details ─────────────────────────── */
+            { id: 'f-emper-heading-4', type: 'heading', required: false, options: [], label: 'Additional Details', instruction: '' },
+            { id: 'f-emper-reason', type: 'text',   required: false, options: [], instruction: '', label: 'Reason for Leaving' },
+            { id: 'f-emper-wage',   type: 'text',   required: false, options: [], instruction: '', label: 'Wage ($/hr)' },
+            { id: 'f-emper-has-gaps', type: 'toggle', required: false, options: [], instruction: '', label: 'Do you have any gaps in employment?' },
+            { id: 'f-emper-gap-from', type: 'date', required: false, options: [], instruction: '', label: 'Gap From', showWhen: { fieldId: 'f-emper-has-gaps', equals: true } },
+            { id: 'f-emper-gap-to',   type: 'date', required: false, options: [], instruction: '', label: 'Gap To',   showWhen: { fieldId: 'f-emper-has-gaps', equals: true } },
+            { id: 'f-emper-gap-explain', type: 'text', required: false, options: [], instruction: '', label: 'Explain Reason', showWhen: { fieldId: 'f-emper-has-gaps', equals: true } },
+            { id: 'f-emper-fmcsr', type: 'toggle', required: false, options: [], instruction: '', label: 'Were you subjected to US DOT regulations while employed (FMCSRs*)?' },
+            { id: 'f-emper-drug-alcohol', type: 'toggle', required: false, options: [], instruction: '', label: 'Were you required to do drug and alcohol testing as per 49 CFR Part 40?' },
+            { id: 'f-emper-has-exp-letter', type: 'toggle', required: false, options: [], instruction: '', label: 'Do you have an Employer Experience Letter from this employer?' },
+            { id: 'f-emper-exp-letter',  type: 'document', required: false, options: [], instruction: '', label: 'Employer Experience Letter', documentTypeId: 'dt-emp-experience-letter', showWhen: { fieldId: 'f-emper-has-exp-letter', equals: true } },
+            { id: 'f-emper-has-ins-letter', type: 'toggle', required: false, options: [], instruction: '', label: 'Do you have an Employer Insurance Experience Letter for this employer?' },
+            { id: 'f-emper-ins-letter', type: 'document', required: false, options: [], instruction: '', label: 'Insurance Experience Letter', documentTypeId: 'dt-insurance-letter', showWhen: { fieldId: 'f-emper-has-ins-letter', equals: true } },
+            {
+                id: 'f-emper-fmcsr-note', type: 'alert', required: false, options: [], instruction: '',
+                label: '* The Federal Motor Carrier Safety Regulations (FMCSRs) apply to anyone operating a motor vehicle on a highway in interstate commerce to transport passengers or property when the vehicle: (1) weighs or has a GVWR of 10,001 pounds or more, (2) is designed or used to transport more than 8 passengers (including the driver), OR (3) is of any size and is used to transport hazardous materials in a quantity requiring placarding.',
+            },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
         id: 'form-education-details',
         kind: 'custom',
         name: 'Education Details',
@@ -896,13 +975,214 @@ function seedForms(): ApplicationFormDef[] {
         documents: [],
         isDefault: true,
         updatedAt: today(),
+
+    /* ═══════════════════════════════════════════════════════════════════════
+     * Subforms — single-record forms opened from list-type popups (+ Add X).
+     * Each one mirrors a hardcoded popup in CustomFormWizard so admins can
+     * inspect and tweak the popup fields through the same builder UI.
+     * ═══════════════════════════════════════════════════════════════════════ */
+
+    }, {
+        id: 'form-sub-address',
+        kind: 'custom',
+        name: 'Add Address',
+        displayTitle: 'Add Address',
+        description: 'Single address record — used inside the Address Details "+ Add Address" popup.',
+        introText: '',
+        isSubform: true,
+        buttonName: 'Add Address',
+        fields: [
+            { id: 'f-sa-street',   type: 'text',  required: true,  options: [], instruction: '', label: 'Street' },
+            { id: 'f-sa-unit',     type: 'text',  required: false, options: [], instruction: '', label: 'Unit Number' },
+            { id: 'f-sa-city',     type: 'text',  required: true,  options: [], instruction: '', label: 'City' },
+            { id: 'f-sa-state',    type: 'text',  required: false, options: [], instruction: '', label: 'State / Province' },
+            { id: 'f-sa-zip',      type: 'text',  required: true,  options: [], instruction: '', label: 'Zipcode' },
+            { id: 'f-sa-country',  type: 'radio', required: true,  options: ['Canada', 'United States'], instruction: '', label: 'Country' },
+            { id: 'f-sa-from',     type: 'date',  required: false, options: [], instruction: '', label: 'From Date' },
+            { id: 'f-sa-to',       type: 'date',  required: false, options: [], instruction: '', label: 'To Date' },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
+        id: 'form-sub-license',
+        kind: 'custom',
+        name: 'Add License',
+        displayTitle: 'Add License',
+        description: 'Single license record — used inside the License Details "+ Add License" popup. Captures the front + back uploads via linked Document Types.',
+        introText: '',
+        isSubform: true,
+        buttonName: 'Add License',
+        fields: [
+            { id: 'f-sl-number',   type: 'text',  required: true,  options: [], instruction: '', label: 'License Number' },
+            { id: 'f-sl-class',    type: 'text',  required: false, options: [], instruction: 'e.g. Class A', label: 'License Class' },
+            { id: 'f-sl-country',  type: 'radio', required: true,  options: ['Canada', 'United States'], instruction: '', label: 'Issuing Country' },
+            { id: 'f-sl-state',    type: 'text',  required: false, options: [], instruction: 'e.g. Ontario', label: 'State / Province' },
+            { id: 'f-sl-issued',   type: 'date',  required: false, options: [], instruction: '', label: 'Issue Date' },
+            { id: 'f-sl-expiry',   type: 'date',  required: true,  options: [], instruction: '', label: 'Expiry Date' },
+            { id: 'f-sl-front',    type: 'document', required: false, options: [], instruction: '', label: 'License Front', documentTypeId: 'dt-lic-front' },
+            { id: 'f-sl-back',     type: 'document', required: false, options: [], instruction: '', label: 'License Back',  documentTypeId: 'dt-lic-back'  },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
+        id: 'form-sub-disqualification',
+        kind: 'custom',
+        name: 'Add Disqualification',
+        displayTitle: 'License Disqualification',
+        description: 'Single license-disqualification record — used inside the License Disqualification Details "+ Add Disqualification" popup.',
+        introText: 'Pick every offence that applies, then capture the disqualification date and duration.',
+        isSubform: true,
+        buttonName: 'Add Disqualification',
+        fields: [
+            {
+                id: 'f-sd-offences', type: 'checklist', required: false, instruction: '',
+                label: 'Offence Type',
+                options: [
+                    'Causing a fatality through the negligent operation of a CMV.',
+                    'Driving a CMV while revoked, suspended, canceled or disqualified as a result of prior violations committed while operating a CMV.',
+                    "Driving a CMV without obtaining a CLP or CDL or without a CLP or CDL in the driver's possession.",
+                    'Driving a CMV without the proper class license and/or endorsements.',
+                    'Driving recklessly.',
+                    'Driving under the influence of a controlled substance.',
+                    'Driving under the influence of alcohol as prescribed by State law.',
+                    'Following the vehicle ahead too closely.',
+                    'Having an alcohol concentration of .04 or greater while operating a CMV.',
+                    'Leaving the scene of an accident.',
+                    'Making improper or erratic traffic lane changes.',
+                    'Refusing to take an alcohol test as required by implied consent laws or regulations.',
+                    'Speeding excessively (15 mph or more over the speed limit).',
+                    'Using the vehicle in the commission of a felony involving the manufacturing, distributing, or dispensing of a controlled substance.',
+                    'Using the vehicle to commit a felony.',
+                    'Violating State or local law relating to motor vehicle traffic control arising in connection with a fatal accident.',
+                    'Violating laws relating to prohibiting texting or using a handheld mobile telephone while driving a CMV.',
+                ],
+            },
+            { id: 'f-sd-date',     type: 'date',     required: true, options: [], instruction: '', label: 'Disqualification Date' },
+            { id: 'f-sd-duration', type: 'number',   required: true, options: [], instruction: '', label: 'Duration in Days' },
+            { id: 'f-sd-explain',  type: 'textarea', required: false, options: [], instruction: '', label: 'Explanation' },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
+        id: 'form-sub-accident',
+        kind: 'custom',
+        name: 'Add Accident',
+        displayTitle: 'Accident Record',
+        description: 'Single accident record — used inside the Accident Details "+ Add Accident" popup.',
+        introText: 'Please include the accident date, location, nature of the accident, and any injuries, fatalities, or cargo damage / spill.',
+        isSubform: true,
+        buttonName: 'Add Accident',
+        fields: [
+            { id: 'f-sac-date', type: 'date', required: true, options: [], instruction: '', label: 'Accident Date' },
+            {
+                id: 'f-sac-nature', type: 'radio', required: true, instruction: '',
+                label: 'Nature of Accident',
+                options: ['Head-on', 'Hit fixed object', 'Jackknife', 'Other', 'Rear-end', 'Rear-to-rear', 'Rollover', 'Side-impact', 'Sideswipe', 'Upset'],
+            },
+            { id: 'f-sac-country', type: 'radio', required: true, options: ['Canada', 'United States'], instruction: '', label: 'Country' },
+            { id: 'f-sac-state',   type: 'text',  required: true, options: [], instruction: 'e.g. Ontario', label: 'State / Province' },
+            { id: 'f-sac-city',    type: 'text',  required: true, options: [], instruction: '', label: 'Location City' },
+            { id: 'f-sac-fatalities', type: 'number', required: false, options: [], instruction: '', label: '# of Fatalities' },
+            { id: 'f-sac-injuries',   type: 'number', required: false, options: [], instruction: '', label: '# of Injuries' },
+            { id: 'f-sac-cargo',      type: 'toggle', required: false, options: [], instruction: '', label: 'Cargo Damage / Spill?' },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
+        id: 'form-sub-violation',
+        kind: 'custom',
+        name: 'Add Violation',
+        displayTitle: 'Traffic Violation Record',
+        description: 'Single traffic-violation record — used inside the Traffic Violation Details "+ Add Violation" popup.',
+        introText: 'Please provide details of the traffic violation, including the charge or offense, issuing authority, date, location, penalties, and any demerit points deducted.',
+        isSubform: true,
+        buttonName: 'Add Violation',
+        fields: [
+            { id: 'f-sv-charge', type: 'text', required: true, options: [], instruction: '', label: 'Charge or Offense' },
+            { id: 'f-sv-agency', type: 'text', required: true, options: [], instruction: '', label: 'Issuing Agency / Police Department' },
+            { id: 'f-sv-date',   type: 'date', required: true, options: [], instruction: '', label: 'Violation Date' },
+            { id: 'f-sv-country', type: 'radio', required: true, options: ['Canada', 'United States'], instruction: '', label: 'Country' },
+            { id: 'f-sv-state',  type: 'text', required: true, options: [], instruction: 'e.g. Ontario', label: 'State / Province' },
+            { id: 'f-sv-city',   type: 'text', required: true, options: [], instruction: '', label: 'City' },
+            {
+                id: 'f-sv-penalty', type: 'select', required: true, instruction: '',
+                label: 'Penalty',
+                options: ['Fine', 'Demerit Points', 'Licence Suspension', 'Licence Revocation', 'Jail Time', 'Community Service', 'Warning', 'Other'],
+            },
+            { id: 'f-sv-amount',      type: 'text',     required: false, options: [], instruction: '', label: 'Penalty Amount' },
+            { id: 'f-sv-description', type: 'textarea', required: false, options: [], instruction: '', label: 'Description' },
+            { id: 'f-sv-points',      type: 'toggle',   required: false, options: [], instruction: '', label: 'Did your points get deducted?' },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
+        id: 'form-sub-driving-experience',
+        kind: 'custom',
+        name: 'Add Driving Experience',
+        displayTitle: 'Driving Experience Record',
+        description: 'Single driving-experience record — used inside the Driving Experience "+ Add Experience" popup.',
+        introText: 'Please provide details of your driving experience, including equipment class, freight types, regions driven, dates, mileage, and owner-operator status.',
+        isSubform: true,
+        buttonName: 'Add Experience',
+        fields: [
+            {
+                id: 'f-sde-equipment', type: 'radio', required: true, instruction: '',
+                label: 'Equipment Class',
+                options: ['Bus', 'Doubles/Triples', 'Other', 'Straight truck', 'Tanker', 'Tractor-trailer'],
+            },
+            {
+                id: 'f-sde-freight', type: 'checklist', required: false, instruction: '',
+                label: 'Freight Types',
+                options: ['Auto', 'Bulk', 'Flat', 'Hazmat', 'Other', 'Reefer', 'Tank', 'Van'],
+            },
+            {
+                id: 'f-sde-regions', type: 'checklist', required: false, instruction: '',
+                label: 'Driving Regions',
+                options: ['Border', 'Canada', 'Canada-only', 'USA', 'USA-only', 'local'],
+            },
+            { id: 'f-sde-from',  type: 'date',   required: true, options: [], instruction: '', label: 'From Date' },
+            { id: 'f-sde-to',    type: 'date',   required: true, options: [], instruction: '', label: 'To Date' },
+            { id: 'f-sde-miles', type: 'number', required: true, options: [], instruction: '', label: 'Approximate Miles' },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
+    }, {
+        id: 'form-sub-education',
+        kind: 'custom',
+        name: 'Add Education',
+        displayTitle: 'Education Details',
+        description: 'Single education record — used inside the Education Details "+ Add Education" popup.',
+        introText: 'Please provide details of your educational background, including highest level completed, institution name, course of study, years completed, and graduation status.',
+        isSubform: true,
+        buttonName: 'Add Education',
+        fields: [
+            {
+                id: 'f-sed-level', type: 'radio', required: true, instruction: '',
+                label: 'Highest Education',
+                options: ['Bachelor', 'College diploma', 'Doctorate', 'High-school diploma', 'High-school or less', 'Master', 'Other'],
+            },
+            { id: 'f-sed-school',   type: 'text',   required: true,  options: [], instruction: '', label: 'School' },
+            { id: 'f-sed-location', type: 'text',   required: false, options: [], instruction: '', label: 'Location (City, State, Country)' },
+            { id: 'f-sed-course',   type: 'text',   required: false, options: [], instruction: '', label: 'Course of Study' },
+            { id: 'f-sed-year',     type: 'number', required: true,  options: [], instruction: '', label: 'Year Completed' },
+            { id: 'f-sed-no-grad',  type: 'text',   required: false, options: [], instruction: '', label: 'Reason for Not Graduating' },
+        ],
+        documents: [],
+        isDefault: true,
+        updatedAt: today(),
     }];
 }
 
 /** Fill in any fields missing from older localStorage data. */
 function normalize(f: Partial<ApplicationFormDef> & { id: string; name: string }): ApplicationFormDef {
     const rawFields = Array.isArray(f.fields) ? f.fields : [];
-    const fields = rawFields.map((field) => {
+    let fields = rawFields.map((field) => {
         let next = field;
         const forcedType = KNOWN_FIELD_TYPES[field.id];
         if (forcedType && field.type !== forcedType) next = { ...next, type: forcedType };
@@ -910,7 +1190,39 @@ function normalize(f: Partial<ApplicationFormDef> & { id: string; name: string }
         if (backfill && !next.showWhen) next = { ...next, showWhen: backfill };
         return next;
     });
+
+    /* Migration: every entry in `documents[]` becomes an inline `document` field. The
+     *  documents[] array is the legacy "Required documents" section — we removed that UI;
+     *  all document uploads are now regular fields. Placement metadata is honoured: an
+     *  `after:{fieldId}` placement inserts the field at that point, everything else appends
+     *  at the end. */
+    const rawDocs = Array.isArray(f.documents) ? f.documents : [];
+    if (rawDocs.length > 0) {
+        for (const d of rawDocs) {
+            // Skip if the form already has an inline field with this id (avoids duplication on re-load)
+            if (fields.some(x => x.id === d.id)) continue;
+            const newField = {
+                id: d.id,
+                label: d.label,
+                type: 'document' as FormFieldType,
+                required: !!d.required,
+                instruction: '',
+                options: [],
+                documentTypeId: d.documentTypeId,
+                showWhen: d.showWhen,
+            };
+            if (d.placement && d.placement.startsWith('after:')) {
+                const targetId = d.placement.slice('after:'.length);
+                const idx = fields.findIndex(x => x.id === targetId);
+                if (idx >= 0) fields = [...fields.slice(0, idx + 1), newField, ...fields.slice(idx + 1)];
+                else fields = [...fields, newField];
+            } else {
+                fields = [...fields, newField];
+            }
+        }
+    }
     const isDefault = KNOWN_DEFAULT_FORM_IDS.has(f.id) || !!f.isDefault;
+    const isSubform = KNOWN_SUBFORM_IDS.has(f.id) || !!f.isSubform;
     return {
         id: f.id,
         kind: f.kind ?? (f.isDefault ? 'standard' : 'custom'),
@@ -921,6 +1233,7 @@ function normalize(f: Partial<ApplicationFormDef> & { id: string; name: string }
         fields,
         documents: Array.isArray(f.documents) ? f.documents : [],
         isDefault,
+        isSubform,
         updatedAt: f.updatedAt ?? today(),
     };
 }

@@ -31,7 +31,7 @@ export interface DocumentType {
     addedDate: string;
 }
 
-const STORAGE_KEY = 'ats:document-types-v1';
+const STORAGE_KEY = 'ats:document-types-v3';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -122,6 +122,91 @@ function seedDocumentTypes(): DocumentType[] {
             required: false, allowMultiple: false,
             expiryRequired: false, issueDateRequired: true,
             issueStateRequired: true, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-emp-experience-letter', name: 'Employer Experience Letter', category: 'Other',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-insurance-letter', name: 'Employer Insurance Experience Letter', category: 'Insurance',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        /* Additional core document types so every form / subform has a sensible pick. */
+        {
+            id: 'dt-headshot', name: 'Applicant Headshot / Photo', category: 'Photo',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: false,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-ssn-card', name: 'SSN / SIN Card', category: 'Identity',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: false,
+            issueStateRequired: false, issueCountryRequired: true,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-birth-certificate', name: 'Birth Certificate', category: 'Identity',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: true,
+            issueStateRequired: true, issueCountryRequired: true,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-twic', name: 'TWIC Card', category: 'Identity',
+            required: false, allowMultiple: false,
+            expiryRequired: true, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-fast', name: 'FAST Card', category: 'Identity',
+            required: false, allowMultiple: false,
+            expiryRequired: true, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: true,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-resume', name: 'Resume / CV', category: 'Other',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: false,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-vehicle-registration', name: 'Vehicle Registration', category: 'Identity',
+            required: false, allowMultiple: false,
+            expiryRequired: true, issueDateRequired: true,
+            issueStateRequired: true, issueCountryRequired: true,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-bobtail-insurance', name: 'Bobtail / Cargo Insurance', category: 'Insurance',
+            required: false, allowMultiple: false,
+            expiryRequired: true, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-lease-agreement', name: 'Lease Agreement', category: 'Other',
+            required: false, allowMultiple: false,
+            expiryRequired: true, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            id: 'dt-offer-letter', name: 'Offer Letter', category: 'Other',
+            required: false, allowMultiple: false,
+            expiryRequired: false, issueDateRequired: true,
+            issueStateRequired: false, issueCountryRequired: false,
             status: 'Active', addedDate: d,
         },
     ];

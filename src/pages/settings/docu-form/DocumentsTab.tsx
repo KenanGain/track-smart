@@ -108,99 +108,130 @@ function DocumentTypeModal({ initial, isNew, onSave, onClose }: {
 
     return (
         <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="max-w-xl">
-                <DialogHeader>
-                    <DialogTitle>{isNew ? 'Add Document Type' : 'Edit Document Type'}</DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-4">
-                    {/* Basic info */}
-                    <div className="space-y-3 rounded-lg bg-slate-50/60 p-4">
-                        <div>
-                            <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                Document name <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                value={draft.name}
-                                onChange={(e) => up({ name: e.target.value })}
-                                placeholder="e.g. CDL — Front & Back"
-                                className={INPUT_CLS}
-                            />
+            <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col gap-0 p-0">
+                {/* Header */}
+                <DialogHeader className="border-b border-slate-200 px-6 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm">
+                            <FileText size={18} />
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Category</label>
-                                <select
-                                    value={draft.category}
-                                    onChange={(e) => up({ category: e.target.value as DocTypeCategory })}
-                                    className={INPUT_CLS}
-                                >
-                                    {DOC_TYPE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Status</label>
-                                <select
-                                    value={draft.status}
-                                    onChange={(e) => up({ status: e.target.value as DocTypeStatus })}
-                                    className={INPUT_CLS}
-                                >
-                                    <option value="Active">Active</option>
-                                    <option value="Inactive">Inactive</option>
-                                </select>
-                            </div>
+                        <div className="min-w-0 flex-1">
+                            <DialogTitle className="text-base font-semibold text-slate-900">
+                                {isNew ? 'Add Document Type' : 'Edit Document Type'}
+                            </DialogTitle>
+                            <p className="mt-0.5 text-[12px] text-slate-500">
+                                Define one type once — every form references it from the library.
+                            </p>
                         </div>
                     </div>
+                </DialogHeader>
 
-                    {/* Settings */}
-                    <div>
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                            Upload settings
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
-                            <ToggleRow
-                                label="Required"
-                                help="Applicant must upload at least one file."
-                                value={draft.required}
-                                onToggle={() => up({ required: !draft.required })}
-                            />
-                            <ToggleRow
-                                label="Allow multiple uploads"
-                                help="More than one file per applicant."
-                                value={draft.allowMultiple}
-                                onToggle={() => up({ allowMultiple: !draft.allowMultiple })}
-                            />
-                            <ToggleRow
-                                label="Expiry date required"
-                                help="Capture an expiry date on upload."
-                                value={draft.expiryRequired}
-                                onToggle={() => up({ expiryRequired: !draft.expiryRequired })}
-                            />
-                            <ToggleRow
-                                label="Issue date required"
-                                help="Capture an issue date on upload."
-                                value={draft.issueDateRequired}
-                                onToggle={() => up({ issueDateRequired: !draft.issueDateRequired })}
-                            />
-                            <ToggleRow
-                                label="Issue state required"
-                                help="Capture an issuing state / province."
-                                value={draft.issueStateRequired}
-                                onToggle={() => up({ issueStateRequired: !draft.issueStateRequired })}
-                            />
-                            <ToggleRow
-                                label="Issue country required"
-                                help="Capture an issuing country."
-                                value={draft.issueCountryRequired}
-                                onToggle={() => up({ issueCountryRequired: !draft.issueCountryRequired })}
-                            />
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
+                    <div className="space-y-5">
+                        {/* Basics */}
+                        <div className="rounded-xl border border-slate-200 bg-white p-5">
+                            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                Basics
+                            </p>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Document name <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        value={draft.name}
+                                        onChange={(e) => up({ name: e.target.value })}
+                                        placeholder="e.g. CDL — Front & Back"
+                                        className={cn(INPUT_CLS, 'h-10')}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1.5 block text-xs font-semibold text-slate-700">Category</label>
+                                        <select
+                                            value={draft.category}
+                                            onChange={(e) => up({ category: e.target.value as DocTypeCategory })}
+                                            className={cn(INPUT_CLS, 'h-10')}
+                                        >
+                                            {DOC_TYPE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-xs font-semibold text-slate-700">Status</label>
+                                        <select
+                                            value={draft.status}
+                                            onChange={(e) => up({ status: e.target.value as DocTypeStatus })}
+                                            className={cn(INPUT_CLS, 'h-10')}
+                                        >
+                                            <option value="Active">Active</option>
+                                            <option value="Inactive">Inactive</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Upload settings */}
+                        <div className="rounded-xl border border-slate-200 bg-white p-5">
+                            <div className="mb-3 flex items-center justify-between">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                    Upload settings
+                                </p>
+                                <p className="text-[11px] text-slate-400">
+                                    These flags drive what the form's upload component captures.
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                <ToggleRow
+                                    label="Required"
+                                    help="Applicant must upload at least one file."
+                                    value={draft.required}
+                                    onToggle={() => up({ required: !draft.required })}
+                                />
+                                <ToggleRow
+                                    label="Allow multiple"
+                                    help="More than one file per applicant."
+                                    value={draft.allowMultiple}
+                                    onToggle={() => up({ allowMultiple: !draft.allowMultiple })}
+                                />
+                                <ToggleRow
+                                    label="Expiry date"
+                                    help="Capture an expiry date on upload."
+                                    value={draft.expiryRequired}
+                                    onToggle={() => up({ expiryRequired: !draft.expiryRequired })}
+                                />
+                                <ToggleRow
+                                    label="Issue date"
+                                    help="Capture an issue date on upload."
+                                    value={draft.issueDateRequired}
+                                    onToggle={() => up({ issueDateRequired: !draft.issueDateRequired })}
+                                />
+                                <ToggleRow
+                                    label="Issue state"
+                                    help="Capture an issuing state / province."
+                                    value={draft.issueStateRequired}
+                                    onToggle={() => up({ issueStateRequired: !draft.issueStateRequired })}
+                                />
+                                <ToggleRow
+                                    label="Issue country"
+                                    help="Capture an issuing country."
+                                    value={draft.issueCountryRequired}
+                                    onToggle={() => up({ issueCountryRequired: !draft.issueCountryRequired })}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <DialogFooter>
+                {/* Sticky footer */}
+                <DialogFooter className="border-t border-slate-200 bg-white px-6 py-3">
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button disabled={!canSave} onClick={() => onSave({ ...draft, name: draft.name.trim() })}>
+                    <Button
+                        disabled={!canSave}
+                        onClick={() => onSave({ ...draft, name: draft.name.trim() })}
+                        className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
+                    >
                         <Check className="h-4 w-4" />
                         {isNew ? 'Add Document' : 'Save Changes'}
                     </Button>

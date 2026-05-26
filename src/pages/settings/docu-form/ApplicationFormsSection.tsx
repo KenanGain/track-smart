@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, Download, Trash2, Lock, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -18,9 +18,11 @@ import { EmptyState } from './EmptyState';
  * to open the full builder inline (details + steps/fields + documents).
  */
 
-export function ApplicationFormsSection({ forms, onCommit }: {
+export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
     forms: ApplicationFormDef[];
     onCommit: (forms: ApplicationFormDef[]) => void;
+    /** Whether to show only main forms or only subforms — driven by the top-level tab. */
+    mode?: 'main' | 'subform';
 }) {
     const [branding] = useCompanyBranding();
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function ApplicationFormsSection({ forms, onCommit }: {
         onCommit(forms.map(f => f.id === next.id ? next : f));
 
     const addForm = () => {
-        const f = newApplicationForm();
+        const f = { ...newApplicationForm(), isSubform: mode === 'subform' };
         // Prepend so the new form shows at the top of the list, expanded for immediate editing.
         onCommit([f, ...forms]);
         setExpandedId(f.id);
@@ -51,18 +53,25 @@ export function ApplicationFormsSection({ forms, onCommit }: {
         });
     };
 
-    const defaultCount = forms.filter(f => f.isDefault).length;
-    const customCount = forms.length - defaultCount;
+    const visibleForms = useMemo(
+        () => forms.filter(f => mode === 'subform' ? f.isSubform : !f.isSubform),
+        [forms, mode],
+    );
+
+    const defaultCount = visibleForms.filter(f => f.isDefault).length;
+    const customCount = visibleForms.length - defaultCount;
 
     return (
         <div>
             <PageHeader
                 icon={FileText}
-                title="Application Forms"
-                description="The form library — each form is edited in a full builder (details, steps & fields, documents). Click a form to open its builder."
+                title={mode === 'subform' ? 'Subforms' : 'Application Forms'}
+                description={mode === 'subform'
+                    ? "Subforms are application forms embedded inside another form's popup (e.g. Employer Details inside Employment Details). They behave like any other form — fields, documents, all editable."
+                    : 'The form library — each form is edited in a full builder (details, steps & fields, documents). Click a form to open its builder.'}
                 stats={(
                     <StatStrip stats={[
-                        { label: 'total', value: forms.length, tone: 'default' },
+                        { label: 'total', value: visibleForms.length, tone: 'default' },
                         { label: 'built-in', value: defaultCount, tone: 'muted' },
                         { label: 'custom', value: customCount, tone: 'accent' },
                     ]} />
@@ -73,30 +82,34 @@ export function ApplicationFormsSection({ forms, onCommit }: {
                         onClick={addForm}
                         className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
                     >
-                        <Plus className="h-4 w-4" /> Add Application Form
+                        <Plus className="h-4 w-4" />
+                        {mode === 'subform' ? 'Add Subform' : 'Add Application Form'}
                     </Button>
                 )}
             />
 
-            {forms.length === 0 && (
+            {visibleForms.length === 0 && (
                 <EmptyState
                     icon={FileText}
-                    title="No application forms yet"
-                    description="Application forms collect what you need from each applicant — identity, license, work history, accidents, violations, and more."
+                    title={mode === 'subform' ? 'No subforms yet' : 'No application forms yet'}
+                    description={mode === 'subform'
+                        ? "Subforms are application forms embedded inside another form's popup picker (e.g. Employer Details inside Employment Details). They behave like any other form — fields, documents, all editable."
+                        : 'Application forms collect what you need from each applicant — identity, license, work history, accidents, violations, and more.'}
                     action={(
                         <Button
                             size="sm"
                             onClick={addForm}
                             className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
                         >
-                            <Plus className="h-4 w-4" /> Add Application Form
+                            <Plus className="h-4 w-4" />
+                            {mode === 'subform' ? 'Add Subform' : 'Add Application Form'}
                         </Button>
                     )}
                 />
             )}
 
             <ul className="space-y-2">
-                {forms.map(f => {
+                {visibleForms.map(f => {
                     const expanded = expandedId === f.id;
                     return (
                         <li key={f.id} className={cn(
@@ -125,6 +138,18 @@ export function ApplicationFormsSection({ forms, onCommit }: {
                                             <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-600">
                                                 Custom
                                             </span>
+                                        )}
+                                        {f.isSubform && (
+                                            <>
+                                                <span className="inline-flex items-center gap-1 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700">
+                                                    Subform
+                                                </span>
+                                                {f.buttonName && (
+                                                    <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                                                        Button: "{f.buttonName}"
+                                                    </span>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     <p className="truncate text-xs text-slate-400">

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, Save, FileText, UploadCloud, Plus, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     newLicenseEntry, newAddressEntry, newDisqualificationEntry, newAccidentEntry,
     newViolationEntry, newDrivingExperienceEntry, newEmploymentEntry, newEducationEntry,
-    emptyDocumentUploadValue,
+    emptyDocumentUploadValue, loadApplicationForms,
     DISQUALIFICATION_OFFENCE_OPTIONS, ACCIDENT_NATURE_OPTIONS, VIOLATION_PENALTY_OPTIONS,
     EQUIPMENT_CLASS_OPTIONS, FREIGHT_TYPE_OPTIONS, DRIVING_REGION_OPTIONS,
     POSITION_HELD_OPTIONS, HIGHEST_EDUCATION_OPTIONS,
@@ -887,11 +887,11 @@ function DrivingExperienceListControl({ value, onChange }: {
 }
 
 /**
- * 4-step Employment History modal.
+ * Single-page Employment History modal.
  *
- * Steps: 1) Employment Details · 2) Contact Person's Detail · 3) Address Details · 4) Additional Details.
- * The applicant can move BACK / NEXT between steps; FINISH on step 4 commits, but SAVE in the
- * top-left is always available so partial entries can be persisted at any step.
+ * All four sections (Employment Details · Contact Person · Address · Additional Details)
+ * appear on one scrollable page with section headers. No stepper, no Back / Next nav —
+ * the applicant scrolls through the form and saves at the bottom.
  */
 function EmploymentEntryModal({ initial, onSave, onClose }: {
     initial: FormEmploymentEntry;
@@ -899,10 +899,12 @@ function EmploymentEntryModal({ initial, onSave, onClose }: {
     onClose: () => void;
 }) {
     const [draft, setDraft] = useState(initial);
-    const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const up = (p: Partial<FormEmploymentEntry>) => setDraft((d) => ({ ...d, ...p }));
-
-    const stepLabels = ['Employment Details', "Contact Person's Detail", 'Address Details', 'Additional Details'];
+    const canSave = draft.employerName.trim().length > 0
+        && draft.startDate.trim().length > 0
+        && draft.endDate.trim().length > 0
+        && draft.contactName.trim().length > 0
+        && draft.contactPhone.trim().length > 0;
 
     const YesNo = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
         <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
@@ -925,6 +927,12 @@ function EmploymentEntryModal({ initial, onSave, onClose }: {
         </div>
     );
 
+    const SectionHeading = ({ children }: { children: React.ReactNode }) => (
+        <h3 className="mt-2 border-b border-blue-200 pb-1.5 text-sm font-bold text-blue-600">
+            {children}
+        </h3>
+    );
+
     return (
         <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
             <DialogContent className="max-w-2xl">
@@ -932,266 +940,203 @@ function EmploymentEntryModal({ initial, onSave, onClose }: {
                     <DialogTitle>Employment History</DialogTitle>
                 </DialogHeader>
 
-                {/* Step indicator */}
-                <div className="flex select-none items-start gap-1 border-b border-slate-100 pb-3">
-                    {stepLabels.map((label, i) => {
-                        const n = (i + 1) as 1 | 2 | 3 | 4;
-                        const done = n < step;
-                        const active = n === step;
-                        return (
-                            <div key={label} className="flex flex-1 flex-col items-center">
-                                <div className="flex w-full items-center">
-                                    <span className={cn("h-0.5 flex-1", i === 0 ? "invisible" : n <= step ? "bg-blue-500" : "bg-slate-200")} />
-                                    <button
-                                        type="button"
-                                        onClick={() => setStep(n)}
-                                        className={cn(
-                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold transition-all",
-                                            active
-                                                ? "bg-blue-600 text-white ring-4 ring-blue-100"
-                                                : done
-                                                    ? "bg-blue-500 text-white"
-                                                    : "bg-white text-slate-400 ring-1 ring-slate-300",
-                                        )}
-                                    >
-                                        {done ? <Check size={13} /> : n}
-                                    </button>
-                                    <span className={cn("h-0.5 flex-1", i === stepLabels.length - 1 ? "invisible" : done ? "bg-blue-500" : "bg-slate-200")} />
-                                </div>
-                                <span className={cn(
-                                    "mt-1.5 max-w-[120px] truncate text-center text-[11px] leading-tight",
-                                    active ? "font-semibold text-slate-900" : done ? "font-medium text-slate-600" : "text-slate-400",
-                                )}>
-                                    {label}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
+                <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-2">
+                    {/* ── Section 1: Employment Details ───────────────────── */}
+                    <SectionHeading>Employment Details</SectionHeading>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                            Employer Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input value={draft.employerName} onChange={(e) => up({ employerName: e.target.value })} className={INPUT_CLS} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                Start Date <span className="text-rose-500">*</span>
+                            </label>
+                            <input type="date" value={draft.startDate} onChange={(e) => up({ startDate: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                End Date <span className="text-rose-500">*</span>
+                            </label>
+                            <input type="date" value={draft.endDate} onChange={(e) => up({ endDate: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">Position Held</label>
+                        <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
+                            {POSITION_HELD_OPTIONS.map((p) => (
+                                <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => up({ positionHeld: p })}
+                                    className={cn(
+                                        "px-4 py-1.5 text-[12px] font-medium",
+                                        draft.positionHeld === p ? "bg-blue-100 text-blue-700" : "bg-white text-slate-600 hover:bg-slate-50",
+                                    )}
+                                >
+                                    {p}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
-                {/* Step bodies */}
-                <div className="space-y-3">
-                    {step === 1 && (
-                        <>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                    Employer Name <span className="text-rose-500">*</span>
-                                </label>
-                                <input value={draft.employerName} onChange={(e) => up({ employerName: e.target.value })} className={INPUT_CLS} />
-                            </div>
+                    {/* ── Section 2: Contact Person ────────────────────────── */}
+                    <SectionHeading>Contact Person</SectionHeading>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                Name <span className="text-rose-500">*</span>
+                            </label>
+                            <input value={draft.contactName} onChange={(e) => up({ contactName: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                Phone Number <span className="text-rose-500">*</span>
+                            </label>
+                            <input value={draft.contactPhone} onChange={(e) => up({ contactPhone: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">Email</label>
+                        <input type="email" value={draft.contactEmail} onChange={(e) => up({ contactEmail: e.target.value })} className={INPUT_CLS} />
+                    </div>
+
+                    {/* ── Section 3: Address ───────────────────────────────── */}
+                    <SectionHeading>Employer Address</SectionHeading>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Street</label>
+                            <input value={draft.addressStreet} onChange={(e) => up({ addressStreet: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Unit Number</label>
+                            <input value={draft.addressUnitNumber} onChange={(e) => up({ addressUnitNumber: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">City</label>
+                            <input value={draft.addressCity} onChange={(e) => up({ addressCity: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Zipcode</label>
+                            <input value={draft.addressZipcode} onChange={(e) => up({ addressZipcode: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Country</label>
+                            <input value={draft.addressCountry} onChange={(e) => up({ addressCountry: e.target.value })} className={INPUT_CLS} placeholder="e.g. United States" />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">State</label>
+                            <input value={draft.addressState} onChange={(e) => up({ addressState: e.target.value })} className={INPUT_CLS} placeholder="e.g. Ontario" />
+                        </div>
+                    </div>
+
+                    {/* ── Section 4: Additional Details ───────────────────── */}
+                    <SectionHeading>Additional Details</SectionHeading>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Reason for Leaving</label>
+                            <input value={draft.reasonForLeaving} onChange={(e) => up({ reasonForLeaving: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Wage ($/hr)</label>
+                            <input value={draft.wage} onChange={(e) => up({ wage: e.target.value })} className={INPUT_CLS} />
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                        <label className="text-xs font-semibold text-slate-700">Do you have any gaps in employment?</label>
+                        <YesNo value={draft.hasGaps} onChange={(v) => up({ hasGaps: v })} />
+                    </div>
+                    {draft.hasGaps && (
+                        <div className="space-y-2 border-l-2 border-blue-100 pl-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                        Start Date <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input type="date" value={draft.startDate} onChange={(e) => up({ startDate: e.target.value })} className={INPUT_CLS} />
+                                    <label className="mb-1 block text-xs font-semibold text-slate-700">From</label>
+                                    <input type="date" value={draft.gapFromDate} onChange={(e) => up({ gapFromDate: e.target.value })} className={INPUT_CLS} />
                                 </div>
                                 <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                        End Date <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input type="date" value={draft.endDate} onChange={(e) => up({ endDate: e.target.value })} className={INPUT_CLS} />
+                                    <label className="mb-1 block text-xs font-semibold text-slate-700">To</label>
+                                    <input type="date" value={draft.gapToDate} onChange={(e) => up({ gapToDate: e.target.value })} className={INPUT_CLS} />
                                 </div>
                             </div>
                             <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Position Held</label>
-                                <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
-                                    {POSITION_HELD_OPTIONS.map((p) => (
-                                        <button
-                                            key={p}
-                                            type="button"
-                                            onClick={() => up({ positionHeld: p })}
-                                            className={cn(
-                                                "px-4 py-1.5 text-[12px] font-medium",
-                                                draft.positionHeld === p ? "bg-blue-100 text-blue-700" : "bg-white text-slate-600 hover:bg-slate-50",
-                                            )}
-                                        >
-                                            {p}
-                                        </button>
-                                    ))}
-                                </div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-700">Explain Reason</label>
+                                <input value={draft.gapExplanation} onChange={(e) => up({ gapExplanation: e.target.value })} className={INPUT_CLS} />
                             </div>
-                        </>
+                        </div>
                     )}
-
-                    {step === 2 && (
-                        <>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                    Name <span className="text-rose-500">*</span>
-                                </label>
-                                <input value={draft.contactName} onChange={(e) => up({ contactName: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                    Phone Number <span className="text-rose-500">*</span>
-                                </label>
-                                <input value={draft.contactPhone} onChange={(e) => up({ contactPhone: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Email</label>
-                                <input type="email" value={draft.contactEmail} onChange={(e) => up({ contactEmail: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                        </>
+                    <div className="flex items-start justify-between gap-3">
+                        <label className="text-xs font-semibold text-slate-700">
+                            Were you subjected to US DOT regulations while employed (FMCSRs*)?
+                        </label>
+                        <YesNo value={draft.subjectToFMCSR} onChange={(v) => up({ subjectToFMCSR: v })} />
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                        <label className="text-xs font-semibold text-slate-700">
+                            Were you required to do drug and alcohol testing as per 49 CFR Part 40?
+                        </label>
+                        <YesNo value={draft.drugAlcoholTesting} onChange={(v) => up({ drugAlcoholTesting: v })} />
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                        <label className="text-xs font-semibold text-slate-700">
+                            Do you have an Employer Experience Letter from this employer?
+                        </label>
+                        <YesNo value={draft.hasExperienceLetter} onChange={(v) => up({ hasExperienceLetter: v })} />
+                    </div>
+                    {draft.hasExperienceLetter && (
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Employer Experience Letter</label>
+                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-4 py-4 text-center hover:bg-blue-50/60">
+                                <UploadCloud size={24} className="mb-1 text-slate-300" />
+                                <div className="flex items-center gap-2">
+                                    <span className="rounded border border-slate-300 bg-white px-3 py-1 text-[12px] text-slate-700">Choose File</span>
+                                    <span className="text-[12px] text-slate-500">{draft.experienceLetterFile || 'No file chosen'}</span>
+                                </div>
+                                <span className="mt-1 text-[12px] font-medium text-blue-600">Or Drag It Here.</span>
+                                <input type="file" className="hidden" onChange={(e) => up({ experienceLetterFile: e.target.files?.[0]?.name ?? '' })} />
+                            </label>
+                        </div>
                     )}
-
-                    {step === 3 && (
-                        <>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Street</label>
-                                <input value={draft.addressStreet} onChange={(e) => up({ addressStreet: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Unit Number</label>
-                                <input value={draft.addressUnitNumber} onChange={(e) => up({ addressUnitNumber: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">City</label>
-                                <input value={draft.addressCity} onChange={(e) => up({ addressCity: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Zipcode</label>
-                                <input value={draft.addressZipcode} onChange={(e) => up({ addressZipcode: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-700">Country</label>
-                                    <input value={draft.addressCountry} onChange={(e) => up({ addressCountry: e.target.value })} className={INPUT_CLS} placeholder="e.g. United States" />
+                    <div className="flex items-start justify-between gap-3">
+                        <label className="text-xs font-semibold text-slate-700">
+                            Do you have an Employer Insurance Experience Letter for this employer?
+                        </label>
+                        <YesNo value={draft.hasInsuranceLetter} onChange={(v) => up({ hasInsuranceLetter: v })} />
+                    </div>
+                    {draft.hasInsuranceLetter && (
+                        <div>
+                            <label className="mb-1 block text-xs font-semibold text-slate-700">Insurance Experience Letter</label>
+                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-4 py-4 text-center hover:bg-blue-50/60">
+                                <UploadCloud size={24} className="mb-1 text-slate-300" />
+                                <div className="flex items-center gap-2">
+                                    <span className="rounded border border-slate-300 bg-white px-3 py-1 text-[12px] text-slate-700">Choose File</span>
+                                    <span className="text-[12px] text-slate-500">{draft.insuranceLetterFile || 'No file chosen'}</span>
                                 </div>
-                                <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-700">State</label>
-                                    <input value={draft.addressState} onChange={(e) => up({ addressState: e.target.value })} className={INPUT_CLS} placeholder="e.g. Ontario" />
-                                </div>
-                            </div>
-                        </>
+                                <span className="mt-1 text-[12px] font-medium text-blue-600">Or Drag It Here.</span>
+                                <input type="file" className="hidden" onChange={(e) => up({ insuranceLetterFile: e.target.files?.[0]?.name ?? '' })} />
+                            </label>
+                        </div>
                     )}
-
-                    {step === 4 && (
-                        <>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Reason for Leaving</label>
-                                <input value={draft.reasonForLeaving} onChange={(e) => up({ reasonForLeaving: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-semibold text-slate-700">Wage ($/hr)</label>
-                                <input value={draft.wage} onChange={(e) => up({ wage: e.target.value })} className={INPUT_CLS} />
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                                <label className="text-xs font-semibold text-slate-700">Do you have any gaps in employment?</label>
-                                <YesNo value={draft.hasGaps} onChange={(v) => up({ hasGaps: v })} />
-                            </div>
-                            {draft.hasGaps && (
-                                <div className="space-y-2 border-l-2 border-blue-100 pl-3">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="mb-1 block text-xs font-semibold text-slate-700">From</label>
-                                            <input type="date" value={draft.gapFromDate} onChange={(e) => up({ gapFromDate: e.target.value })} className={INPUT_CLS} />
-                                        </div>
-                                        <div>
-                                            <label className="mb-1 block text-xs font-semibold text-slate-700">To</label>
-                                            <input type="date" value={draft.gapToDate} onChange={(e) => up({ gapToDate: e.target.value })} className={INPUT_CLS} />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="mb-1 block text-xs font-semibold text-slate-700">Explain Reason</label>
-                                        <input value={draft.gapExplanation} onChange={(e) => up({ gapExplanation: e.target.value })} className={INPUT_CLS} />
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex items-start justify-between gap-3">
-                                <label className="text-xs font-semibold text-slate-700">
-                                    Were you subjected to US DOT regulations while employed (FMCSRs*)?
-                                </label>
-                                <YesNo value={draft.subjectToFMCSR} onChange={(v) => up({ subjectToFMCSR: v })} />
-                            </div>
-                            <div className="flex items-start justify-between gap-3">
-                                <label className="text-xs font-semibold text-slate-700">
-                                    Were you required to do drug and alcohol testing as per 49 CFR Part 40?
-                                </label>
-                                <YesNo value={draft.drugAlcoholTesting} onChange={(v) => up({ drugAlcoholTesting: v })} />
-                            </div>
-                            <div className="flex items-start justify-between gap-3">
-                                <label className="text-xs font-semibold text-slate-700">
-                                    Do you have an Employer Experience Letter from this employer?
-                                </label>
-                                <YesNo value={draft.hasExperienceLetter} onChange={(v) => up({ hasExperienceLetter: v })} />
-                            </div>
-                            {draft.hasExperienceLetter && (
-                                <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-700">Employer Experience Letter</label>
-                                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-4 py-4 text-center hover:bg-blue-50/60">
-                                        <UploadCloud size={24} className="mb-1 text-slate-300" />
-                                        <div className="flex items-center gap-2">
-                                            <span className="rounded border border-slate-300 bg-white px-3 py-1 text-[12px] text-slate-700">Choose File</span>
-                                            <span className="text-[12px] text-slate-500">{draft.experienceLetterFile || 'No file chosen'}</span>
-                                        </div>
-                                        <span className="mt-1 text-[12px] font-medium text-blue-600">Or Drag It Here.</span>
-                                        <input type="file" className="hidden" onChange={(e) => up({ experienceLetterFile: e.target.files?.[0]?.name ?? '' })} />
-                                    </label>
-                                </div>
-                            )}
-                            <div className="flex items-start justify-between gap-3">
-                                <label className="text-xs font-semibold text-slate-700">
-                                    Do you have an Employer Insurance Experience Letter for this employer?
-                                </label>
-                                <YesNo value={draft.hasInsuranceLetter} onChange={(v) => up({ hasInsuranceLetter: v })} />
-                            </div>
-                            {draft.hasInsuranceLetter && (
-                                <div>
-                                    <label className="mb-1 block text-xs font-semibold text-slate-700">Insurance Experience Letter</label>
-                                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-4 py-4 text-center hover:bg-blue-50/60">
-                                        <UploadCloud size={24} className="mb-1 text-slate-300" />
-                                        <div className="flex items-center gap-2">
-                                            <span className="rounded border border-slate-300 bg-white px-3 py-1 text-[12px] text-slate-700">Choose File</span>
-                                            <span className="text-[12px] text-slate-500">{draft.insuranceLetterFile || 'No file chosen'}</span>
-                                        </div>
-                                        <span className="mt-1 text-[12px] font-medium text-blue-600">Or Drag It Here.</span>
-                                        <input type="file" className="hidden" onChange={(e) => up({ insuranceLetterFile: e.target.files?.[0]?.name ?? '' })} />
-                                    </label>
-                                </div>
-                            )}
-                            <p className="rounded-md bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-700">
-                                * The Federal Motor Carrier Safety Regulations (FMCSRs) apply to anyone operating a motor vehicle on a highway in interstate commerce to transport passengers or property when the vehicle: (1) weighs or has a GVWR of 10,001 pounds or more, (2) is designed or used to transport more than 8 passengers (including the driver), OR (3) is of any size and is used to transport hazardous materials in a quantity requiring placarding.
-                            </p>
-                        </>
-                    )}
+                    <p className="rounded-md bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-700">
+                        * The Federal Motor Carrier Safety Regulations (FMCSRs) apply to anyone operating a motor vehicle on a highway in interstate commerce to transport passengers or property when the vehicle: (1) weighs or has a GVWR of 10,001 pounds or more, (2) is designed or used to transport more than 8 passengers (including the driver), OR (3) is of any size and is used to transport hazardous materials in a quantity requiring placarding.
+                    </p>
                 </div>
 
                 {/* Footer */}
-                <DialogFooter className="!justify-between">
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose}>Cancel</Button>
                     <Button
-                        variant="outline"
+                        disabled={!canSave}
                         onClick={() => onSave(draft)}
-                        className="gap-1.5"
-                        title="Save partial entry without finishing all steps"
+                        className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
                     >
-                        <Save className="h-4 w-4" /> Save Draft
+                        <Check className="h-4 w-4" /> Save Employer
                     </Button>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            disabled={step === 1}
-                            onClick={() => setStep((s) => Math.max(1, s - 1) as 1 | 2 | 3 | 4)}
-                            className="gap-1.5"
-                        >
-                            <ArrowLeft className="h-4 w-4" /> Back
-                        </Button>
-                        {step < 4 ? (
-                            <Button
-                                onClick={() => setStep((s) => Math.min(4, s + 1) as 1 | 2 | 3 | 4)}
-                                className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
-                            >
-                                Next <ArrowLeft className="h-4 w-4 rotate-180" />
-                            </Button>
-                        ) : (
-                            <Button
-                                onClick={() => onSave(draft)}
-                                className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
-                            >
-                                <Check className="h-4 w-4" /> Finish
-                            </Button>
-                        )}
-                    </div>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -1523,6 +1468,114 @@ function EmploymentListControl({ value, onChange }: {
     );
 }
 
+/**
+ * Live-form control for a `subform-button` field. Renders a button labelled with
+ * the field's label (typically the linked subform's `buttonName`, e.g. "Add Employer").
+ * Clicking opens a popup that renders the linked subform's fields via FormBody —
+ * a fully dynamic subform integration driven by the admin's configuration.
+ */
+function SubformButtonField({ field, value, onChange }: {
+    field: FormField; value: FieldValue; onChange: (v: FieldValue) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const subform = useMemo(() => {
+        if (!field.subformId) return undefined;
+        return loadApplicationForms().find(f => f.id === field.subformId && f.isSubform);
+    }, [field.subformId]);
+
+    const entries = (Array.isArray(value) && value.every(v => typeof v === 'object' && v !== null && 'id' in (v as object))
+        ? (value as unknown as { id: string; values: Record<string, unknown> }[])
+        : []) as { id: string; values: Record<string, unknown> }[];
+
+    const [drafts, setDrafts] = useState<Record<string, unknown>>({});
+
+    const summarize = (e: { values: Record<string, unknown> }) => {
+        if (!subform) return 'Entry';
+        // Prefer the first text-ish field value as the summary
+        for (const f of subform.fields) {
+            if (f.type === 'heading' || f.type === 'paragraph' || f.type === 'bullet-list' || f.type === 'alert') continue;
+            const v = e.values[f.id];
+            if (typeof v === 'string' && v.trim().length > 0) return v;
+        }
+        return 'Entry';
+    };
+
+    const label = field.label || subform?.buttonName || subform?.name || 'Open subform';
+
+    if (!subform) {
+        return (
+            <div className="rounded-md border border-dashed border-rose-300 bg-rose-50/40 px-3 py-2 text-xs text-rose-700">
+                Linked subform not found. Re-link this button via field settings.
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            {entries.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                    {entries.map((e) => (
+                        <span
+                            key={e.id}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700"
+                        >
+                            {summarize(e)}
+                            <button
+                                type="button"
+                                onClick={() => onChange((entries.filter(x => x.id !== e.id)) as unknown as FieldValue)}
+                                className="rounded-full text-violet-400 hover:bg-violet-100 hover:text-violet-700"
+                                title="Remove"
+                            >
+                                <X size={12} />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
+            <button
+                type="button"
+                onClick={() => { setDrafts({}); setOpen(true); }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-violet-300 bg-violet-50/40 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50"
+            >
+                <Plus size={12} /> {label}
+            </button>
+
+            {open && (
+                <Dialog open onOpenChange={(o) => { if (!o) setOpen(false); }}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>{subform.displayTitle || subform.name}</DialogTitle>
+                        </DialogHeader>
+                        <div className="max-h-[70vh] overflow-y-auto pr-2">
+                            <FormBody
+                                fields={subform.fields}
+                                values={drafts as Record<string, FieldValue>}
+                                setValue={(id, v) => setDrafts(s => ({ ...s, [id]: v }))}
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                            <Button
+                                onClick={() => {
+                                    const next = [
+                                        ...entries,
+                                        { id: Math.random().toString(36).slice(2, 9), values: drafts },
+                                    ];
+                                    onChange(next as unknown as FieldValue);
+                                    setOpen(false);
+                                }}
+                                className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                                <Check className="h-4 w-4" /> Save
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </div>
+    );
+}
+
 function FieldControl({ field, value, onChange }: {
     field: FormField; value: FieldValue; onChange: (v: FieldValue) => void;
 }) {
@@ -1682,6 +1735,8 @@ function FieldControl({ field, value, onChange }: {
                     helper={field.instruction || 'Draw your signature above using your mouse or finger.'}
                 />
             );
+        case 'subform-button':
+            return <SubformButtonField field={field} value={value} onChange={onChange} />;
         case 'heading':
         case 'paragraph':
         case 'bullet-list':

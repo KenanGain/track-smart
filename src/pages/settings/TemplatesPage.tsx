@@ -215,7 +215,7 @@ function StepPicker({ forms, consents, alreadyAdded, onPick, onClose }: {
 
     return (
         <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="max-w-xl">
+            <DialogContent className="max-w-3xl">
                 <DialogHeader>
                     <DialogTitle>Add Steps to Template</DialogTitle>
                 </DialogHeader>
@@ -517,7 +517,7 @@ function StepEditModal({ initial, forms, consents, onSave, onClose }: {
 
     return (
         <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Edit Step</DialogTitle>
                 </DialogHeader>
@@ -879,37 +879,62 @@ export const TemplatesPage = () => {
                                                 updatedAt={t.updatedAt}
                                             />
 
-                                            <div>
-                                                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                                    Template name <span className="text-rose-500">*</span>
-                                                </label>
-                                                <Input
-                                                    value={t.name}
-                                                    onChange={e => updateTemplate(t.id, { name: e.target.value })}
-                                                    placeholder="e.g. CDL-A OTR Driver Pipeline"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                                                    Description
-                                                </label>
-                                                <Textarea
-                                                    value={t.description}
-                                                    onChange={e => updateTemplate(t.id, { description: e.target.value })}
-                                                    placeholder="When to use this template, what it includes …"
-                                                    className="min-h-[64px]"
-                                                />
+                                            {/* Template details card */}
+                                            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-3.5">
+                                                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50">
+                                                        <FileEdit size={14} className="text-blue-600" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="text-sm font-bold text-slate-900">Template details</h4>
+                                                        <p className="mt-0.5 text-[12px] leading-snug text-slate-500">
+                                                            Internal name and description shown in the list and when admins reference this template.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-4 p-5">
+                                                    <div>
+                                                        <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                                            Template name <span className="text-rose-500">*</span>
+                                                        </label>
+                                                        <Input
+                                                            value={t.name}
+                                                            onChange={e => updateTemplate(t.id, { name: e.target.value })}
+                                                            placeholder="e.g. CDL-A OTR Driver Pipeline"
+                                                            className="h-10"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                                            Description
+                                                        </label>
+                                                        <Textarea
+                                                            value={t.description}
+                                                            onChange={e => updateTemplate(t.id, { description: e.target.value })}
+                                                            placeholder="When to use this template, what it includes …"
+                                                            className="min-h-[72px]"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            {/* Steps */}
-                                            <div>
-                                                <div className="mb-2 flex items-center justify-between">
-                                                    <h4 className="text-sm font-bold text-slate-900">
-                                                        Steps
-                                                        <span className="ml-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                                                            {t.steps.length}
-                                                        </span>
-                                                    </h4>
+                                            {/* Steps card */}
+                                            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-3.5">
+                                                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50">
+                                                        <Layers size={14} className="text-blue-600" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h4 className="text-sm font-bold text-slate-900">
+                                                            Steps
+                                                            <span className="ml-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                                                                {t.steps.length}
+                                                            </span>
+                                                        </h4>
+                                                        <p className="mt-0.5 text-[12px] leading-snug text-slate-500">
+                                                            Ordered sequence of Application Forms and Consent Forms the applicant works through.
+                                                        </p>
+                                                    </div>
                                                     <Button
                                                         size="sm"
                                                         onClick={() => setPickerForId(t.id)}
@@ -918,36 +943,39 @@ export const TemplatesPage = () => {
                                                         <Plus className="h-3.5 w-3.5" /> Add Step
                                                     </Button>
                                                 </div>
-                                                {t.steps.length === 0 ? (
-                                                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white px-4 py-8 text-center">
-                                                        <FileText className="mb-2 h-6 w-6 text-slate-300" />
-                                                        <p className="text-sm font-medium text-slate-600">No steps yet</p>
-                                                        <p className="mt-0.5 max-w-sm text-[11px] text-slate-400">
-                                                            Click <span className="font-semibold text-slate-600">Add Step</span> to pick Application Forms from your library.
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <ul className="space-y-2">
-                                                        {t.steps.map((step, i) => {
-                                                            const kind = step.kind ?? 'form';
-                                                            return (
-                                                                <StepRow
-                                                                    key={step.id}
-                                                                    index={i}
-                                                                    step={step}
-                                                                    form={kind === 'form'    ? formById.get(step.formId)    : undefined}
-                                                                    consent={kind === 'consent' ? consentById.get(step.formId) : undefined}
-                                                                    onEdit={() => setEditingStep({ templateId: t.id, step })}
-                                                                    onRemove={() => removeStep(t.id, step.id)}
-                                                                    onMoveUp={() => moveStep(t.id, step.id, -1)}
-                                                                    onMoveDown={() => moveStep(t.id, step.id, 1)}
-                                                                    canMoveUp={i > 0}
-                                                                    canMoveDown={i < t.steps.length - 1}
-                                                                />
-                                                            );
-                                                        })}
-                                                    </ul>
-                                                )}
+                                                <div className="p-5">
+                                                    {t.steps.length === 0 ? (
+                                                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/40 px-4 py-10 text-center">
+                                                            <FileText className="mb-2 h-7 w-7 text-slate-300" />
+                                                            <p className="text-sm font-medium text-slate-600">No steps yet</p>
+                                                            <p className="mt-1 max-w-sm text-[11px] text-slate-400">
+                                                                Click <span className="font-semibold text-slate-600">Add Step</span> to pick
+                                                                Application Forms or Consent Forms from your library.
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <ul className="space-y-2">
+                                                            {t.steps.map((step, i) => {
+                                                                const kind = step.kind ?? 'form';
+                                                                return (
+                                                                    <StepRow
+                                                                        key={step.id}
+                                                                        index={i}
+                                                                        step={step}
+                                                                        form={kind === 'form'    ? formById.get(step.formId)    : undefined}
+                                                                        consent={kind === 'consent' ? consentById.get(step.formId) : undefined}
+                                                                        onEdit={() => setEditingStep({ templateId: t.id, step })}
+                                                                        onRemove={() => removeStep(t.id, step.id)}
+                                                                        onMoveUp={() => moveStep(t.id, step.id, -1)}
+                                                                        onMoveDown={() => moveStep(t.id, step.id, 1)}
+                                                                        canMoveUp={i > 0}
+                                                                        canMoveDown={i < t.steps.length - 1}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </ul>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     )}
