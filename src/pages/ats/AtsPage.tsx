@@ -1531,7 +1531,7 @@ function EmptyTab({ Icon, title, subtitle }: { Icon: React.ElementType; title: s
 
 // ── Pipeline progress (clickable when activeId is provided) ──────────────
 
-function PipelineProgress({
+export function PipelineProgress({
     steps, activeId, onSelect,
 }: {
     steps: WorkflowStep[];

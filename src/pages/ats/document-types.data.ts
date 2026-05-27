@@ -13,14 +13,30 @@ export const DOC_TYPE_CATEGORIES = [
     'License', 'Medical', 'Identity', 'Background', 'Photo', 'Insurance', 'Other',
 ] as const;
 
+/** Which domain the document attaches to. Drives where the uploaded file is filed in TrackSmart. */
+export const DOC_TYPE_RELATED_TO = ['Carrier', 'Asset', 'Driver', 'Violation'] as const;
+
 export type DocTypeCategory = typeof DOC_TYPE_CATEGORIES[number];
+export type DocTypeRelatedTo = typeof DOC_TYPE_RELATED_TO[number];
 export type DocTypeStatus = 'Active' | 'Inactive';
+export type DocTypeRequirementLevel = 'required' | 'optional' | 'not_required';
 
 export interface DocumentType {
     id: string;
     name: string;
     category: DocTypeCategory;
+    /** Which TrackSmart domain this document is filed under. */
+    relatedTo: DocTypeRelatedTo;
+    /** Optional short description shown to admins (not the applicant). */
+    description: string;
+    /** Free-form classification tags admins use to group document types. */
+    tags: string[];
+    /** Legacy binary flag — derived from `requirementLevel === 'required'` for back-compat. */
     required: boolean;
+    /** Three-state requirement: required / optional / not_required. */
+    requirementLevel: DocTypeRequirementLevel;
+    /** Whether this document type is offered inside Hiring / Application Forms / Templates. */
+    usingInHiring: boolean;
     allowMultiple: boolean;
     expiryRequired: boolean;
     issueDateRequired: boolean;
@@ -31,16 +47,68 @@ export interface DocumentType {
     addedDate: string;
 }
 
-const STORAGE_KEY = 'ats:document-types-v3';
+const STORAGE_KEY = 'ats:document-types-v5';
+
+/**
+ * Default the new fields (relatedTo / description / tags) when reading older
+ * v3 records that didn't have them. Keeps the page rendering when the user
+ * has localStorage from before the schema bump.
+ */
+function normalize(raw: Partial<DocumentType>): DocumentType {
+    // requirementLevel takes precedence; if missing, derive from the binary `required` flag
+    // so legacy v4 records continue to render correctly.
+    const requirementLevel: DocTypeRequirementLevel =
+        (raw.requirementLevel as DocTypeRequirementLevel)
+        ?? (raw.required ? 'required' : 'optional');
+    return {
+        id: raw.id ?? uid(),
+        name: raw.name ?? 'Untitled',
+        category: (raw.category as DocTypeCategory) ?? 'Other',
+        relatedTo: (raw.relatedTo as DocTypeRelatedTo) ?? inferRelatedTo(raw.category as DocTypeCategory),
+        description: raw.description ?? '',
+        tags: Array.isArray(raw.tags) ? raw.tags : [],
+        required: requirementLevel === 'required',
+        requirementLevel,
+        usingInHiring: raw.usingInHiring ?? true,
+        allowMultiple: !!raw.allowMultiple,
+        expiryRequired: !!raw.expiryRequired,
+        issueDateRequired: !!raw.issueDateRequired,
+        issueStateRequired: !!raw.issueStateRequired,
+        issueCountryRequired: !!raw.issueCountryRequired,
+        status: (raw.status as DocTypeStatus) ?? 'Active',
+        addedDate: raw.addedDate ?? today(),
+    };
+}
+
+/** Best-guess default for `relatedTo` when migrating older records. */
+function inferRelatedTo(category: DocTypeCategory | undefined): DocTypeRelatedTo {
+    switch (category) {
+        case 'License':
+        case 'Medical':
+        case 'Identity':
+        case 'Background':
+        case 'Photo':
+            return 'Driver';
+        case 'Insurance':
+            return 'Carrier';
+        default:
+            return 'Driver';
+    }
+}
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
 export function newDocumentType(): DocumentType {
-    return {
+    return normalize({
         id: uid(),
-        name: 'New Document',
+        name: '',
         category: 'Other',
-        required: false,
+        relatedTo: 'Driver',
+        description: '',
+        tags: [],
+        required: true,
+        requirementLevel: 'required',
+        usingInHiring: true,
         allowMultiple: false,
         expiryRequired: false,
         issueDateRequired: false,
@@ -48,12 +116,12 @@ export function newDocumentType(): DocumentType {
         issueCountryRequired: false,
         status: 'Active',
         addedDate: today(),
-    };
+    });
 }
 
 function seedDocumentTypes(): DocumentType[] {
     const d = today();
-    return [
+    return ([
         {
             id: 'dt-cdl', name: 'CDL — Front & Back', category: 'License',
             required: true, allowMultiple: true,
@@ -209,14 +277,16 @@ function seedDocumentTypes(): DocumentType[] {
             issueStateRequired: false, issueCountryRequired: false,
             status: 'Active', addedDate: d,
         },
-    ];
+    ] as Partial<DocumentType>[]).map(normalize);
 }
 
 export function loadDocumentTypes(): DocumentType[] {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as DocumentType[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            return (parsed as Partial<DocumentType>[]).map(normalize);
+        }
     } catch {
         /* localStorage unavailable / corrupt — fall through to seed */
     }

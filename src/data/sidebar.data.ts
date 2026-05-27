@@ -31,6 +31,8 @@ import {
     FlaskConical,
     FileSignature,
     LayoutTemplate,
+    Crown,
+    Gauge,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -72,6 +74,18 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/compliance",
     },
     {
+        key: "new-compliance",
+        label: "New Compliance & Documents",
+        icon: FileText,
+        path: "/new-compliance",
+    },
+    {
+        key: "compliance-monitoring",
+        label: "Compliance Monitoring",
+        icon: Gauge,
+        path: "/compliance-monitoring",
+    },
+    {
         key: "fleet-maintenance",
         label: "Maintenance",
         icon: Wrench,
@@ -88,6 +102,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Hiring (ATS)",
         icon: Briefcase,
         path: "/ats",
+    },
+    {
+        key: "ats-main",
+        label: "ATS",
+        icon: Briefcase,
+        path: "/ats-main",
     },
     {
         key: "hours-of-service",
@@ -157,6 +177,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         defaultOpen: true,
         children: [
             { key: "general-settings", label: "General Settings", icon: Sliders, path: "/settings/general" },
+            { key: "compliance-setup", label: "Compliance Setup", icon: ShieldCheck, path: "/settings/compliance-setup" },
             { key: "key-numbers", label: "Key Numbers", icon: KeyRound, path: "/settings/key-numbers" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },
@@ -170,8 +191,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
             { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" },
-            { key: "docu-form", label: "Docu/Form Generator", icon: FileSignature, path: "/settings/docu-form" },
-            { key: "templates", label: "Hiring Templates (ATS)", icon: LayoutTemplate, path: "/settings/templates" },
         ],
     },
     {
@@ -179,12 +198,27 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Admin",
         icon: UserCog,
         children: [
-            { key: "admin-dashboard", label: "Super Admin Dashboard", icon: LayoutDashboard, path: "/admin/dashboard" },
             { key: "accounts", label: "Accounts", icon: Users, path: "/accounts" },
             { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
             { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },
             { key: "admin-permissions", label: "Permissions", icon: Lock, path: "/admin/permissions" },
             { key: "admin-audit-log", label: "Audit Log", icon: History, path: "/admin/audit-log" },
+        ],
+    },
+    {
+        key: "super-admin",
+        label: "Super Admin",
+        icon: Crown,
+        children: [
+            // ── Overview ──
+            { key: "super-admin-dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/admin/dashboard" },
+            // ── Catalog (source of truth for what the system tracks) ──
+            { key: "super-admin-compliance-documents", label: "Compliance and Documents", icon: FileText, path: "/admin/compliance-and-documents" },
+            // ── Form & pipeline authoring (built on top of the catalog) ──
+            { key: "super-admin-docu-form", label: "Docu/Form Generator", icon: FileSignature, path: "/admin/docu-form" },
+            { key: "super-admin-templates", label: "Hiring Templates (ATS)", icon: LayoutTemplate, path: "/admin/templates" },
+            // ── Per-carrier assignment (the end of the pipeline) ──
+            { key: "super-admin-carrier-compliance", label: "Carrier Compliance Setup", icon: Activity, path: "/admin/carrier-compliance-setup" },
         ],
     },
 ];

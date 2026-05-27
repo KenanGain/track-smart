@@ -1,6 +1,11 @@
 export type Status = 'Active' | 'Draft' | 'Inactive' | 'On Leave' | 'Terminated';
 export type RelatedTo = 'carrier' | 'asset' | 'driver' | 'violation';
 
+export const DOC_TYPE_CATEGORIES = [
+    'License', 'Medical', 'Identity', 'Background', 'Photo', 'Insurance', 'Other',
+] as const;
+export type DocTypeCategory = typeof DOC_TYPE_CATEGORIES[number];
+
 export type ColorTheme = 'blue' | 'emerald' | 'amber' | 'violet' | 'rose' | 'indigo' | 'cyan';
 
 export interface Tag {
@@ -29,9 +34,13 @@ export interface DocumentType {
     name: string;
     relatedTo: RelatedTo;
     description?: string;
+    /** Broad classification — drives badges and grouping in lists. */
+    category?: DocTypeCategory;
 
     // Config
     requirementLevel: 'required' | 'optional' | 'not_required';
+    /** Whether the applicant can upload more than one file for this document. */
+    allowMultiple?: boolean;
     expiryRequired: boolean;
     issueDateRequired: boolean;
     issueStateRequired?: boolean;
@@ -58,6 +67,12 @@ export interface DocumentType {
     isSystem?: boolean; // If true, cannot be deleted
     isAccidentDoc?: boolean; // If true, this doc type is linked to accidents
     linkedModule?: string; // If set, this doc type is auto-linked by a module (e.g. 'fuel_purchases') and cannot be deleted
+    /**
+     * Where this document type is managed. `'docu-form'` rows are mirrored from the
+     * Docu/Form Generator library and are read-only here — clicking Edit deep-links
+     * to the Docu/Form Generator page.
+     */
+    source?: 'docu-form';
 }
 
 export type FolderCounts = { subfolders?: number; files?: number };

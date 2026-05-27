@@ -82,7 +82,14 @@ function DocumentPicker({ fields, alreadyLinkedIds, onPick, onClose }: {
     onPick: (drafts: { type: DocumentType; label: string; placement: string }[]) => void;
     onClose: () => void;
 }) {
-    const types = useMemo(() => loadDocumentTypes().filter(t => t.status === 'Active'), []);
+    // Only show document types flagged for Hiring/Templates/Form usage. The
+    // catalog admin sets `usingInHiring` (Super Admin → Compliance and
+    // Documents → "Used in Hiring / Templates / Form") to decide what flows
+    // into the Docu/Form Generator.
+    const types = useMemo(
+        () => loadDocumentTypes().filter(t => t.status === 'Active' && t.usingInHiring),
+        [],
+    );
     const [query, setQuery] = useState('');
     const [drafts, setDrafts] = useState<Record<string, PickerDraft>>({});
     const placements = useMemo(() => placementOptions(fields), [fields]);

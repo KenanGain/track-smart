@@ -21,6 +21,8 @@ import {
     type Status,
     type RelatedTo,
     type SelectedTag,
+    type DocTypeCategory,
+    DOC_TYPE_CATEGORIES,
     MOCK_DRIVERS
 } from '@/data/mock-app-data';
 import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
@@ -156,6 +158,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     const [selectedDriver, setSelectedDriver] = useState<string>(initialData?.destination?.driverId || '');
 
     // Config Rules
+    const [category, setCategory] = useState<DocTypeCategory>(initialData?.category || 'Other');
+    const [allowMultiple, setAllowMultiple] = useState<boolean>(initialData?.allowMultiple ?? false);
     const [expiryRequired, setExpiryRequired] = useState(initialData?.expiryRequired ?? true);
     const [issueDateRequired, setIssueDateRequired] = useState(initialData?.issueDateRequired ?? false);
     const [issueStateRequired, setIssueStateRequired] = useState(initialData?.issueStateRequired ?? false);
@@ -187,6 +191,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             setSelectedFolderId(initialData.destination?.folderId || null);
             setSelectedFolderName(initialData.destination?.folderName || '');
             setSelectedDriver(initialData.destination?.driverId || '');
+            setCategory(initialData.category || 'Other');
+            setAllowMultiple(initialData.allowMultiple ?? false);
             setExpiryRequired(initialData.expiryRequired);
             setIssueDateRequired(initialData.issueDateRequired);
             setIssueStateRequired(initialData.issueStateRequired ?? false);
@@ -290,7 +296,9 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             name: docName,
             relatedTo,
             description,
+            category,
             requirementLevel,
+            allowMultiple,
             expiryRequired,
             issueDateRequired,
             issueStateRequired,
@@ -414,6 +422,30 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     </div>
                                 )}
                             </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <Label>Category</Label>
+                                    <select
+                                        value={category}
+                                        onChange={(e) => setCategory(e.target.value as DocTypeCategory)}
+                                        className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    >
+                                        {DOC_TYPE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <Label>Status</Label>
+                                    <select
+                                        value={status}
+                                        onChange={(e) => setStatus(e.target.value)}
+                                        className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    >
+                                        <option>Active</option>
+                                        <option>Inactive</option>
+                                        <option>Draft</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div>
                                 <Label>Short Description</Label>
                                 <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." className="resize-none" />
@@ -521,6 +553,13 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 col-span-1 sm:col-span-2 ${isLockedByExpenseType ? 'opacity-60 grayscale' : ''}`}>
+                                    <div>
+                                        <span className="text-sm font-medium text-slate-700 block">Allow multiple</span>
+                                        <span className="text-xs text-slate-500">More than one file per applicant.</span>
+                                    </div>
+                                    <Switch checked={allowMultiple} onCheckedChange={!isLockedByExpenseType ? setAllowMultiple : () => {}} />
+                                </div>
                                 <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 ${isLockedByExpenseType ? 'opacity-60 grayscale' : ''}`}>
                                     <span className="text-sm font-medium text-slate-700">Expiry Date Input</span>
                                     <Switch checked={expiryRequired} onCheckedChange={!isLockedByExpenseType ? setExpiryRequired : () => {}} />
@@ -692,19 +731,6 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     onAddFolder={() => setIsAddFolderModalOpen(true)}
                                 />
                             )}
-                        </div>
-                    </Card>
-
-                    {/* Status Sections (Moved to Bottom) */}
-                    <Card className="p-6">
-                        <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2"><Info className="w-4 h-4 text-slate-500" /> Status</h3>
-                        <div>
-                            <Label>Current Status</Label>
-                            <select className="w-full h-10 rounded-md border border-slate-300 px-3 py-2 text-sm bg-white" value={status} onChange={(e) => setStatus(e.target.value)}>
-                                <option>Active</option>
-                                <option>Inactive</option>
-                                <option>Draft</option>
-                            </select>
                         </div>
                     </Card>
 

@@ -15,6 +15,9 @@ import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/servi
 import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
 import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
+import { SettingsCompliancePage } from '@/pages/settings/SettingsCompliancePage'
+import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
+import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
 import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
@@ -33,6 +36,7 @@ import { ExpenseTypesPage } from '@/pages/settings/ExpenseTypesPage'
 import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { AccidentsSettingsPage } from '@/pages/settings/AccidentsSettingsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
+import { NewComplianceDocumentsPage } from '@/pages/compliance/NewComplianceDocumentsPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
 import { SafetySettingsPage } from '@/pages/settings/SafetySettingsPage'
@@ -41,6 +45,7 @@ import { TemplatesPage } from '@/pages/settings/TemplatesPage'
 
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { AtsPage } from '@/pages/ats/AtsPage'
+import { AtsAssignmentsPage } from '@/pages/ats/AtsAssignmentsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -189,6 +194,12 @@ function App() {
         if (path === "/admin/dashboard" && currentUser) {
             return <SuperAdminDashboardPage currentUser={currentUser} />
         }
+        if (path === "/admin/compliance-and-documents") {
+            return <ComplianceAndDocumentsPage />
+        }
+        if (path === "/admin/carrier-compliance-setup") {
+            return <CarrierComplianceSetupPage />
+        }
         if (path === "/admin/users" && currentUser) {
             return <UsersListPage currentUser={currentUser} onNavigate={handleNavigate} />
         }
@@ -217,6 +228,11 @@ function App() {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <ComplianceDocumentsPage accountId={account?.id} />
+        }
+        if (path === "/new-compliance") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <NewComplianceDocumentsPage accountId={account?.id} />
         }
         if (path === "/account/profile") {
             // Fall back to the user's default carrier if none has been picked yet
@@ -313,11 +329,14 @@ function App() {
         if (path === "/settings/general") {
             return <GeneralSettingsPage />
         }
+        if (path === "/settings/compliance-setup") {
+            return <SettingsCompliancePage />
+        }
         if (path === "/settings/key-numbers") {
             return <KeyNumbersPage />
         }
         if (path === "/settings/document-types") {
-            return <DocumentTypesPage />
+            return <DocumentTypesPage onNavigate={handleNavigate} />
         }
         if (path === "/settings/document-folders") {
             return <DocumentFoldersPage />
@@ -401,10 +420,13 @@ function App() {
         if (path === "/ats") {
             return <AtsPage />
         }
-        if (path === "/settings/docu-form") {
+        if (path === "/ats-main") {
+            return <AtsAssignmentsPage />
+        }
+        if (path === "/admin/docu-form" || path === "/settings/docu-form") {
             return <DocuFormGeneratorPage />
         }
-        if (path === "/settings/templates") {
+        if (path === "/admin/templates" || path === "/settings/templates") {
             return <TemplatesPage />
         }
         if (path === "/tickets") {

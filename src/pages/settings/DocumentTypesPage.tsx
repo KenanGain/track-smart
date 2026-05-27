@@ -1,20 +1,24 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     Plus,
     Filter,
     Search,
     FileCheck,
-    Edit3
+    Edit3,
+    ExternalLink,
 } from 'lucide-react';
 import { useAppData } from '@/context/AppDataContext';
 import {
     type DocumentType,
     type Status,
+    type RelatedTo,
+    type DocTypeCategory,
 } from '@/data/mock-app-data';
 import { INITIAL_EXPENSE_TYPES } from '@/pages/settings/expenses.data';
 import { DocumentTagsManager } from './tags/DocumentTagsManager';
 import { SubTabs } from '@/components/ui/SubTabs';
 import { CreateSectionModal } from './tags/TagComponents';
+import { loadDocumentTypes as loadDocuFormDocumentTypes } from '@/pages/ats/document-types.data';
 
 // StatusBadge kept as it might be used in list view
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -36,7 +40,12 @@ import { DocumentTypeEditor } from '@/components/settings/DocumentTypeEditor';
 
 // --- DOCUMENT TYPES LIST PAGE ---
 
-const DocumentTypesPage: React.FC = () => {
+interface DocumentTypesPageProps {
+    /** Optional navigation hook — used to deep-link Docu/Form-sourced rows to the Docu/Form Generator. */
+    onNavigate?: (path: string) => void;
+}
+
+const DocumentTypesPage: React.FC<DocumentTypesPageProps> = ({ onNavigate }) => {
     // Top Level Navigation State
     // Top Level Navigation State
     const [pageMode, setPageMode] = useState<'types' | 'tags'>('types');
@@ -51,7 +60,48 @@ const DocumentTypesPage: React.FC = () => {
 
     const tabs = ['All', 'Carrier', 'Asset', 'Driver', 'Accidents', 'Violations'];
 
-    const filteredDocuments = documents.filter(doc => {
+    /**
+     * Bring the Docu/Form Generator's library into this page as additional rows
+     * so the same driver document types are visible everywhere. They're mirrored
+     * read-only — clicking Edit deep-links to the Docu/Form Generator instead of
+     * opening the inline editor (which uses a different storage / schema).
+     *
+     * `relatedTo` is lowercased so the existing tab filters work unchanged.
+     */
+    const docuFormDocuments = useMemo<DocumentType[]>(() => {
+        const RELATED_TO_LOWER: Record<string, RelatedTo> = {
+            Carrier: 'carrier', Asset: 'asset', Driver: 'driver', Violation: 'violation',
+        };
+        return loadDocuFormDocumentTypes().map((t): DocumentType => ({
+            id: `dfgen:${t.id}`,
+            name: t.name,
+            relatedTo: RELATED_TO_LOWER[t.relatedTo] ?? 'driver',
+            description: t.description,
+            category: t.category as DocTypeCategory,
+            requirementLevel: t.required ? 'required' : 'optional',
+            allowMultiple: t.allowMultiple,
+            expiryRequired: t.expiryRequired,
+            issueDateRequired: t.issueDateRequired,
+            issueStateRequired: t.issueStateRequired,
+            issueCountryRequired: t.issueCountryRequired,
+            status: t.status,
+            selectedTags: {},
+            source: 'docu-form',
+        }));
+    }, []);
+
+    /**
+     * Merge the AppData documents with the Docu/Form library. De-dupe by name
+     * within the same relatedTo to avoid showing two rows for the same logical
+     * document if the same name exists in both stores.
+     */
+    const mergedDocuments = useMemo<DocumentType[]>(() => {
+        const seen = new Set(documents.map(d => `${d.relatedTo}:${d.name.toLowerCase()}`));
+        const extras = docuFormDocuments.filter(d => !seen.has(`${d.relatedTo}:${d.name.toLowerCase()}`));
+        return [...documents, ...extras];
+    }, [documents, docuFormDocuments]);
+
+    const filteredDocuments = mergedDocuments.filter(doc => {
         if (searchQuery && !doc.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
         if (activeTab === 'All') return true;
         if (activeTab === 'Asset') return doc.relatedTo === 'asset';
@@ -63,7 +113,15 @@ const DocumentTypesPage: React.FC = () => {
     });
 
     const handleAddNew = () => { setEditingId(null); setViewMode('editor'); };
-    const handleEdit = (id: string) => { setEditingId(id); setViewMode('editor'); };
+    const handleEdit = (doc: DocumentType) => {
+        // Docu/Form-sourced rows are managed in the Docu/Form Generator — deep-link there.
+        if (doc.source === 'docu-form') {
+            if (onNavigate) onNavigate('/settings/docu-form');
+            return;
+        }
+        setEditingId(doc.id);
+        setViewMode('editor');
+    };
 
     const handleSave = (data: Partial<DocumentType>) => {
         if (editingId) {
@@ -226,10 +284,18 @@ const DocumentTypesPage: React.FC = () => {
                                             <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
                                                 <div>
                                                     <div className="flex items-center gap-3">
-                                                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                                        <div className={`p-2 rounded-lg ${doc.source === 'docu-form' ? 'bg-violet-50 text-violet-600' : 'bg-blue-50 text-blue-600'}`}>
                                                             <FileCheck className="w-5 h-5" />
                                                         </div>
-                                                        {doc.name}
+                                                        <span>{doc.name}</span>
+                                                        {doc.source === 'docu-form' && (
+                                                            <span
+                                                                className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+                                                                title="Managed in the Docu/Form Generator"
+                                                            >
+                                                                Docu/Form
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     {(() => {
                                                         const linkedKn = keyNumbers.find(kn => kn.requiredDocumentTypeId === doc.id);
@@ -310,11 +376,18 @@ const DocumentTypesPage: React.FC = () => {
                                             </td>
                                             <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                                                 <button
-                                                    onClick={() => handleEdit(doc.id)}
-                                                    className="text-gray-400 hover:text-blue-600 transition-colors"
+                                                    onClick={() => handleEdit(doc)}
+                                                    className={doc.source === 'docu-form'
+                                                        ? "text-violet-500 hover:text-violet-700 transition-colors"
+                                                        : "text-gray-400 hover:text-blue-600 transition-colors"}
+                                                    title={doc.source === 'docu-form' ? 'Open in Docu/Form Generator' : 'Edit document type'}
                                                 >
-                                                    <Edit3 className="w-4 h-4" />
-                                                    <span className="sr-only">Edit, {doc.name}</span>
+                                                    {doc.source === 'docu-form'
+                                                        ? <ExternalLink className="w-4 h-4" />
+                                                        : <Edit3 className="w-4 h-4" />}
+                                                    <span className="sr-only">
+                                                        {doc.source === 'docu-form' ? 'Open' : 'Edit'}, {doc.name}
+                                                    </span>
                                                 </button>
                                             </td>
                                         </tr>

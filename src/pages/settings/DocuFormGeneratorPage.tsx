@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileSignature, FileText, ShieldCheck, Files, GitBranch } from 'lucide-react';
+import { FileSignature, FileText, ShieldCheck, Files, GitBranch, KeyRound } from 'lucide-react';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import {
     loadApplicationForms, saveApplicationForms,
@@ -9,6 +9,7 @@ import { ApplicationFormsSection } from './docu-form/ApplicationFormsSection';
 import { ConsentFormsSection } from './docu-form/ConsentFormsSection';
 import { BrandingTab } from './docu-form/BrandingTab';
 import { DocumentsTab } from './docu-form/DocumentsTab';
+import { ComplianceTab } from './docu-form/ComplianceTab';
 
 /**
  * Docu/Form Generator (Settings).
@@ -26,7 +27,7 @@ const FORM_TYPES = [
     { id: 'hiring-driver', label: 'Hiring Driver' },
 ];
 
-type Tab = 'branding' | 'consents' | 'forms' | 'subforms' | 'documents';
+type Tab = 'branding' | 'consents' | 'forms' | 'subforms' | 'documents' | 'compliance';
 
 export const DocuFormGeneratorPage = () => {
     const [formType, setFormType] = useState('hiring-driver');
@@ -39,11 +40,12 @@ export const DocuFormGeneratorPage = () => {
     };
 
     const tabs: SubTab<Tab>[] = [
-        { id: 'branding',  label: 'Company Branding',  icon: ShieldCheck },
-        { id: 'consents',  label: 'Consent Forms',     icon: FileSignature },
-        { id: 'forms',     label: 'Application Forms', icon: FileText },
-        { id: 'subforms',  label: 'Subforms',          icon: GitBranch },
-        { id: 'documents', label: 'Documents',         icon: Files },
+        { id: 'branding',   label: 'Company Branding',  icon: ShieldCheck },
+        { id: 'consents',   label: 'Consent Forms',     icon: FileSignature },
+        { id: 'forms',      label: 'Application Forms', icon: FileText },
+        { id: 'subforms',   label: 'Subforms',          icon: GitBranch },
+        { id: 'documents',  label: 'Documents',         icon: Files },
+        { id: 'compliance', label: 'Compliance',        icon: KeyRound },
     ];
 
     return (
@@ -51,7 +53,7 @@ export const DocuFormGeneratorPage = () => {
             {/* Header */}
             <div className="border-b border-slate-200 bg-white px-8 py-5">
                 <nav className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
-                    <span>Settings</span>
+                    <span>Super Admin</span>
                     <span className="text-slate-300">/</span>
                     <span className="text-slate-900">Docu/Form Generator</span>
                 </nav>
@@ -91,11 +93,12 @@ export const DocuFormGeneratorPage = () => {
 
             {/* Content — every tab is its own dedicated full-width page. */}
             <div className="px-8 py-6">
-                {tab === 'branding'  && <BrandingTab />}
-                {tab === 'consents'  && <ConsentFormsSection />}
-                {tab === 'forms'     && <ApplicationFormsSection forms={forms} onCommit={commit} mode="main" />}
-                {tab === 'subforms'  && <ApplicationFormsSection forms={forms} onCommit={commit} mode="subform" />}
-                {tab === 'documents' && <DocumentsTab />}
+                {tab === 'branding'   && <BrandingTab />}
+                {tab === 'consents'   && <ConsentFormsSection />}
+                {tab === 'forms'      && <ApplicationFormsSection forms={forms} onCommit={commit} mode="main" />}
+                {tab === 'subforms'   && <ApplicationFormsSection forms={forms} onCommit={commit} mode="subform" />}
+                {tab === 'documents'  && <DocumentsTab />}
+                {tab === 'compliance' && <ComplianceTab />}
             </div>
         </div>
     );

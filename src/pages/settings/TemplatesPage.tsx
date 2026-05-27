@@ -727,7 +727,7 @@ export const TemplatesPage = () => {
             {/* Page header band */}
             <div className="border-b border-slate-200 bg-white px-8 py-5">
                 <nav className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
-                    <span>Settings</span>
+                    <span>Super Admin</span>
                     <span className="text-slate-300">/</span>
                     <span className="text-slate-900">Hiring Templates (ATS)</span>
                 </nav>

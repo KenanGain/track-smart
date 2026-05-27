@@ -1,58 +1,50 @@
 import { useMemo, useState } from 'react';
 import {
-    FileText, Search, Link2, ExternalLink, Info, Building2, Truck, User, ShieldAlert,
-    Files, Upload, Copy, Calendar, MapPin, Globe2, Eye, X,
+    ShieldCheck, Search, Building2, Truck, User, Link2, ExternalLink, Info,
+    KeyRound, Calendar, MapPin, Globe2, Eye, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
-    DOCUMENTS, SEED_KEY_NUMBERS,
-    type DocumentRow, type DocumentsSubTabId,
+    SEED_KEY_NUMBERS, DOCUMENTS, KEY_NUMBER_GROUPS,
+    type KeyNumberRow, type KeyNumberGroup, type RelatedToScope,
 } from '@/pages/admin/ComplianceAndDocumentsPage';
 
 /**
- * Docu/Form Generator → Documents tab.
+ * Docu/Form Generator → Compliance tab.
  *
- * Sister tab to Compliance — catalog view of documents available in this
- * form type. Read-only; the `usedInHiring` flag is set in the Super Admin
- * / Settings Compliance Setup pages. This tab shows what's enabled and
- * which input components the form builder will render when each doc is
- * added to a form (upload field + optional expiry / issue date / state /
- * country / allow-multiple inputs based on the catalog config).
+ * Catalog view of Key Numbers available in this form type. Read-only —
+ * the `usedInHiring` flag is set in Super Admin / Settings, this tab just
+ * shows what's enabled and, more importantly, *what each one configures
+ * in the form*.
+ *
+ * Each row shows the input chips (Number, Issue Date, Issue State, Issue
+ * Country, Has Expiry) that the form builder will render when an admin
+ * drops this key number into a form. That makes the contract between the
+ * catalog config and the dynamic form fields visible at a glance.
  */
 
-const SCOPE_ICON: Record<Exclude<DocumentsSubTabId, 'all'>, React.ComponentType<{ size?: number; className?: string }>> = {
-    carrier:   Building2,
-    asset:     Truck,
-    driver:    User,
-    accidents: FileText,
-    violation: ShieldAlert,
+const RELATED_TO_ICON: Record<RelatedToScope, React.ComponentType<{ size?: number; className?: string }>> = {
+    Carrier: Building2,
+    Asset:   Truck,
+    Driver:  User,
 };
 
-const SCOPE_LABEL: Record<Exclude<DocumentsSubTabId, 'all'>, string> = {
-    carrier:   'Carrier',
-    asset:     'Asset',
-    driver:    'Driver',
-    accidents: 'Accidents',
-    violation: 'Violation',
-};
-
-const SCOPE_TABS: DocumentsSubTabId[] = ['all', 'carrier', 'asset', 'driver', 'accidents', 'violation'];
-
+/** Coloured "Input: X" chip. Matches the chip vocabulary used in Documents tab. */
 function InputChip({
     icon: Icon, label, on, tone,
 }: {
     icon: React.ComponentType<{ size?: number; className?: string }>;
     label: string;
     on: boolean;
-    tone: 'blue' | 'amber' | 'purple' | 'indigo' | 'violet';
+    tone: 'blue' | 'amber' | 'purple' | 'indigo' | 'rose';
 }) {
     const onStyles: Record<typeof tone, string> = {
         blue:   'bg-blue-50 text-blue-700 border-blue-200',
         amber:  'bg-amber-50 text-amber-700 border-amber-200',
         purple: 'bg-purple-50 text-purple-700 border-purple-200',
         indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-        violet: 'bg-violet-50 text-violet-700 border-violet-200',
+        rose:   'bg-rose-50 text-rose-700 border-rose-200',
     };
     if (!on) return null;
     return (
@@ -65,45 +57,31 @@ function InputChip({
     );
 }
 
-export function DocumentsTab() {
-    const [activeScope, setActiveScope] = useState<DocumentsSubTabId>('all');
+export function ComplianceTab() {
+    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup>('Regulatory and Safety Numbers');
     const [query, setQuery] = useState('');
     const [viewingId, setViewingId] = useState<string | null>(null);
 
-    const inHiring = useMemo(() => DOCUMENTS.filter(d => d.usedInHiring), []);
-    const viewing = viewingId ? DOCUMENTS.find(d => d.id === viewingId) ?? null : null;
+    /** Catalog scoped to this form type — only items flagged for hiring. */
+    const inHiring = useMemo(() => SEED_KEY_NUMBERS.filter(k => k.usedInHiring), []);
+    const viewing = viewingId ? SEED_KEY_NUMBERS.find(k => k.id === viewingId) ?? null : null;
 
     const counts = useMemo(() => {
-        const out: Record<DocumentsSubTabId, { total: number; inHiring: number }> = {
-            all:       { total: 0, inHiring: 0 },
-            carrier:   { total: 0, inHiring: 0 },
-            asset:     { total: 0, inHiring: 0 },
-            driver:    { total: 0, inHiring: 0 },
-            accidents: { total: 0, inHiring: 0 },
-            violation: { total: 0, inHiring: 0 },
-        };
-        for (const d of DOCUMENTS) {
-            out.all.total += 1;
-            out[d.scope].total += 1;
-            if (d.usedInHiring) {
-                out.all.inHiring += 1;
-                out[d.scope].inHiring += 1;
-            }
+        const out = {} as Record<KeyNumberGroup, { total: number; inHiring: number }>;
+        for (const g of KEY_NUMBER_GROUPS) out[g] = { total: 0, inHiring: 0 };
+        for (const k of SEED_KEY_NUMBERS) {
+            out[k.group].total += 1;
+            if (k.usedInHiring) out[k.group].inHiring += 1;
         }
         return out;
     }, []);
 
-    const scopeLabels: Record<DocumentsSubTabId, string> = {
-        all: 'All', carrier: 'Carrier', asset: 'Asset', driver: 'Driver', accidents: 'Accidents', violation: 'Violation',
-    };
-
     const q = query.trim().toLowerCase();
     const rows = inHiring
-        .filter(d => activeScope === 'all' || d.scope === activeScope)
-        .filter(d => !q
-            || d.name.toLowerCase().includes(q)
-            || (d.linkedTo ?? '').toLowerCase().includes(q)
-            || d.folder.toLowerCase().includes(q));
+        .filter(k => k.group === activeGroup)
+        .filter(k => !q
+            || k.name.toLowerCase().includes(q)
+            || k.description.toLowerCase().includes(q));
 
     return (
         <div className="space-y-4">
@@ -111,28 +89,28 @@ export function DocumentsTab() {
             <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50">
-                            <Files size={18} className="text-violet-500" />
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50">
+                            <ShieldCheck size={18} className="text-blue-500" />
                         </span>
                         <div>
-                            <h2 className="text-base font-bold text-slate-900">Documents</h2>
+                            <h2 className="text-base font-bold text-slate-900">Compliance</h2>
                             <p className="mt-0.5 text-[12px] text-slate-500">
-                                Documents available in this form type. The form builder reads each row's configuration
-                                to render the right inputs (upload, date, state, country, multiple) when the item is added.
+                                Key Numbers available in this form type. The form builder reads each row's configuration
+                                to render the right inputs (number, dates, state, country) when the item is added to a form.
                             </p>
                         </div>
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5">
                         <span className="text-[11px] font-semibold text-slate-700">
-                            {inHiring.length}<span className="text-slate-400">/{DOCUMENTS.length}</span>
+                            {inHiring.length}<span className="text-slate-400">/{SEED_KEY_NUMBERS.length}</span>
                         </span>{' '}
                         <span className="text-[11px] text-slate-500">available</span>
                     </div>
                 </div>
 
-                <div className="mt-3 flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50/50 px-3 py-2">
-                    <Info size={13} className="mt-0.5 shrink-0 text-violet-600" />
-                    <p className="text-[11px] text-violet-800">
+                <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/50 px-3 py-2">
+                    <Info size={13} className="mt-0.5 shrink-0 text-blue-600" />
+                    <p className="text-[11px] text-blue-800">
                         Catalog and the <span className="font-semibold">Used in Hiring / Templates / Form</span> flag are managed in{' '}
                         <span className="font-semibold">Super Admin → Compliance and Documents</span>.
                     </p>
@@ -141,7 +119,7 @@ export function DocumentsTab() {
 
             {/* List */}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                {/* Compact filter row — pill group + search + count */}
+                {/* Compact filter row — pill group + search + count, all on one line */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/40 px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="relative">
@@ -149,28 +127,28 @@ export function DocumentsTab() {
                             <input
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Search documents…"
+                                placeholder="Search key numbers…"
                                 className="h-9 w-64 rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
                         <div className="flex flex-wrap items-center gap-1 rounded-md border border-slate-200 bg-white p-1">
-                            {SCOPE_TABS.map(id => {
-                                const on = activeScope === id;
+                            {KEY_NUMBER_GROUPS.map(g => {
+                                const on = activeGroup === g;
                                 return (
                                     <button
-                                        key={id}
+                                        key={g}
                                         type="button"
-                                        onClick={() => setActiveScope(id)}
+                                        onClick={() => setActiveGroup(g)}
                                         className={cn(
                                             "rounded px-2.5 py-1 text-[11px] font-semibold transition-colors whitespace-nowrap",
                                             on
-                                                ? "bg-violet-100 text-violet-700"
+                                                ? "bg-blue-100 text-blue-700"
                                                 : "text-slate-600 hover:bg-slate-100",
                                         )}
                                     >
-                                        {scopeLabels[id]}
-                                        <span className={cn("ml-1 text-[10px]", on ? "text-violet-500" : "text-slate-400")}>
-                                            {counts[id].inHiring}/{counts[id].total}
+                                        {g}
+                                        <span className={cn("ml-1 text-[10px]", on ? "text-blue-500" : "text-slate-400")}>
+                                            {counts[g].inHiring}/{counts[g].total}
                                         </span>
                                     </button>
                                 );
@@ -178,71 +156,75 @@ export function DocumentsTab() {
                         </div>
                     </div>
                     <span className="text-[12px] text-slate-500">
-                        Showing <span className="font-semibold text-slate-800">{rows.length}</span> in {activeScope === 'all' ? 'All scopes' : SCOPE_LABEL[activeScope]}
+                        Showing <span className="font-semibold text-slate-800">{rows.length}</span> in {activeGroup}
                     </span>
                 </div>
 
                 {rows.length === 0 ? (
                     <div className="px-3 py-12 text-center">
-                        <p className="text-sm font-medium text-slate-700">No documents in this scope</p>
+                        <p className="text-sm font-medium text-slate-700">No key numbers in this category</p>
                         <p className="mt-1 text-[12px] text-slate-500">
                             Either none are flagged for hiring, or try a different tab / clear the search.
                         </p>
                     </div>
                 ) : (
                     <ul className="divide-y divide-slate-100">
-                        {rows.map((d: DocumentRow) => {
-                            const ScopeIcon = SCOPE_ICON[d.scope];
-                            const linkedKnName = d.linkedKeyNumberId
-                                ? SEED_KEY_NUMBERS.find(k => k.id === d.linkedKeyNumberId)?.name
-                                : (d.linkedType === 'keynumber' ? d.linkedTo : undefined);
+                        {rows.map((k: KeyNumberRow) => {
+                            const RIcon = RELATED_TO_ICON[k.relatedTo];
+                            const linkedDocName = k.linkedDocumentTypeId
+                                ? DOCUMENTS.find(d => d.id === k.linkedDocumentTypeId)?.name
+                                : undefined;
                             return (
-                                <li key={d.id} className="px-4 py-3 transition-colors hover:bg-blue-50/30">
+                                <li key={k.id} className="px-4 py-3 transition-colors hover:bg-blue-50/30">
                                     <div className="flex items-start gap-3">
-                                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-violet-50">
-                                            <FileText size={15} className="text-violet-500" />
+                                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50">
+                                            <KeyRound size={15} className="text-blue-500" />
                                         </span>
                                         <div className="min-w-0 flex-1 pr-2">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <p className="text-sm font-semibold text-slate-900">{d.name}</p>
+                                                <p className="text-sm font-semibold text-slate-900">{k.name}</p>
                                                 <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-                                                    <ScopeIcon size={12} className="text-slate-400" /> {SCOPE_LABEL[d.scope]}
+                                                    <RIcon size={12} className="text-slate-400" /> {k.relatedTo}
                                                 </span>
-                                                {linkedKnName && (
+                                                {linkedDocName && (
                                                     <span className="inline-flex items-center gap-1 text-[11px] text-blue-600">
-                                                        <Link2 size={11} /> {linkedKnName}
+                                                        <Link2 size={11} /> {linkedDocName}
                                                     </span>
                                                 )}
                                                 <span className={cn(
                                                     "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                                                    d.status === 'Active'
+                                                    k.status === 'Active'
                                                         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                                         : "border-slate-200 bg-slate-100 text-slate-500",
                                                 )}>
-                                                    {d.status}
+                                                    {k.status}
                                                 </span>
                                             </div>
-                                            <p className="mt-0.5 text-[11px] text-slate-500">{d.folder}</p>
+                                            <p className="mt-0.5 text-[12px] text-slate-500">{k.description}</p>
 
-                                            {/* Inputs preview — what the form builder will render for this doc */}
+                                            {/* Inputs preview — what the form builder will render for this KN */}
                                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                                                     Form inputs:
                                                 </span>
-                                                <InputChip icon={Upload}   label="Upload"         on tone="violet" />
-                                                <InputChip icon={Copy}     label="Allow Multiple" on={!!d.allowMultiple}      tone="violet" />
-                                                <InputChip icon={Calendar} label="Expiry"         on={d.expiryRequired}       tone="amber" />
-                                                <InputChip icon={Calendar} label="Issue Date"     on={d.issueDateRequired}    tone="blue" />
-                                                <InputChip icon={MapPin}   label="Issue State"    on={d.issueStateRequired}   tone="purple" />
-                                                <InputChip icon={Globe2}   label="Issue Country"  on={d.issueCountryRequired} tone="indigo" />
+                                                {k.numberRequired && (
+                                                    <InputChip icon={KeyRound} label="Number" on tone="blue" />
+                                                )}
+                                                <InputChip icon={Calendar} label="Issue Date"     on={k.issueDateRequired}    tone="blue" />
+                                                <InputChip icon={MapPin}   label="Issue State"    on={k.issueStateRequired}   tone="purple" />
+                                                <InputChip icon={Globe2}   label="Issue Country"  on={k.issueCountryRequired} tone="indigo" />
+                                                <InputChip icon={Calendar} label="Expiry"         on={k.hasExpiry}            tone="amber" />
+                                                {!k.numberRequired && !k.issueDateRequired && !k.issueStateRequired && !k.issueCountryRequired && !k.hasExpiry && (
+                                                    <span className="text-[11px] italic text-slate-400">No configured inputs</span>
+                                                )}
                                             </div>
                                         </div>
 
-                                        {/* Per-row View — opens a modal showing how this doc renders on the form */}
+                                        {/* Per-row View — opens a modal showing how this KN renders on the form */}
                                         <button
                                             type="button"
-                                            onClick={() => setViewingId(d.id)}
-                                            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                                            onClick={() => setViewingId(k.id)}
+                                            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                                             title="See how this renders on the form"
                                         >
                                             <Eye size={13} /> View
@@ -266,25 +248,25 @@ export function DocumentsTab() {
             </div>
 
             {viewing && (
-                <DocumentPreviewModal document={viewing} onClose={() => setViewingId(null)} />
+                <KeyNumberPreviewModal keyNumber={viewing} onClose={() => setViewingId(null)} />
             )}
         </div>
     );
 }
 
 /**
- * Preview modal — renders the document the way it appears on the actual
+ * Preview modal — renders the key number the way it appears on the actual
  * application form. Same input set the form builder generates at runtime:
- * upload widget + the meta inputs (expiry / issue date / state / country)
- * that the catalog config has enabled.
+ * a Number input + the meta inputs (issue date / state / country / expiry)
+ * the catalog has enabled.
  */
-function DocumentPreviewModal({ document, onClose }: {
-    document: DocumentRow;
+function KeyNumberPreviewModal({ keyNumber, onClose }: {
+    keyNumber: KeyNumberRow;
     onClose: () => void;
 }) {
-    const linkedKnName = document.linkedKeyNumberId
-        ? SEED_KEY_NUMBERS.find(k => k.id === document.linkedKeyNumberId)?.name
-        : (document.linkedType === 'keynumber' ? document.linkedTo : undefined);
+    const linkedDocName = keyNumber.linkedDocumentTypeId
+        ? DOCUMENTS.find(d => d.id === keyNumber.linkedDocumentTypeId)?.name
+        : undefined;
 
     return (
         <div
@@ -299,10 +281,10 @@ function DocumentPreviewModal({ document, onClose }: {
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
                     <div>
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Form preview</p>
-                        <h3 className="mt-0.5 text-base font-bold text-slate-900">{document.name}</h3>
+                        <h3 className="mt-0.5 text-base font-bold text-slate-900">{keyNumber.name}</h3>
                         <p className="mt-0.5 text-[12px] text-slate-500">
-                            {SCOPE_LABEL[document.scope]} · {document.folder}
-                            {linkedKnName && <> · Linked to <span className="font-semibold text-blue-600">{linkedKnName}</span></>}
+                            {keyNumber.relatedTo} · {keyNumber.group}
+                            {linkedDocName && <> · Linked to <span className="font-semibold text-blue-600">{linkedDocName}</span></>}
                         </p>
                     </div>
                     <button
@@ -316,38 +298,40 @@ function DocumentPreviewModal({ document, onClose }: {
 
                 <div className="flex-1 overflow-y-auto bg-slate-50/40 px-6 py-5">
                     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                        {/* Field label — what the applicant sees */}
                         <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                            {document.name}{' '}
-                            <span className="text-[10px] font-medium text-slate-400">· Document upload</span>
+                            {keyNumber.name}{' '}
+                            <span className="text-[10px] font-medium text-slate-400">· Compliance number</span>
                         </p>
 
-                        {/* Upload widget */}
-                        <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50/60 px-3 py-2.5 text-sm text-slate-500">
-                            <Upload size={15} className="text-slate-400" />
-                            {document.allowMultiple ? 'Upload documents (multiple allowed)' : 'Upload document'}
-                        </div>
+                        {/* Number input (always rendered if numberRequired) */}
+                        {keyNumber.numberRequired && (
+                            <KnPreviewField label="Number" placeholder={`Enter ${keyNumber.name}…`} icon={KeyRound} />
+                        )}
 
-                        {/* Meta inputs — only render the ones the catalog enabled */}
-                        {(document.expiryRequired || document.issueDateRequired || document.issueStateRequired || document.issueCountryRequired) && (
+                        {/* Meta inputs — only the ones the catalog enabled */}
+                        {(keyNumber.hasExpiry || keyNumber.issueDateRequired || keyNumber.issueStateRequired || keyNumber.issueCountryRequired) && (
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                {document.expiryRequired && (
-                                    <PreviewField label="Expiry date" placeholder="mm / dd / yyyy" icon={Calendar} />
+                                {keyNumber.issueDateRequired && (
+                                    <KnPreviewField label="Issue date" placeholder="mm / dd / yyyy" icon={Calendar} />
                                 )}
-                                {document.issueDateRequired && (
-                                    <PreviewField label="Issue date" placeholder="mm / dd / yyyy" icon={Calendar} />
+                                {keyNumber.hasExpiry && (
+                                    <KnPreviewField label="Expiry date" placeholder="mm / dd / yyyy" icon={Calendar} />
                                 )}
-                                {document.issueStateRequired && (
-                                    <PreviewField label="Issue state / province" placeholder="Select state…" icon={MapPin} />
+                                {keyNumber.issueStateRequired && (
+                                    <KnPreviewField label="Issue state / province" placeholder="Select state…" icon={MapPin} />
                                 )}
-                                {document.issueCountryRequired && (
-                                    <PreviewField label="Issue country" placeholder="Select country…" icon={Globe2} />
+                                {keyNumber.issueCountryRequired && (
+                                    <KnPreviewField label="Issue country" placeholder="Select country…" icon={Globe2} />
                                 )}
                             </div>
                         )}
 
+                        {!keyNumber.numberRequired && !keyNumber.hasExpiry && !keyNumber.issueDateRequired && !keyNumber.issueStateRequired && !keyNumber.issueCountryRequired && (
+                            <p className="text-[12px] italic text-slate-400">No inputs configured for this number.</p>
+                        )}
+
                         <p className="mt-3 text-[11px] italic text-slate-400">
-                            This is exactly what the applicant sees when this document is added to a form.
+                            This is exactly what the applicant sees when this key number is added to a form.
                         </p>
                     </div>
                 </div>
@@ -360,7 +344,7 @@ function DocumentPreviewModal({ document, onClose }: {
     );
 }
 
-function PreviewField({ label, placeholder, icon: Icon }: {
+function KnPreviewField({ label, placeholder, icon: Icon }: {
     label: string;
     placeholder: string;
     icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -377,4 +361,4 @@ function PreviewField({ label, placeholder, icon: Icon }: {
     );
 }
 
-export default DocumentsTab;
+export default ComplianceTab;

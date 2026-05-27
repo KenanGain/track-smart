@@ -26,6 +26,11 @@ import { OptionsEditor } from './OptionsEditor';
 
 const PREVIEW_INPUT = 'pointer-events-none w-full rounded-md border border-slate-300 bg-slate-50 text-sm';
 
+// Document type catalog cached at module level — used by the document field
+// preview so the inputs (expiry, issue date, state, country, multiple)
+// reflect the configured catalog row, not generic defaults.
+const DOC_TYPES_CACHE = (() => loadDocumentTypes())();
+
 function FieldInputPreview({ field }: { field: FormField }) {
     const opts = field.options.length ? field.options : ['Option 1', 'Option 2'];
     switch (field.type) {
@@ -71,12 +76,65 @@ function FieldInputPreview({ field }: { field: FormField }) {
             );
         case 'number':
             return <div className={cn(PREVIEW_INPUT, 'h-9')} />;
-        case 'document':
+        case 'document': {
+            // Resolve the linked Document Type so the preview shows the same
+            // inputs the form builder generates at runtime — Upload + Expiry,
+            // Issue Date, Issue State, Issue Country, Allow Multiple.
+            const linkedType = field.documentTypeId
+                ? DOC_TYPES_CACHE.find(t => t.id === field.documentTypeId)
+                : undefined;
+            const allowMultiple        = linkedType?.allowMultiple        ?? false;
+            const expiryRequired       = linkedType?.expiryRequired       ?? false;
+            const issueDateRequired    = linkedType?.issueDateRequired    ?? false;
+            const issueStateRequired   = linkedType?.issueStateRequired   ?? false;
+            const issueCountryRequired = linkedType?.issueCountryRequired ?? false;
             return (
-                <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400">
-                    <Upload size={14} /> Upload document
+                <div className="space-y-2">
+                    {/* Upload widget */}
+                    <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400">
+                        <Upload size={14} /> {allowMultiple ? 'Upload documents (multiple allowed)' : 'Upload document'}
+                    </div>
+
+                    {/* Meta inputs — only render the ones the catalog turned on */}
+                    {(expiryRequired || issueDateRequired || issueStateRequired || issueCountryRequired) && (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {expiryRequired && (
+                                <div>
+                                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Expiry date</p>
+                                    <div className={cn(PREVIEW_INPUT, 'flex h-9 items-center px-3 text-slate-400')}>
+                                        mm / dd / yyyy
+                                    </div>
+                                </div>
+                            )}
+                            {issueDateRequired && (
+                                <div>
+                                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Issue date</p>
+                                    <div className={cn(PREVIEW_INPUT, 'flex h-9 items-center px-3 text-slate-400')}>
+                                        mm / dd / yyyy
+                                    </div>
+                                </div>
+                            )}
+                            {issueStateRequired && (
+                                <div>
+                                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Issue state / province</p>
+                                    <div className={cn(PREVIEW_INPUT, 'flex h-9 items-center px-3 text-slate-400')}>
+                                        Select state…
+                                    </div>
+                                </div>
+                            )}
+                            {issueCountryRequired && (
+                                <div>
+                                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Issue country</p>
+                                    <div className={cn(PREVIEW_INPUT, 'flex h-9 items-center px-3 text-slate-400')}>
+                                        Select country…
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             );
+        }
         case 'license-list':
             return (
                 <div className="space-y-2">
@@ -376,7 +434,11 @@ function FollowUpFieldsConfig({ toggleField, allFields, onAddFollowUp }: {
     const [whenOn, setWhenOn] = useState(true); // visibility trigger: toggle is ON (true) vs OFF (false)
     const [stage, setStage] = useState<'type' | 'doc-type'>('type'); // when 'doc-type', show the Doc Type picker
 
-    const docTypes = useMemo(() => loadDocumentTypes().filter(t => t.status === 'Active'), [stage]);
+    // Only Hiring-flagged active types appear in the form builder picker.
+    const docTypes = useMemo(
+        () => loadDocumentTypes().filter(t => t.status === 'Active' && t.usingInHiring),
+        [stage],
+    );
     const dependents = allFields.filter(f => f.showWhen?.fieldId === toggleField.id);
 
     const quickAdd: { type: FormFieldType; label: string }[] = [
