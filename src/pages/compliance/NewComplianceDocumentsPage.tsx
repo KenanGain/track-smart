@@ -1,24 +1,49 @@
 import { useMemo, useState, useEffect } from "react";
 import {
     FileText, Truck, User, LayoutGrid, Hash, CalendarX, FileWarning,
-    Clock, AlertTriangle, Search, Plus, Columns, Edit3, ChevronDown, ChevronUp,
+    Clock, AlertTriangle, Search, Plus, Columns, Edit3, ChevronDown,
     ArrowLeft, Download, Check, AlertCircle, FolderOpen,
     Users, UserCheck, UserMinus, UserX,
-    RotateCcw, XCircle,
+    RotateCcw, XCircle, UploadCloud, Paperclip, Link2, Link2Off,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-    DOCUMENTS, SEED_KEY_NUMBERS,
+    DOCUMENTS, SEED_KEY_NUMBERS, DOCUMENT_CATEGORIES,
     type DocumentRow, type KeyNumberRow, type KeyNumberGroup,
 } from "@/pages/admin/ComplianceAndDocumentsPage";
 import {
     loadCarrierAssignment, effectiveDocFlags, effectiveKnFlags, getEntityAssignment,
+    effectiveEntityKnFlags, effectiveEntityDocFlags, DOC_IDS_BY_KN_ID,
     type CarrierComplianceAssignment, type EntityScope,
 } from "@/pages/admin/carrier-compliance.data";
 import { ACCOUNTS_DB, type AccountRecord } from "@/pages/accounts/accounts.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-fleet.data";
 import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import type { Asset } from "@/pages/assets/assets.data";
+import { useAppData } from "@/context/AppDataContext";
+import { ComplianceKeyNumberModal, type ComplianceKeyNumberSave } from "@/components/compliance/ComplianceKeyNumberModal";
+import { ComplianceUploadModal } from "@/components/compliance/ComplianceUploadModal";
+import { ComplianceDataChips, type DataChipItem } from "@/components/compliance/ComplianceDataChips";
+import type { KeyNumberValue, UploadedDocument } from "@/types/key-numbers.types";
+
+/** Storage key for an entered key-number value. Carrier scope keys by the
+ *  catalog row id; per-entity (asset/driver) scope namespaces by entity id —
+ *  mirrors the convention used by the legacy compliance page. */
+function keyNumberStorageId(rowId: string, entityId?: string): string {
+    return entityId ? `${entityId}_${rowId}` : rowId;
+}
+
+/** Composite key for an uploaded supporting document, scoped per entity.
+ *  `kind` separates a key number's supporting doc ('kn') from a document row ('doc'). */
+function uploadKey(kind: 'kn' | 'doc', rowId: string, entityId?: string): string {
+    return `${kind}:${entityId ?? 'carrier'}:${rowId}`;
+}
+
+/** A key number needs a supporting document when Settings marks it Doc Required
+ *  or the catalog links it to a document. */
+function keyNumberNeedsDoc(kn: KeyNumberRow): boolean {
+    return !!kn.docRequired || (DOC_IDS_BY_KN_ID.get(kn.id)?.length ?? 0) > 0;
+}
 
 interface NewComplianceDocumentsPageProps {
     accountId?: string;
@@ -201,29 +226,47 @@ function ComplianceDetail({ scope, assignment, viewMode, entityId, contextHeader
     const enabledKnSet = new Set(effective.enabledKeyNumberIds);
     const enabledDocSet = new Set(effective.enabledDocumentTypeIds);
 
+    // Driver/Asset detail views layer the per-individual requirement overrides
+    // configured in Settings → Assignment on top of the carrier defaults, so
+    // the profile reflects what was set up for this specific driver/asset.
+    const isEntity = !!entityId && (scope === 'Driver' || scope === 'Asset');
+
     const keyNumbers = useMemo(() => {
+        const entityScope = scope.toLowerCase() as EntityScope;
         return SEED_KEY_NUMBERS
             .filter(k => k.status === 'Active')
             .filter(k => k.relatedTo === scope)
             .filter(k => enabledKnSet.has(k.id))
-            .map(k => effectiveKnFlags(k, assignment));
-    }, [scope, assignment, enabledKnSet]);
+            .map(k => isEntity
+                ? effectiveEntityKnFlags(k, assignment, entityScope, entityId!)
+                : effectiveKnFlags(k, assignment));
+    }, [scope, assignment, enabledKnSet, isEntity, entityId]);
 
     const documents = useMemo(() => {
         const scopeKey = scope.toLowerCase() as 'carrier' | 'asset' | 'driver';
+        const entityScope = scope.toLowerCase() as EntityScope;
         return DOCUMENTS
             .filter(d => d.status === 'Active')
             .filter(d => d.scope === scopeKey)
             .filter(d => enabledDocSet.has(d.id))
-            .map(d => effectiveDocFlags(d, assignment));
-    }, [scope, assignment, enabledDocSet]);
+            .map(d => isEntity
+                ? effectiveEntityDocFlags(d, assignment, entityScope, entityId!)
+                : effectiveDocFlags(d, assignment));
+    }, [scope, assignment, enabledDocSet, isEntity, entityId]);
 
-    // KPI counts. With no per-entity values in the mock data we treat every
-    // enabled item as "missing" so the numbers actually move with the
-    // carrier's compliance config — same behaviour as the original page.
-    const missingNumber = keyNumbers.filter(k => k.numberRequired).length;
-    const missingExpiry = [...keyNumbers.filter(k => k.hasExpiry), ...documents.filter(d => d.expiryRequired)].length;
-    const missingDoc    = documents.length + keyNumbers.filter(k => k.docRequired).length;
+    // KPI counts react to what's actually been entered / uploaded for this scope.
+    const { keyNumberValues, documentUploads } = useAppData();
+    const knValue = (id: string) => keyNumberValues[keyNumberStorageId(id, entityId)];
+    const knDocUploaded = (id: string) => (documentUploads[uploadKey('kn', id, entityId)]?.length ?? 0) > 0;
+    const docUploaded = (id: string) => (documentUploads[uploadKey('doc', id, entityId)]?.length ?? 0) > 0;
+
+    const missingNumber = keyNumbers.filter(k => k.numberRequired && !knValue(k.id)?.value?.trim()).length;
+    const missingExpiry = [
+        ...keyNumbers.filter(k => k.hasExpiry && !knValue(k.id)?.expiryDate),
+        ...documents.filter(d => d.expiryRequired && !documentUploads[uploadKey('doc', d.id, entityId)]?.[0]?.expiryDate),
+    ].length;
+    const missingDoc = documents.filter(d => d.requirementLevel !== 'optional' && !docUploaded(d.id)).length
+        + keyNumbers.filter(k => keyNumberNeedsDoc(k) && !knDocUploaded(k.id)).length;
     const expiringSoon  = 0;
     const expired       = 0;
 
@@ -241,56 +284,121 @@ function ComplianceDetail({ scope, assignment, viewMode, entityId, contextHeader
             </div>
 
             {viewMode === 'Compliance' ? (
-                <KeyNumbersCard keyNumbers={keyNumbers} />
+                <KeyNumbersCard keyNumbers={keyNumbers} scope={scope} entityId={entityId} />
             ) : (
-                <DocumentsCard documents={documents} />
+                <DocumentsCard documents={documents} entityId={entityId} />
             )}
         </>
     );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// KEY NUMBERS CARD (grouped by KeyNumberGroup, collapsible)
+// CARD SUB-TABS — group/category navigation shared by both lists
 // ─────────────────────────────────────────────────────────────────────────
 
-function KeyNumbersCard({ keyNumbers }: { keyNumbers: KeyNumberRow[] }) {
+function CardTabs<T extends string>({ tabs, active, onChange }: {
+    tabs: { id: T; label: string; count: number }[];
+    active: T;
+    onChange: (t: T) => void;
+}) {
+    return (
+        <div className="border-y border-slate-200 bg-slate-50/40 px-5 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 -mb-px">
+                {tabs.map(t => {
+                    const isActive = active === t.id;
+                    return (
+                        <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => onChange(t.id)}
+                            className={cn(
+                                "inline-flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-semibold whitespace-nowrap border-b-2 transition-colors",
+                                isActive
+                                    ? "text-blue-600 border-blue-600"
+                                    : "text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300",
+                            )}
+                        >
+                            {t.label}
+                            <span className={cn(
+                                "inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                                isActive ? "bg-blue-100 text-blue-700" : "bg-slate-200/70 text-slate-600",
+                            )}>
+                                {t.count}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// KEY NUMBERS CARD — group sub-tabs + value entry (no add; catalog is root)
+// ─────────────────────────────────────────────────────────────────────────
+
+function KeyNumbersCard({
+    keyNumbers, scope, entityId,
+}: {
+    keyNumbers: KeyNumberRow[];
+    scope: 'Carrier' | 'Asset' | 'Driver';
+    entityId?: string;
+}) {
+    const { keyNumberValues, updateKeyNumberValue, documentUploads, uploadDocument } = useAppData();
     const [search, setSearch] = useState("");
-    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'All'>('All');
+    // The form handles value + supporting-document upload; one Edit action per row.
+    const [editRow, setEditRow] = useState<KeyNumberRow | null>(null);
 
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return keyNumbers;
-        return keyNumbers.filter(k => k.name.toLowerCase().includes(q));
-    }, [keyNumbers, search]);
+    const uploadedDocsFor = (rowId: string): UploadedDocument[] =>
+        documentUploads[uploadKey('kn', rowId, entityId)] ?? [];
 
-    const grouped = useMemo(() => {
-        const map = new Map<KeyNumberGroup, KeyNumberRow[]>();
-        for (const k of filtered) {
-            const arr = map.get(k.group) ?? [];
-            arr.push(k);
-            map.set(k.group, arr);
+    const valueFor = (rowId: string): KeyNumberValue | undefined =>
+        keyNumberValues[keyNumberStorageId(rowId, entityId)];
+
+    const handleSave = (rowId: string, payload: ComplianceKeyNumberSave) => {
+        const storageId = keyNumberStorageId(rowId, entityId);
+        const existingDocs = keyNumberValues[storageId]?.documents ?? [];
+        updateKeyNumberValue(
+            storageId, payload.value, payload.expiryDate, payload.issueDate,
+            undefined, existingDocs, payload.issuingState, payload.issuingCountry,
+        );
+        if (payload.documents !== undefined) {
+            uploadDocument(uploadKey('kn', rowId, entityId), payload.documents);
         }
-        return KEY_NUMBER_GROUP_ORDER
-            .filter(g => map.has(g))
-            .map(g => [g, map.get(g)!] as const);
-    }, [filtered]);
+    };
+
+    const tabs = useMemo(() => {
+        const present = KEY_NUMBER_GROUP_ORDER.filter(g => keyNumbers.some(k => k.group === g));
+        return [
+            { id: 'All' as KeyNumberGroup | 'All', label: 'All', count: keyNumbers.length },
+            ...present.map(g => ({ id: g as KeyNumberGroup | 'All', label: g, count: keyNumbers.filter(k => k.group === g).length })),
+        ];
+    }, [keyNumbers]);
+
+    const rows = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return keyNumbers
+            .filter(k => activeGroup === 'All' || k.group === activeGroup)
+            .filter(k => !q || k.name.toLowerCase().includes(q));
+    }, [keyNumbers, activeGroup, search]);
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 p-5 pb-3 flex-wrap">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <FileText size={18} />
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-800">Key Numbers</h3>
+            <div className="flex items-center gap-3 p-5 pb-4">
+                <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <FileText size={18} />
                 </div>
-                <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors">
-                    <Plus size={14} /> Add Number
-                </button>
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800 leading-tight">Key Numbers</h3>
+                    <p className="text-[12px] text-slate-500">Enter values and upload supporting documents.</p>
+                </div>
             </div>
 
-            <div className="px-5 pb-3 flex items-center gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[240px]">
+            <CardTabs tabs={tabs} active={activeGroup} onChange={setActiveGroup} />
+
+            <div className="px-5 py-3">
+                <div className="relative max-w-md">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                         type="text"
@@ -300,24 +408,21 @@ function KeyNumbersCard({ keyNumbers }: { keyNumbers: KeyNumberRow[] }) {
                         className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
                     />
                 </div>
-                <button type="button" className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50">
-                    <Columns size={14} /> Columns <ChevronDown size={12} />
-                </button>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto border-t border-slate-100">
                 <table className="min-w-full">
-                    <thead className="border-y border-slate-200 bg-slate-50/50">
+                    <thead className="border-b border-slate-200 bg-slate-50/50">
                         <tr className="text-left">
                             <Th>Number Type</Th>
                             <Th>Value</Th>
+                            <Th>Details</Th>
                             <Th>Status</Th>
-                            <Th>Expiry</Th>
                             <Th className="text-right pr-5">Actions</Th>
                         </tr>
                     </thead>
                     <tbody>
-                        {grouped.length === 0 && (
+                        {rows.length === 0 ? (
                             <tr>
                                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-slate-500">
                                     {search
@@ -325,44 +430,56 @@ function KeyNumbersCard({ keyNumbers }: { keyNumbers: KeyNumberRow[] }) {
                                         : "No key numbers enabled for this carrier at this scope."}
                                 </td>
                             </tr>
-                        )}
-                        {grouped.map(([group, items]) => {
-                            const isCollapsed = collapsed[group];
-                            return (
-                                <FragmentRows key={group}>
-                                    <tr className="bg-slate-50">
-                                        <td colSpan={5} className="px-5 py-2.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => setCollapsed(c => ({ ...c, [group]: !c[group] }))}
-                                                className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-900"
-                                            >
-                                                <span>{group}</span>
-                                                {isCollapsed
-                                                    ? <ChevronDown size={14} className="text-slate-400" />
-                                                    : <ChevronUp size={14} className="text-slate-400" />}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                    {!isCollapsed && items.map(k => (
-                                        <KeyNumberTr key={k.id} kn={k} />
-                                    ))}
-                                </FragmentRows>
-                            );
-                        })}
+                        ) : rows.map(k => (
+                            <KeyNumberTr
+                                key={k.id}
+                                kn={k}
+                                value={valueFor(k.id)}
+                                uploadedDocs={uploadedDocsFor(k.id)}
+                                onEdit={() => setEditRow(k)}
+                            />
+                        ))}
                     </tbody>
                 </table>
             </div>
+
+            <ComplianceKeyNumberModal
+                isOpen={editRow !== null}
+                onClose={() => setEditRow(null)}
+                mode="edit"
+                scope={scope}
+                availableKeyNumbers={keyNumbers}
+                editRow={editRow}
+                existingValue={editRow ? valueFor(editRow.id) ?? null : null}
+                existingDocuments={editRow ? uploadedDocsFor(editRow.id) : []}
+                onSave={handleSave}
+            />
         </div>
     );
 }
 
-function KeyNumberTr({ kn }: { kn: KeyNumberRow }) {
-    // Mock has no per-entity values yet — every required number is "Missing".
-    const status: 'Missing' | 'Active' | 'Optional' = kn.numberRequired ? 'Missing' : 'Optional';
+function KeyNumberTr({
+    kn, value, uploadedDocs = [], onEdit,
+}: {
+    kn: KeyNumberRow;
+    value?: KeyNumberValue;
+    uploadedDocs?: UploadedDocument[];
+    onEdit: () => void;
+}) {
+    const uploadedDoc = uploadedDocs[0];
+    const hasValue = !!value?.value?.trim();
+    // Required-but-empty reads as Missing; entered reads as Active; otherwise Optional.
+    const status: 'Missing' | 'Active' | 'Optional' = hasValue
+        ? 'Active'
+        : kn.numberRequired ? 'Missing' : 'Optional';
     const linkedDoc = kn.linkedDocumentTypeId
         ? DOCUMENTS.find(d => d.id === kn.linkedDocumentTypeId)
         : undefined;
+    const detailItems: DataChipItem[] = [];
+    if (kn.hasExpiry)            detailItems.push({ label: 'Expiry',  value: value?.expiryDate, required: true });
+    if (kn.issueDateRequired)   detailItems.push({ label: 'Issue',   value: value?.issueDate, required: true });
+    if (kn.issueStateRequired)  detailItems.push({ label: 'State',   value: value?.issuingState, required: true });
+    if (kn.issueCountryRequired) detailItems.push({ label: 'Country', value: value?.issuingCountry, required: true });
     return (
         <tr className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
             <td className="px-5 py-3 align-top">
@@ -372,16 +489,32 @@ function KeyNumberTr({ kn }: { kn: KeyNumberRow }) {
                         <FileText size={10} /> Linked to: {linkedDoc.name}
                     </a>
                 )}
+                {uploadedDoc && (
+                    <div className="mt-1 inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 border border-emerald-200">
+                        <Paperclip size={10} /> {uploadedDoc.fileName}
+                    </div>
+                )}
             </td>
-            <td className="px-5 py-3 align-top text-sm text-slate-400 italic">Not entered</td>
+            <td className="px-5 py-3 align-top text-sm">
+                {hasValue
+                    ? <span className="font-medium text-slate-800">{value!.value}</span>
+                    : <span className="text-slate-400 italic">Not entered</span>}
+            </td>
+            <td className="px-5 py-3 align-top">
+                {detailItems.length > 0
+                    ? <ComplianceDataChips items={detailItems} />
+                    : <span className="text-[11px] text-slate-400">—</span>}
+            </td>
             <td className="px-5 py-3 align-top">
                 <StatusPill status={status} />
             </td>
-            <td className="px-5 py-3 align-top text-sm text-slate-500 italic">
-                {kn.hasExpiry ? 'Not set' : '-'}
-            </td>
             <td className="px-5 py-3 align-top text-right pr-5">
-                <button type="button" className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Edit">
+                <button
+                    type="button"
+                    onClick={onEdit}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                    title="Edit / enter value &amp; upload document"
+                >
                     <Edit3 size={14} />
                 </button>
             </td>
@@ -393,39 +526,63 @@ function KeyNumberTr({ kn }: { kn: KeyNumberRow }) {
 // DOCUMENTS CARD — when the user toggles to the Documents view
 // ─────────────────────────────────────────────────────────────────────────
 
-function DocumentsCard({ documents }: { documents: DocumentRow[] }) {
-    const [search, setSearch] = useState("");
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return documents;
-        return documents.filter(d => d.name.toLowerCase().includes(q) || d.folder.toLowerCase().includes(q));
-    }, [documents, search]);
+/** Shows whether a document is linked (key number / expense / module / Docu-Form). */
+function DocumentLinkage({ doc }: { doc: DocumentRow }) {
+    if (doc.linkedType === 'keynumber' && doc.linkedTo) {
+        return <span className="inline-flex items-center gap-1 text-[11px] text-blue-600"><FileText size={10} /> Linked to: {doc.linkedTo}</span>;
+    }
+    if (doc.linkedType === 'expense' && doc.linkedTo) {
+        return <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700"><FileText size={10} /> Linked to Expense: {doc.linkedTo}</span>;
+    }
+    if (doc.linkedType === 'module' && doc.linkedTo) {
+        return <span className="inline-flex items-center gap-1 text-[11px] text-amber-700"><Link2 size={10} /> Linked to {doc.linkedTo}</span>;
+    }
+    if (doc.source === 'docu-form') {
+        return <span className="inline-flex items-center gap-1 text-[11px] font-medium text-violet-600"><FileText size={10} /> Docu/Form</span>;
+    }
+    return <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Link2Off size={10} /> Not linked</span>;
+}
 
-    const byFolder = useMemo(() => {
-        const map = new Map<string, DocumentRow[]>();
-        for (const d of filtered) {
-            const arr = map.get(d.folder) ?? [];
-            arr.push(d);
-            map.set(d.folder, arr);
-        }
-        return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    }, [filtered]);
+function DocumentsCard({ documents, entityId }: { documents: DocumentRow[]; entityId?: string }) {
+    const { documentUploads, uploadDocument } = useAppData();
+    const [search, setSearch] = useState("");
+    const [activeCategory, setActiveCategory] = useState<string>('All');
+    const [uploadRow, setUploadRow] = useState<DocumentRow | null>(null);
+
+    const uploadedFor = (id: string): UploadedDocument[] =>
+        documentUploads[uploadKey('doc', id, entityId)] ?? [];
+    const catOf = (d: DocumentRow) => d.category ?? 'Other';
+
+    const tabs = useMemo(() => {
+        const present = DOCUMENT_CATEGORIES.filter(c => documents.some(d => catOf(d) === c));
+        return [
+            { id: 'All', label: 'All', count: documents.length },
+            ...present.map(c => ({ id: c as string, label: c, count: documents.filter(d => catOf(d) === c).length })),
+        ];
+    }, [documents]);
+
+    const rows = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return documents
+            .filter(d => activeCategory === 'All' || catOf(d) === activeCategory)
+            .filter(d => !q || d.name.toLowerCase().includes(q) || (d.category ?? '').toLowerCase().includes(q));
+    }, [documents, activeCategory, search]);
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 p-5 pb-3 flex-wrap">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <FolderOpen size={18} />
-                    </div>
-                    <h3 className="text-lg font-bold text-slate-800">Documents</h3>
+            <div className="flex items-center gap-3 p-5 pb-4">
+                <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <FolderOpen size={18} />
                 </div>
-                <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors">
-                    <Plus size={14} /> Add Document
-                </button>
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800 leading-tight">Documents</h3>
+                    <p className="text-[12px] text-slate-500">Upload required documents and capture their details.</p>
+                </div>
             </div>
 
-            <div className="px-5 pb-3">
+            <CardTabs tabs={tabs} active={activeCategory} onChange={setActiveCategory} />
+
+            <div className="px-5 py-3">
                 <div className="relative max-w-md">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -438,55 +595,103 @@ function DocumentsCard({ documents }: { documents: DocumentRow[] }) {
                 </div>
             </div>
 
-            <div className="border-t border-slate-200">
-                {byFolder.length === 0 ? (
-                    <div className="px-5 py-12 text-center text-sm text-slate-500">
-                        {search
-                            ? "No documents match your search."
-                            : "No documents enabled for this carrier at this scope."}
-                    </div>
-                ) : (
-                    byFolder.map(([folder, docs]) => (
-                        <div key={folder}>
-                            <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
-                                <FolderOpen size={12} className="text-slate-500" />
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">{folder}</span>
-                                <span className="text-[10px] font-bold text-slate-400 tabular-nums">· {docs.length}</span>
-                            </div>
-                            <table className="min-w-full">
-                                <tbody>
-                                    {docs.map(d => (
-                                        <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50/40">
-                                            <td className="px-5 py-3 w-1/2">
-                                                <div className="flex items-center gap-2">
-                                                    <FileText size={14} className="text-blue-600 shrink-0" />
-                                                    <span className="text-sm font-semibold text-slate-900">{d.name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-3">
-                                                <div className="flex items-center gap-1 flex-wrap">
-                                                    {d.expiryRequired      && <ReqChip label="Expiry" />}
-                                                    {d.issueDateRequired   && <ReqChip label="Issue date" />}
-                                                    {d.issueStateRequired  && <ReqChip label="State" />}
-                                                    {d.issueCountryRequired&& <ReqChip label="Country" />}
-                                                    {d.usedInHiring && (
-                                                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                            Hiring
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-3 text-right">
-                                                <StatusPill status="Missing" />
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ))
-                )}
+            <div className="overflow-x-auto border-t border-slate-100">
+                <table className="min-w-full">
+                    <thead className="border-b border-slate-200 bg-slate-50/50">
+                        <tr className="text-left">
+                            <Th>Document</Th>
+                            <Th>Compliance Data</Th>
+                            <Th>Status</Th>
+                            <Th className="text-right pr-5">Actions</Th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.length === 0 ? (
+                            <tr>
+                                <td colSpan={4} className="px-5 py-12 text-center text-sm text-slate-500">
+                                    {search
+                                        ? "No documents match your search."
+                                        : "No documents enabled for this carrier at this scope."}
+                                </td>
+                            </tr>
+                        ) : rows.map(d => {
+                            const uploaded = uploadedFor(d.id);
+                            const hasFiles = uploaded.length > 0;
+                            const u = uploaded[0];
+                            const status: 'Complete' | 'Optional' | 'Missing' = hasFiles
+                                ? 'Complete'
+                                : d.requirementLevel === 'optional' ? 'Optional' : 'Missing';
+                            const dataItems: DataChipItem[] = [];
+                            if (d.expiryRequired)       dataItems.push({ label: 'Expiry',  value: u?.expiryDate, required: true });
+                            if (d.issueDateRequired)    dataItems.push({ label: 'Issue',   value: u?.issueDate, required: true });
+                            if (d.issueStateRequired)   dataItems.push({ label: 'State',   value: u?.issuingState, required: true });
+                            if (d.issueCountryRequired) dataItems.push({ label: 'Country', value: u?.issuingCountry, required: true });
+                            return (
+                                <tr key={d.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/40">
+                                    <td className="px-5 py-3 align-top w-2/5">
+                                        <div className="flex items-center gap-2">
+                                            <FileText size={14} className="text-blue-600 shrink-0" />
+                                            <span className="text-sm font-semibold text-slate-900">{d.name}</span>
+                                        </div>
+                                        <div className="mt-0.5 ml-6"><DocumentLinkage doc={d} /></div>
+                                        {hasFiles && (
+                                            <div className="mt-1 ml-6 flex flex-wrap gap-1">
+                                                {uploaded.map(f => (
+                                                    <span key={f.id} className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 border border-emerald-200">
+                                                        <Paperclip size={10} /> {f.fileName}
+                                                        {f.expiryDate && <span className="text-emerald-500">· exp {f.expiryDate}</span>}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="px-5 py-3 align-top">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {dataItems.length > 0
+                                                ? <ComplianceDataChips items={dataItems} />
+                                                : <span className="text-[11px] text-slate-400">No extra fields</span>}
+                                            {d.usedInHiring && (
+                                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    Hiring
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-5 py-3 align-top">
+                                        <StatusPill status={status} />
+                                    </td>
+                                    <td className="px-5 py-3 align-top text-right pr-5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setUploadRow(d)}
+                                            className={cn(
+                                                "inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-slate-100",
+                                                hasFiles ? "text-emerald-600 hover:text-emerald-700" : "text-slate-400 hover:text-blue-600",
+                                            )}
+                                            title={hasFiles ? "Manage uploaded files" : "Upload document"}
+                                        >
+                                            <UploadCloud size={14} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
             </div>
+
+            <ComplianceUploadModal
+                isOpen={uploadRow !== null}
+                onClose={() => setUploadRow(null)}
+                title={uploadRow ? uploadRow.name : ''}
+                expiryRequired={!!uploadRow?.expiryRequired}
+                issueDateRequired={!!uploadRow?.issueDateRequired}
+                issueStateRequired={!!uploadRow?.issueStateRequired}
+                issueCountryRequired={!!uploadRow?.issueCountryRequired}
+                allowMultiple={!!uploadRow?.allowMultiple}
+                existing={uploadRow ? uploadedFor(uploadRow.id) : null}
+                onSave={(docs) => { if (uploadRow) uploadDocument(uploadKey('doc', uploadRow.id, entityId), docs); }}
+            />
         </div>
     );
 }
@@ -959,8 +1164,8 @@ function KpiTile({
     );
 }
 
-function StatusPill({ status }: { status: 'Missing' | 'Active' | 'Optional' | 'Incomplete' }) {
-    const cls = status === 'Active'
+function StatusPill({ status }: { status: 'Missing' | 'Active' | 'Optional' | 'Incomplete' | 'Complete' }) {
+    const cls = status === 'Active' || status === 'Complete'
         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
         : status === 'Optional'
             ? 'bg-slate-100 text-slate-600 border-slate-200'
@@ -999,14 +1204,6 @@ function OwnershipPill({ ownership }: { ownership: string }) {
     );
 }
 
-function ReqChip({ label }: { label: string }) {
-    return (
-        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200">
-            {label}
-        </span>
-    );
-}
-
 function Th({ children, className }: { children: React.ReactNode; className?: string }) {
     return (
         <th className={cn("px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500", className)}>
@@ -1015,9 +1212,6 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
     );
 }
 
-function FragmentRows({ children }: { children: React.ReactNode }) {
-    return <>{children}</>;
-}
 
 function initialsFrom(name: string | undefined): string {
     if (!name) return "?";

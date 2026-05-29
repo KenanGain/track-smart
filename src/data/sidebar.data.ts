@@ -72,6 +72,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Compliance & Documents",
         icon: FileText,
         path: "/compliance",
+        disabled: true,
     },
     {
         key: "new-compliance",
@@ -182,7 +183,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },
             { key: "document-types", label: "Document Types", icon: FileText, path: "/settings/document-types" },
-            { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders" },
+            { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders", disabled: true },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },
             { key: "accidents-settings", label: "Accidents", icon: AlertTriangle, path: "/settings/accidents" },

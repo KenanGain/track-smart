@@ -150,6 +150,7 @@ function SidebarNodeView(props: {
                     active={isActiveNode}
                     onClick={() => node.path && onNavigate(node.path)}
                     isCollapsed={isCollapsed}
+                    disabled={node.disabled}
                 />
             ) : (
                 <div className={cn("space-y-1 transition-all", open && isChildActive && !isCollapsed && "bg-slate-50/80 rounded-xl pb-1")}>
@@ -211,6 +212,7 @@ function SidebarNodeView(props: {
                                         active={child.path ? isActive(currentPath, child.path) : false}
                                         onClick={() => child.path && onNavigate(child.path)}
                                         isSubItem
+                                        disabled={child.disabled}
                                     />
                                 </div>
                             ))}
@@ -248,15 +250,19 @@ function SidebarNodeView(props: {
                                 {node.children.map(child => (
                                     <button
                                         key={child.key}
-                                        onClick={() => child.path && onNavigate(child.path)}
+                                        onClick={child.disabled ? undefined : () => child.path && onNavigate(child.path)}
+                                        disabled={child.disabled}
+                                        title={child.disabled ? "Coming soon" : undefined}
                                         className={cn(
                                             "w-[calc(100%-8px)] mx-1 text-left px-3 py-2 text-sm flex items-center gap-2 rounded-md transition-colors",
-                                            isActive(currentPath, child.path || '') 
-                                                ? "text-blue-700 font-semibold bg-blue-50" 
-                                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
+                                            child.disabled
+                                                ? "text-slate-300 cursor-not-allowed"
+                                                : isActive(currentPath, child.path || '')
+                                                    ? "text-blue-700 font-semibold bg-blue-50"
+                                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
                                         )}
                                     >
-                                        {child.icon && <child.icon size={14} className={cn("opacity-70", isActive(currentPath, child.path || '') && "text-blue-600 opacity-100")} />}
+                                        {child.icon && <child.icon size={14} className={cn("opacity-70", !child.disabled && isActive(currentPath, child.path || '') && "text-blue-600 opacity-100")} />}
                                         {child.label}
                                     </button>
                                 ))}
@@ -269,29 +275,34 @@ function SidebarNodeView(props: {
     );
 }
 
-function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed }: { label: string; Icon?: React.ElementType; active: boolean; onClick: () => void; isSubItem?: boolean; isCollapsed?: boolean }) {
+function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabled }: { label: string; Icon?: React.ElementType; active: boolean; onClick: () => void; isSubItem?: boolean; isCollapsed?: boolean; disabled?: boolean }) {
     return (
         <button
             type="button"
-            onClick={onClick}
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            aria-disabled={disabled}
+            title={disabled ? "Coming soon" : undefined}
             className={cn(
-                "relative flex items-center rounded-lg py-2 text-left transition-all duration-200 ease-in-out group/leaf cursor-pointer outline-none focus:ring-2 focus:ring-blue-100",
-                "w-full", 
+                "relative flex items-center rounded-lg py-2 text-left transition-all duration-200 ease-in-out group/leaf outline-none focus:ring-2 focus:ring-blue-100",
+                "w-full",
                 isCollapsed ? "justify-center px-2 gap-0" : "px-3 gap-3",
-                active 
-                    ? (isSubItem ? "text-blue-600 font-medium bg-blue-50/50" : "bg-blue-50 text-blue-700 font-semibold shadow-sm") 
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium",
+                disabled
+                    ? "text-slate-300 cursor-not-allowed"
+                    : active
+                        ? (isSubItem ? "text-blue-600 font-medium bg-blue-50/50 cursor-pointer" : "bg-blue-50 text-blue-700 font-semibold shadow-sm cursor-pointer")
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium cursor-pointer",
             )}
         >
             {/* Active Indicator (Left Bar) - Only for top-level items */}
-            {active && !isSubItem && (
+            {active && !isSubItem && !disabled && (
                  <div className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-blue-600 rounded-r-full shadow-sm" />
             )}
 
             {Icon && (
                 <Icon className={cn(
-                    "h-[18px] w-[18px] shrink-0 transition-colors", 
-                    active ? "text-blue-600" : "text-slate-400 group-hover/leaf:text-slate-600"
+                    "h-[18px] w-[18px] shrink-0 transition-colors",
+                    disabled ? "text-slate-300" : active ? "text-blue-600" : "text-slate-400 group-hover/leaf:text-slate-600"
                 )} />
             )}
             <span className={cn(

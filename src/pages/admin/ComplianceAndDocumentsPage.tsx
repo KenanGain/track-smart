@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    FileText, Search, Plus, Pencil, Trash2, ChevronDown,
+    FileText, Search, Plus, Pencil, Trash2, ChevronDown, ChevronUp, ChevronsUpDown,
     Building2, Truck, User, Filter, Save,
-    ArrowLeft, Info, ExternalLink, Link2, ShieldAlert,
+    ArrowLeft, Info, ExternalLink, Link2, ShieldAlert, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { Toggle } from '@/components/ui/toggle';
 import { Button } from '@/components/ui/button';
-import { loadDocumentTypes as loadDocuFormTypes, type DocumentType as DocuFormDocumentType } from '@/pages/ats/document-types.data';
 import { DocumentTagsView } from '@/pages/settings/docu-form/DocumentTagsView';
 import {
     loadTagSections, saveTagSections, newTag,
@@ -151,10 +150,19 @@ type DocumentFolder =
     | 'Safety Rating' | 'Company Documents' | 'Authorities and Permits'
     | 'IFTA' | 'Accidents';
 
-type DocumentCategory = 'License' | 'Medical' | 'Identity' | 'Background' | 'Photo' | 'Insurance' | 'Other';
+export type DocumentCategory =
+    | 'License' | 'Medical' | 'Identity & Travel' | 'Background & Screening' | 'Photo'
+    | 'Authority & Registration' | 'Permits' | 'Tax' | 'Insurance & Bonds'
+    | 'Safety & Inspection' | 'Financial' | 'Incident' | 'Other';
 type DocumentRequirement = 'required' | 'optional' | 'not_required';
 
-const DOCUMENT_CATEGORIES: DocumentCategory[] = ['License', 'Medical', 'Identity', 'Background', 'Photo', 'Insurance', 'Other'];
+/** Canonical document grouping — the root-defined classification used everywhere
+ *  documents are grouped (parallel to a Key Number's `group`). */
+export const DOCUMENT_CATEGORIES: DocumentCategory[] = [
+    'License', 'Medical', 'Identity & Travel', 'Background & Screening', 'Photo',
+    'Authority & Registration', 'Permits', 'Tax', 'Insurance & Bonds',
+    'Safety & Inspection', 'Financial', 'Incident', 'Other',
+];
 
 export interface DocumentRow {
     id: string;
@@ -232,15 +240,15 @@ export const DOCUMENTS: DocumentRow[] = ([
     { id: 'd-cvor',            name: 'CVOR Level 2',                                                                                             folder: 'Safety Rating',           status: 'Active', scope: 'carrier', e: 1, d: 1 },
     { id: 'd-sfc',             name: 'Safety Fitness Certificate',                                                                               folder: 'Safety Rating',           status: 'Active', scope: 'carrier', e: 1, d: 1 },
     { id: 'd-liability',       name: 'Liability Insurance',                                                                                      folder: 'Company Documents',       status: 'Active', scope: 'carrier', e: 1 },
-    { id: 'd-op-auth',         name: 'Operating Authority',          linkedTo: 'MC Number',                            linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Draft',  scope: 'carrier' },
+    { id: 'd-op-auth',         name: 'Operating Authority',          linkedTo: 'MC Number',                            linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Active', scope: 'carrier' },
     { id: 'd-ifta-lic',        name: 'IFTA License',                 linkedTo: 'IFTA Account Number',                  linkedType: 'keynumber',  folder: 'IFTA',                    status: 'Active', scope: 'carrier', e: 1, d: 1 },
     { id: 'd-usdot',           name: 'USDOT Number',                 linkedTo: 'USDOT Number',                         linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Active', scope: 'carrier', e: 1, d: 1, s: 1, c: 1 },
-    { id: 'd-mx',              name: 'MX Number',                    linkedTo: 'MX Number',                            linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Active', scope: 'carrier' },
+    { id: 'd-mx',              name: 'MX Number',                    linkedTo: 'MX Number',                            linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Inactive', scope: 'carrier' },
     { id: 'd-nsc',             name: 'NSC Carrier Profile',          linkedTo: 'NSC Carrier Profile Number',           linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Active', scope: 'carrier', d: 1 },
-    { id: 'd-copr',            name: 'COPR Profile',                 linkedTo: 'COPR / Carrier Safety Profile ID',     linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Active', scope: 'carrier' },
+    { id: 'd-copr',            name: 'COPR Profile',                 linkedTo: 'COPR / Carrier Safety Profile ID',     linkedType: 'keynumber',  folder: 'Authorities and Permits', status: 'Inactive', scope: 'carrier' },
     { id: 'd-ein',             name: 'EIN Document',                 linkedTo: 'EIN',                                  linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'carrier' },
     { id: 'd-gst-hst',         name: 'GST/HST Registration',         linkedTo: 'GST/HST Number',                       linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'carrier' },
-    { id: 'd-pst-qst',         name: 'PST/QST Registration',         linkedTo: 'PST/QST Number',                       linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'carrier' },
+    { id: 'd-pst-qst',         name: 'PST/QST Registration',         linkedTo: 'PST/QST Number',                       linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Inactive', scope: 'carrier' },
     { id: 'd-state-tax',       name: 'State Tax ID',                 linkedTo: 'State Tax ID',                         linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'carrier' },
     { id: 'd-wsib',            name: 'WSIB/WCB Clearance',           linkedTo: 'WSIB / WCB Account Number',            linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'carrier', d: 1 },
     { id: 'd-workers-comp',    name: 'Workers Comp Policy',          linkedTo: 'IIB / Workers Comp Policy Number',     linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'carrier', e: 1, d: 1 },
@@ -285,11 +293,11 @@ export const DOCUMENTS: DocumentRow[] = ([
 
     // ── Driver ────────────────────────────────────────────────────────
     { id: 'd-paystub',         name: 'Paystub',                      linkedTo: 'Paystubs',                             linkedType: 'module',     folder: 'Company Documents',       status: 'Active', scope: 'driver' },
-    { id: 'd-emp-reference',   name: 'Employment Reference',         linkedTo: 'NSC Carrier Profile Number',           linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', h: 1 },
+    { id: 'd-emp-reference',   name: 'Employment Reference',                                                                                       folder: 'Company Documents',       status: 'Active', scope: 'driver', h: 1 },
     { id: 'd-dl-std',          name: 'Driver License (Standard)',    linkedTo: 'Driver License (Standard)',            linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
     { id: 'd-cdl-link',        name: 'Commercial Driver License (CDL)', linkedTo: 'Commercial Driver License (CDL)',   linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
-    { id: 'd-med-cert-link',   name: 'Medical Examiner Certificate', linkedTo: 'Passport Number',                      linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, d: 1, h: 1 },
-    { id: 'd-training-cert',   name: 'Training Certificate',         linkedTo: 'FAST Card Number',                     linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', d: 1, h: 1 },
+    { id: 'd-med-cert-link',   name: 'Medical Examiner Certificate',                                                                               folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, d: 1, h: 1 },
+    { id: 'd-training-cert',   name: 'Training Certificate',                                                                                       folder: 'Company Documents',       status: 'Active', scope: 'driver', d: 1, h: 1 },
     { id: 'd-drug-consortium', name: 'Drug Consortium',              linkedTo: 'Drug & Alcohol Consortium ID',         linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, d: 1, h: 1 },
     { id: 'd-payroll-stmt',    name: 'Payroll Statement',            linkedTo: 'Driver Payroll',                       linkedType: 'expense',    folder: 'Company Documents',       status: 'Active', scope: 'driver', d: 1 },
     { id: 'd-travel-receipt',  name: 'Travel Receipt',               linkedTo: 'Driver Travel Expenses',               linkedType: 'expense',    folder: 'Company Documents',       status: 'Active', scope: 'driver', d: 1 },
@@ -298,8 +306,8 @@ export const DOCUMENTS: DocumentRow[] = ([
     { id: 'd-notice-trial-drv',    name: 'Notice of Trial',          linkedTo: 'Tickets / Offenses',                   linkedType: 'module',     folder: 'Authorities and Permits', status: 'Active', scope: 'driver', d: 1 },
     { id: 'd-passport-link',   name: 'Passport',                     linkedTo: 'Passport Number',                      linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
     { id: 'd-fast-link',       name: 'FAST Card',                    linkedTo: 'FAST Card Number',                     linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
-    { id: 'd-visa-link',       name: 'Visa',                         linkedTo: 'USDOT Number',                         linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
-    { id: 'd-twic-link',       name: 'TWIC Card',                    linkedTo: 'MX Number',                            linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
+    { id: 'd-visa-link',       name: 'Visa',                         linkedTo: 'Visa Number',                          linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
+    { id: 'd-twic-link',       name: 'TWIC Card',                    linkedTo: 'TWIC Card Number',                     linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
     // Docu/Form mirrored entries — open in the Docu/Form Generator
     { id: 'd-df-cdl',          name: 'CDL — Front & Back',                                                                                      folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver', e: 1, d: 1, s: 1, c: 1 },
     { id: 'd-df-med',          name: "Medical Examiner's Certificate",                                                                          folder: 'Company Documents', source: 'docu-form', status: 'Active', scope: 'driver', e: 1, d: 1 },
@@ -338,6 +346,52 @@ export const DOCUMENTS: DocumentRow[] = ([
     { id: 'd-repair-estimate', name: 'Repair Estimate',              linkedTo: 'Accidents', linkedType: 'module', folder: 'Accidents', status: 'Active', scope: 'accidents', d: 1 },
     { id: 'd-telemetry',       name: 'Telemetry Data',               linkedTo: 'Accidents', linkedType: 'module', folder: 'Accidents', status: 'Active', scope: 'accidents', d: 1 },
 ] as DR[]).map(expand);
+
+/**
+ * Wire the bidirectional id-based links from the display-name links declared
+ * above. The seed rows only declare the document's `linkedTo` name; this derives
+ * the matching ids so the catalog's id-based linking (flag-mirroring, clean
+ * unlink, "already linked" guards) works on the built-in data out of the box.
+ * Links are 1:1, so the first document that names a key number wins.
+ */
+(() => {
+    const knByName = new Map(SEED_KEY_NUMBERS.map(k => [k.name, k] as const));
+    for (const d of DOCUMENTS) {
+        if (d.linkedType !== 'keynumber' || !d.linkedTo) continue;
+        const kn = knByName.get(d.linkedTo);
+        if (!kn) continue;
+        d.linkedKeyNumberId = kn.id;
+        if (!kn.linkedDocumentTypeId) kn.linkedDocumentTypeId = d.id;
+    }
+})();
+
+/**
+ * Canonical category for each seed document, keyed by id and grouped by bucket
+ * for review. This is the root-defined grouping used everywhere documents are
+ * grouped (Assignment tab, profile view). New documents pick their category in
+ * the Add/Edit form. Anything missing here falls back to 'Other'.
+ */
+const DOC_CATEGORY_SEED: Record<DocumentCategory, string[]> = {
+    'License':                 ['d-dl-std', 'd-cdl-link', 'd-df-cdl', 'd-df-dl-front', 'd-df-dl-back'],
+    'Medical':                 ['d-med-cert-link', 'd-df-med'],
+    'Identity & Travel':       ['d-passport-link', 'd-fast-link', 'd-visa-link', 'd-twic-link', 'd-df-passport', 'd-df-ssn', 'd-df-birth'],
+    'Background & Screening':  ['d-emp-reference', 'd-training-cert', 'd-drug-consortium', 'd-df-criminal', 'd-df-mvr', 'd-df-cvor', 'd-df-psp', 'd-df-abstract', 'd-df-emp-exp'],
+    'Photo':                   ['d-df-headshot'],
+    'Authority & Registration':['d-op-auth', 'd-ifta-lic', 'd-usdot', 'd-mx', 'd-irp', 'd-ucr', 'd-scac', 'd-cbsa', 'd-ace-scac', 'd-boc3', 'd-vehicle-reg', 'd-ifta-decal-copy', 'd-transponder', 'd-df-veh-reg'],
+    'Permits':                 ['d-kyu', 'd-hazmat', 'd-fast', 'd-state-op-permit', 'd-nm-weight-permit', 'd-ny-hut'],
+    'Tax':                     ['d-ein', 'd-gst-hst', 'd-pst-qst', 'd-state-tax', 'd-hvut'],
+    'Insurance & Bonds':       ['d-liability', 'd-wsib', 'd-workers-comp', 'd-surety'],
+    'Safety & Inspection':     ['d-cvor', 'd-sfc', 'd-nsc', 'd-copr', 'd-annual-insp', 'd-cvsa-insp', 'd-csa-bg'],
+    'Financial':               ['d-lumper', 'd-ins-premium', 'd-permit', 'd-ifta-return', 'd-irp-receipt', 'd-ucr-receipt', 'd-software', 'd-marketing', 'd-professional', 'd-fuel-receipt', 'd-repair-invoice', 'd-toll-receipt', 'd-parking-receipt', 'd-cleaning-receipt', 'd-lease-pmt', 'd-vehicle-reg-exp', 'd-lease-agreement', 'd-df-lease', 'd-payroll-stmt', 'd-travel-receipt', 'd-paystub'],
+    'Incident':                ['d-offense-ticket-drv', 'd-payment-receipt-drv', 'd-notice-trial-drv', 'd-offense-ticket', 'd-payment-receipt', 'd-notice-trial', 'd-roadside-cite', 'd-hos-violation', 'd-insp-violation', 'd-violation-resp', 'd-police-report', 'd-driver-stmt', 'd-accident-photos', 'd-witness-stmt', 'd-repair-estimate', 'd-telemetry'],
+    'Other':                   ['d-df-resume', 'd-df-offer'],
+};
+
+(() => {
+    const byId = new Map<string, DocumentCategory>();
+    for (const cat of DOCUMENT_CATEGORIES) for (const id of DOC_CATEGORY_SEED[cat]) byId.set(id, cat);
+    for (const d of DOCUMENTS) d.category = byId.get(d.id) ?? 'Other';
+})();
 
 /**
  * Reverse lookup — for each Key Number name, find the Document that references
@@ -429,7 +483,7 @@ function RelatedToBadge({ scope }: { scope: RelatedToScope }) {
 
 function LinkedToLabel({ label }: { label: string }) {
     return (
-        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-blue-600">
+        <span className="inline-flex items-center gap-1 text-[11px] text-blue-600">
             <FileText size={10} className="shrink-0" />
             <span className="truncate">Linked to: {label}</span>
         </span>
@@ -438,7 +492,7 @@ function LinkedToLabel({ label }: { label: string }) {
 
 function LinkedToExpense({ label }: { label: string }) {
     return (
-        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-700">
+        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700">
             <FileText size={10} className="shrink-0" />
             <span className="truncate">Linked to Expense: {label}</span>
         </span>
@@ -448,18 +502,19 @@ function LinkedToExpense({ label }: { label: string }) {
 /** Module-level link (Paystubs / Tickets / Accidents) — amber. */
 function LinkedToModule({ label }: { label: string }) {
     return (
-        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-700">
+        <span className="inline-flex items-center gap-1 text-[11px] text-amber-700">
             <Link2 size={10} className="shrink-0" />
             <span className="truncate">Linked to {label}</span>
         </span>
     );
 }
 
-/** Source badge for documents mirrored from the Docu/Form Generator library. */
+/** Source label for documents mirrored from the Docu/Form Generator library.
+ *  Inline text (violet) to match the other "Linked to …" meta chips — not a pill. */
 function DocuFormBadge() {
     return (
-        <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-            <FileText size={9} className="shrink-0" />
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-violet-600">
+            <FileText size={10} className="shrink-0" />
             Docu/Form
         </span>
     );
@@ -516,40 +571,56 @@ function RequirementRow({ label, help, checked, onChange }: {
 }
 
 /** Dedicated page-style Add/Edit view — replaces the previous modal. */
-function KeyNumberFormPage({ initial, isNew, onSave, onCancel }: {
+function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCreateDocument }: {
     initial: KeyNumberRow;
     isNew: boolean;
     onSave: (row: KeyNumberRow) => void;
     onCancel: () => void;
+    /** Live document catalog (parent state) — drives the link picker. */
+    documents: DocumentRow[];
+    /** Create a brand-new document from the inline "+" quick-create modal. */
+    onCreateDocument: (doc: DocumentRow) => void;
 }) {
     const [draft, setDraft] = useState<KeyNumberRow>(initial);
+    const [creatingDoc, setCreatingDoc] = useState(false);
     const up = (p: Partial<KeyNumberRow>) => setDraft(d => ({ ...d, ...p }));
-    const canSave = draft.name.trim().length > 0;
+    // When a supporting document is required, a linked document type must be picked.
+    const canSave = draft.name.trim().length > 0 && (!draft.docRequired || !!draft.linkedDocumentTypeId);
 
-    // Document Type picker — Docu/Form Generator library, filtered to active types.
-    const docTypes = useMemo<DocuFormDocumentType[]>(
-        () => loadDocuFormTypes().filter(t => t.status === 'Active'),
-        [],
+    // Document Type picker — the live catalog Documents library, scoped to this
+    // number's Related-To and filtered to active types. `linkedDocumentTypeId`
+    // therefore references a DocumentRow id, consistent with the list view and
+    // the Link modals (no second id space).
+    const docTypes = useMemo<DocumentRow[]>(
+        () => documents.filter(d => d.status === 'Active' && d.scope === draft.relatedTo.toLowerCase()),
+        [documents, draft.relatedTo],
     );
 
     /**
-     * Sync compliance flags from a Document Type when the admin picks one.
-     * Mirrors the helper text under the picker: "Selecting a document type
-     * will sync expiry, issue date, and monitoring settings."
+     * Sync compliance flags from a picked document onto this number. Accepts an
+     * optional row so the quick-create flow can link a just-made document before
+     * it lands in the `documents` prop on the next render.
      */
-    const linkDocumentType = (id: string) => {
-        const t = docTypes.find(x => x.id === id);
-        if (!t) {
+    const linkDocumentType = (id: string, doc?: DocumentRow) => {
+        const d = doc ?? documents.find(x => x.id === id);
+        if (!d) {
             up({ linkedDocumentTypeId: undefined });
             return;
         }
         up({
-            linkedDocumentTypeId: id,
-            hasExpiry: t.expiryRequired || draft.hasExpiry,
-            issueDateRequired: t.issueDateRequired || draft.issueDateRequired,
-            issueStateRequired: t.issueStateRequired || draft.issueStateRequired,
-            issueCountryRequired: t.issueCountryRequired || draft.issueCountryRequired,
+            linkedDocumentTypeId: d.id,
+            hasExpiry: d.expiryRequired || draft.hasExpiry,
+            issueDateRequired: d.issueDateRequired || draft.issueDateRequired,
+            issueStateRequired: d.issueStateRequired || draft.issueStateRequired,
+            issueCountryRequired: d.issueCountryRequired || draft.issueCountryRequired,
         });
+    };
+
+    /** Quick-create a document, register it with the parent, then link it. */
+    const handleCreateDocument = (doc: DocumentRow) => {
+        onCreateDocument(doc);
+        linkDocumentType(doc.id, doc);
+        setCreatingDoc(false);
     };
 
     const relatedToBtn = (scope: RelatedToScope) => {
@@ -777,7 +848,8 @@ function KeyNumberFormPage({ initial, isNew, onSave, onCancel }: {
                                     </select>
                                     <button
                                         type="button"
-                                        title="Add new document type in the Docu/Form Generator"
+                                        onClick={() => setCreatingDoc(true)}
+                                        title="Create a new document and link it"
                                         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 hover:text-blue-600"
                                     >
                                         <Plus size={14} />
@@ -785,13 +857,130 @@ function KeyNumberFormPage({ initial, isNew, onSave, onCancel }: {
                                 </div>
                                 <p className="mt-2 flex items-start gap-1.5 text-[11px] text-blue-700">
                                     <Info size={12} className="mt-0.5 shrink-0" />
-                                    Selecting a document type will sync expiry, issue date, and monitoring settings.
+                                    Showing {draft.relatedTo} documents. Selecting one syncs its expiry and issue-date requirements onto this number. Use <span className="font-semibold">+</span> to create a new one.
                                 </p>
+                                {draft.docRequired && !draft.linkedDocumentTypeId && (
+                                    <p className="mt-1 text-[11px] font-medium text-rose-600">
+                                        Pick or create a document type to satisfy "Supporting Document Required".
+                                    </p>
+                                )}
                             </div>
                         )}
                     </section>
                 </div>
+
+                {creatingDoc && (
+                    <QuickCreateDocumentModal
+                        scope={draft.relatedTo.toLowerCase() as Exclude<DocumentsSubTabId, 'all' | 'accidents' | 'violation'>}
+                        onCreate={handleCreateDocument}
+                        onClose={() => setCreatingDoc(false)}
+                    />
+                )}
             </main>
+        </div>
+    );
+}
+
+/**
+ * Lightweight modal to create a document inline from the Key Number form's "+".
+ * Captures the essentials (name, category, status); scope is inherited from the
+ * number's Related-To. The admin can flesh out the rest later in the full
+ * Document Type form. Returns the new row to the caller for linking.
+ */
+function QuickCreateDocumentModal({ scope, onCreate, onClose }: {
+    scope: Exclude<DocumentsSubTabId, 'all' | 'accidents' | 'violation'>;
+    onCreate: (doc: DocumentRow) => void;
+    onClose: () => void;
+}) {
+    const [name, setName] = useState('');
+    const [category, setCategory] = useState<DocumentCategory>('Authority & Registration');
+    const [status, setStatus] = useState<DocumentTypeStatus>('Active');
+    const scopeLabel = scope.charAt(0).toUpperCase() + scope.slice(1);
+    const canCreate = name.trim().length > 0;
+
+    const create = () => {
+        if (!canCreate) return;
+        onCreate({
+            id: `doc-${Math.random().toString(36).slice(2, 9)}`,
+            name: name.trim(),
+            description: '',
+            category,
+            requirementLevel: 'required',
+            allowMultiple: false,
+            tags: [],
+            folder: 'Company Documents',
+            usedInHiring: false,
+            expiryRequired: false,
+            issueDateRequired: false,
+            issueStateRequired: false,
+            issueCountryRequired: false,
+            status,
+            scope,
+        });
+    };
+
+    return (
+        <div
+            role="dialog"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-6"
+            onClick={onClose}
+        >
+            <div
+                className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="border-b border-slate-200 px-6 py-4">
+                    <h3 className="text-base font-bold text-slate-900">New Document Type</h3>
+                    <p className="mt-0.5 text-[12px] text-slate-500">
+                        Creates a <span className="font-semibold text-slate-700">{scopeLabel}</span> document and links it to this number. You can edit its full settings later under Documents.
+                    </p>
+                </div>
+                <div className="space-y-4 px-6 py-5">
+                    <div>
+                        <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                            Document Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                            autoFocus
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') create(); }}
+                            placeholder="e.g. Operating Authority Letter"
+                            className={INPUT_CLS}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Category</label>
+                            <select
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value as DocumentCategory)}
+                                className={INPUT_CLS}
+                            >
+                                {DOCUMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Status</label>
+                            <select
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value as DocumentTypeStatus)}
+                                className={INPUT_CLS}
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                                <option value="Draft">Draft</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-3">
+                    <Button variant="outline" onClick={onClose}>Cancel</Button>
+                    <Button disabled={!canCreate} onClick={create} className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700">
+                        <Plus className="h-4 w-4" /> Create &amp; Link
+                    </Button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -1326,6 +1515,46 @@ function LinkKeyNumberModal({ document, keyNumbers, documents, onLink, onPatchKe
     );
 }
 
+type KeyNumberSortKey =
+    | 'name' | 'relatedTo' | 'status'
+    | 'usedInHiring' | 'numberRequired' | 'docRequired' | 'hasExpiry'
+    | 'issueDateRequired' | 'issueStateRequired' | 'issueCountryRequired';
+
+const KEY_NUMBER_BOOLEAN_SORT_KEYS = new Set<KeyNumberSortKey>([
+    'usedInHiring', 'numberRequired', 'docRequired', 'hasExpiry',
+    'issueDateRequired', 'issueStateRequired', 'issueCountryRequired',
+]);
+
+/** Clickable table header that sorts the list by its column. */
+function SortableTh({ label, sortKey, sort, onSort, className, align = 'left' }: {
+    label: React.ReactNode;
+    sortKey: KeyNumberSortKey;
+    sort: { key: KeyNumberSortKey; dir: 'asc' | 'desc' } | null;
+    onSort: (k: KeyNumberSortKey) => void;
+    className?: string;
+    align?: 'left' | 'center';
+}) {
+    const active = sort?.key === sortKey;
+    return (
+        <th className={className}>
+            <button
+                type="button"
+                onClick={() => onSort(sortKey)}
+                className={cn(
+                    "group inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.05em] transition-colors hover:text-slate-700",
+                    align === 'center' && "justify-center",
+                    active ? "text-blue-600" : "text-slate-500",
+                )}
+            >
+                <span>{label}</span>
+                {active
+                    ? (sort!.dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)
+                    : <ChevronsUpDown size={12} className="text-slate-300 group-hover:text-slate-400" />}
+            </button>
+        </th>
+    );
+}
+
 function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocument, onLinkDocument, onUnlinkDocument, onEdit, onDelete }: {
     rows: KeyNumberRow[];
     allKeyNumbers: KeyNumberRow[];
@@ -1338,12 +1567,31 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
     onDelete: (id: string) => void;
 }) {
     const [query, setQuery] = useState('');
+    const [relatedFilter, setRelatedFilter] = useState<'all' | RelatedToScope>('all');
     const [linkingFor, setLinkingFor] = useState<KeyNumberRow | null>(null);
+    const [sort, setSort] = useState<{ key: KeyNumberSortKey; dir: 'asc' | 'desc' } | null>(null);
+
+    // Click a column header to sort the currently-filtered rows by it. Boolean
+    // columns default to enabled-first (desc) so "which are on" surface at the
+    // top; text columns default to A→Z.
+    const handleSort = (key: KeyNumberSortKey) => {
+        setSort(prev => {
+            if (prev?.key === key) return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+            return { key, dir: KEY_NUMBER_BOOLEAN_SORT_KEYS.has(key) ? 'desc' : 'asc' };
+        });
+    };
 
     const documentById = useMemo(
         () => new Map(documents.map(d => [d.id, d])),
         [documents],
     );
+
+    // Counts per Related-To within the current category, for the filter bubbles.
+    const relatedCounts = useMemo(() => {
+        const c: Record<'all' | RelatedToScope, number> = { all: rows.length, Carrier: 0, Asset: 0, Driver: 0 };
+        for (const r of rows) c[r.relatedTo] += 1;
+        return c;
+    }, [rows]);
 
     /**
      * Doc Required toggle behaviour:
@@ -1379,12 +1627,36 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
     };
 
     const q = query.trim().toLowerCase();
-    const filtered = q
+    const searched = q
         ? rows.filter(r =>
             r.name.toLowerCase().includes(q)
             || r.description.toLowerCase().includes(q)
             || r.relatedTo.toLowerCase().includes(q))
         : rows;
+    const filtered = relatedFilter === 'all'
+        ? searched
+        : searched.filter(r => r.relatedTo === relatedFilter);
+
+    const sorted = useMemo(() => {
+        if (!sort) return filtered;
+        const dir = sort.dir === 'asc' ? 1 : -1;
+        const val = (r: KeyNumberRow): string | number => {
+            switch (sort.key) {
+                case 'name':       return r.name.toLowerCase();
+                case 'relatedTo':  return r.relatedTo;
+                case 'status':     return r.status;
+                default:           return r[sort.key] ? 1 : 0; // boolean flag columns
+            }
+        };
+        return [...filtered].sort((a, b) => {
+            const av = val(a), bv = val(b);
+            const cmp = typeof av === 'number' && typeof bv === 'number'
+                ? av - bv
+                : String(av).localeCompare(String(bv));
+            if (cmp !== 0) return cmp * dir;
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); // stable tiebreak
+        });
+    }, [filtered, sort]);
 
     return (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1403,13 +1675,45 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
                     <span className="hidden text-[12px] text-slate-500 sm:inline">
                         Showing <span className="font-semibold text-slate-800">{filtered.length}</span> of {rows.length}
                     </span>
-                    <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                        <Filter size={13} /> Filter <ChevronDown size={12} />
-                    </button>
                 </div>
+            </div>
+
+            {/* Related-To filter chips with count bubbles */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-4 py-2.5">
+                <span className="mr-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <Filter size={12} /> Related to
+                </span>
+                {([
+                    { id: 'all',     label: 'All' },
+                    { id: 'Carrier', label: 'Carrier' },
+                    { id: 'Asset',   label: 'Asset' },
+                    { id: 'Driver',  label: 'Driver' },
+                ] as const).map(opt => {
+                    const active = relatedFilter === opt.id;
+                    const Icon = opt.id === 'all' ? null : RELATED_TO_ICON[opt.id];
+                    return (
+                        <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setRelatedFilter(opt.id)}
+                            className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors",
+                                active
+                                    ? "border-blue-300 bg-blue-50 text-blue-700"
+                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                            )}
+                        >
+                            {Icon && <Icon size={12} className={active ? "text-blue-600" : "text-slate-400"} />}
+                            {opt.label}
+                            <span className={cn(
+                                "inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                                active ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500",
+                            )}>
+                                {relatedCounts[opt.id]}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Table */}
@@ -1417,21 +1721,21 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
                 <table className="w-full min-w-[1200px] text-sm">
                     <thead>
                         <tr className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-                            <th className="px-4 py-3 w-[27%]">Number Name</th>
-                            <th className="px-3 py-3 w-[8%]">Related To</th>
-                            <th className="px-2 py-3 w-[7%] text-center">In Hiring /<br/>Form</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Number<br/>Required</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Doc<br/>Required</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Has<br/>Expiry</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Issue<br/>Date</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Issue<br/>State</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Issue<br/>Country</th>
-                            <th className="px-3 py-3 w-[8%]">Status</th>
+                            <SortableTh label="Number Name" sortKey="name" sort={sort} onSort={handleSort} className="px-4 py-3 w-[27%]" />
+                            <SortableTh label="Related To" sortKey="relatedTo" sort={sort} onSort={handleSort} className="px-3 py-3 w-[8%]" />
+                            <SortableTh label={<>In Hiring /<br/>Form</>} sortKey="usedInHiring" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label={<>Number<br/>Required</>} sortKey="numberRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label={<>Doc<br/>Required</>} sortKey="docRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label={<>Has<br/>Expiry</>} sortKey="hasExpiry" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label={<>Issue<br/>Date</>} sortKey="issueDateRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label={<>Issue<br/>State</>} sortKey="issueStateRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label={<>Issue<br/>Country</>} sortKey="issueCountryRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
+                            <SortableTh label="Status" sortKey="status" sort={sort} onSort={handleSort} className="px-3 py-3 w-[8%]" />
                             <th className="px-3 py-3 w-[6%] text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.length === 0 ? (
+                        {sorted.length === 0 ? (
                             <tr>
                                 <td colSpan={11} className="px-4 py-20 text-center">
                                     <div className="mx-auto flex max-w-md flex-col items-center gap-2">
@@ -1444,7 +1748,7 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
                                 </td>
                             </tr>
                         ) : (
-                            filtered.map((r) => {
+                            sorted.map((r) => {
                                 const linkedName = resolveLinkedName(r);
                                 return (
                                 <tr key={r.id} className="border-t border-slate-100 transition-colors hover:bg-blue-50/30">
@@ -1454,7 +1758,7 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
                                             <button
                                                 type="button"
                                                 onClick={() => setLinkingFor(r)}
-                                                className="rounded text-left hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                                className="mt-0.5 inline-flex rounded text-left hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
                                                 title="Change linked document"
                                             >
                                                 <LinkedToLabel label={linkedName} />
@@ -1552,6 +1856,16 @@ const SCOPE_LABEL: Record<Exclude<DocumentsSubTabId, 'all'>, string> = {
     violation: 'Violation',
 };
 
+type DocLinkFilter = 'all' | 'number' | 'expense' | 'system';
+
+/** Classify a document into a single linkage bucket (mutually exclusive). */
+function docLinkBucket(r: DocumentRow): 'number' | 'expense' | 'system' | 'none' {
+    if (r.linkedType === 'keynumber' || r.linkedKeyNumberId) return 'number';
+    if (r.linkedType === 'expense') return 'expense';
+    if (r.source === 'docu-form' || r.linkedType === 'module') return 'system';
+    return 'none';
+}
+
 function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatchKeyNumber, onLinkKeyNumber, onUnlinkKeyNumber, onEdit, onDelete }: {
     rows: DocumentRow[];
     total: number;
@@ -1565,12 +1879,23 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
     onDelete: (id: string) => void;
 }) {
     const [query, setQuery] = useState('');
+    const [linkFilter, setLinkFilter] = useState<DocLinkFilter>('all');
     const [linkingFor, setLinkingFor] = useState<DocumentRow | null>(null);
 
     const keyNumberById = useMemo(
         () => new Map(keyNumbers.map(k => [k.id, k])),
         [keyNumbers],
     );
+
+    // Counts per linkage bucket within the current scope tab, for the pill badges.
+    const linkCounts = useMemo(() => {
+        const c: Record<DocLinkFilter, number> = { all: rows.length, number: 0, expense: 0, system: 0 };
+        for (const r of rows) {
+            const b = docLinkBucket(r);
+            if (b !== 'none') c[b] += 1;
+        }
+        return c;
+    }, [rows]);
 
     /**
      * Resolve the key-number link. Prefers an explicitly-set
@@ -1587,12 +1912,15 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
     };
 
     const q = query.trim().toLowerCase();
-    const filtered = q
+    const searched = q
         ? rows.filter(r =>
             r.name.toLowerCase().includes(q)
             || (r.linkedTo ?? '').toLowerCase().includes(q)
             || r.folder.toLowerCase().includes(q))
         : rows;
+    const filtered = linkFilter === 'all'
+        ? searched
+        : searched.filter(r => docLinkBucket(r) === linkFilter);
 
     return (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1618,6 +1946,43 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                 <span className="text-[12px] text-slate-500">
                     Showing <span className="font-semibold text-slate-800">{filtered.length}</span> of {total} types
                 </span>
+            </div>
+
+            {/* Linkage filter chips with count bubbles */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-4 py-2.5">
+                <span className="mr-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <Link2 size={12} /> Linked to
+                </span>
+                {([
+                    { id: 'all',     label: 'All',               Icon: null },
+                    { id: 'number',  label: 'Linked to Number',  Icon: Link2 },
+                    { id: 'expense', label: 'Linked to Expense', Icon: Receipt },
+                    { id: 'system',  label: 'System Form',       Icon: FileText },
+                ] as const).map(opt => {
+                    const active = linkFilter === opt.id;
+                    return (
+                        <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setLinkFilter(opt.id)}
+                            className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors",
+                                active
+                                    ? "border-blue-300 bg-blue-50 text-blue-700"
+                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                            )}
+                        >
+                            {opt.Icon && <opt.Icon size={12} className={active ? "text-blue-600" : "text-slate-400"} />}
+                            {opt.label}
+                            <span className={cn(
+                                "inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                                active ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500",
+                            )}>
+                                {linkCounts[opt.id]}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             <div className="overflow-x-auto">
@@ -1669,40 +2034,42 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="font-semibold text-slate-900">{r.name}</p>
-                                                    {keyLink ? (
-                                                        <div className="mt-0.5 flex items-center gap-1">
+                                                    {/* Meta — link affordance + source/linkage chip, each on its own
+                                                        line so module/expense/docu-form rows all look consistent. */}
+                                                    <div className="mt-1 flex flex-col items-start gap-1">
+                                                        {keyLink ? (
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setLinkingFor(r)}
+                                                                    className="inline-flex rounded text-left hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                                                    title="Change linked key number"
+                                                                >
+                                                                    <LinkedToLabel label={keyLink.label} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => onUnlinkKeyNumber(r.id)}
+                                                                    className="text-[11px] leading-none text-slate-400 hover:text-rose-600"
+                                                                    title="Unlink key number"
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </span>
+                                                        ) : (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setLinkingFor(r)}
-                                                                className="rounded text-left hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
-                                                                title="Change linked key number"
-                                                            >
-                                                                <LinkedToLabel label={keyLink.label} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => onUnlinkKeyNumber(r.id)}
-                                                                className="ml-0.5 text-[11px] text-slate-400 hover:text-rose-600"
-                                                                title="Unlink key number"
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        !r.linkedTo && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setLinkingFor(r)}
-                                                                className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-slate-400 hover:text-blue-600 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                                                className="inline-flex items-center gap-1 rounded text-[11px] text-slate-400 hover:text-blue-600 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
                                                                 title="Link a key number"
                                                             >
                                                                 <Link2 size={10} /> Link key number
                                                             </button>
-                                                        )
-                                                    )}
-                                                    {r.linkedTo && r.linkedType === 'expense'   && <LinkedToExpense label={r.linkedTo} />}
-                                                    {r.linkedTo && r.linkedType === 'module'    && <LinkedToModule label={r.linkedTo} />}
-                                                    {isDocuForm && <DocuFormBadge />}
+                                                        )}
+                                                        {r.linkedTo && r.linkedType === 'expense'   && <LinkedToExpense label={r.linkedTo} />}
+                                                        {r.linkedTo && r.linkedType === 'module'    && <LinkedToModule label={r.linkedTo} />}
+                                                        {isDocuForm && <DocuFormBadge />}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
@@ -1762,14 +2129,25 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                                                         >
                                                             <Pencil size={14} />
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => onDelete(r.id)}
-                                                            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                        {r.linkedType === 'expense' ? (
+                                                            <button
+                                                                type="button"
+                                                                disabled
+                                                                className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md text-slate-300"
+                                                                title="Linked to an expense — it's part of the form, so it can't be deleted. You can still edit it."
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => onDelete(r.id)}
+                                                                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
                                                     </>
                                                 )}
                                             </div>
@@ -2387,7 +2765,7 @@ export const ComplianceAndDocumentsPage = () => {
 
     // Compliance state — key numbers + active category tab.
     const [keyNumbers, setKeyNumbers] = useState<KeyNumberRow[]>(SEED_KEY_NUMBERS);
-    const [complianceGroup, setComplianceGroup] = useState<KeyNumberGroup>('Regulatory and Safety Numbers');
+    const [complianceGroup, setComplianceGroup] = useState<KeyNumberGroup | 'All'>('All');
 
     // Add / Edit view state — `null` means "list view", populated means the dedicated form page is showing.
     const [formState, setFormState] = useState<
@@ -2419,6 +2797,12 @@ export const ComplianceAndDocumentsPage = () => {
     };
 
     const deleteDocument = (id: string) => {
+        // Expense-linked documents are part of the form — editable but never deletable.
+        const target = documents.find(r => r.id === id);
+        if (target?.linkedType === 'expense') {
+            window.alert("This document is linked to an expense and is part of the form, so it can't be deleted. You can still edit it.");
+            return;
+        }
         if (!window.confirm('Delete this document type?')) return;
         setDocuments(prev => prev.filter(r => r.id !== id));
         // Cascade: clear the partner key number's link if it pointed here.
@@ -2535,14 +2919,18 @@ export const ComplianceAndDocumentsPage = () => {
             return k;
         }));
         setDocuments(prev => prev.map(d => {
-            if (d.id === documentId) return {
-                ...d,
-                linkedKeyNumberId: keyNumberId,
-                // Keep the legacy display label aligned to the new partner.
-                linkedTo: kn.name,
-                linkedType: 'keynumber',
-                ...docFlagsFromKn(kn),
-            };
+            if (d.id === documentId) {
+                // A key-number link is independent of an expense/module link, so
+                // preserve those display labels — only docs without one (or already
+                // key-number-linked) adopt the legacy keynumber display label.
+                const preserveDisplayLink = d.linkedType === 'expense' || d.linkedType === 'module';
+                return {
+                    ...d,
+                    linkedKeyNumberId: keyNumberId,
+                    ...(preserveDisplayLink ? {} : { linkedTo: kn.name, linkedType: 'keynumber' as const }),
+                    ...docFlagsFromKn(kn),
+                };
+            }
             if (d.linkedKeyNumberId === keyNumberId) return { ...d, linkedKeyNumberId: undefined };
             return d;
         }));
@@ -2562,14 +2950,20 @@ export const ComplianceAndDocumentsPage = () => {
         }
     };
 
-    /** Unlink from the document side: clear both refs. */
+    /** Unlink the key number from the document side. Preserves any expense/module
+     *  display link — only clears the legacy label when it was the key number. */
     const unlinkDocKey = (documentId: string) => {
         const doc = documents.find(d => d.id === documentId);
         const knId = doc?.linkedKeyNumberId;
-        setDocuments(prev => prev.map(d =>
-            d.id === documentId
-                ? { ...d, linkedKeyNumberId: undefined, linkedTo: undefined, linkedType: undefined }
-                : d));
+        setDocuments(prev => prev.map(d => {
+            if (d.id !== documentId) return d;
+            const clearDisplay = d.linkedType === 'keynumber';
+            return {
+                ...d,
+                linkedKeyNumberId: undefined,
+                ...(clearDisplay ? { linkedTo: undefined, linkedType: undefined } : {}),
+            };
+        }));
         if (knId) {
             setKeyNumbers(prev => prev.map(k =>
                 k.id === knId ? { ...k, linkedDocumentTypeId: undefined } : k));
@@ -2584,6 +2978,17 @@ export const ComplianceAndDocumentsPage = () => {
             next[idx] = row;
             return next;
         });
+        // Keep the document side of the link in sync so the pairing is bidirectional:
+        // attach the chosen document's back-reference and detach any stale partner.
+        setDocuments(prev => prev.map(d => {
+            if (row.linkedDocumentTypeId && d.id === row.linkedDocumentTypeId) {
+                return { ...d, linkedKeyNumberId: row.id, linkedTo: row.name, linkedType: 'keynumber' };
+            }
+            if (d.linkedKeyNumberId === row.id && d.id !== row.linkedDocumentTypeId) {
+                return { ...d, linkedKeyNumberId: undefined };
+            }
+            return d;
+        }));
         // Jump to the category the saved row belongs to so the user sees it land.
         setComplianceGroup(row.group);
         setFormState(null);
@@ -2597,13 +3002,13 @@ export const ComplianceAndDocumentsPage = () => {
             d.linkedKeyNumberId === id ? { ...d, linkedKeyNumberId: undefined } : d));
     };
 
-    const complianceTabs: SubTab<KeyNumberGroup>[] = useMemo(
-        () => KEY_NUMBER_GROUPS.map(g => ({ id: g, label: g })),
+    const complianceTabs: SubTab<KeyNumberGroup | 'All'>[] = useMemo(
+        () => [{ id: 'All', label: 'All' }, ...KEY_NUMBER_GROUPS.map(g => ({ id: g, label: g }))],
         [],
     );
 
     const filteredKeyNumbers = useMemo(
-        () => keyNumbers.filter(r => r.group === complianceGroup),
+        () => keyNumbers.filter(r => complianceGroup === 'All' || r.group === complianceGroup),
         [keyNumbers, complianceGroup],
     );
 
@@ -2620,6 +3025,8 @@ export const ComplianceAndDocumentsPage = () => {
                 isNew={formState.mode === 'add'}
                 onSave={upsertKeyNumber}
                 onCancel={() => setFormState(null)}
+                documents={documents}
+                onCreateDocument={upsertDocument}
             />
         );
     }

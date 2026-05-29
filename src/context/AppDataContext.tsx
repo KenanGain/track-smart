@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import {
     MOCK_DOCUMENTS,
     MOCK_FOLDER_TREE,
@@ -19,7 +19,13 @@ interface AppDataContextType {
     keyNumbers: KeyNumberConfig[];
     setKeyNumbers: React.Dispatch<React.SetStateAction<KeyNumberConfig[]>>;
     keyNumberValues: Record<string, KeyNumberValue>;
-    updateKeyNumberValue: (id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[]) => void;
+    updateKeyNumberValue: (id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[], issuingState?: string, issuingCountry?: string) => void;
+    // Per-entity uploaded supporting documents (compliance page), keyed by a
+    // composite id (e.g. `doc:<entity>:<docId>` / `kn:<entity>:<knId>`).
+    // A list so documents flagged "Allow multiple" can hold several files.
+    documentUploads: Record<string, UploadedDocument[]>;
+    uploadDocument: (key: string, docs: UploadedDocument[]) => void;
+    removeDocumentUpload: (key: string) => void;
     getDocumentTypeById: (id: string) => DocumentType | undefined;
     // Thresholds
     csaThresholds: { warning: number; critical: number };
@@ -57,6 +63,33 @@ export const useAppData = () => {
     if (!context) throw new Error("useAppData must be used within AppDataProvider");
     return context;
 };
+
+// --- HELPER: Key Number value persistence (survives refresh) ---
+const KEY_NUMBER_VALUES_STORAGE_KEY = 'ats:key-number-values-v1';
+
+function loadKeyNumberValues(): Record<string, KeyNumberValue> {
+    try {
+        const raw = localStorage.getItem(KEY_NUMBER_VALUES_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return typeof parsed === 'object' && parsed ? parsed as Record<string, KeyNumberValue> : {};
+    } catch {
+        return {};
+    }
+}
+
+const DOCUMENT_UPLOADS_STORAGE_KEY = 'ats:document-uploads-v1';
+
+function loadDocumentUploads(): Record<string, UploadedDocument[]> {
+    try {
+        const raw = localStorage.getItem(DOCUMENT_UPLOADS_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return typeof parsed === 'object' && parsed ? parsed as Record<string, UploadedDocument[]> : {};
+    } catch {
+        return {};
+    }
+}
 
 // --- HELPER: Recursion for Tree Updates ---
 const cloneTree = (node: FolderNode): FolderNode => JSON.parse(JSON.stringify(node));
@@ -105,7 +138,45 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
     const [folderTree, setFolderTree] = useState<FolderNode>(MOCK_FOLDER_TREE);
     const [tagSections, setTagSections] = useState<TagSection[]>(INITIAL_TAG_SECTIONS);
     const [keyNumbers, setKeyNumbers] = useState<KeyNumberConfig[]>(INITIAL_KEY_NUMBERS);
-    const [keyNumberValues, setKeyNumberValues] = useState<Record<string, KeyNumberValue>>({});
+    const [keyNumberValues, setKeyNumberValues] = useState<Record<string, KeyNumberValue>>(loadKeyNumberValues);
+
+    // Persist entered key-number values so they survive a page refresh.
+    useEffect(() => {
+        try {
+            localStorage.setItem(KEY_NUMBER_VALUES_STORAGE_KEY, JSON.stringify(keyNumberValues));
+        } catch {
+            /* ignore */
+        }
+    }, [keyNumberValues]);
+
+    const [documentUploads, setDocumentUploads] = useState<Record<string, UploadedDocument[]>>(loadDocumentUploads);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(DOCUMENT_UPLOADS_STORAGE_KEY, JSON.stringify(documentUploads));
+        } catch {
+            /* ignore */
+        }
+    }, [documentUploads]);
+
+    const uploadDocument = useCallback((key: string, docs: UploadedDocument[]) => {
+        setDocumentUploads(prev => {
+            if (docs.length === 0) {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            }
+            return { ...prev, [key]: docs };
+        });
+    }, []);
+
+    const removeDocumentUpload = useCallback((key: string) => {
+        setDocumentUploads(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    }, []);
     
     // Thresholds State
     const [csaThresholds, setCsaThresholds] = useState({ warning: 65, critical: 85 });
@@ -131,10 +202,10 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
 
     // --- ACTIONS ---
 
-    const updateKeyNumberValue = useCallback((id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[]) => {
+    const updateKeyNumberValue = useCallback((id: string, value: string, expiryDate?: string, issueDate?: string, tags?: string[], documents?: UploadedDocument[], issuingState?: string, issuingCountry?: string) => {
         setKeyNumberValues(prev => ({
             ...prev,
-            [id]: { value, expiryDate, issueDate, tags, documents }
+            [id]: { value, expiryDate, issueDate, tags, documents, issuingState, issuingCountry }
         }));
     }, []);
 
@@ -272,6 +343,9 @@ export const AppDataProvider = ({ children }: { children: React.ReactNode }) => 
         setKeyNumbers,
         keyNumberValues,
         updateKeyNumberValue,
+        documentUploads,
+        uploadDocument,
+        removeDocumentUpload,
         getDocumentTypeById,
         csaThresholds,
         setCsaThresholds,

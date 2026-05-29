@@ -65,7 +65,7 @@ export const ViolationEditForm = ({ isOpen, onClose, record, mode, onSave, accou
     // We use a flexible type for internal state to handle both record types
     const [formData, setFormData] = useState<any>({});
     const { documents: allDocTypes } = useAppData();
-    const violationDocTypes = useMemo(() => allDocTypes.filter(d => d.relatedTo === 'violation' && d.status === 'Active'), [allDocTypes]);
+    const violationDocTypes = useMemo(() => allDocTypes.filter(d => d.isViolationDoc && d.status === 'Active'), [allDocTypes]);
     const requiredDocTypes = useMemo(() => violationDocTypes.filter(d => d.requirementLevel === 'required'), [violationDocTypes]);
     const [attachedDocs, setAttachedDocs] = useState<Array<{ id: string; docTypeId: string; docNumber: string; issueDate: string; includePdf: boolean; fileName: string }>>([]);
 

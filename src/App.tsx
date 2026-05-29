@@ -37,6 +37,7 @@ import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { AccidentsSettingsPage } from '@/pages/settings/AccidentsSettingsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 import { NewComplianceDocumentsPage } from '@/pages/compliance/NewComplianceDocumentsPage'
+import { ComplianceMonitoringPage } from '@/pages/compliance/ComplianceMonitoringPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
 import { SafetySettingsPage } from '@/pages/settings/SafetySettingsPage'
@@ -233,6 +234,11 @@ function App() {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <NewComplianceDocumentsPage accountId={account?.id} />
+        }
+        if (path === "/compliance-monitoring") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <ComplianceMonitoringPage accountId={account?.id} />
         }
         if (path === "/account/profile") {
             // Fall back to the user's default carrier if none has been picked yet

@@ -43,6 +43,10 @@ export type DocumentFlagOverride = Partial<{
 export interface EntityAssignment {
     enabledKeyNumberIds: string[];
     enabledDocumentTypeIds: string[];
+    /** Per-entity compliance-flag overrides (In Hiring, Number/Doc required,
+     *  Has Expiry, Issue Date/State/Country), keyed by catalog row id. */
+    knFlagOverrides?: Record<string, KeyNumberFlagOverride>;
+    docFlagOverrides?: Record<string, DocumentFlagOverride>;
 }
 
 export interface CarrierComplianceAssignment {
@@ -83,7 +87,7 @@ export interface ComplianceTemplate {
     updatedAt: string;
 }
 
-const STORAGE_KEY = 'ats:carrier-compliance-v1';
+const STORAGE_KEY = 'ats:carrier-compliance-v2';
 const TEMPLATES_KEY = 'ats:compliance-templates-v1';
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -135,13 +139,60 @@ export const KN_ID_BY_DOC_ID: Map<string, string> = (() => {
     return m;
 })();
 
+// ── Mandatory system / form documents ─────────────────────────────────
+//
+// Documents that come from the Docu/Form generator or are linked to an
+// expense or a system module are part of the form/system itself. They are
+// always enabled for every carrier and can't be turned off — mirrors the
+// "expense-linked docs can't be deleted" rule on the catalog side.
+
+/** True when a document is a system/form doc (Docu/Form, expense- or module-linked). */
+export function isSystemFormDoc(d: DocumentRow): boolean {
+    return d.source === 'docu-form' || d.linkedType === 'expense' || d.linkedType === 'module';
+}
+
+/** Active system/form document ids — always-on for every carrier. */
+export const MANDATORY_DOCUMENT_IDS: string[] = DOCUMENTS
+    .filter(d => d.status === 'Active' && isSystemFormDoc(d))
+    .map(d => d.id);
+
+/** Union the mandatory system/form doc ids into an enabled-doc list. */
+export function withMandatoryDocs(enabledDocumentTypeIds: string[]): string[] {
+    const s = new Set(enabledDocumentTypeIds);
+    for (const id of MANDATORY_DOCUMENT_IDS) s.add(id);
+    return [...s];
+}
+
 // ── Default assignment (everything "Active" pre-enabled) ──────────────
 
 export function defaultAssignmentFor(carrierId: string): CarrierComplianceAssignment {
+    const knActive = new Set(SEED_KEY_NUMBERS.filter(k => k.status === 'Active').map(k => k.id));
+    const docActive = new Set(DOCUMENTS.filter(d => d.status === 'Active').map(d => d.id));
+
+    const enabledKn = new Set<string>();
+    const enabledDoc = new Set<string>();
+
+    // Standalone Active key numbers (no linked document) enable on their own.
+    for (const k of SEED_KEY_NUMBERS) {
+        if (knActive.has(k.id) && (DOC_IDS_BY_KN_ID.get(k.id) ?? []).length === 0) enabledKn.add(k.id);
+    }
+    // Standalone Active documents (no linked key number) enable on their own.
+    for (const d of DOCUMENTS) {
+        if (docActive.has(d.id) && !KN_ID_BY_DOC_ID.has(d.id)) enabledDoc.add(d.id);
+    }
+    // Linked pairs enable only when BOTH sides are Active — never a half-on pair.
+    for (const [docId, knId] of KN_ID_BY_DOC_ID) {
+        if (docActive.has(docId) && knActive.has(knId)) {
+            enabledDoc.add(docId);
+            enabledKn.add(knId);
+        }
+    }
+
     return {
         carrierId,
-        enabledKeyNumberIds: SEED_KEY_NUMBERS.filter(k => k.status === 'Active').map(k => k.id),
-        enabledDocumentTypeIds: DOCUMENTS.filter(d => d.status === 'Active').map(d => d.id),
+        enabledKeyNumberIds: [...enabledKn],
+        // System/form docs are always enabled, even if somehow not picked up above.
+        enabledDocumentTypeIds: withMandatoryDocs([...enabledDoc]),
         updatedAt: today(),
     };
 }
@@ -173,8 +224,14 @@ function saveStore(store: Store): void {
 export function loadCarrierAssignment(carrierId: string): CarrierComplianceAssignment {
     const store = loadStore();
     const existing = store[carrierId];
-    if (existing) return existing;
-    const seeded = defaultAssignmentFor(carrierId);
+    if (existing) {
+        // Force-enable system/form docs even for assignments persisted before
+        // those docs existed (or if they were somehow turned off).
+        return { ...existing, enabledDocumentTypeIds: withMandatoryDocs(existing.enabledDocumentTypeIds) };
+    }
+    // No saved config yet → use the per-carrier seed (template + custom tweaks),
+    // falling back to the everything-on default for carriers without a seed.
+    const seeded = buildSeededAssignment(carrierId);
     store[carrierId] = seeded;
     saveStore(store);
     return seeded;
@@ -537,10 +594,13 @@ export function getEntityAssignment(
 ): EntityAssignment {
     const map = assignment[entityMapKey(scope)];
     const explicit = map?.[entityId];
-    if (explicit) return explicit;
+    if (explicit) {
+        // System/form docs stay enabled per-entity too.
+        return { ...explicit, enabledDocumentTypeIds: withMandatoryDocs(explicit.enabledDocumentTypeIds) };
+    }
     return {
         enabledKeyNumberIds: [...assignment.enabledKeyNumberIds],
-        enabledDocumentTypeIds: [...assignment.enabledDocumentTypeIds],
+        enabledDocumentTypeIds: withMandatoryDocs([...assignment.enabledDocumentTypeIds]),
     };
 }
 
@@ -574,6 +634,7 @@ export function toggleForEntity(
     }
 
     const nextEntity: EntityAssignment = {
+        ...current,
         enabledKeyNumberIds: Array.from(knSet),
         enabledDocumentTypeIds: Array.from(docSet),
     };
@@ -616,4 +677,163 @@ export function clearEntityAssignment(
     const map = { ...(assignment[key] ?? {}) };
     delete map[entityId];
     return { ...assignment, [key]: map, updatedAt: today() };
+}
+
+// ── Per-entity compliance-flag overrides ──────────────────────────────
+//
+// Flags layer in three tiers: catalog row → carrier override → entity
+// override. The entity tier lets a carrier admin tune "what's required"
+// for one specific driver/asset at assignment time, without touching the
+// carrier default or any sibling entity.
+
+/** Effective key-number flags for a single driver/asset (catalog + carrier + entity). */
+export function effectiveEntityKnFlags(
+    row: KeyNumberRow,
+    assignment: CarrierComplianceAssignment,
+    scope: EntityScope,
+    entityId: string,
+): KeyNumberRow {
+    const carrierEffective = effectiveKnFlags(row, assignment);
+    const o = assignment[entityMapKey(scope)]?.[entityId]?.knFlagOverrides?.[row.id];
+    if (!o) return carrierEffective;
+    return { ...carrierEffective, ...o };
+}
+
+export function effectiveEntityDocFlags(
+    row: DocumentRow,
+    assignment: CarrierComplianceAssignment,
+    scope: EntityScope,
+    entityId: string,
+): DocumentRow {
+    const carrierEffective = effectiveDocFlags(row, assignment);
+    const o = assignment[entityMapKey(scope)]?.[entityId]?.docFlagOverrides?.[row.id];
+    if (!o) return carrierEffective;
+    return { ...carrierEffective, ...o };
+}
+
+/**
+ * Patch a single key number's flag override for one driver/asset. If the
+ * entity had no explicit assignment yet, it's seeded from the carrier-level
+ * enabled lists so the snapshot stays consistent with toggleForEntity.
+ */
+export function patchEntityKnOverride(
+    assignment: CarrierComplianceAssignment,
+    scope: EntityScope,
+    entityId: string,
+    knId: string,
+    patch: KeyNumberFlagOverride,
+): CarrierComplianceAssignment {
+    const current = getEntityAssignment(assignment, scope, entityId);
+    const nextEntity: EntityAssignment = {
+        ...current,
+        knFlagOverrides: {
+            ...(current.knFlagOverrides ?? {}),
+            [knId]: { ...(current.knFlagOverrides?.[knId] ?? {}), ...patch },
+        },
+    };
+    const key = entityMapKey(scope);
+    return {
+        ...assignment,
+        [key]: { ...(assignment[key] ?? {}), [entityId]: nextEntity },
+        updatedAt: today(),
+    };
+}
+
+export function patchEntityDocOverride(
+    assignment: CarrierComplianceAssignment,
+    scope: EntityScope,
+    entityId: string,
+    docId: string,
+    patch: DocumentFlagOverride,
+): CarrierComplianceAssignment {
+    const current = getEntityAssignment(assignment, scope, entityId);
+    const nextEntity: EntityAssignment = {
+        ...current,
+        docFlagOverrides: {
+            ...(current.docFlagOverrides ?? {}),
+            [docId]: { ...(current.docFlagOverrides?.[docId] ?? {}), ...patch },
+        },
+    };
+    const key = entityMapKey(scope);
+    return {
+        ...assignment,
+        [key]: { ...(assignment[key] ?? {}), [entityId]: nextEntity },
+        updatedAt: today(),
+    };
+}
+
+// ── Per-carrier seed configurations ───────────────────────────────────
+//
+// Each carrier starts on one of the seed templates; a few carry small custom
+// tweaks so they surface as "(modified)" / custom. System/form docs stay
+// force-enabled regardless. Carriers without a seed entry fall back to the
+// everything-on default.
+
+interface CarrierSetupSeed {
+    templateId: string;
+    /** Catalog ids enabled on top of the template (creates drift → "modified"). */
+    enableKn?: string[];
+    enableDoc?: string[];
+    /** Catalog ids disabled from the template (creates drift → "modified"). */
+    disableKn?: string[];
+    disableDoc?: string[];
+}
+
+const SEED_CARRIER_SETUP: Record<string, CarrierSetupSeed> = {
+    'acct-001': { templateId: 'tmpl-cross-border' },
+    'acct-002': { templateId: 'tmpl-standard', enableKn: knIdsByName(['Hazmat Permit Number']) }, // custom
+    'acct-003': { templateId: 'tmpl-standard' },
+    'acct-004': { templateId: 'tmpl-standard' },
+    'acct-005': { templateId: 'tmpl-cross-border' },
+    'acct-006': { templateId: 'tmpl-standard' },
+    'acct-007': { templateId: 'tmpl-standard', disableKn: knIdsByName(['DUNS Number']) }, // custom
+    'acct-008': { templateId: 'tmpl-hazmat' },
+    'acct-009': { templateId: 'tmpl-standard' },
+    'acct-010': { templateId: 'tmpl-cross-border' },
+    'acct-011': { templateId: 'tmpl-standard' },
+    'acct-012': { templateId: 'tmpl-standard', enableKn: knIdsByName(['FAST / C-TPAT ID']) }, // custom
+    'acct-013': { templateId: 'tmpl-hazmat' },
+    'acct-014': { templateId: 'tmpl-standard' },
+    'acct-015': { templateId: 'tmpl-standard' },
+    'acct-016': { templateId: 'tmpl-standard' },
+    'acct-017': { templateId: 'tmpl-hazmat' },
+    'acct-018': { templateId: 'tmpl-standard' },
+    'acct-019': { templateId: 'tmpl-standard' },
+    'acct-020': { templateId: 'tmpl-standard' },
+    'acct-021': { templateId: 'tmpl-standard' },
+    'acct-022': { templateId: 'tmpl-hazmat', disableKn: knIdsByName(['NAICS Code']) }, // custom
+    'acct-023': { templateId: 'tmpl-standard' },
+    'acct-024': { templateId: 'tmpl-standard' },
+    'acct-025': { templateId: 'tmpl-cross-border' },
+    'acct-026': { templateId: 'tmpl-hazmat' },
+    'acct-027': { templateId: 'tmpl-standard' },
+    'acct-028': { templateId: 'tmpl-standard' },
+    'acct-029': { templateId: 'tmpl-standard' },
+    'acct-030': { templateId: 'tmpl-standard' },
+};
+
+/**
+ * Build a carrier's seeded assignment: apply its template, layer any custom
+ * tweaks (which clear appliedTemplateId so the carrier reads as "modified"),
+ * then force-enable the mandatory system/form documents.
+ */
+function buildSeededAssignment(carrierId: string): CarrierComplianceAssignment {
+    const seed = SEED_CARRIER_SETUP[carrierId];
+    if (!seed) return defaultAssignmentFor(carrierId);
+
+    const template = SEED_TEMPLATES.find(t => t.id === seed.templateId);
+    let a = template
+        ? applyTemplate(defaultAssignmentFor(carrierId), template)
+        : defaultAssignmentFor(carrierId);
+
+    for (const id of seed.enableKn ?? [])   a = applyToggle(a, 'keynumber', id, true).next;
+    for (const id of seed.disableKn ?? [])  a = applyToggle(a, 'keynumber', id, false).next;
+    for (const id of seed.enableDoc ?? [])  a = applyToggle(a, 'document', id, true).next;
+    for (const id of seed.disableDoc ?? []) a = applyToggle(a, 'document', id, false).next;
+
+    return {
+        ...a,
+        enabledDocumentTypeIds: withMandatoryDocs(a.enabledDocumentTypeIds),
+        updatedAt: today(),
+    };
 }

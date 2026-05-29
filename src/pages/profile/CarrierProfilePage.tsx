@@ -807,8 +807,8 @@ export function CarrierProfilePage({
 
     // --- CARRIER DOCUMENTS DATA ---
     const carrierDocuments = useMemo(() => {
-        // Filter document types related to Carrier (excluding accident docs)
-        const carrierDocTypes = documents.filter((doc: DocumentType) => doc.relatedTo === 'carrier' && !doc.isAccidentDoc);
+        // Filter document types related to Carrier (excluding accident & violation docs)
+        const carrierDocTypes = documents.filter((doc: DocumentType) => doc.relatedTo === 'carrier' && !doc.isAccidentDoc && !doc.isViolationDoc);
 
         // Find which key numbers link to this document type
         const getLinkedKeyNumber = (docTypeId: string) => {

@@ -15,7 +15,7 @@ import {
 import {
     loadCarrierAssignment, saveCarrierAssignment, applyToggle, applyBulk, defaultAssignmentFor,
     loadTemplates, upsertTemplate, deleteTemplate, applyTemplate, templateMatches,
-    DOC_IDS_BY_KN_ID, KN_ID_BY_DOC_ID,
+    DOC_IDS_BY_KN_ID, KN_ID_BY_DOC_ID, isSystemFormDoc,
     type CarrierComplianceAssignment, type ComplianceTemplate,
 } from './carrier-compliance.data';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
@@ -612,36 +612,35 @@ function TemplatesPanel({
                                         key={t.id}
                                         onClick={() => onToggleHiring(t.id, !enabled)}
                                         className={cn(
-                                            "group flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors",
+                                            "group relative flex cursor-pointer items-center gap-3 py-3 pl-5 pr-4 transition-colors",
                                             enabled ? "bg-white hover:bg-violet-50/40" : "bg-slate-50/60 hover:bg-slate-100/70",
                                         )}
                                     >
-                                        <span className="relative -mx-4 -my-3 self-stretch">
-                                            <span className={cn(
-                                                "absolute inset-y-0 left-0 w-1",
-                                                enabled ? "bg-violet-500" : "bg-transparent",
-                                            )} />
-                                        </span>
+                                        {/* Left accent bar — enabled rows only */}
                                         <span className={cn(
-                                            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+                                            "absolute inset-y-0 left-0 w-1",
+                                            enabled ? "bg-violet-500" : "bg-transparent",
+                                        )} />
+                                        <span className={cn(
+                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
                                             enabled ? "bg-violet-50 text-violet-600" : "bg-slate-100 text-slate-400",
                                         )}>
                                             <LayoutTemplate size={15} />
                                         </span>
                                         <div className="min-w-0 flex-1">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <p className={cn(
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                <span className={cn(
                                                     "text-sm font-semibold",
                                                     enabled ? "text-slate-900" : "text-slate-500",
                                                 )}>
                                                     {t.name}
-                                                </p>
+                                                </span>
                                                 {t.isDefault && (
-                                                    <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                                    <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                                                         Default
                                                     </span>
                                                 )}
-                                                <span className="text-[11px] text-slate-500">
+                                                <span className="text-[11px] tabular-nums text-slate-500">
                                                     {t.steps.length} step{t.steps.length === 1 ? '' : 's'}
                                                 </span>
                                             </div>
@@ -652,7 +651,7 @@ function TemplatesPanel({
                                                 {t.description}
                                             </p>
                                         </div>
-                                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 self-center">
+                                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
                                             <Toggle
                                                 checked={enabled}
                                                 onCheckedChange={(v) => onToggleHiring(t.id, v)}
@@ -753,6 +752,51 @@ function BulkBar({ visibleCount, enabledInView, query, onQueryChange, onEnableAl
     );
 }
 
+// ── Related-To filter chips (with count bubbles) ──────────────────────
+
+function RelatedToFilterRow({ value, counts, onChange }: {
+    value: 'all' | RelatedToScope;
+    counts: Record<'all' | RelatedToScope, number>;
+    onChange: (v: 'all' | RelatedToScope) => void;
+}) {
+    return (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-4 py-2.5">
+            <span className="mr-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <Filter size={12} /> Related to
+            </span>
+            {([
+                { id: 'all',     label: 'All' },
+                { id: 'Carrier', label: 'Carrier' },
+                { id: 'Asset',   label: 'Asset' },
+                { id: 'Driver',  label: 'Driver' },
+            ] as const).map(opt => {
+                const active = value === opt.id;
+                const Icon = opt.id === 'all' ? null : RELATED_TO_ICON[opt.id];
+                return (
+                    <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onChange(opt.id)}
+                        className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors",
+                            active ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                        )}
+                    >
+                        {Icon && <Icon size={12} className={active ? "text-blue-600" : "text-slate-400"} />}
+                        {opt.label}
+                        <span className={cn(
+                            "inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                            active ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500",
+                        )}>
+                            {counts[opt.id]}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 // ── Key Numbers panel ─────────────────────────────────────────────────
 
 function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
@@ -760,33 +804,55 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
     onToggle: (id: string, enabled: boolean) => void;
     onBulk: (ids: string[], enable: boolean) => void;
 }) {
-    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup>('Regulatory and Safety Numbers');
+    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'all'>('all');
     const [query, setQuery] = useState('');
+    const [relatedFilter, setRelatedFilter] = useState<'all' | RelatedToScope>('all');
 
-    // Per-group counts for the tab badges.
+    // Per-group counts for the tab badges ('all' is the running total across groups).
     const counts = useMemo(() => {
-        const out = {} as Record<KeyNumberGroup, { enabled: number; total: number }>;
+        const out = {} as Record<KeyNumberGroup | 'all', { enabled: number; total: number }>;
+        out.all = { enabled: 0, total: 0 };
         for (const g of KEY_NUMBER_GROUPS) out[g] = { enabled: 0, total: 0 };
         for (const k of SEED_KEY_NUMBERS) {
+            if (k.status !== 'Active') continue;   // only Active numbers are assignable
+            out.all.total += 1;
             out[k.group].total += 1;
-            if (enabledIds.has(k.id)) out[k.group].enabled += 1;
+            if (enabledIds.has(k.id)) { out.all.enabled += 1; out[k.group].enabled += 1; }
         }
         return out;
     }, [enabledIds]);
 
-    const groupTabs: SubTab<KeyNumberGroup>[] = useMemo(
-        () => withCount(KEY_NUMBER_GROUPS.map(g => ({ id: g, label: g })), counts),
-        [counts],
-    );
+    const groupTabs: SubTab<KeyNumberGroup | 'all'>[] = useMemo(() => {
+        const base: SubTab<KeyNumberGroup | 'all'>[] = [
+            { id: 'all', label: 'All' },
+            ...KEY_NUMBER_GROUPS.map(g => ({ id: g, label: g })),
+        ];
+        return withCount(base, counts);
+    }, [counts]);
+
+    // Per-Related-To counts within the active group, for the filter bubbles.
+    const relatedCounts = useMemo(() => {
+        const c: Record<'all' | RelatedToScope, number> = { all: 0, Carrier: 0, Asset: 0, Driver: 0 };
+        for (const k of SEED_KEY_NUMBERS) {
+            if (activeGroup !== 'all' && k.group !== activeGroup) continue;
+            c.all += 1;
+            c[k.relatedTo] += 1;
+        }
+        return c;
+    }, [activeGroup]);
 
     const q = query.trim().toLowerCase();
     const rows = SEED_KEY_NUMBERS
-        .filter(k => k.group === activeGroup)
+        .filter(k => activeGroup === 'all' || k.group === activeGroup)
+        .filter(k => relatedFilter === 'all' || k.relatedTo === relatedFilter)
         .filter(k => !q
             || k.name.toLowerCase().includes(q)
             || k.description.toLowerCase().includes(q));
 
-    const enabledInView = rows.filter(r => enabledIds.has(r.id)).length;
+    // Only Active catalog items are assignable to a carrier; Inactive rows are
+    // shown read-only and excluded from the bulk actions and the progress count.
+    const activeRows = rows.filter(r => r.status === 'Active');
+    const enabledInView = activeRows.filter(r => enabledIds.has(r.id)).length;
 
     return (
         <div>
@@ -801,16 +867,17 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
 
             <div className="space-y-3 px-6 py-5">
                 <BulkBar
-                    visibleCount={rows.length}
+                    visibleCount={activeRows.length}
                     enabledInView={enabledInView}
                     query={query}
                     onQueryChange={setQuery}
-                    onEnableAll={() => onBulk(rows.map(r => r.id), true)}
-                    onDisableAll={() => onBulk(rows.map(r => r.id), false)}
+                    onEnableAll={() => onBulk(activeRows.map(r => r.id), true)}
+                    onDisableAll={() => onBulk(activeRows.map(r => r.id), false)}
                     placeholder="Search numbers…"
                 />
 
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <RelatedToFilterRow value={relatedFilter} counts={relatedCounts} onChange={setRelatedFilter} />
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                             <tr>
@@ -833,13 +900,18 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
                                 const RIcon = RELATED_TO_ICON[k.relatedTo];
                                 const cascadedDocs = DOC_IDS_BY_KN_ID.get(k.id) ?? [];
                                 const enabled = enabledIds.has(k.id);
+                                const assignable = k.status === 'Active';
                                 return (
                                     <tr
                                         key={k.id}
-                                        onClick={() => onToggle(k.id, !enabled)}
+                                        onClick={assignable ? () => onToggle(k.id, !enabled) : undefined}
                                         className={cn(
-                                            "group cursor-pointer transition-colors",
-                                            enabled ? "bg-white hover:bg-blue-50/40" : "bg-slate-50/60 hover:bg-slate-100/70",
+                                            "group transition-colors",
+                                            !assignable
+                                                ? "cursor-default bg-slate-50/40 opacity-60"
+                                                : enabled
+                                                    ? "cursor-pointer bg-white hover:bg-blue-50/40"
+                                                    : "cursor-pointer bg-slate-50/60 hover:bg-slate-100/70",
                                         )}
                                     >
                                         <td className="relative px-4 py-3 align-top">
@@ -889,6 +961,7 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
                                                 <Toggle
                                                     checked={enabled}
                                                     onCheckedChange={(v) => onToggle(k.id, v)}
+                                                    disabled={!assignable}
                                                 />
                                             </div>
                                         </td>
@@ -920,9 +993,11 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
         const out = {} as Record<DocumentsSubTabId, { enabled: number; total: number }>;
         for (const t of DOC_SUB_TAB_IDS) out[t] = { enabled: 0, total: 0 };
         for (const d of DOCUMENTS) {
+            if (d.status !== 'Active') continue;   // only Active docs are assignable
             out.all.total += 1;
             out[d.scope].total += 1;
-            if (enabledIds.has(d.id)) {
+            // Mandatory system/form docs always count as enabled.
+            if (enabledIds.has(d.id) || isSystemFormDoc(d)) {
                 out.all.enabled += 1;
                 out[d.scope].enabled += 1;
             }
@@ -946,7 +1021,12 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
             || d.name.toLowerCase().includes(q)
             || (d.linkedTo ?? '').toLowerCase().includes(q));
 
-    const enabledInView = rows.filter(r => enabledIds.has(r.id)).length;
+    // Only Active catalog documents are assignable; Inactive/Draft rows are
+    // shown read-only and excluded from the bulk actions and the progress count.
+    const activeRows = rows.filter(r => r.status === 'Active');
+    const enabledInView = activeRows.filter(r => enabledIds.has(r.id) || isSystemFormDoc(r)).length;
+    // Mandatory system/form docs can't be bulk-disabled.
+    const disableableRows = activeRows.filter(r => !isSystemFormDoc(r));
 
     return (
         <div>
@@ -961,12 +1041,12 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
 
             <div className="space-y-3 px-6 py-5">
                 <BulkBar
-                    visibleCount={rows.length}
+                    visibleCount={activeRows.length}
                     enabledInView={enabledInView}
                     query={query}
                     onQueryChange={setQuery}
-                    onEnableAll={() => onBulk(rows.map(r => r.id), true)}
-                    onDisableAll={() => onBulk(rows.map(r => r.id), false)}
+                    onEnableAll={() => onBulk(activeRows.map(r => r.id), true)}
+                    onDisableAll={() => onBulk(disableableRows.map(r => r.id), false)}
                     placeholder="Search documents…"
                 />
 
@@ -992,14 +1072,24 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
                             ) : rows.map(d => {
                                 const ScopeIcon = SCOPE_ICON[d.scope];
                                 const linkedKn = KN_ID_BY_DOC_ID.get(d.id);
-                                const enabled = enabledIds.has(d.id);
+                                // System/form docs are always enabled and locked on.
+                                const mandatory = isSystemFormDoc(d);
+                                const enabled = enabledIds.has(d.id) || mandatory;
+                                const isActive = d.status === 'Active';
+                                const assignable = isActive && !mandatory;
                                 return (
                                     <tr
                                         key={d.id}
-                                        onClick={() => onToggle(d.id, !enabled)}
+                                        onClick={assignable ? () => onToggle(d.id, !enabled) : undefined}
                                         className={cn(
-                                            "group cursor-pointer transition-colors",
-                                            enabled ? "bg-white hover:bg-blue-50/40" : "bg-slate-50/60 hover:bg-slate-100/70",
+                                            "group transition-colors",
+                                            !isActive
+                                                ? "cursor-default bg-slate-50/40 opacity-60"   // Inactive/Draft — read-only & faded
+                                                : mandatory
+                                                    ? "cursor-default bg-white"                  // Required — enabled look, just not toggleable
+                                                    : enabled
+                                                        ? "cursor-pointer bg-white hover:bg-blue-50/40"
+                                                        : "cursor-pointer bg-slate-50/60 hover:bg-slate-100/70",
                                         )}
                                     >
                                         <td className="relative px-4 py-3 align-top">
@@ -1022,8 +1112,13 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
                                                     )} />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className={cn("font-semibold", enabled ? "text-slate-900" : "text-slate-400")}>
+                                                    <p className={cn("flex items-center gap-1.5 font-semibold", enabled ? "text-slate-900" : "text-slate-400")}>
                                                         {d.name}
+                                                        {mandatory && (
+                                                            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">
+                                                                Required
+                                                            </span>
+                                                        )}
                                                     </p>
                                                     {d.linkedTo && (
                                                         <p className={cn("mt-0.5 text-[11px]", enabled ? "text-slate-500" : "text-slate-400")}>
@@ -1066,11 +1161,25 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
                                             )}
                                         </td>
                                         <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex justify-end">
-                                                <Toggle
-                                                    checked={enabled}
-                                                    onCheckedChange={(v) => onToggle(d.id, v)}
-                                                />
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {mandatory && (
+                                                    <Lock
+                                                        size={11}
+                                                        className="text-violet-400"
+                                                        aria-label="Always enabled — system/form document"
+                                                    />
+                                                )}
+                                                {/* Mandatory rows keep the switch ON & active-looking, just non-interactive. */}
+                                                <span
+                                                    className={cn(mandatory && "pointer-events-none")}
+                                                    title={mandatory ? "Always enabled — system/form document" : undefined}
+                                                >
+                                                    <Toggle
+                                                        checked={enabled}
+                                                        onCheckedChange={(v) => { if (!mandatory) onToggle(d.id, v); }}
+                                                        disabled={!isActive}
+                                                    />
+                                                </span>
                                             </div>
                                         </td>
                                     </tr>
@@ -1235,8 +1344,11 @@ export const CarrierComplianceSetupPage = () => {
     );
 
     const selectedCarrier = ACCOUNTS_DB.find(c => c.id === carrierId);
-    const knPct = SEED_KEY_NUMBERS.length === 0 ? 0 : Math.round((enabledKnSet.size / SEED_KEY_NUMBERS.length) * 100);
-    const docPct = DOCUMENTS.length === 0 ? 0 : Math.round((enabledDocSet.size / DOCUMENTS.length) * 100);
+    // Denominators count only assignable (Active) catalog items.
+    const knTotal = useMemo(() => SEED_KEY_NUMBERS.filter(k => k.status === 'Active').length, []);
+    const docTotal = useMemo(() => DOCUMENTS.filter(d => d.status === 'Active').length, []);
+    const knPct = knTotal === 0 ? 0 : Math.round((enabledKnSet.size / knTotal) * 100);
+    const docPct = docTotal === 0 ? 0 : Math.round((enabledDocSet.size / docTotal) * 100);
 
     return (
         <div className="flex h-full flex-col bg-slate-50/50">
@@ -1272,7 +1384,7 @@ export const CarrierComplianceSetupPage = () => {
                         <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
                             {pillBtn('compliance', 'Compliance')}
                             {pillBtn('documents',  'Documents')}
-                            {pillBtn('templates',  'Templates')}
+                            {pillBtn('templates',  'Hiring Templates')}
                         </div>
                         <div className="flex items-center gap-2">
                             {savedFlash && (
@@ -1381,7 +1493,7 @@ export const CarrierComplianceSetupPage = () => {
                                 <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${knPct}%` }} />
                             </div>
                             <span className="text-[12px] font-semibold text-slate-700">
-                                {enabledKnSet.size}<span className="text-slate-400">/{SEED_KEY_NUMBERS.length}</span>
+                                {enabledKnSet.size}<span className="text-slate-400">/{knTotal}</span>
                             </span>
                         </div>
                         <div className="h-4 w-px bg-slate-200" />
@@ -1391,7 +1503,7 @@ export const CarrierComplianceSetupPage = () => {
                                 <div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${docPct}%` }} />
                             </div>
                             <span className="text-[12px] font-semibold text-slate-700">
-                                {enabledDocSet.size}<span className="text-slate-400">/{DOCUMENTS.length}</span>
+                                {enabledDocSet.size}<span className="text-slate-400">/{docTotal}</span>
                             </span>
                         </div>
                     </div>

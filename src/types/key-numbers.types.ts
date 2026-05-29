@@ -31,6 +31,11 @@ export interface KeyNumberConfig {
     requiredDocumentTypeId?: string;
     status: "Active" | "Inactive";
     isSystem?: boolean;
+    // Classification — independent of entityType. A key number can also be an
+    // accident and/or violation related record. Mirrors DocumentType's
+    // isAccidentDoc / isViolationDoc flags.
+    isAccidentRelated?: boolean;
+    isViolationRelated?: boolean;
     // Monitoring & Notifications
     monitoringEnabled?: boolean;
     monitorBasedOn?: 'expiry' | 'issue_date';
@@ -56,6 +61,9 @@ export interface AddNumberFormData {
     documentRequired: boolean;
     requiredDocumentTypeId?: string;
     status: "Active" | "Inactive";
+    // Classification (independent of entityType)
+    isAccidentRelated: boolean;
+    isViolationRelated: boolean;
     // Monitoring
     monitoringEnabled: boolean;
     monitorBasedOn: 'expiry' | 'issue_date';
@@ -76,6 +84,8 @@ export interface UploadedDocument {
     uploadedAt: string;
     expiryDate?: string;            // Can differ from key number expiry
     issueDate?: string;
+    issuingState?: string;          // Captured when the item requires an issuing state/province
+    issuingCountry?: string;        // Captured when the item requires an issuing country
     selectedTags?: Record<string, string[]>;  // sectionId -> array of tagIds
     notes?: string;
 }

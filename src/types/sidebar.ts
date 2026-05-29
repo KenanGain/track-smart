@@ -5,6 +5,7 @@ export type SidebarItem = {
     label: string;
     icon?: LucideIcon;
     path?: string; // leaf nodes use path
+    disabled?: boolean; // shown greyed-out and non-clickable
 };
 
 export type SidebarGroup = {

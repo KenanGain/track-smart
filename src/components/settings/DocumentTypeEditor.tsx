@@ -132,6 +132,41 @@ const RadioCard = ({
     </div>
 );
 
+// Checkbox-style card for the independent Accident / Violation classification.
+const ClassificationToggle = ({
+    selected,
+    onClick,
+    icon: Icon,
+    label,
+    description,
+}: {
+    selected: boolean;
+    onClick: () => void;
+    icon: any;
+    label: string;
+    description?: string;
+}) => (
+    <div
+        onClick={onClick}
+        className={`relative flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${selected
+            ? 'border-blue-600 bg-blue-50/50'
+            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+            }`}
+    >
+        <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${selected ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+            }`}>
+            {selected && <Check className="w-3.5 h-3.5 text-white" />}
+        </div>
+        <div className={`p-2 rounded-lg ${selected ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+            <Icon className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+            <div className={`font-semibold text-sm ${selected ? 'text-blue-900' : 'text-slate-700'}`}>{label}</div>
+            {description && <div className="text-xs text-slate-500">{description}</div>}
+        </div>
+    </div>
+);
+
 export interface DocumentTypeEditorProps {
     initialData?: DocumentType | null;
     onSave: (data: Partial<DocumentType>) => void;
@@ -166,6 +201,11 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     const [issueCountryRequired, setIssueCountryRequired] = useState(initialData?.issueCountryRequired ?? false);
     const [status, setStatus] = useState<string>(initialData?.status || 'Active');
 
+    // Classification — independent of Related To. A document can also be an
+    // accident and/or violation record.
+    const [isAccidentDoc, setIsAccidentDoc] = useState<boolean>(initialData?.isAccidentDoc ?? false);
+    const [isViolationDoc, setIsViolationDoc] = useState<boolean>(initialData?.isViolationDoc ?? false);
+
     // Tags
     const [selectedTags, setSelectedTags] = useState<Record<string, SelectedTag[]>>(initialData?.selectedTags || {});
     const [isTagModalOpen, setIsTagModalOpen] = useState(false);
@@ -198,6 +238,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             setIssueStateRequired(initialData.issueStateRequired ?? false);
             setIssueCountryRequired(initialData.issueCountryRequired ?? false);
             setStatus(initialData.status);
+            setIsAccidentDoc(initialData.isAccidentDoc ?? false);
+            setIsViolationDoc(initialData.isViolationDoc ?? false);
             setSelectedTags(initialData.selectedTags || {});
             if (initialData.monitoring) {
                 setMonitorEnabled(initialData.monitoring.enabled);
@@ -303,6 +345,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             issueDateRequired,
             issueStateRequired,
             issueCountryRequired,
+            isAccidentDoc,
+            isViolationDoc,
             status: status as Status,
             selectedTags,
             destination: {
@@ -331,8 +375,6 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             root.children = root.children?.filter((c: any) => c.id === 'assets_root');
         } else if (relatedTo === 'driver') {
             root.children = root.children?.filter((c: any) => c.id === 'driver_root');
-        } else if (relatedTo === 'violation') {
-            root.children = root.children?.filter((c: any) => c.id === 'carrier_root');
         }
         return [root];
     };
@@ -410,17 +452,37 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                         {relatedTo === 'carrier' && <Building2 className="w-6 h-6 text-slate-500" />}
                                         {relatedTo === 'asset' && <Truck className="w-6 h-6 text-slate-500" />}
                                         {relatedTo === 'driver' && <User className="w-6 h-6 text-slate-500" />}
-                                        {relatedTo === 'violation' && <ShieldAlert className="w-6 h-6 text-slate-500" />}
                                         <span className="font-semibold text-sm text-slate-700 capitalize">{relatedTo}</span>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
                                         <RadioCard selected={relatedTo === 'carrier'} onClick={() => setRelatedTo('carrier')} icon={Building2} label="Carrier" />
                                         <RadioCard selected={relatedTo === 'asset'} onClick={() => setRelatedTo('asset')} icon={Truck} label="Asset" />
                                         <RadioCard selected={relatedTo === 'driver'} onClick={() => setRelatedTo('driver')} icon={User} label="Driver" />
-                                        <RadioCard selected={relatedTo === 'violation'} onClick={() => setRelatedTo('violation')} icon={ShieldAlert} label="Violation" />
                                     </div>
                                 )}
+                            </div>
+                            {/* Classification — independent of Related To. A document can also
+                                be flagged as an accident and/or violation record. */}
+                            <div>
+                                <Label>Classification</Label>
+                                <p className="text-xs text-slate-500 -mt-1 mb-2">Optionally also tag this document as an accident or violation record.</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <ClassificationToggle
+                                        selected={isAccidentDoc}
+                                        onClick={() => setIsAccidentDoc(v => !v)}
+                                        icon={AlertTriangle}
+                                        label="Accident document"
+                                        description="Surfaces under Accidents"
+                                    />
+                                    <ClassificationToggle
+                                        selected={isViolationDoc}
+                                        onClick={() => setIsViolationDoc(v => !v)}
+                                        icon={ShieldAlert}
+                                        label="Violation document"
+                                        description="Surfaces under Violations"
+                                    />
+                                </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -691,7 +753,6 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     {relatedTo === 'carrier' && 'Carrier Folder Selector'}
                                     {relatedTo === 'asset' && 'Asset Category Folder'}
                                     {relatedTo === 'driver' && 'Driver Folder Selection'}
-                                    {relatedTo === 'violation' && 'Violation Document Folder'}
                                 </Label>
                                 {relatedTo === 'driver' && (
                                     <div className="flex bg-slate-100 rounded-lg p-1">

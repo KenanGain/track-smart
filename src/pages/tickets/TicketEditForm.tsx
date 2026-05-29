@@ -172,7 +172,7 @@ export const TicketEditForm = ({ record, accountId, onClose, onSave }: TicketEdi
 
     const { documents: allDocTypes } = useAppData();
     const violationDocTypes = useMemo(
-        () => allDocTypes.filter(d => d.relatedTo === 'violation' && d.status === 'Active'),
+        () => allDocTypes.filter(d => d.isViolationDoc && d.status === 'Active'),
         [allDocTypes]
     );
 

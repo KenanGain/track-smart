@@ -1,5 +1,5 @@
 export type Status = 'Active' | 'Draft' | 'Inactive' | 'On Leave' | 'Terminated';
-export type RelatedTo = 'carrier' | 'asset' | 'driver' | 'violation';
+export type RelatedTo = 'carrier' | 'asset' | 'driver';
 
 export const DOC_TYPE_CATEGORIES = [
     'License', 'Medical', 'Identity', 'Background', 'Photo', 'Insurance', 'Other',
@@ -66,6 +66,7 @@ export interface DocumentType {
     };
     isSystem?: boolean; // If true, cannot be deleted
     isAccidentDoc?: boolean; // If true, this doc type is linked to accidents
+    isViolationDoc?: boolean; // If true, this doc type is linked to violations
     linkedModule?: string; // If set, this doc type is auto-linked by a module (e.g. 'fuel_purchases') and cannot be deleted
     /**
      * Where this document type is managed. `'docu-form'` rows are mirrored from the
@@ -806,7 +807,14 @@ export const INITIAL_TAG_SECTIONS: TagSection[] = [
         tags: [
             { id: 'ins_cargo', label: 'Cargo Insurance' },
             { id: 'ins_liability', label: 'Liability Insurance' },
-            { id: 'ins_physical', label: 'Physical Damage Insurance' }
+            { id: 'ins_physical', label: 'Physical Damage Insurance' },
+            { id: 'ins_auto', label: 'Auto Liability' },
+            { id: 'ins_general', label: 'General Liability' },
+            { id: 'ins_wc', label: 'Workers Compensation' },
+            { id: 'ins_umbrella', label: 'Umbrella / Excess' },
+            { id: 'ins_nontrucking', label: 'Non-Trucking Liability' },
+            { id: 'ins_bobtail', label: 'Bobtail Insurance' },
+            { id: 'ins_trailer', label: 'Trailer Interchange' }
         ]
     },
     {
@@ -824,7 +832,13 @@ export const INITIAL_TAG_SECTIONS: TagSection[] = [
             { id: 'pol_prev', label: 'Preventive Maintenance Policy' },
             { id: 'pol_veh', label: 'Vehicle Maintenance Policy' },
             { id: 'pol_safety', label: 'General Health and Safety Policy' },
-            { id: 'pol_hazard', label: 'Hazard Prevention Program / Policy' }
+            { id: 'pol_hazard', label: 'Hazard Prevention Program / Policy' },
+            { id: 'pol_hos', label: 'Hours of Service Policy' },
+            { id: 'pol_eld', label: 'ELD Policy' },
+            { id: 'pol_cargo', label: 'Cargo Securement Policy' },
+            { id: 'pol_accident', label: 'Accident Procedure' },
+            { id: 'pol_antiharass', label: 'Anti-Harassment Policy' },
+            { id: 'pol_workplace', label: 'Workplace Violence Policy' }
         ]
     },
     {
@@ -866,6 +880,44 @@ export const INITIAL_TAG_SECTIONS: TagSection[] = [
             { id: 'cvor_1', label: 'CVOR Level 1' },
             { id: 'cvor_2', label: 'CVOR Level 2' },
             { id: 'cvor_3', label: 'CVOR Level 3' }
+        ]
+    },
+    {
+        id: 'sec_compliance',
+        title: 'Compliance & Safety',
+        description: 'Tag documents by their compliance or safety program.',
+        icon: 'Bookmark',
+        multiSelect: true,
+        colorTheme: 'indigo',
+        allowCustomTags: true,
+        tags: [
+            { id: 'comp_dot', label: 'DOT Compliance' },
+            { id: 'comp_fmcsa', label: 'FMCSA Filing' },
+            { id: 'comp_csa', label: 'CSA Score' },
+            { id: 'comp_audit', label: 'Safety Audit' },
+            { id: 'comp_ifta', label: 'IFTA' },
+            { id: 'comp_irp', label: 'IRP' },
+            { id: 'comp_hos', label: 'Hours of Service' },
+            { id: 'comp_inspection', label: 'Vehicle Inspection' }
+        ]
+    },
+    {
+        id: 'sec_driver_qual',
+        title: 'Driver Qualification',
+        description: 'Tag driver qualification file documents.',
+        icon: 'Tag',
+        multiSelect: true,
+        colorTheme: 'cyan',
+        allowCustomTags: true,
+        tags: [
+            { id: 'dq_medical', label: 'Medical Certificate' },
+            { id: 'dq_mvr', label: 'Motor Vehicle Record (MVR)' },
+            { id: 'dq_psp', label: 'PSP Report' },
+            { id: 'dq_background', label: 'Background Check' },
+            { id: 'dq_drug', label: 'Drug & Alcohol Test' },
+            { id: 'dq_roadtest', label: 'Road Test' },
+            { id: 'dq_employment', label: 'Employment Verification' },
+            { id: 'dq_training', label: 'Training Certificate' }
         ]
     }
 ];
@@ -1050,31 +1102,31 @@ export const MOCK_DOCUMENTS: DocumentType[] = [
     },
 
     // Violation Documents — Primary
-    { id: 'viol_ticket', name: 'Violation Ticket / Citation', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required' },
-    { id: 'viol_summons', name: 'Summons / Court Notice', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_notice_offence', name: 'Notice of Offence', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_charge_sheet', name: 'Charge Sheet', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_eticket', name: 'Electronic Ticket (eTicket / eCitation PDF)', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_ticket', name: 'Violation Ticket / Citation', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required' },
+    { id: 'viol_summons', name: 'Summons / Court Notice', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_notice_offence', name: 'Notice of Offence', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_charge_sheet', name: 'Charge Sheet', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_eticket', name: 'Electronic Ticket (eTicket / eCitation PDF)', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
 
     // Violation Documents — Driver & Carrier Evidence
-    { id: 'viol_officer_report', name: 'Officer Violation Report', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required' },
-    { id: 'viol_driver_statement', name: 'Driver Written Statement', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_witness_statement', name: 'Witness Statement', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_dashcam', name: 'Dashcam / Bodycam Footage', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_photo_evidence', name: 'Photo Evidence (scene, load, equipment)', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_officer_report', name: 'Officer Violation Report', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', isSystem: true, selectedTags: {}, requirementLevel: 'required' },
+    { id: 'viol_driver_statement', name: 'Driver Written Statement', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_witness_statement', name: 'Witness Statement', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_dashcam', name: 'Dashcam / Bodycam Footage', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_photo_evidence', name: 'Photo Evidence (scene, load, equipment)', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
 
     // Violation Documents — Resolution & Legal
-    { id: 'viol_court_disposition', name: 'Court Disposition / Judgment', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_fine_receipt', name: 'Fine Payment Receipt', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_plea_settlement', name: 'Plea or Settlement Document', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_dismissal', name: 'Dismissal / Withdrawal Notice', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_legal_correspondence', name: 'Legal Correspondence', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_court_disposition', name: 'Court Disposition / Judgment', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_fine_receipt', name: 'Fine Payment Receipt', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_plea_settlement', name: 'Plea or Settlement Document', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_dismissal', name: 'Dismissal / Withdrawal Notice', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_legal_correspondence', name: 'Legal Correspondence', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
 
     // Violation Documents — Corrective Action
-    { id: 'viol_cap', name: 'Corrective Action Plan (CAP)', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_proof_repair', name: 'Proof of Repair', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_training_cert', name: 'Training Certificate', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
-    { id: 'viol_policy_ack', name: 'Policy Acknowledgement', relatedTo: 'violation', expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_cap', name: 'Corrective Action Plan (CAP)', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_proof_repair', name: 'Proof of Repair', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_training_cert', name: 'Training Certificate', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
+    { id: 'viol_policy_ack', name: 'Policy Acknowledgement', relatedTo: 'carrier', isViolationDoc: true, expiryRequired: false, issueDateRequired: true, status: 'Active', selectedTags: {}, requirementLevel: 'optional' },
 ];
 
 export const MOCK_FOLDER_TREE: FolderNode = {

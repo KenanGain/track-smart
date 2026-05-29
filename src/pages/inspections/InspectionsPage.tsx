@@ -3058,7 +3058,7 @@ export function InspectionsPage({ currentUser, accountId, onSelectAccount }: {
   const [formViolations, setFormViolations] = useState<any[]>([]);
 
   // Violation document types for inspections
-  const violationDocTypes = useMemo(() => allDocTypes.filter(d => d.relatedTo === 'violation' && d.status === 'Active'), [allDocTypes]);
+  const violationDocTypes = useMemo(() => allDocTypes.filter(d => d.isViolationDoc && d.status === 'Active'), [allDocTypes]);
   const requiredDocTypes = useMemo(() => violationDocTypes.filter(d => d.requirementLevel === 'required'), [violationDocTypes]);
   const [inspAttachedDocs, setInspAttachedDocs] = useState<Array<{ id: string; docTypeId: string; docNumber: string; issueDate: string; fileName: string }>>([]);
 

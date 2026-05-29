@@ -70,12 +70,14 @@ const DocumentTypesPage: React.FC<DocumentTypesPageProps> = ({ onNavigate }) => 
      */
     const docuFormDocuments = useMemo<DocumentType[]>(() => {
         const RELATED_TO_LOWER: Record<string, RelatedTo> = {
-            Carrier: 'carrier', Asset: 'asset', Driver: 'driver', Violation: 'violation',
+            Carrier: 'carrier', Asset: 'asset', Driver: 'driver',
         };
         return loadDocuFormDocumentTypes().map((t): DocumentType => ({
             id: `dfgen:${t.id}`,
             name: t.name,
-            relatedTo: RELATED_TO_LOWER[t.relatedTo] ?? 'driver',
+            // Violation is a classification flag now, not a Related To entity.
+            relatedTo: RELATED_TO_LOWER[t.relatedTo] ?? (t.relatedTo === 'Violation' ? 'carrier' : 'driver'),
+            isViolationDoc: t.relatedTo === 'Violation' || undefined,
             description: t.description,
             category: t.category as DocTypeCategory,
             requirementLevel: t.required ? 'required' : 'optional',
@@ -107,9 +109,9 @@ const DocumentTypesPage: React.FC<DocumentTypesPageProps> = ({ onNavigate }) => 
         if (activeTab === 'Asset') return doc.relatedTo === 'asset';
         if (activeTab === 'Driver') return doc.relatedTo === 'driver';
         if (activeTab === 'Accidents') return !!(doc as any).isAccidentDoc;
-        if (activeTab === 'Violations') return doc.relatedTo === 'violation';
-        // Carrier tab: exclude accident docs so they only appear under Accidents
-        return doc.relatedTo === 'carrier' && !(doc as any).isAccidentDoc;
+        if (activeTab === 'Violations') return !!(doc as any).isViolationDoc;
+        // Carrier tab: exclude accident & violation docs so they only appear under their own tabs
+        return doc.relatedTo === 'carrier' && !(doc as any).isAccidentDoc && !(doc as any).isViolationDoc;
     });
 
     const handleAddNew = () => { setEditingId(null); setViewMode('editor'); };

@@ -3,13 +3,14 @@ import {
     FileText, Search, Filter, ChevronDown, Info, ShieldCheck, Building2, Truck, User,
     Pencil, Lock, Save, X, Link2, Link2Off, AlertCircle, Check,
     RotateCcw,
+    Shield, Calendar, PieChart, Award, Tag as TagIcon, Bookmark, Layers, Hash,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toggle } from '@/components/ui/toggle';
 import { Button } from '@/components/ui/button';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import {
-    SEED_KEY_NUMBERS, DOCUMENTS, KEY_NUMBER_GROUPS,
+    SEED_KEY_NUMBERS, DOCUMENTS, KEY_NUMBER_GROUPS, DOCUMENT_CATEGORIES,
     type KeyNumberRow, type DocumentRow, type KeyNumberGroup,
     type DocumentsSubTabId, type RelatedToScope,
 } from '@/pages/admin/ComplianceAndDocumentsPage';
@@ -17,12 +18,18 @@ import {
     loadCarrierAssignment, saveCarrierAssignment, patchKnOverride, patchDocOverride,
     effectiveKnFlags, effectiveDocFlags,
     getEntityAssignment, toggleForEntity, clearEntityAssignment,
-    DOC_IDS_BY_KN_ID, KN_ID_BY_DOC_ID,
+    effectiveEntityKnFlags, effectiveEntityDocFlags,
+    patchEntityKnOverride, patchEntityDocOverride,
+    DOC_IDS_BY_KN_ID, KN_ID_BY_DOC_ID, isSystemFormDoc,
     type CarrierComplianceAssignment, type EntityScope,
 } from '@/pages/admin/carrier-compliance.data';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-fleet.data';
 import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
+import {
+    loadTagSections,
+    type DocTagSection, type TagColorTheme, type TagIconName,
+} from '@/pages/settings/docu-form/document-tags.data';
 
 /**
  * Settings → Compliance Setup.
@@ -36,12 +43,14 @@ import { CARRIER_ASSETS } from '@/pages/accounts/carrier-assets.data';
  *
  * What's intentionally NOT here vs. the Super Admin page:
  *   • No "Add Number to Category" / "Add Document Type" buttons (catalog is root-only)
- *   • No Document Tags tab (tags are a root concept)
  *   • No edit/delete actions per row
  *   • No "Doc Required" linking modal (linkage is root-defined; carrier inherits)
+ *
+ * Document Tags are shown read-only here — the carrier can see the tag library
+ * their administrator manages, but can't add/rename/delete it.
  */
 
-type PageMode = 'assignment' | 'compliance' | 'documents';
+type PageMode = 'assignment' | 'compliance' | 'documents' | 'tags';
 
 const RELATED_TO_ICON: Record<RelatedToScope, React.ComponentType<{ size?: number; className?: string }>> = {
     Carrier: Building2,
@@ -98,6 +107,18 @@ export const SettingsCompliancePage = () => {
         .filter(d => enabledDocSet.has(d.id))
         .map(d => effectiveDocFlags(d, assignment)), [enabledDocSet, assignment]);
 
+    // The main Compliance / Documents tabs show only carrier-level items.
+    // Driver- and Asset-scoped items live under the Assignment tab, where they
+    // get enabled and configured per individual driver/asset.
+    const carrierKeyNumbers = useMemo(
+        () => visibleKeyNumbers.filter(k => k.relatedTo === 'Carrier'),
+        [visibleKeyNumbers],
+    );
+    const carrierDocuments = useMemo(
+        () => visibleDocuments.filter(d => d.scope !== 'driver' && d.scope !== 'asset'),
+        [visibleDocuments],
+    );
+
     const patchKn = (id: string, patch: Partial<KeyNumberRow>) => {
         setAssignment(prev => {
             const next = patchKnOverride(prev, id, patch);
@@ -144,12 +165,15 @@ export const SettingsCompliancePage = () => {
                         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                             {pageMode === 'assignment' ? 'Assignment'
                                 : pageMode === 'compliance' ? 'Key Numbers'
+                                : pageMode === 'tags' ? 'Document Tags'
                                 : 'Documents'}
                         </h1>
                         <p className="mt-0.5 text-sm text-slate-500">
                             {pageMode === 'assignment'
                                 ? `Enable which Driver and Asset documents and key numbers ${carrier?.dbaName || carrier?.legalName || 'this carrier'} tracks. Carrier-scope items are always on.`
-                                : `Configure how ${carrier?.dbaName || carrier?.legalName || 'this carrier'} tracks compliance items enabled by your administrator.`}
+                                : pageMode === 'tags'
+                                    ? `Document tag library available to ${carrier?.dbaName || carrier?.legalName || 'this carrier'}, managed by your administrator.`
+                                    : `Configure how ${carrier?.dbaName || carrier?.legalName || 'this carrier'} tracks compliance items enabled by your administrator.`}
                         </p>
                     </div>
 
@@ -157,6 +181,7 @@ export const SettingsCompliancePage = () => {
                         <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
                             {pillBtn('compliance', 'Compliance')}
                             {pillBtn('documents',  'Documents')}
+                            {pillBtn('tags',       'Document Tags')}
                             {pillBtn('assignment', 'Assignment')}
                         </div>
                     </div>
@@ -166,9 +191,15 @@ export const SettingsCompliancePage = () => {
                 <div className="flex items-start gap-2 border-t border-slate-100 bg-blue-50/40 px-6 py-2.5">
                     <ShieldCheck size={14} className="mt-0.5 shrink-0 text-blue-600" />
                     <p className="text-[12px] text-blue-800">
-                        Catalog is managed by your account administrator. You can configure compliance flags below for each enabled item.
-                        Showing <span className="font-semibold">{visibleKeyNumbers.length}</span> key numbers and{' '}
-                        <span className="font-semibold">{visibleDocuments.length}</span> documents enabled for this carrier.
+                        {pageMode === 'tags' ? (
+                            <>Document tags are managed by your account administrator and shown here read-only.</>
+                        ) : (
+                            <>
+                                Catalog is managed by your account administrator. You can configure compliance flags below for each enabled item.
+                                Showing <span className="font-semibold">{visibleKeyNumbers.length}</span> key numbers and{' '}
+                                <span className="font-semibold">{visibleDocuments.length}</span> documents enabled for this carrier.
+                            </>
+                        )}
                     </p>
                 </div>
             </header>
@@ -184,10 +215,13 @@ export const SettingsCompliancePage = () => {
                     />
                 )}
                 {pageMode === 'compliance' && (
-                    <CarrierKeyNumbersView rows={visibleKeyNumbers} onPatch={patchKn} onEdit={setEditingKn} />
+                    <CarrierKeyNumbersView rows={carrierKeyNumbers} onPatch={patchKn} onEdit={setEditingKn} />
                 )}
                 {pageMode === 'documents' && (
-                    <CarrierDocumentsView rows={visibleDocuments} onPatch={patchDoc} onEdit={setEditingDoc} />
+                    <CarrierDocumentsView rows={carrierDocuments} onPatch={patchDoc} onEdit={setEditingDoc} />
+                )}
+                {pageMode === 'tags' && (
+                    <CarrierDocumentTagsView />
                 )}
             </main>
 
@@ -209,6 +243,70 @@ export const SettingsCompliancePage = () => {
     );
 };
 
+// ── Document Tags (read-only, root-managed) ───────────────────────────
+
+const TAG_ICON_MAP: Record<TagIconName, React.ComponentType<{ size?: number; className?: string }>> = {
+    Shield, FileText, Calendar, PieChart, Award, Tag: TagIcon, Bookmark, Layers, Hash,
+};
+
+const TAG_THEME_MAP: Record<TagColorTheme, { header: string; chip: string; dot: string }> = {
+    blue:    { header: 'bg-blue-50 text-blue-600',       chip: 'border-blue-200 bg-blue-50 text-blue-700',          dot: 'bg-blue-500' },
+    emerald: { header: 'bg-emerald-50 text-emerald-600', chip: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    amber:   { header: 'bg-amber-50 text-amber-600',     chip: 'border-amber-200 bg-amber-50 text-amber-700',       dot: 'bg-amber-500' },
+    violet:  { header: 'bg-violet-50 text-violet-600',   chip: 'border-violet-200 bg-violet-50 text-violet-700',    dot: 'bg-violet-500' },
+    rose:    { header: 'bg-rose-50 text-rose-600',       chip: 'border-rose-200 bg-rose-50 text-rose-700',          dot: 'bg-rose-500' },
+    indigo:  { header: 'bg-indigo-50 text-indigo-600',   chip: 'border-indigo-200 bg-indigo-50 text-indigo-700',    dot: 'bg-indigo-500' },
+    cyan:    { header: 'bg-cyan-50 text-cyan-600',       chip: 'border-cyan-200 bg-cyan-50 text-cyan-700',          dot: 'bg-cyan-500' },
+};
+
+function CarrierDocumentTagsView() {
+    const sections = useMemo<DocTagSection[]>(() => loadTagSections(), []);
+
+    if (sections.length === 0) {
+        return <EmptyState title="No document tags defined" hint="Your account administrator hasn't set up any document tags yet." />;
+    }
+
+    return (
+        <div className="space-y-4">
+            {sections.map(sec => {
+                const Icon = TAG_ICON_MAP[sec.icon] ?? TagIcon;
+                const theme = TAG_THEME_MAP[sec.colorTheme] ?? TAG_THEME_MAP.blue;
+                return (
+                    <div key={sec.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", theme.header)}>
+                                    <Icon size={16} />
+                                </span>
+                                <div className="min-w-0">
+                                    <h3 className="text-sm font-bold text-slate-900">{sec.title}</h3>
+                                    <p className="text-[12px] text-slate-500">{sec.description}</p>
+                                </div>
+                            </div>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                <Lock size={10} /> Read-only
+                            </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-3">
+                            {sec.tags.length === 0 ? (
+                                <span className="text-[12px] text-slate-400">No tags in this section.</span>
+                            ) : sec.tags.map(t => (
+                                <span
+                                    key={t.id}
+                                    className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium", theme.chip)}
+                                >
+                                    <span className={cn("h-1.5 w-1.5 rounded-full", theme.dot)} />
+                                    {t.label}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 // ── Compliance view ───────────────────────────────────────────────────
 
 function CarrierKeyNumbersView({ rows, onPatch, onEdit }: {
@@ -216,7 +314,7 @@ function CarrierKeyNumbersView({ rows, onPatch, onEdit }: {
     onPatch: (id: string, patch: Partial<KeyNumberRow>) => void;
     onEdit: (row: KeyNumberRow) => void;
 }) {
-    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup>('Regulatory and Safety Numbers');
+    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'All'>('All');
     const [query, setQuery] = useState('');
 
     const counts = useMemo(() => {
@@ -226,14 +324,17 @@ function CarrierKeyNumbersView({ rows, onPatch, onEdit }: {
         return out;
     }, [rows]);
 
-    const tabs: SubTab<KeyNumberGroup>[] = useMemo(
-        () => KEY_NUMBER_GROUPS.map(g => ({ id: g, label: `${g} (${counts[g]})` })),
-        [counts],
+    const tabs: SubTab<KeyNumberGroup | 'All'>[] = useMemo(
+        () => [
+            { id: 'All', label: `All (${rows.length})` },
+            ...KEY_NUMBER_GROUPS.map(g => ({ id: g, label: `${g} (${counts[g]})` })),
+        ],
+        [counts, rows.length],
     );
 
     const q = query.trim().toLowerCase();
     const filtered = rows
-        .filter(r => r.group === activeGroup)
+        .filter(r => activeGroup === 'All' || r.group === activeGroup)
         .filter(r => !q || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q));
 
     if (rows.length === 0) {
@@ -252,11 +353,10 @@ function CarrierKeyNumbersView({ rows, onPatch, onEdit }: {
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <Toolbar query={query} onQueryChange={setQuery} placeholder="Search key numbers…" total={filtered.length} totalAll={rows.length} />
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1200px] text-sm">
+                    <table className="w-full min-w-[1100px] text-sm">
                         <thead>
                             <tr className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-                                <th className="px-4 py-3 w-[27%]">Number Name</th>
-                                <th className="px-3 py-3 w-[8%]">Related To</th>
+                                <th className="px-4 py-3 w-[32%]">Number Name</th>
                                 <th className="px-2 py-3 w-[7%] text-center">In Hiring /<br/>Form</th>
                                 <th className="px-2 py-3 w-[7%] text-center">Number<br/>Required</th>
                                 <th className="px-2 py-3 w-[7%] text-center">Doc<br/>Required</th>
@@ -271,13 +371,12 @@ function CarrierKeyNumbersView({ rows, onPatch, onEdit }: {
                         <tbody>
                             {filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="px-4 py-12 text-center">
+                                    <td colSpan={10} className="px-4 py-12 text-center">
                                         <p className="text-sm font-medium text-slate-700">No key numbers in this category</p>
                                         <p className="mt-1 text-[12px] text-slate-500">Try a different tab or clear the search.</p>
                                     </td>
                                 </tr>
                             ) : filtered.map(k => {
-                                const RIcon = RELATED_TO_ICON[k.relatedTo];
                                 const linkedDocIds = DOC_IDS_BY_KN_ID.get(k.id) ?? [];
                                 const linkedDocNames = linkedDocIds
                                     .map(id => DOCUMENTS.find(d => d.id === id)?.name)
@@ -298,11 +397,6 @@ function CarrierKeyNumbersView({ rows, onPatch, onEdit }: {
                                                 </p>
                                             )}
                                             <p className="mt-0.5 text-[12px] text-slate-500">{k.description}</p>
-                                        </td>
-                                        <td className="px-3 py-3 align-top">
-                                            <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-700">
-                                                <RIcon size={14} className="text-slate-400" /> {k.relatedTo}
-                                            </span>
                                         </td>
                                         <td className="px-2 py-3 align-top">
                                             <div className="flex justify-center">
@@ -382,10 +476,11 @@ function CarrierDocumentsView({ rows, onPatch, onEdit }: {
         return out;
     }, [rows]);
 
-    const tabs: SubTab<DocumentsSubTabId>[] = useMemo(() => DOCUMENTS_SUB_TABS.map(t => ({
-        ...t,
-        label: `${t.label} (${counts[t.id]})`,
-    })), [counts]);
+    // Driver/Asset documents are configured under the Assignment tab, so the
+    // carrier-level Documents view only offers carrier / accidents / violation.
+    const tabs: SubTab<DocumentsSubTabId>[] = useMemo(() => DOCUMENTS_SUB_TABS
+        .filter(t => t.id !== 'asset' && t.id !== 'driver')
+        .map(t => ({ ...t, label: `${t.label} (${counts[t.id]})` })), [counts]);
 
     const q = query.trim().toLowerCase();
     const filtered = rows
@@ -608,10 +703,12 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
  * are read-only — those are root-managed. The carrier admin only adjusts
  * the compliance toggles, which save as overrides on the assignment.
  */
-function CarrierKeyNumberEditModal({ row, onSave, onClose }: {
+function CarrierKeyNumberEditModal({ row, onSave, onClose, entityName }: {
     row: KeyNumberRow;
     onSave: (patch: Partial<KeyNumberRow>) => void;
     onClose: () => void;
+    /** When set, the modal edits a single driver/asset's flags instead of the carrier default. */
+    entityName?: string;
 }) {
     const [draft, setDraft] = useState({
         usedInHiring:         !!row.usedInHiring,
@@ -645,7 +742,8 @@ function CarrierKeyNumberEditModal({ row, onSave, onClose }: {
                     <div>
                         <h3 className="text-base font-bold text-slate-900">Edit Compliance Flags</h3>
                         <p className="mt-0.5 text-[12px] text-slate-500">
-                            Per-carrier configuration for <span className="font-semibold text-slate-700">{row.name}</span>.
+                            {entityName ? <>Configuration for <span className="font-semibold text-slate-700">{row.name}</span> · <span className="font-semibold text-slate-700">{entityName}</span>.</>
+                                        : <>Per-carrier configuration for <span className="font-semibold text-slate-700">{row.name}</span>.</>}
                         </p>
                     </div>
                     <button
@@ -702,10 +800,12 @@ function CarrierKeyNumberEditModal({ row, onSave, onClose }: {
                     <section className="rounded-xl border border-slate-200 bg-white">
                         <div className="border-b border-slate-100 px-4 py-3">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                Compliance flags (per-carrier)
+                                {entityName ? `Compliance flags (${entityName})` : 'Compliance flags (per-carrier)'}
                             </p>
                             <p className="mt-0.5 text-[11px] text-slate-500">
-                                Adjust how this key number behaves for your carrier. Changes do not affect other carriers.
+                                {entityName
+                                    ? `Adjust how this key number behaves for ${entityName} only. The carrier default and other drivers/assets are unchanged.`
+                                    : 'Adjust how this key number behaves for your carrier. Changes do not affect other carriers.'}
                             </p>
                         </div>
                         <div className="space-y-2 px-4 py-3">
@@ -742,10 +842,12 @@ function CarrierKeyNumberEditModal({ row, onSave, onClose }: {
  * Edit form for a document, scoped to per-carrier flag overrides.
  * Same locked-catalog / editable-flags split as the key number editor.
  */
-function CarrierDocumentEditModal({ row, onSave, onClose }: {
+function CarrierDocumentEditModal({ row, onSave, onClose, entityName }: {
     row: DocumentRow;
     onSave: (patch: Partial<DocumentRow>) => void;
     onClose: () => void;
+    /** When set, the modal edits a single driver/asset's flags instead of the carrier default. */
+    entityName?: string;
 }) {
     const [draft, setDraft] = useState({
         usedInHiring:         !!row.usedInHiring,
@@ -776,7 +878,8 @@ function CarrierDocumentEditModal({ row, onSave, onClose }: {
                     <div>
                         <h3 className="text-base font-bold text-slate-900">Edit Compliance Flags</h3>
                         <p className="mt-0.5 text-[12px] text-slate-500">
-                            Per-carrier configuration for <span className="font-semibold text-slate-700">{row.name}</span>.
+                            {entityName ? <>Configuration for <span className="font-semibold text-slate-700">{row.name}</span> · <span className="font-semibold text-slate-700">{entityName}</span>.</>
+                                        : <>Per-carrier configuration for <span className="font-semibold text-slate-700">{row.name}</span>.</>}
                         </p>
                     </div>
                     <button
@@ -823,10 +926,12 @@ function CarrierDocumentEditModal({ row, onSave, onClose }: {
                     <section className="rounded-xl border border-slate-200 bg-white">
                         <div className="border-b border-slate-100 px-4 py-3">
                             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                Compliance flags (per-carrier)
+                                {entityName ? `Compliance flags (${entityName})` : 'Compliance flags (per-carrier)'}
                             </p>
                             <p className="mt-0.5 text-[11px] text-slate-500">
-                                Adjust how this document behaves for your carrier. Changes do not affect other carriers.
+                                {entityName
+                                    ? `Adjust how this document behaves for ${entityName} only. The carrier default and other drivers/assets are unchanged.`
+                                    : 'Adjust how this document behaves for your carrier. Changes do not affect other carriers.'}
                             </p>
                         </div>
                         <div className="space-y-2 px-4 py-3">
@@ -915,13 +1020,16 @@ function AssignmentView({
     const [scope, setScope] = useState<AssignmentScope>('Driver');
     const [innerView, setInnerView] = useState<AssignmentView2>('compliance');
     const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-    const [activeGroup, setActiveGroup] = useState<string>('');
+    const [activeGroup, setActiveGroup] = useState<string>('All');
     const [itemQuery, setItemQuery] = useState('');
+    // Per-entity requirement editor — { kind, id } of the catalog row being configured.
+    const [configuring, setConfiguring] = useState<{ kind: 'keynumber' | 'document'; id: string } | null>(null);
 
     // Reset selection + group when scope changes
     useEffect(() => {
         setSelectedEntityId(null);
-        setActiveGroup('');
+        setActiveGroup('All');
+        setConfiguring(null);
     }, [scope]);
 
     // Pull entities (drivers or assets) for the carrier in scope
@@ -1001,36 +1109,44 @@ function AssignmentView({
     const docGroupRows: { id: string; label: string; rows: DocumentRow[] }[] = useMemo(() => {
         const map = new Map<string, DocumentRow[]>();
         for (const d of docCatalog) {
-            const arr = map.get(d.folder) ?? [];
+            const cat = d.category ?? 'Other';
+            const arr = map.get(cat) ?? [];
             arr.push(d);
-            map.set(d.folder, arr);
+            map.set(cat, arr);
         }
-        return Array.from(map.entries())
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([folder, rows]) => ({ id: folder, label: folder, rows }));
+        // Order groups by the canonical category order.
+        return DOCUMENT_CATEGORIES
+            .filter(c => map.has(c))
+            .map(c => ({ id: c, label: c, rows: map.get(c)! }));
     }, [docCatalog]);
 
-    // Keep active group valid when switching scope/view
+    // Keep active group valid when switching scope/view. Defaults to "All".
     useEffect(() => {
         const groups = innerView === 'compliance' ? knGroupRows : docGroupRows;
         if (groups.length === 0) { setActiveGroup(''); return; }
-        if (!groups.some(g => g.id === activeGroup)) setActiveGroup(groups[0].id);
+        if (activeGroup !== 'All' && !groups.some(g => g.id === activeGroup)) setActiveGroup('All');
     }, [innerView, knGroupRows, docGroupRows, activeGroup]);
+
+    // Group sub-tabs — an "All" tab (every category) followed by each group.
+    const groupTabs = useMemo<{ id: string; label: string; rows: (KeyNumberRow | DocumentRow)[] }[]>(() => {
+        const groups = innerView === 'compliance' ? knGroupRows : docGroupRows;
+        const allRows = groups.flatMap(g => g.rows as (KeyNumberRow | DocumentRow)[]);
+        return [{ id: 'All', label: 'All', rows: allRows }, ...groups];
+    }, [innerView, knGroupRows, docGroupRows]);
 
     // Active group rows + per-row filter
     const activeRows = useMemo<(KeyNumberRow | DocumentRow)[]>(() => {
-        const groups = innerView === 'compliance' ? knGroupRows : docGroupRows;
-        const g = groups.find(x => x.id === activeGroup);
+        const g = groupTabs.find(x => x.id === activeGroup) ?? groupTabs[0];
         if (!g) return [];
         const q = itemQuery.trim().toLowerCase();
         if (!q) return g.rows;
         return g.rows.filter(r => {
             const blob = innerView === 'compliance'
                 ? `${(r as KeyNumberRow).name} ${(r as KeyNumberRow).description}`
-                : `${(r as DocumentRow).name} ${(r as DocumentRow).folder}`;
+                : `${(r as DocumentRow).name} ${(r as DocumentRow).category ?? ''}`;
             return blob.toLowerCase().includes(q);
         });
-    }, [innerView, knGroupRows, docGroupRows, activeGroup, itemQuery]);
+    }, [innerView, groupTabs, activeGroup, itemQuery]);
 
     const activeEnabled = innerView === 'compliance'
         ? activeRows.filter(r => entityKnSet.has((r as KeyNumberRow).id)).length
@@ -1059,6 +1175,8 @@ function AssignmentView({
         let next = assignment;
         for (const r of activeRows) {
             const kind = innerView === 'compliance' ? 'keynumber' : 'document';
+            // System/form docs are mandatory — never disable them.
+            if (kind === 'document' && isSystemFormDoc(r as DocumentRow)) continue;
             next = toggleForEntity(next, scopeKey, selectedEntity.id, kind, r.id, false);
         }
         onChange(next);
@@ -1068,10 +1186,22 @@ function AssignmentView({
         onChange(clearEntityAssignment(assignment, scopeKey, selectedEntity.id));
     };
 
+    // Per-entity requirement-flag edits (inline toggles + Actions modal).
+    const patchEntityKn = (id: string, patch: Partial<KeyNumberRow>) => {
+        if (!selectedEntity) return;
+        onChange(patchEntityKnOverride(assignment, scopeKey, selectedEntity.id, id, patch));
+    };
+    const patchEntityDoc = (id: string, patch: Partial<DocumentRow>) => {
+        if (!selectedEntity) return;
+        onChange(patchEntityDocOverride(assignment, scopeKey, selectedEntity.id, id, patch));
+    };
+
+    // Count only the items in this entity's scope (the entity's enabled set
+    // inherits the whole carrier list by default, so size alone over-counts).
     const totalKn = knCatalog.length;
     const totalDoc = docCatalog.length;
-    const enabledKn = entityKnSet.size;
-    const enabledDoc = entityDocSet.size;
+    const enabledKn = useMemo(() => knCatalog.filter(k => entityKnSet.has(k.id)).length, [knCatalog, entityKnSet]);
+    const enabledDoc = useMemo(() => docCatalog.filter(d => entityDocSet.has(d.id)).length, [docCatalog, entityDocSet]);
 
     return (
         <div className="space-y-5">
@@ -1177,13 +1307,13 @@ function AssignmentView({
                 </div>
             ) : (
                 <>
-                    {/* Group sub-tabs with per-group enabled/total counts */}
+                    {/* Group sub-tabs with per-group enabled/total counts (All first) */}
                     <div className="border-b border-slate-200 overflow-x-auto no-scrollbar">
                         <div className="flex items-center gap-1 -mb-px">
-                            {(innerView === 'compliance' ? knGroupRows : docGroupRows).map(g => {
+                            {groupTabs.map(g => {
                                 const gEnabled = innerView === 'compliance'
-                                    ? g.rows.filter(r => entityKnSet.has(r.id)).length
-                                    : g.rows.filter(r => entityDocSet.has(r.id)).length;
+                                    ? g.rows.filter(r => entityKnSet.has((r as KeyNumberRow).id)).length
+                                    : g.rows.filter(r => entityDocSet.has((r as DocumentRow).id)).length;
                                 const isActive = activeGroup === g.id;
                                 return (
                                     <button
@@ -1243,52 +1373,139 @@ function AssignmentView({
                         </button>
                     </div>
 
-                    {/* Items table */}
+                    {/* Items table — per-individual requirement config. The Enabled
+                        toggle picks which carrier-enabled items apply to this
+                        driver/asset; the requirement toggles + Actions modal save
+                        per-entity overrides and unlock only when the row is enabled. */}
                     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="min-w-full">
+                            <table className="min-w-[1100px] w-full">
                                 <thead className="bg-slate-50/60 border-b border-slate-200">
                                     <tr className="text-left">
                                         <Th>{innerView === 'compliance' ? 'Number Name' : 'Document Name'}</Th>
-                                        <Th>Related To</Th>
+                                        <Th>{innerView === 'compliance' ? 'Related To' : 'Category'}</Th>
+                                        <FlagTh>In Hiring /<br/>Form</FlagTh>
+                                        {innerView === 'compliance' ? (
+                                            <>
+                                                <FlagTh>Number<br/>Required</FlagTh>
+                                                <FlagTh>Doc<br/>Required</FlagTh>
+                                                <FlagTh>Has<br/>Expiry</FlagTh>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FlagTh>Allow<br/>Multiple</FlagTh>
+                                                <FlagTh>Expiry<br/>Req.</FlagTh>
+                                            </>
+                                        )}
+                                        <FlagTh>Issue<br/>Date</FlagTh>
+                                        <FlagTh>Issue<br/>State</FlagTh>
+                                        <FlagTh>Issue<br/>Country</FlagTh>
                                         <Th>Status</Th>
-                                        <Th>{innerView === 'compliance' ? 'Linked Document' : 'Linked Number'}</Th>
-                                        <Th className="text-right pr-5">Enabled</Th>
+                                        <Th className="text-center">Enabled</Th>
+                                        <Th className="text-right pr-5">Actions</Th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {activeRows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="px-5 py-12 text-center text-sm text-slate-500">
+                                            <td colSpan={innerView === 'compliance' ? 12 : 11} className="px-5 py-12 text-center text-sm text-slate-500">
                                                 No items match your search.
                                             </td>
                                         </tr>
                                     ) : innerView === 'compliance' ? (
-                                        (activeRows as KeyNumberRow[]).map(k => (
-                                            <CatalogTableRow
-                                                key={k.id}
-                                                name={k.name}
-                                                description={k.description}
-                                                relatedTo={k.relatedTo}
-                                                status={k.status}
-                                                linkBadge={renderCascadeBadge(k.id, 'keynumber', entityDocSet, docById)}
-                                                enabled={entityKnSet.has(k.id)}
-                                                onToggle={(on) => onToggleKn(k.id, on)}
-                                            />
-                                        ))
+                                        (activeRows as KeyNumberRow[]).map(k => {
+                                            const enabled = entityKnSet.has(k.id);
+                                            const ef = effectiveEntityKnFlags(k, assignment, scopeKey, selectedEntity?.id ?? '');
+                                            const RelatedIcon = RELATED_TO_ICON[k.relatedTo];
+                                            return (
+                                                <tr key={k.id} className={cn(
+                                                    "border-b border-slate-100 last:border-b-0 transition-colors",
+                                                    enabled ? "bg-blue-50/20 hover:bg-blue-50/40" : "hover:bg-slate-50/40",
+                                                )}>
+                                                    <td className="px-5 py-3 align-top">
+                                                        <div className="text-sm font-semibold text-slate-900">{k.name}</div>
+                                                        <div className="mt-0.5">{renderCascadeBadge(k.id, 'keynumber', entityDocSet, docById)}</div>
+                                                        {k.description && <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{k.description}</div>}
+                                                    </td>
+                                                    <td className="px-3 py-3 align-top">
+                                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                                                            <RelatedIcon size={12} className="text-slate-400" /> {k.relatedTo}
+                                                        </span>
+                                                    </td>
+                                                    <FlagTd checked={!!ef.usedInHiring}       onChange={(v) => patchEntityKn(k.id, { usedInHiring: v })}         enabled={enabled} />
+                                                    <FlagTd checked={ef.numberRequired}       onChange={(v) => patchEntityKn(k.id, { numberRequired: v })}       enabled={enabled} />
+                                                    <FlagTd checked={ef.docRequired}          onChange={(v) => patchEntityKn(k.id, { docRequired: v })}          enabled={enabled} />
+                                                    <FlagTd checked={ef.hasExpiry}            onChange={(v) => patchEntityKn(k.id, { hasExpiry: v })}            enabled={enabled} />
+                                                    <FlagTd checked={ef.issueDateRequired}    onChange={(v) => patchEntityKn(k.id, { issueDateRequired: v })}    enabled={enabled} />
+                                                    <FlagTd checked={ef.issueStateRequired}   onChange={(v) => patchEntityKn(k.id, { issueStateRequired: v })}   enabled={enabled} />
+                                                    <FlagTd checked={ef.issueCountryRequired} onChange={(v) => patchEntityKn(k.id, { issueCountryRequired: v })} enabled={enabled} />
+                                                    <td className="px-3 py-3 align-top"><StatusPill status={k.status} /></td>
+                                                    <td className="px-3 py-3 align-top text-center">
+                                                        <div className="flex justify-center">
+                                                            <Toggle checked={enabled} onCheckedChange={(v) => onToggleKn(k.id, v)} />
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 align-top text-right pr-5">
+                                                        <ConfigureBtn enabled={enabled} onClick={() => setConfiguring({ kind: 'keynumber', id: k.id })} />
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     ) : (
-                                        (activeRows as DocumentRow[]).map(d => (
-                                            <CatalogTableRow
-                                                key={d.id}
-                                                name={d.name}
-                                                description={d.folder}
-                                                relatedTo={scope}
-                                                status={d.status === 'Draft' ? 'Inactive' : d.status}
-                                                linkBadge={renderCascadeBadge(d.id, 'document', entityKnSet, knById)}
-                                                enabled={entityDocSet.has(d.id)}
-                                                onToggle={(on) => onToggleDoc(d.id, on)}
-                                            />
-                                        ))
+                                        (activeRows as DocumentRow[]).map(d => {
+                                            // System/form docs are mandatory — always enabled & locked on.
+                                            const mandatory = isSystemFormDoc(d);
+                                            const enabled = entityDocSet.has(d.id) || mandatory;
+                                            const ef = effectiveEntityDocFlags(d, assignment, scopeKey, selectedEntity?.id ?? '');
+                                            const status: 'Active' | 'Inactive' = d.status === 'Draft' ? 'Inactive' : d.status;
+                                            return (
+                                                <tr key={d.id} className={cn(
+                                                    "border-b border-slate-100 last:border-b-0 transition-colors",
+                                                    enabled ? "bg-blue-50/20 hover:bg-blue-50/40" : "hover:bg-slate-50/40",
+                                                )}>
+                                                    <td className="px-5 py-3 align-top">
+                                                        <div className="flex items-start gap-2">
+                                                            <FileText size={14} className="text-blue-500 mt-0.5 shrink-0" />
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="text-sm font-semibold text-slate-900">{d.name}</span>
+                                                                    {mandatory && (
+                                                                        <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">
+                                                                            Required
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="mt-0.5">{renderCascadeBadge(d.id, 'document', entityKnSet, knById)}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 align-top text-[13px] text-slate-700">{SCOPE_LABEL[d.scope]}</td>
+                                                    <FlagTd checked={!!ef.usedInHiring}       onChange={(v) => patchEntityDoc(d.id, { usedInHiring: v })}        enabled={enabled} />
+                                                    <FlagTd checked={!!ef.allowMultiple}      onChange={(v) => patchEntityDoc(d.id, { allowMultiple: v })}       enabled={enabled} />
+                                                    <FlagTd checked={ef.expiryRequired}       onChange={(v) => patchEntityDoc(d.id, { expiryRequired: v })}      enabled={enabled} />
+                                                    <FlagTd checked={ef.issueDateRequired}    onChange={(v) => patchEntityDoc(d.id, { issueDateRequired: v })}   enabled={enabled} />
+                                                    <FlagTd checked={ef.issueStateRequired}   onChange={(v) => patchEntityDoc(d.id, { issueStateRequired: v })}  enabled={enabled} />
+                                                    <FlagTd checked={ef.issueCountryRequired} onChange={(v) => patchEntityDoc(d.id, { issueCountryRequired: v })} enabled={enabled} />
+                                                    <td className="px-3 py-3 align-top"><StatusPill status={status} /></td>
+                                                    <td className="px-3 py-3 align-top">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            {mandatory && (
+                                                                <Lock size={11} className="text-violet-400" aria-label="Always enabled — system/form document" />
+                                                            )}
+                                                            <span
+                                                                className={cn(mandatory && "pointer-events-none")}
+                                                                title={mandatory ? "Always enabled — system/form document" : undefined}
+                                                            >
+                                                                <Toggle checked={enabled} onCheckedChange={(v) => { if (!mandatory) onToggleDoc(d.id, v); }} />
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3 align-top text-right pr-5">
+                                                        <ConfigureBtn enabled={enabled} onClick={() => setConfiguring({ kind: 'document', id: d.id })} />
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>
@@ -1296,6 +1513,35 @@ function AssignmentView({
                     </div>
                 </>
             )}
+
+            {/* Per-entity requirement editor — reuses the carrier flag modals,
+                but saves to the selected driver/asset's flag overrides. */}
+            {configuring && selectedEntity && (() => {
+                if (configuring.kind === 'keynumber') {
+                    const catalogRow = knById.get(configuring.id);
+                    if (!catalogRow) return null;
+                    const effRow = effectiveEntityKnFlags(catalogRow, assignment, scopeKey, selectedEntity.id);
+                    return (
+                        <CarrierKeyNumberEditModal
+                            row={effRow}
+                            entityName={selectedEntity.name}
+                            onSave={(patch) => { patchEntityKn(configuring.id, patch); setConfiguring(null); }}
+                            onClose={() => setConfiguring(null)}
+                        />
+                    );
+                }
+                const catalogRow = docById.get(configuring.id);
+                if (!catalogRow) return null;
+                const effRow = effectiveEntityDocFlags(catalogRow, assignment, scopeKey, selectedEntity.id);
+                return (
+                    <CarrierDocumentEditModal
+                        row={effRow}
+                        entityName={selectedEntity.name}
+                        onSave={(patch) => { patchEntityDoc(configuring.id, patch); setConfiguring(null); }}
+                        onClose={() => setConfiguring(null)}
+                    />
+                );
+            })()}
         </div>
     );
 }
@@ -1307,6 +1553,45 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
         <th className={cn("px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500", className)}>
             {children}
         </th>
+    );
+}
+
+/** Compact, centered 2-line header cell for a requirement-flag column. */
+function FlagTh({ children }: { children: React.ReactNode }) {
+    return (
+        <th className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-wider leading-tight text-slate-500">
+            {children}
+        </th>
+    );
+}
+
+/** Centered requirement-flag toggle cell — locked when the row isn't enabled. */
+function FlagTd({ checked, onChange, enabled }: {
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    enabled: boolean;
+}) {
+    return (
+        <td className="px-2 py-3 align-top">
+            <div className="flex justify-center">
+                <Toggle checked={checked} onCheckedChange={onChange} disabled={!enabled} />
+            </div>
+        </td>
+    );
+}
+
+/** Actions pencil — opens the full per-entity flag editor; locked when disabled. */
+function ConfigureBtn({ enabled, onClick }: { enabled: boolean; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={!enabled}
+            title={enabled ? 'Edit all requirement flags for this item' : 'Enable this item to configure its requirements'}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-400"
+        >
+            <Pencil size={14} />
+        </button>
     );
 }
 
@@ -1331,52 +1616,6 @@ function ProgressLine({ label, enabled, total, color }: {
                 <div className={cn("h-full transition-all", fill)} style={{ width: `${pct}%` }} />
             </div>
         </div>
-    );
-}
-
-function CatalogTableRow({
-    name, description, relatedTo, status, linkBadge, enabled, onToggle,
-}: {
-    name: string;
-    description?: string;
-    relatedTo: RelatedToScope;
-    status: 'Active' | 'Inactive';
-    linkBadge: React.ReactNode;
-    enabled: boolean;
-    onToggle: (on: boolean) => void;
-}) {
-    const RelatedIcon = relatedTo === 'Carrier' ? Building2 : relatedTo === 'Asset' ? Truck : User;
-    return (
-        <tr className={cn(
-            "border-b border-slate-100 last:border-b-0 transition-colors",
-            enabled ? "bg-blue-50/20 hover:bg-blue-50/40" : "hover:bg-slate-50/40",
-        )}>
-            <td className="px-5 py-3 align-top">
-                <div className="text-sm font-semibold text-slate-900">{name}</div>
-                {description && (
-                    <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{description}</div>
-                )}
-            </td>
-            <td className="px-5 py-3 align-top">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
-                    <RelatedIcon size={12} className="text-slate-400" /> {relatedTo}
-                </span>
-            </td>
-            <td className="px-5 py-3 align-top">
-                <span className={cn(
-                    "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border",
-                    status === 'Active'
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : "bg-slate-100 text-slate-600 border-slate-200",
-                )}>
-                    {status}
-                </span>
-            </td>
-            <td className="px-5 py-3 align-top">{linkBadge}</td>
-            <td className="px-5 py-3 align-top text-right pr-5">
-                <Toggle checked={enabled} onCheckedChange={onToggle} />
-            </td>
-        </tr>
     );
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { ArrowLeft, Building2, Truck, User, Bell, Save } from "lucide-react"
+import { ArrowLeft, Building2, Truck, User, Bell, Save, AlertTriangle, ShieldAlert, Check } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Toggle } from "@/components/ui/toggle"
@@ -42,6 +42,8 @@ export function KeyNumberEditor({ initialData, category, onSave, onCancel }: Key
         documentRequired: false,
         requiredDocumentTypeId: "",
         status: "Active",
+        isAccidentRelated: false,
+        isViolationRelated: false,
         monitoringEnabled: false,
         monitorBasedOn: 'expiry',
         reminderDays: { 90: true, 60: true, 30: true, 7: false },
@@ -65,6 +67,8 @@ export function KeyNumberEditor({ initialData, category, onSave, onCancel }: Key
                 documentRequired: initialData.documentRequired || false,
                 requiredDocumentTypeId: initialData.requiredDocumentTypeId || "",
                 status: initialData.status,
+                isAccidentRelated: initialData.isAccidentRelated ?? false,
+                isViolationRelated: initialData.isViolationRelated ?? false,
                 // Monitoring
                 monitoringEnabled: initialData.monitoringEnabled ?? false,
                 monitorBasedOn: (initialData.monitorBasedOn === 'issue_date' ? 'issue_date' : 'expiry') as 'expiry' | 'issue_date',
@@ -169,6 +173,40 @@ export function KeyNumberEditor({ initialData, category, onSave, onCancel }: Key
                                         </span>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+
+                        {/* Classification — independent of Related To. A key number can
+                            also be flagged as accident- and/or violation-related. */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Classification</label>
+                            <p className="text-xs text-slate-500">Optionally also tag this key number as an accident or violation related record.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                                {([
+                                    { key: 'isAccidentRelated', label: 'Accident related', desc: 'Linked to accident records', Icon: AlertTriangle },
+                                    { key: 'isViolationRelated', label: 'Violation related', desc: 'Linked to violation records', Icon: ShieldAlert },
+                                ] as const).map(({ key, label, desc, Icon }) => {
+                                    const selected = !!formData[key];
+                                    return (
+                                        <div
+                                            key={key}
+                                            onClick={() => setFormData(prev => ({ ...prev, [key]: !prev[key] }))}
+                                            className={`relative flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all
+                                                ${selected ? "border-blue-600 bg-blue-50/50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}
+                                        >
+                                            <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${selected ? "border-blue-600 bg-blue-600" : "border-slate-300"}`}>
+                                                {selected && <Check className="w-3.5 h-3.5 text-white" />}
+                                            </div>
+                                            <div className={`p-2 rounded-lg ${selected ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"}`}>
+                                                <Icon className="w-5 h-5" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className={`text-sm font-medium ${selected ? "text-blue-700" : "text-slate-600"}`}>{label}</div>
+                                                <div className="text-xs text-slate-500">{desc}</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 

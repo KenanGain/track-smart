@@ -14,7 +14,10 @@ export function KeyNumbersPage() {
     // State management
     const { keyNumbers, setKeyNumbers, updateDocument, documents } = useAppData()
     const [searchQuery, setSearchQuery] = useState("")
-    const [activeCategory, setActiveCategory] = useState<Category>(CATEGORIES[0])
+    const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All')
+
+    // Tab strip = an "All" tab followed by each category.
+    const TAB_OPTIONS: (Category | 'All')[] = ['All', ...CATEGORIES]
 
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false)
     const [selectedCategoryForAdd, setSelectedCategoryForAdd] = useState<Category | null>(null)
@@ -26,7 +29,7 @@ export function KeyNumbersPage() {
     // Filter numbers by active category and search query
     const filteredNumbers = useMemo(() => {
         return keyNumbers.filter(number => {
-            const matchesCategory = number.category === activeCategory
+            const matchesCategory = activeCategory === 'All' || number.category === activeCategory
             const matchesSearch = searchQuery === "" ||
                 number.numberTypeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 number.numberTypeDescription.toLowerCase().includes(searchQuery.toLowerCase())
@@ -75,9 +78,11 @@ export function KeyNumbersPage() {
                             documentRequired: data.documentRequired,
                             requiredDocumentTypeId: data.requiredDocumentTypeId,
                             status: data.status,
-                            category: data.category, 
+                            category: data.category,
                             entityType: data.entityType,
                             description: data.description || n.description,
+                            isAccidentRelated: data.isAccidentRelated,
+                            isViolationRelated: data.isViolationRelated,
                             // Monitoring
                             monitoringEnabled: data.monitoringEnabled,
                             monitorBasedOn: data.monitorBasedOn,
@@ -104,6 +109,8 @@ export function KeyNumbersPage() {
                 issueStateRequired: data.issueStateRequired,
                 issueCountryRequired: data.issueCountryRequired,
                 status: data.status,
+                isAccidentRelated: data.isAccidentRelated,
+                isViolationRelated: data.isViolationRelated,
                 // Monitoring
                 monitoringEnabled: data.monitoringEnabled,
                 monitorBasedOn: data.monitorBasedOn,
@@ -189,7 +196,7 @@ export function KeyNumbersPage() {
         return (
             <KeyNumberEditor
                 initialData={editingId ? keyNumbers.find(n => n.id === editingId) : null}
-                category={selectedCategoryForAdd || activeCategory}
+                category={selectedCategoryForAdd || (activeCategory === 'All' ? undefined : activeCategory)}
                 onSave={handleSaveNumber}
                 onCancel={() => {
                     setShowEditor(false)
@@ -248,10 +255,10 @@ export function KeyNumbersPage() {
                 </div>
 
                 {/* Tabs & Content */}
-                <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as Category)}>
+                <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as Category | 'All')}>
                     <div className="border-b border-slate-200 mb-6">
                         <TabsList className="h-auto p-0 bg-transparent space-x-8">
-                            {CATEGORIES.map((category) => (
+                            {TAB_OPTIONS.map((category) => (
                                 <TabsTrigger
                                     key={category}
                                     value={category}
@@ -263,7 +270,7 @@ export function KeyNumbersPage() {
                         </TabsList>
                     </div>
 
-                    {CATEGORIES.map((category) => (
+                    {TAB_OPTIONS.map((category) => (
                         <TabsContent key={category} value={category} className="mt-0">
                             {/* Search and Filter */}
                             <div className="flex items-center justify-between mb-4">
