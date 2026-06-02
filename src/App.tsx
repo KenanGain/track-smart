@@ -18,6 +18,7 @@ import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
 import { SettingsCompliancePage } from '@/pages/settings/SettingsCompliancePage'
 import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
 import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
+import { ComplianceTemplatesPage } from '@/pages/admin/ComplianceTemplatesPage'
 import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
@@ -198,8 +199,22 @@ function App() {
         if (path === "/admin/compliance-and-documents") {
             return <ComplianceAndDocumentsPage />
         }
-        if (path === "/admin/carrier-compliance-setup") {
-            return <CarrierComplianceSetupPage />
+        if (path === "/admin/carrier-compliance-setup" || path === "/admin/carrier-profile-configuration") {
+            // Carrier-level configuration (per-carrier overrides). Surfaced under
+            // both Admin and Super Admin. `key` forces a fresh mount so scope/state
+            // don't carry over from the service-profile route (same component type).
+            return <CarrierComplianceSetupPage key="carrier-config" />
+        }
+        if (path === "/admin/service-profile-compliance") {
+            // Super Admin — service-profile-level authoring (the source bundle).
+            return <CarrierComplianceSetupPage key="service-profile-root" mode="serviceProfile" />
+        }
+        if (path === "/service-profile/compliance-setup") {
+            // Service Profile admin view — Carrier Profile only, drilling into this profile's carriers.
+            return <CarrierComplianceSetupPage key="service-profile-admin" mode="serviceProfile" carrierLevelOnly />
+        }
+        if (path === "/admin/compliance-templates") {
+            return <ComplianceTemplatesPage />
         }
         if (path === "/admin/users" && currentUser) {
             return <UsersListPage currentUser={currentUser} onNavigate={handleNavigate} />
@@ -235,10 +250,15 @@ function App() {
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <NewComplianceDocumentsPage accountId={account?.id} />
         }
-        if (path === "/compliance-monitoring") {
+        if (path === "/compliance-monitoring" || path === "/admin/monitoring-notifications") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <ComplianceMonitoringPage accountId={account?.id} />
+            return (
+                <ComplianceMonitoringPage
+                    accountId={account?.id}
+                    scopesOnly={path === "/admin/monitoring-notifications"}
+                />
+            )
         }
         if (path === "/account/profile") {
             // Fall back to the user's default carrier if none has been picked yet

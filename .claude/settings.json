@@ -3,7 +3,18 @@
     "allow": [
       "Bash(curl -s \"http://localhost:5173/src/pages/admin/CarrierComplianceSetupPage.tsx\")",
       "Bash(node -e ' *)",
-      "Bash(xargs wc -l)"
+      "Bash(xargs wc -l)",
+      "Bash(npx tsc *)",
+      "Bash(grep -n '\\\\b__TRACKED_VAR__\\\\b' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(sed -n '985,1014p' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(sed -n '1545,1560p' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(sed -n '1660,1676p' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(awk 'NR>=996 && NR<=1003 {printf \"%d: %s\\\\n\", NR, $0}' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(awk 'NR>=1666 && NR<=1676 {printf \"%d: %s\\\\n\", NR, $0}' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(sed -i '996,1670d' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(awk 'NR>=988 && NR<=1006 {printf \"%d: %s\\\\n\", NR, $0}' src/pages/settings/SettingsCompliancePage.tsx)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(Object.entries\\(p.dependencies\\).filter\\(\\([k]\\)=>k.includes\\('dnd-kit'\\)\\)\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\kenan\\.claude\\projects\\c--Users-kenan-Full-prototpye-code\\memory"

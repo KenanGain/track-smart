@@ -13,7 +13,7 @@ import {
 } from "@/pages/admin/ComplianceAndDocumentsPage";
 import {
     loadCarrierAssignment, effectiveDocFlags, effectiveKnFlags, getEntityAssignment,
-    effectiveEntityKnFlags, effectiveEntityDocFlags, DOC_IDS_BY_KN_ID,
+    effectiveEntityKnFlags, effectiveEntityDocFlags, DOC_IDS_BY_KN_ID, KN_ID_BY_DOC_ID,
     type CarrierComplianceAssignment, type EntityScope,
 } from "@/pages/admin/carrier-compliance.data";
 import { ACCOUNTS_DB, type AccountRecord } from "@/pages/accounts/accounts.data";
@@ -25,6 +25,9 @@ import { ComplianceKeyNumberModal, type ComplianceKeyNumberSave } from "@/compon
 import { ComplianceUploadModal } from "@/components/compliance/ComplianceUploadModal";
 import { ComplianceDataChips, type DataChipItem } from "@/components/compliance/ComplianceDataChips";
 import type { KeyNumberValue, UploadedDocument } from "@/types/key-numbers.types";
+import { Toggle } from "@/components/ui/toggle";
+import { loadMonitoringConfigs, monitorItemKey, DEFAULT_MONITORING } from "@/pages/compliance/compliance-monitoring.data";
+import { setEntityMonitoring, nextAlertIndicator, type MonitoringConfig } from "@/utils/entity-monitoring";
 
 /** Storage key for an entered key-number value. Carrier scope keys by the
  *  catalog row id; per-entity (asset/driver) scope namespaces by entity id —
@@ -43,6 +46,27 @@ function uploadKey(kind: 'kn' | 'doc', rowId: string, entityId?: string): string
  *  or the catalog links it to a document. */
 function keyNumberNeedsDoc(kn: KeyNumberRow): boolean {
     return !!kn.docRequired || (DOC_IDS_BY_KN_ID.get(kn.id)?.length ?? 0) > 0;
+}
+
+const MON_TONE_CLASS: Record<string, string> = {
+    ok: 'text-emerald-600', warning: 'text-amber-600 font-semibold', danger: 'text-rose-600 font-semibold', muted: 'text-slate-400',
+};
+
+/** Per-entity monitoring toggle + "next alert" indicator; "—" for non-date items. */
+function MonitoringToggleCell({ dateBearing, rawExpiry, cfg, onToggle }: {
+    dateBearing: boolean;
+    rawExpiry: string | null;
+    cfg: MonitoringConfig;
+    onToggle: (enabled: boolean) => void;
+}) {
+    if (!dateBearing) return <span className="text-[11px] text-slate-300">—</span>;
+    const ind = nextAlertIndicator(rawExpiry, cfg);
+    return (
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <Toggle checked={cfg.enabled} onCheckedChange={(v) => onToggle(v)} />
+            <span className={`text-[11px] whitespace-nowrap ${MON_TONE_CLASS[ind.tone]}`}>{ind.text}</span>
+        </div>
+    );
 }
 
 interface NewComplianceDocumentsPageProps {
@@ -284,9 +308,9 @@ function ComplianceDetail({ scope, assignment, viewMode, entityId, contextHeader
             </div>
 
             {viewMode === 'Compliance' ? (
-                <KeyNumbersCard keyNumbers={keyNumbers} scope={scope} entityId={entityId} />
+                <KeyNumbersCard keyNumbers={keyNumbers} scope={scope} entityId={entityId} monitorScopeId={entityId ?? assignment.carrierId} />
             ) : (
-                <DocumentsCard documents={documents} entityId={entityId} />
+                <DocumentsCard documents={documents} entityId={entityId} monitorScopeId={entityId ?? assignment.carrierId} />
             )}
         </>
     );
@@ -338,14 +362,25 @@ function CardTabs<T extends string>({ tabs, active, onChange }: {
 // ─────────────────────────────────────────────────────────────────────────
 
 function KeyNumbersCard({
-    keyNumbers, scope, entityId,
+    keyNumbers, scope, entityId, monitorScopeId,
 }: {
     keyNumbers: KeyNumberRow[];
     scope: 'Carrier' | 'Asset' | 'Driver';
     entityId?: string;
+    monitorScopeId: string;
 }) {
     const { keyNumberValues, updateKeyNumberValue, documentUploads, uploadDocument } = useAppData();
     const [search, setSearch] = useState("");
+
+    // Per-entity monitoring (same store as the Settings/Admin pages, keyed by carrier/entity id).
+    const [mon, setMon] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs(monitorScopeId));
+    useEffect(() => { setMon(loadMonitoringConfigs(monitorScopeId)); }, [monitorScopeId]);
+    const cfgFor = (id: string): MonitoringConfig => mon[monitorItemKey('kn', id)] ?? DEFAULT_MONITORING;
+    const toggleMon = (kn: KeyNumberRow, enabled: boolean) => {
+        const linked = DOC_IDS_BY_KN_ID.get(kn.id)?.[0];
+        setEntityMonitoring(monitorScopeId, 'kn', kn.id, { ...cfgFor(kn.id), enabled }, linked);
+        setMon(loadMonitoringConfigs(monitorScopeId));
+    };
     const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'All'>('All');
     // The form handles value + supporting-document upload; one Edit action per row.
     const [editRow, setEditRow] = useState<KeyNumberRow | null>(null);
@@ -418,13 +453,14 @@ function KeyNumbersCard({
                             <Th>Value</Th>
                             <Th>Details</Th>
                             <Th>Status</Th>
+                            <Th>Monitoring</Th>
                             <Th className="text-right pr-5">Actions</Th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="px-5 py-12 text-center text-sm text-slate-500">
+                                <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">
                                     {search
                                         ? "No key numbers match your search."
                                         : "No key numbers enabled for this carrier at this scope."}
@@ -437,6 +473,8 @@ function KeyNumbersCard({
                                 value={valueFor(k.id)}
                                 uploadedDocs={uploadedDocsFor(k.id)}
                                 onEdit={() => setEditRow(k)}
+                                monCfg={cfgFor(k.id)}
+                                onToggleMon={(v) => toggleMon(k, v)}
                             />
                         ))}
                     </tbody>
@@ -459,12 +497,14 @@ function KeyNumbersCard({
 }
 
 function KeyNumberTr({
-    kn, value, uploadedDocs = [], onEdit,
+    kn, value, uploadedDocs = [], onEdit, monCfg, onToggleMon,
 }: {
     kn: KeyNumberRow;
     value?: KeyNumberValue;
     uploadedDocs?: UploadedDocument[];
     onEdit: () => void;
+    monCfg: MonitoringConfig;
+    onToggleMon: (enabled: boolean) => void;
 }) {
     const uploadedDoc = uploadedDocs[0];
     const hasValue = !!value?.value?.trim();
@@ -508,6 +548,14 @@ function KeyNumberTr({
             <td className="px-5 py-3 align-top">
                 <StatusPill status={status} />
             </td>
+            <td className="px-5 py-3 align-top">
+                <MonitoringToggleCell
+                    dateBearing={!!(kn.hasExpiry || kn.issueDateRequired)}
+                    rawExpiry={value?.expiryDate ?? null}
+                    cfg={monCfg}
+                    onToggle={onToggleMon}
+                />
+            </td>
             <td className="px-5 py-3 align-top text-right pr-5">
                 <button
                     type="button"
@@ -543,11 +591,24 @@ function DocumentLinkage({ doc }: { doc: DocumentRow }) {
     return <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Link2Off size={10} /> Not linked</span>;
 }
 
-function DocumentsCard({ documents, entityId }: { documents: DocumentRow[]; entityId?: string }) {
+function DocumentsCard({ documents, entityId, monitorScopeId }: { documents: DocumentRow[]; entityId?: string; monitorScopeId: string }) {
     const { documentUploads, uploadDocument } = useAppData();
     const [search, setSearch] = useState("");
     const [activeCategory, setActiveCategory] = useState<string>('All');
     const [uploadRow, setUploadRow] = useState<DocumentRow | null>(null);
+
+    // Per-entity monitoring — shared with the linked key number (same store + scope).
+    const [mon, setMon] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs(monitorScopeId));
+    useEffect(() => { setMon(loadMonitoringConfigs(monitorScopeId)); }, [monitorScopeId]);
+    const docCfgFor = (id: string): MonitoringConfig =>
+        mon[monitorItemKey('doc', id)]
+        ?? (KN_ID_BY_DOC_ID.get(id) ? mon[monitorItemKey('kn', KN_ID_BY_DOC_ID.get(id)!)] : undefined)
+        ?? DEFAULT_MONITORING;
+    const toggleDocMon = (d: DocumentRow, enabled: boolean) => {
+        const linkedKn = KN_ID_BY_DOC_ID.get(d.id);
+        setEntityMonitoring(monitorScopeId, 'doc', d.id, { ...docCfgFor(d.id), enabled }, linkedKn);
+        setMon(loadMonitoringConfigs(monitorScopeId));
+    };
 
     const uploadedFor = (id: string): UploadedDocument[] =>
         documentUploads[uploadKey('doc', id, entityId)] ?? [];
@@ -602,13 +663,14 @@ function DocumentsCard({ documents, entityId }: { documents: DocumentRow[]; enti
                             <Th>Document</Th>
                             <Th>Compliance Data</Th>
                             <Th>Status</Th>
+                            <Th>Monitoring</Th>
                             <Th className="text-right pr-5">Actions</Th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.length === 0 ? (
                             <tr>
-                                <td colSpan={4} className="px-5 py-12 text-center text-sm text-slate-500">
+                                <td colSpan={5} className="px-5 py-12 text-center text-sm text-slate-500">
                                     {search
                                         ? "No documents match your search."
                                         : "No documents enabled for this carrier at this scope."}
@@ -659,6 +721,14 @@ function DocumentsCard({ documents, entityId }: { documents: DocumentRow[]; enti
                                     </td>
                                     <td className="px-5 py-3 align-top">
                                         <StatusPill status={status} />
+                                    </td>
+                                    <td className="px-5 py-3 align-top">
+                                        <MonitoringToggleCell
+                                            dateBearing={!!(d.expiryRequired || d.issueDateRequired)}
+                                            rawExpiry={u?.expiryDate ?? null}
+                                            cfg={docCfgFor(d.id)}
+                                            onToggle={(v) => toggleDocMon(d, v)}
+                                        />
                                     </td>
                                     <td className="px-5 py-3 align-top text-right pr-5">
                                         <button

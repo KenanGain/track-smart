@@ -33,6 +33,8 @@ import {
     LayoutTemplate,
     Crown,
     Gauge,
+    Bell,
+    Truck,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -54,7 +56,10 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         key: "service-profile",
         label: "Service Profile",
         icon: Briefcase,
-        path: "/service-profile",
+        children: [
+            { key: "service-profile-profile", label: "Profile", icon: Briefcase, path: "/service-profile" },
+            { key: "service-profile-compliance", label: "Compliance Setup", icon: ShieldCheck, path: "/service-profile/compliance-setup" },
+        ],
     },
 
     {
@@ -203,6 +208,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "admin-users", label: "Users", icon: Users, path: "/admin/users" },
             { key: "admin-roles", label: "Roles", icon: ShieldAlert, path: "/admin/roles" },
             { key: "admin-permissions", label: "Permissions", icon: Lock, path: "/admin/permissions" },
+            { key: "admin-compliance-setup", label: "Carrier Profile Configuration", icon: ShieldCheck, path: "/admin/carrier-compliance-setup" },
+            { key: "admin-monitoring-notifications", label: "Monitoring & Notifications", icon: Bell, path: "/admin/monitoring-notifications" },
             { key: "admin-audit-log", label: "Audit Log", icon: History, path: "/admin/audit-log" },
         ],
     },
@@ -215,11 +222,13 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "super-admin-dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/admin/dashboard" },
             // ── Catalog (source of truth for what the system tracks) ──
             { key: "super-admin-compliance-documents", label: "Compliance and Documents", icon: FileText, path: "/admin/compliance-and-documents" },
+            { key: "super-admin-compliance-templates", label: "Compliance Templates", icon: LayoutTemplate, path: "/admin/compliance-templates" },
             // ── Form & pipeline authoring (built on top of the catalog) ──
             { key: "super-admin-docu-form", label: "Docu/Form Generator", icon: FileSignature, path: "/admin/docu-form" },
             { key: "super-admin-templates", label: "Hiring Templates (ATS)", icon: LayoutTemplate, path: "/admin/templates" },
-            // ── Per-carrier assignment (the end of the pipeline) ──
-            { key: "super-admin-carrier-compliance", label: "Carrier Compliance Setup", icon: Activity, path: "/admin/carrier-compliance-setup" },
+            // ── Hierarchy configuration (Super Admin defines, then cascades down) ──
+            { key: "super-admin-service-profile-compliance", label: "Service Profile Configuration", icon: Building2, path: "/admin/service-profile-compliance" },
+            { key: "super-admin-carrier-profile-config", label: "Carrier Profile Configuration", icon: Truck, path: "/admin/carrier-profile-configuration" },
         ],
     },
 ];

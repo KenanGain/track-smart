@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import {
     newLicenseEntry, newAddressEntry, newDisqualificationEntry, newAccidentEntry,
     newViolationEntry, newDrivingExperienceEntry, newEmploymentEntry, newEducationEntry,
-    emptyDocumentUploadValue, loadApplicationForms,
+    emptyDocumentUploadValue, loadApplicationForms, chunkFieldRows,
     DISQUALIFICATION_OFFENCE_OPTIONS, ACCIDENT_NATURE_OPTIONS, VIOLATION_PENALTY_OPTIONS,
     EQUIPMENT_CLASS_OPTIONS, FREIGHT_TYPE_OPTIONS, DRIVING_REGION_OPTIONS,
     POSITION_HELD_OPTIONS, HIGHEST_EDUCATION_OPTIONS,
@@ -1155,10 +1155,11 @@ function EmploymentEntryModal({ initial, onSave, onClose }: {
  *
  * If no DocumentType is linked, falls back to a simple drop-zone file picker.
  */
-function DocumentUploadControl({ docType, value, onChange }: {
+function DocumentUploadControl({ docType, value, onChange, metaPosition = 'below' }: {
     docType: DocumentType | undefined;
     value: FormDocumentUploadValue;
     onChange: (v: FormDocumentUploadValue) => void;
+    metaPosition?: 'above' | 'below';
 }) {
     const up = (p: Partial<FormDocumentUploadValue>) => onChange({ ...value, ...p });
     const files = value.files ?? [];
@@ -1178,7 +1179,7 @@ function DocumentUploadControl({ docType, value, onChange }: {
     );
 
     return (
-        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
             {/* Drop zone */}
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-4 py-5 text-center hover:bg-blue-50/60">
                 <UploadCloud size={28} className="mb-2 text-slate-300" />
@@ -1225,9 +1226,12 @@ function DocumentUploadControl({ docType, value, onChange }: {
                 </div>
             )}
 
-            {/* Type-driven metadata inputs */}
+            {/* Type-driven metadata inputs — above or below the upload per the field setting */}
             {showMeta && (
-                <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
+                <div className={cn(
+                    "grid grid-cols-2 gap-3 border-slate-200",
+                    metaPosition === 'above' ? "order-first border-b pb-3" : "border-t pt-3",
+                )}>
                     {docType?.issueCountryRequired && (
                         <div className="col-span-2">
                             <label className="mb-1 block text-[11px] font-semibold text-slate-700">
@@ -1673,6 +1677,7 @@ function FieldControl({ field, value, onChange }: {
             return (
                 <DocumentUploadControl
                     docType={docType}
+                    metaPosition={field.metaPosition}
                     value={upload}
                     onChange={(v) => onChange(v as FieldValue)}
                 />
@@ -1868,9 +1873,21 @@ export function FormBody({ fields, values, setValue }: {
     }
 
     const topLevel = visible.filter((f) => !f.showWhen);
+    const rows = chunkFieldRows(topLevel, (f) => (dependentsByController.get(f.id)?.length ?? 0) > 0);
     return (
         <div className="space-y-5">
-            {topLevel.map((f) => {
+            {rows.map((row) => {
+                // Side-by-side pair: two half-width fields, neither has dependents.
+                if (row.length === 2) {
+                    return (
+                        <div key={row[0].id} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                            {row.map((f) => (
+                                <FieldBlock key={f.id} field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
+                            ))}
+                        </div>
+                    );
+                }
+                const f = row[0];
                 const deps = dependentsByController.get(f.id) ?? [];
                 return (
                     <div key={f.id}>

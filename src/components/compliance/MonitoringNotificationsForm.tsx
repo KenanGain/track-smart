@@ -22,7 +22,7 @@ export function MonitoringNotificationsForm({ value, onChange }: {
     const set = (patch: Partial<MonitoringConfig>) => onChange({ ...value, ...patch });
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-5">
+        <div className="space-y-5">
             {/* Header + enable toggle */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -76,9 +76,9 @@ export function MonitoringNotificationsForm({ value, onChange }: {
                     <div className="space-y-5">
                         <div className="space-y-2">
                             <label className="text-xs font-semibold uppercase tracking-wider text-slate-700">Notification Reminders</label>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-wrap gap-x-4 gap-y-2">
                                 {REMINDER_DAYS.map(d => (
-                                    <label key={d} className="flex cursor-pointer items-center gap-2">
+                                    <label key={d} className="flex cursor-pointer items-center gap-2 whitespace-nowrap">
                                         <input
                                             type="checkbox"
                                             checked={!!value.reminders[d]}
@@ -97,7 +97,6 @@ export function MonitoringNotificationsForm({ value, onChange }: {
                                 {([
                                     { id: 'email', label: 'Email' },
                                     { id: 'inApp', label: 'In-App' },
-                                    { id: 'sms', label: 'SMS' },
                                 ] as { id: keyof MonitoringConfig['channels']; label: string }[]).map(c => (
                                     <label key={c.id} className="flex cursor-pointer items-center gap-2">
                                         <input

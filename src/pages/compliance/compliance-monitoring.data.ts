@@ -32,22 +32,36 @@ export function monitorItemKey(kind: 'kn' | 'doc', id: string): string {
     return `${kind}:${id}`;
 }
 
-const STORAGE_KEY = 'ats:compliance-monitoring-v1';
+// Configs are scoped per entity (service-profile id at root, carrier/account id
+// in Admin) so each profile/carrier keeps its own monitoring template. Shape:
+// { [scopeId]: { [itemKey]: MonitoringConfig } }. An unset item falls back to
+// DEFAULT_MONITORING at the call site ("seeded from root").
+const STORAGE_KEY = 'ats:compliance-monitoring-v2';
 
-export function loadMonitoringConfigs(): Record<string, MonitoringConfig> {
+type ScopedStore = Record<string, Record<string, MonitoringConfig>>;
+
+function loadStore(): ScopedStore {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
-        return typeof parsed === 'object' && parsed ? parsed as Record<string, MonitoringConfig> : {};
+        return typeof parsed === 'object' && parsed ? parsed as ScopedStore : {};
     } catch {
         return {};
     }
 }
 
-export function saveMonitoringConfigs(configs: Record<string, MonitoringConfig>): void {
+/** Load the monitoring config map for one scope (service-profile / carrier id). */
+export function loadMonitoringConfigs(scopeId: string): Record<string, MonitoringConfig> {
+    return loadStore()[scopeId] ?? {};
+}
+
+/** Persist the monitoring config map for one scope, leaving other scopes intact. */
+export function saveMonitoringConfigs(scopeId: string, configs: Record<string, MonitoringConfig>): void {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
+        const store = loadStore();
+        store[scopeId] = configs;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
     } catch {
         /* ignore */
     }

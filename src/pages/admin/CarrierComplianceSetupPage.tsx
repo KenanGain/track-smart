@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     Network, Building2, Truck, User, ShieldAlert, FileText, Search, Filter,
-    ChevronDown, Link2, Check, RotateCcw, CheckCircle2, Circle,
-    LayoutTemplate, Plus, Trash2, Lock,
+    ChevronDown, ChevronLeft, ChevronRight, Link2, Check, RotateCcw, CheckCircle2, Circle,
+    LayoutTemplate, Lock, Pencil, X, Save, Crown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
@@ -14,11 +14,15 @@ import {
 } from './ComplianceAndDocumentsPage';
 import {
     loadCarrierAssignment, saveCarrierAssignment, applyToggle, applyBulk, defaultAssignmentFor,
-    loadTemplates, upsertTemplate, deleteTemplate, applyTemplate, templateMatches,
+    loadTemplates, selectedTemplateIds, applyTemplates, stackTemplateOnto, mergeTemplateMonitoring,
     DOC_IDS_BY_KN_ID, KN_ID_BY_DOC_ID, isSystemFormDoc,
-    type CarrierComplianceAssignment, type ComplianceTemplate,
+    loadHandover, setHandover as persistHandover,
+    type CarrierComplianceAssignment, type ComplianceTemplate, type TemplateHandover,
 } from './carrier-compliance.data';
-import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
+import { ACCOUNTS_DB, getAccountsByServiceProfileId } from '@/pages/accounts/accounts.data';
+import { loadMonitoringConfigs, saveMonitoringConfigs, monitorItemKey, reminderSummary, DEFAULT_MONITORING, type MonitoringConfig } from '@/pages/compliance/compliance-monitoring.data';
+import { MonitoringNotificationsForm } from '@/components/compliance/MonitoringNotificationsForm';
+import { SERVICE_PROFILES_DB } from '@/pages/accounts/service-profiles.data';
 import {
     loadTemplates as loadHiringTemplates,
     type DriverHiringTemplate,
@@ -33,7 +37,7 @@ import {
  * here — that's the Compliance and Documents page.
  */
 
-type PageMode = 'compliance' | 'documents' | 'templates';
+type PageMode = 'compliance' | 'documents' | 'monitoring' | 'assigned' | 'templates';
 
 const RELATED_TO_ICON: Record<RelatedToScope, React.ComponentType<{ size?: number; className?: string }>> = {
     Carrier: Building2,
@@ -97,424 +101,8 @@ function CascadeToast({ messages, onDismiss }: {
     );
 }
 
-// ── Template manager modal — root-level template library ──────────────
-
-/**
- * Two-pane editor:
- *   • Left rail  — list of all templates (seeded + custom). Click to select.
- *                  Plus an "+ New blank template" button at the bottom.
- *   • Right pane — selected template's metadata (name, description) plus
- *                  two collapsible sections of Key Number / Document
- *                  checkboxes. Edits save back to the template's storage
- *                  immediately so the picker on the carrier page stays in
- *                  sync. Seeded templates are read-only.
- */
-function TemplateManagerModal({
-    templates, appliedTemplateId,
-    onApply, onSave, onDelete, onClose,
-}: {
-    templates: ComplianceTemplate[];
-    appliedTemplateId?: string;
-    onApply: (t: ComplianceTemplate) => void;
-    onSave: (t: ComplianceTemplate) => void;
-    onDelete: (t: ComplianceTemplate) => void;
-    onClose: () => void;
-}) {
-    const [selectedId, setSelectedId] = useState<string | null>(templates[0]?.id ?? null);
-    const selected = templates.find(t => t.id === selectedId) ?? null;
-    const readOnly = !!selected?.isSeed;
-
-    // Local draft so the user can change name/desc without committing per keystroke.
-    const [draft, setDraft] = useState<ComplianceTemplate | null>(selected);
-    useEffect(() => { setDraft(selected); }, [selected?.id]);
-
-    const dirty = !!draft && !!selected && (
-        draft.name !== selected.name
-        || (draft.description ?? '') !== (selected.description ?? '')
-        || draft.enabledKeyNumberIds.length !== selected.enabledKeyNumberIds.length
-        || draft.enabledDocumentTypeIds.length !== selected.enabledDocumentTypeIds.length
-        || draft.enabledKeyNumberIds.some(id => !selected.enabledKeyNumberIds.includes(id))
-        || draft.enabledDocumentTypeIds.some(id => !selected.enabledDocumentTypeIds.includes(id))
-    );
-
-    const createBlank = () => {
-        const blank: ComplianceTemplate = {
-            id: `tmpl-${Math.random().toString(36).slice(2, 9)}`,
-            name: 'New Template',
-            description: '',
-            enabledKeyNumberIds: [],
-            enabledDocumentTypeIds: [],
-            isSeed: false,
-            updatedAt: new Date().toISOString().slice(0, 10),
-        };
-        onSave(blank);
-        setSelectedId(blank.id);
-        setDraft(blank);
-    };
-
-    const saveDraft = () => {
-        if (!draft) return;
-        onSave(draft);
-    };
-
-    const toggleKn = (knId: string, on: boolean) => {
-        if (!draft || readOnly) return;
-        const set = new Set(draft.enabledKeyNumberIds);
-        if (on) set.add(knId); else set.delete(knId);
-        setDraft({ ...draft, enabledKeyNumberIds: [...set] });
-    };
-    const toggleDoc = (docId: string, on: boolean) => {
-        if (!draft || readOnly) return;
-        const set = new Set(draft.enabledDocumentTypeIds);
-        if (on) set.add(docId); else set.delete(docId);
-        setDraft({ ...draft, enabledDocumentTypeIds: [...set] });
-    };
-
-    const [searchKn, setSearchKn] = useState('');
-    const [searchDoc, setSearchDoc] = useState('');
-    const knQ = searchKn.trim().toLowerCase();
-    const docQ = searchDoc.trim().toLowerCase();
-    const visibleKns = SEED_KEY_NUMBERS.filter(k => !knQ
-        || k.name.toLowerCase().includes(knQ)
-        || k.group.toLowerCase().includes(knQ));
-    const visibleDocs = DOCUMENTS.filter(d => !docQ
-        || d.name.toLowerCase().includes(docQ)
-        || d.scope.toLowerCase().includes(docQ));
-
-    return (
-        <div
-            role="dialog"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6"
-            onClick={onClose}
-        >
-            <div
-                className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
-                    <div>
-                        <h3 className="text-base font-bold text-slate-900">Compliance Templates</h3>
-                        <p className="mt-0.5 text-[12px] text-slate-500">
-                            Root-level presets. Define which Key Numbers and Documents each template enables, then apply them to carriers.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex flex-1 overflow-hidden">
-                    {/* Left rail — list */}
-                    <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-slate-50/40">
-                        <div className="flex-1 overflow-y-auto px-3 py-3">
-                            <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Built-in</div>
-                            <div className="space-y-1">
-                                {templates.filter(t => t.isSeed).map(t => (
-                                    <TemplateListItem
-                                        key={t.id}
-                                        template={t}
-                                        active={selectedId === t.id}
-                                        applied={appliedTemplateId === t.id}
-                                        onSelect={() => setSelectedId(t.id)}
-                                    />
-                                ))}
-                            </div>
-                            {templates.some(t => !t.isSeed) && (
-                                <>
-                                    <div className="mb-2 mt-4 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Custom</div>
-                                    <div className="space-y-1">
-                                        {templates.filter(t => !t.isSeed).map(t => (
-                                            <TemplateListItem
-                                                key={t.id}
-                                                template={t}
-                                                active={selectedId === t.id}
-                                                applied={appliedTemplateId === t.id}
-                                                onSelect={() => setSelectedId(t.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                        <div className="border-t border-slate-200 bg-white p-3">
-                            <Button size="sm" onClick={createBlank} className="w-full gap-1.5 bg-blue-600 text-white hover:bg-blue-700">
-                                <Plus size={14} /> New blank template
-                            </Button>
-                        </div>
-                    </aside>
-
-                    {/* Right pane — editor */}
-                    <section className="flex flex-1 flex-col overflow-hidden">
-                        {!draft ? (
-                            <div className="flex flex-1 items-center justify-center bg-slate-50/40 p-10 text-center">
-                                <div>
-                                    <LayoutTemplate size={28} className="mx-auto text-slate-300" />
-                                    <p className="mt-2 text-sm font-medium text-slate-600">Select a template to edit</p>
-                                    <p className="mt-1 text-[12px] text-slate-500">Or click <span className="font-semibold">+ New blank template</span> to start fresh.</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <>
-                                {/* Metadata */}
-                                <div className="border-b border-slate-200 px-6 py-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0 flex-1">
-                                            <div className="mb-2 flex items-center gap-2">
-                                                {draft.isSeed && (
-                                                    <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                                                        <Lock size={10} /> Built-in (read-only)
-                                                    </span>
-                                                )}
-                                                {appliedTemplateId === draft.id && (
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                                                        <Check size={10} /> Currently applied
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <input
-                                                value={draft.name}
-                                                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                                                disabled={readOnly}
-                                                placeholder="Template name"
-                                                className="block w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-base font-bold text-slate-900 hover:border-slate-200 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-default disabled:hover:border-transparent"
-                                            />
-                                            <textarea
-                                                value={draft.description ?? ''}
-                                                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                                                disabled={readOnly}
-                                                placeholder="Optional description — when to use this template"
-                                                rows={2}
-                                                className="mt-1 block w-full resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[12px] text-slate-500 hover:border-slate-200 focus:border-blue-500 focus:bg-white focus:text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-default disabled:hover:border-transparent"
-                                            />
-                                        </div>
-                                        <div className="flex shrink-0 items-center gap-1.5">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => onApply(draft)}
-                                                className="gap-1.5"
-                                            >
-                                                Apply to carrier
-                                            </Button>
-                                            {!draft.isSeed && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onDelete(draft)}
-                                                    className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                                                    title="Delete template"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                                        <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700">
-                                            {draft.enabledKeyNumberIds.length} of {SEED_KEY_NUMBERS.length} KN
-                                        </span>
-                                        <span className="inline-flex items-center gap-1 rounded bg-violet-50 px-1.5 py-0.5 font-semibold text-violet-700">
-                                            {draft.enabledDocumentTypeIds.length} of {DOCUMENTS.length} Docs
-                                        </span>
-                                    </p>
-                                </div>
-
-                                {/* Two columns of picker lists */}
-                                <div className="flex flex-1 overflow-hidden">
-                                    {/* KN column */}
-                                    <div className="flex flex-1 flex-col overflow-hidden border-r border-slate-200">
-                                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/40 px-4 py-2.5">
-                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Key Numbers</p>
-                                            <button
-                                                type="button"
-                                                disabled={readOnly}
-                                                onClick={() => setDraft({ ...draft, enabledKeyNumberIds: SEED_KEY_NUMBERS.map(k => k.id) })}
-                                                className="text-[11px] font-semibold text-blue-600 hover:underline disabled:text-slate-400 disabled:no-underline"
-                                            >
-                                                Select all
-                                            </button>
-                                        </div>
-                                        <div className="border-b border-slate-100 px-4 py-2">
-                                            <div className="relative">
-                                                <Search size={13} className="pointer-events-none absolute left-2.5 top-2 text-slate-400" />
-                                                <input
-                                                    value={searchKn}
-                                                    onChange={(e) => setSearchKn(e.target.value)}
-                                                    placeholder="Search key numbers…"
-                                                    className="h-8 w-full rounded-md border border-slate-300 bg-white pl-8 pr-2 text-[12px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto">
-                                            {KEY_NUMBER_GROUPS.map(g => {
-                                                const inGroup = visibleKns.filter(k => k.group === g);
-                                                if (inGroup.length === 0) return null;
-                                                return (
-                                                    <div key={g}>
-                                                        <p className="sticky top-0 z-10 bg-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                            {g}
-                                                        </p>
-                                                        {inGroup.map(k => {
-                                                            const on = draft.enabledKeyNumberIds.includes(k.id);
-                                                            return (
-                                                                <label
-                                                                    key={k.id}
-                                                                    className={cn(
-                                                                        "flex cursor-pointer items-center gap-2 border-t border-slate-100 px-4 py-1.5 text-[13px]",
-                                                                        on ? "bg-white" : "bg-slate-50/40",
-                                                                        readOnly && "cursor-default",
-                                                                    )}
-                                                                >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={on}
-                                                                        disabled={readOnly}
-                                                                        onChange={(e) => toggleKn(k.id, e.target.checked)}
-                                                                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
-                                                                    />
-                                                                    <span className={cn("flex-1 truncate", on ? "text-slate-800" : "text-slate-500")}>
-                                                                        {k.name}
-                                                                    </span>
-                                                                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                                                                        {k.relatedTo}
-                                                                    </span>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Docs column */}
-                                    <div className="flex flex-1 flex-col overflow-hidden">
-                                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/40 px-4 py-2.5">
-                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Documents</p>
-                                            <button
-                                                type="button"
-                                                disabled={readOnly}
-                                                onClick={() => setDraft({ ...draft, enabledDocumentTypeIds: DOCUMENTS.map(d => d.id) })}
-                                                className="text-[11px] font-semibold text-blue-600 hover:underline disabled:text-slate-400 disabled:no-underline"
-                                            >
-                                                Select all
-                                            </button>
-                                        </div>
-                                        <div className="border-b border-slate-100 px-4 py-2">
-                                            <div className="relative">
-                                                <Search size={13} className="pointer-events-none absolute left-2.5 top-2 text-slate-400" />
-                                                <input
-                                                    value={searchDoc}
-                                                    onChange={(e) => setSearchDoc(e.target.value)}
-                                                    placeholder="Search documents…"
-                                                    className="h-8 w-full rounded-md border border-slate-300 bg-white pl-8 pr-2 text-[12px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto">
-                                            {(['carrier','asset','driver','accidents','violation'] as Exclude<DocumentsSubTabId,'all'>[]).map(scope => {
-                                                const inScope = visibleDocs.filter(d => d.scope === scope);
-                                                if (inScope.length === 0) return null;
-                                                return (
-                                                    <div key={scope}>
-                                                        <p className="sticky top-0 z-10 bg-white px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                                            {scope}
-                                                        </p>
-                                                        {inScope.map(d => {
-                                                            const on = draft.enabledDocumentTypeIds.includes(d.id);
-                                                            return (
-                                                                <label
-                                                                    key={d.id}
-                                                                    className={cn(
-                                                                        "flex cursor-pointer items-center gap-2 border-t border-slate-100 px-4 py-1.5 text-[13px]",
-                                                                        on ? "bg-white" : "bg-slate-50/40",
-                                                                        readOnly && "cursor-default",
-                                                                    )}
-                                                                >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={on}
-                                                                        disabled={readOnly}
-                                                                        onChange={(e) => toggleDoc(d.id, e.target.checked)}
-                                                                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
-                                                                    />
-                                                                    <span className={cn("flex-1 truncate", on ? "text-slate-800" : "text-slate-500")}>
-                                                                        {d.name}
-                                                                    </span>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </section>
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-white px-6 py-3">
-                    <span className="text-[11px] text-slate-500">
-                        {dirty ? <span className="font-semibold text-amber-600">Unsaved changes</span> : 'All changes saved.'}
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={onClose}>Close</Button>
-                        {draft && !readOnly && (
-                            <Button
-                                disabled={!dirty || !draft.name.trim()}
-                                onClick={saveDraft}
-                                className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
-                            >
-                                <Check className="h-4 w-4" /> Save Template
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/** Compact row used in the left rail of the manager modal. */
-function TemplateListItem({ template, active, applied, onSelect }: {
-    template: ComplianceTemplate;
-    active: boolean;
-    applied: boolean;
-    onSelect: () => void;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onSelect}
-            className={cn(
-                "flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors",
-                active ? "bg-blue-100 ring-1 ring-blue-300" : "hover:bg-slate-100",
-            )}
-        >
-            <LayoutTemplate
-                size={14}
-                className={cn("mt-0.5 shrink-0", active ? "text-blue-600" : "text-slate-400")}
-            />
-            <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                    <span className={cn("truncate text-[13px] font-semibold", active ? "text-blue-900" : "text-slate-800")}>
-                        {template.name}
-                    </span>
-                    {template.isSeed && <Lock size={10} className="shrink-0 text-slate-400" />}
-                </span>
-                <span className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500">
-                    <span>{template.enabledKeyNumberIds.length} KN</span>
-                    <span>·</span>
-                    <span>{template.enabledDocumentTypeIds.length} Docs</span>
-                    {applied && <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 font-semibold text-blue-700"><Check size={9} /> Applied</span>}
-                </span>
-            </span>
-        </button>
-    );
-}
-
 /** Pretty label for a hiring-template formType id (e.g. `hiring-driver` → `Hiring Driver`). */
-function formTypeLabel(id: string): string {
+export function formTypeLabel(id: string): string {
     return id
         .split('-')
         .map(s => s.charAt(0).toUpperCase() + s.slice(1))
@@ -529,7 +117,7 @@ function formTypeLabel(id: string): string {
  * template is highlighted; drift surfaces inline. Useful when the admin
  * wants to see all options at once instead of cycling the dropdown.
  */
-function TemplatesPanel({
+export function TemplatesPanel({
     hiringTemplates, formType, formTypeOptions, onFormTypeChange,
     enabledHiringIds, onToggleHiring, onBulkHiring,
 }: {
@@ -546,15 +134,9 @@ function TemplatesPanel({
     const allOff = enabledSet.size === 0;
 
     return (
-        <div className="space-y-6 px-6 py-5">
+        <div className="px-6 py-5">
             {/* ── Hiring Templates (ATS pipelines) ────────────────────────── */}
             <section className="space-y-4">
-                <div className="flex items-center gap-2">
-                    <span className="h-5 w-1 rounded-full bg-violet-500" />
-                    <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">Hiring Templates</h2>
-                    <span className="text-[11px] text-slate-500">— enable which ATS pipelines this carrier can run</span>
-                </div>
-
                 {/* Form type filter + bulk actions */}
                 <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                     <div className="flex flex-col">
@@ -613,17 +195,17 @@ function TemplatesPanel({
                                         onClick={() => onToggleHiring(t.id, !enabled)}
                                         className={cn(
                                             "group relative flex cursor-pointer items-center gap-3 py-3 pl-5 pr-4 transition-colors",
-                                            enabled ? "bg-white hover:bg-violet-50/40" : "bg-slate-50/60 hover:bg-slate-100/70",
+                                            enabled ? "bg-white hover:bg-blue-50/40" : "bg-slate-50/60 hover:bg-slate-100/70",
                                         )}
                                     >
                                         {/* Left accent bar — enabled rows only */}
                                         <span className={cn(
                                             "absolute inset-y-0 left-0 w-1",
-                                            enabled ? "bg-violet-500" : "bg-transparent",
+                                            enabled ? "bg-blue-500" : "bg-transparent",
                                         )} />
                                         <span className={cn(
                                             "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                                            enabled ? "bg-violet-50 text-violet-600" : "bg-slate-100 text-slate-400",
+                                            enabled ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-400",
                                         )}>
                                             <LayoutTemplate size={15} />
                                         </span>
@@ -799,10 +381,92 @@ function RelatedToFilterRow({ value, counts, onChange }: {
 
 // ── Key Numbers panel ─────────────────────────────────────────────────
 
-function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
+/** Inline monitoring controls passed to the assignment tables (combined view). */
+type RowMonitoring = {
+    cfgFor: (key: string) => MonitoringConfig;
+    onToggle: (key: string, on: boolean) => void;
+    onEdit: (key: string, name: string) => void;
+};
+
+/** A compact monitoring cell — toggle + reminder summary + edit pencil; "—" when the item carries no date. */
+function MonitoringCell({ itemKey, name, dateBearing, mon }: {
+    itemKey: string; name: string; dateBearing: boolean; mon: RowMonitoring;
+}) {
+    if (!dateBearing) return <span className="text-[12px] text-slate-300">—</span>;
+    const cfg = mon.cfgFor(itemKey);
+    return (
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <Toggle checked={cfg.enabled} onCheckedChange={(v) => mon.onToggle(itemKey, v)} />
+            {cfg.enabled
+                ? <span className="text-[11px] text-slate-500">{reminderSummary(cfg)}</span>
+                : <span className="text-[11px] text-slate-400">Off</span>}
+            <button type="button" onClick={() => mon.onEdit(itemKey, name)} title="Edit monitoring settings"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">
+                <Pencil size={13} />
+            </button>
+        </div>
+    );
+}
+
+// ── Shared list pagination ────────────────────────────────────────────
+
+const PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
+
+/** Bottom pagination footer with a rows-per-page selector (5 → 100). */
+function TablePagination({ total, page, perPage, onPageChange, onPerPageChange }: {
+    total: number;
+    page: number;
+    perPage: number;
+    onPageChange: (p: number) => void;
+    onPerPageChange: (n: number) => void;
+}) {
+    const pageCount = Math.max(1, Math.ceil(total / perPage));
+    const safePage = Math.min(Math.max(1, page), pageCount);
+    const start = total === 0 ? 0 : (safePage - 1) * perPage + 1;
+    const end = Math.min(safePage * perPage, total);
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/40 px-4 py-2.5">
+            <div className="flex items-center gap-2 text-[12px] text-slate-500">
+                <span className="font-medium">Rows per page</span>
+                <select
+                    value={perPage}
+                    onChange={(e) => onPerPageChange(Number(e.target.value))}
+                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12px] font-semibold text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                    {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <span className="ml-1">
+                    Showing <span className="font-semibold text-slate-700">{start}–{end}</span> of {total}
+                </span>
+            </div>
+            <div className="flex items-center gap-1">
+                <button
+                    type="button"
+                    onClick={() => onPageChange(safePage - 1)}
+                    disabled={safePage <= 1}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                >
+                    <ChevronLeft size={14} /> Prev
+                </button>
+                <span className="px-2 text-[12px] font-medium text-slate-500">{safePage} / {pageCount}</span>
+                <button
+                    type="button"
+                    onClick={() => onPageChange(safePage + 1)}
+                    disabled={safePage >= pageCount}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                >
+                    Next <ChevronRight size={14} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring }: {
     enabledIds: Set<string>;
     onToggle: (id: string, enabled: boolean) => void;
     onBulk: (ids: string[], enable: boolean) => void;
+    monitoring?: RowMonitoring;
 }) {
     const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'all'>('all');
     const [query, setQuery] = useState('');
@@ -854,6 +518,12 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
     const activeRows = rows.filter(r => r.status === 'Active');
     const enabledInView = activeRows.filter(r => enabledIds.has(r.id)).length;
 
+    // Pagination (rows-per-page 5 → 100). Reset to page 1 when the view changes.
+    const [page, setPage] = useState(1);
+    const [perPage, setPerPage] = useState(10);
+    useEffect(() => { setPage(1); }, [activeGroup, relatedFilter, q, perPage]);
+    const pageRows = rows.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
+
     return (
         <div>
             <div className="border-b border-slate-100 bg-white px-6">
@@ -881,22 +551,23 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                             <tr>
-                                <th className="px-4 py-3 w-[42%]">Number Name</th>
-                                <th className="px-3 py-3 w-[15%]">Related To</th>
-                                <th className="px-3 py-3 w-[15%]">Status</th>
-                                <th className="px-3 py-3 w-[20%]">Linked Document</th>
+                                <th className="px-4 py-3 w-[34%]">Number Name</th>
+                                <th className="px-3 py-3 w-[12%]">Related To</th>
+                                <th className="px-3 py-3 w-[10%]">Status</th>
+                                <th className="px-3 py-3 w-[14%]">Linked Document</th>
+                                {monitoring && <th className="px-3 py-3 w-[22%]">Monitoring</th>}
                                 <th className="px-3 py-3 w-[8%] text-right">Enabled</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-12 text-center">
+                                    <td colSpan={monitoring ? 6 : 5} className="px-3 py-12 text-center">
                                         <p className="text-sm font-medium text-slate-700">No key numbers in this category</p>
                                         <p className="mt-1 text-[12px] text-slate-500">Try a different tab or clear the search.</p>
                                     </td>
                                 </tr>
-                            ) : rows.map(k => {
+                            ) : pageRows.map(k => {
                                 const RIcon = RELATED_TO_ICON[k.relatedTo];
                                 const cascadedDocs = DOC_IDS_BY_KN_ID.get(k.id) ?? [];
                                 const enabled = enabledIds.has(k.id);
@@ -956,6 +627,16 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
                                                 </span>
                                             )}
                                         </td>
+                                        {monitoring && (
+                                            <td className="px-3 py-3 align-top">
+                                                <MonitoringCell
+                                                    itemKey={monitorItemKey('kn', k.id)}
+                                                    name={k.name}
+                                                    dateBearing={!!(k.hasExpiry || k.issueDateRequired)}
+                                                    mon={monitoring}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex justify-end">
                                                 <Toggle
@@ -970,6 +651,9 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
                             })}
                         </tbody>
                     </table>
+                    {rows.length > 0 && (
+                        <TablePagination total={rows.length} page={page} perPage={perPage} onPageChange={setPage} onPerPageChange={setPerPage} />
+                    )}
                 </div>
             </div>
         </div>
@@ -980,10 +664,11 @@ function KeyNumbersAssignment({ enabledIds, onToggle, onBulk }: {
 
 const DOC_SUB_TAB_IDS: DocumentsSubTabId[] = ['all', 'carrier', 'asset', 'driver', 'accidents', 'violation'];
 
-function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
+export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }: {
     enabledIds: Set<string>;
     onToggle: (id: string, enabled: boolean) => void;
     onBulk: (ids: string[], enable: boolean) => void;
+    monitoring?: RowMonitoring;
 }) {
     const [activeScope, setActiveScope] = useState<DocumentsSubTabId>('all');
     const [query, setQuery] = useState('');
@@ -1028,6 +713,12 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
     // Mandatory system/form docs can't be bulk-disabled.
     const disableableRows = activeRows.filter(r => !isSystemFormDoc(r));
 
+    // Pagination (rows-per-page 5 → 100). Reset to page 1 when the view changes.
+    const [page, setPage] = useState(1);
+    const [perPage, setPerPage] = useState(10);
+    useEffect(() => { setPage(1); }, [activeScope, q, perPage]);
+    const pageRows = rows.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
+
     return (
         <div>
             <div className="border-b border-slate-100 bg-white px-6">
@@ -1054,22 +745,23 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                             <tr>
-                                <th className="px-4 py-3 w-[42%]">Document Name</th>
-                                <th className="px-3 py-3 w-[15%]">Category</th>
-                                <th className="px-3 py-3 w-[15%]">Status</th>
-                                <th className="px-3 py-3 w-[20%]">Linked Key Number</th>
+                                <th className="px-4 py-3 w-[34%]">Document Name</th>
+                                <th className="px-3 py-3 w-[12%]">Category</th>
+                                <th className="px-3 py-3 w-[10%]">Status</th>
+                                <th className="px-3 py-3 w-[14%]">Linked Key Number</th>
+                                {monitoring && <th className="px-3 py-3 w-[22%]">Monitoring</th>}
                                 <th className="px-3 py-3 w-[8%] text-right">Enabled</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-3 py-12 text-center">
+                                    <td colSpan={monitoring ? 6 : 5} className="px-3 py-12 text-center">
                                         <p className="text-sm font-medium text-slate-700">No documents in this scope</p>
                                         <p className="mt-1 text-[12px] text-slate-500">Try a different tab or clear the search.</p>
                                     </td>
                                 </tr>
-                            ) : rows.map(d => {
+                            ) : pageRows.map(d => {
                                 const ScopeIcon = SCOPE_ICON[d.scope];
                                 const linkedKn = KN_ID_BY_DOC_ID.get(d.id);
                                 // System/form docs are always enabled and locked on.
@@ -1160,6 +852,16 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
                                                 <span className="text-[12px] text-slate-300">—</span>
                                             )}
                                         </td>
+                                        {monitoring && (
+                                            <td className="px-3 py-3 align-top">
+                                                <MonitoringCell
+                                                    itemKey={monitorItemKey('doc', d.id)}
+                                                    name={d.name}
+                                                    dateBearing={!!(d.expiryRequired || d.issueDateRequired)}
+                                                    mon={monitoring}
+                                                />
+                                            </td>
+                                        )}
                                         <td className="px-3 py-3 align-top" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex items-center justify-end gap-1.5">
                                                 {mandatory && (
@@ -1187,49 +889,237 @@ function DocumentsAssignment({ enabledIds, onToggle, onBulk }: {
                             })}
                         </tbody>
                     </table>
+                    {rows.length > 0 && (
+                        <TablePagination total={rows.length} page={page} perPage={perPage} onPageChange={setPage} onPerPageChange={setPerPage} />
+                    )}
                 </div>
             </div>
         </div>
     );
 }
 
+// ── Combined Compliance & Documents view (with inline monitoring) ──────────
+
+/** Edit-monitoring modal — reuses the Monitoring & Notifications form. */
+function MonitoringEditModal({ name, value, onSave, onClose }: {
+    name: string; value: MonitoringConfig; onSave: (cfg: MonitoringConfig) => void; onClose: () => void;
+}) {
+    const [draft, setDraft] = useState<MonitoringConfig>(value);
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+            <div className="flex max-h-[90vh] w-full max-w-[680px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50/30 px-6 py-5">
+                    <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-slate-900">Monitoring Settings</h3>
+                        <p className="mt-0.5 truncate text-sm text-slate-500">{name}</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6">
+                    <MonitoringNotificationsForm value={draft} onChange={setDraft} />
+                </div>
+                <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button type="button" onClick={() => onSave(draft)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700">
+                        <Save className="h-4 w-4" /> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Workspace identity ────────────────────────────────────────────────
+//
+// The same shell backs three dedicated routes. A persistent, route-driven
+// badge + accent (NOT the in-page Level switch) makes it unmistakable which
+// page you're on: the Super Admin root authoring page, the service-profile
+// admin's own page, or the per-carrier admin page.
+
+type Workspace = 'root' | 'serviceProfile' | 'carrierAdmin';
+
+const WORKSPACE_THEME: Record<Workspace, {
+    crumb: string;
+    badge: string;
+    title: string;
+    desc: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    gradient: string;
+    chip: string;
+    stripe: string;
+    accentText: string;
+}> = {
+    root: {
+        crumb:   'Super Admin',
+        badge:   'Root · Source of truth',
+        title:   'Service Profile Configuration',
+        desc:    'Author the master compliance bundle that every carrier under this service profile inherits.',
+        icon:    Crown,
+        gradient:'from-violet-600 to-fuchsia-500',
+        chip:    'border-violet-200 bg-violet-50 text-violet-700',
+        stripe:  'border-l-violet-500 bg-violet-50/40',
+        accentText: 'text-violet-700',
+    },
+    serviceProfile: {
+        crumb:   'Service Profile',
+        badge:   'Service Profile · Your carriers',
+        title:   'Compliance Setup',
+        desc:    'Configure compliance for the carriers under your service profile — each can be fine-tuned individually.',
+        icon:    Building2,
+        gradient:'from-blue-600 to-cyan-500',
+        chip:    'border-blue-200 bg-blue-50 text-blue-700',
+        stripe:  'border-l-blue-500 bg-blue-50/40',
+        accentText: 'text-blue-700',
+    },
+    carrierAdmin: {
+        crumb:   'Admin',
+        badge:   'Carrier · Per-carrier overrides',
+        title:   'Carrier Profile Configuration',
+        desc:    'Enable or disable Key Numbers, Documents, Monitoring and Hiring Templates for a single carrier. Linked items cascade automatically.',
+        icon:    Network,
+        gradient:'from-emerald-600 to-teal-500',
+        chip:    'border-emerald-200 bg-emerald-50 text-emerald-700',
+        stripe:  'border-l-emerald-500 bg-emerald-50/40',
+        accentText: 'text-emerald-700',
+    },
+};
+
 // ── Page shell ────────────────────────────────────────────────────────
 
-export const CarrierComplianceSetupPage = () => {
-    const [pageMode, setPageMode] = useState<PageMode>('compliance');
-    const [carrierId, setCarrierId] = useState<string>(ACCOUNTS_DB[0]?.id ?? '');
+export const CarrierComplianceSetupPage = ({ mode = 'carrier', carrierLevelOnly = false }: {
+    mode?: 'carrier' | 'serviceProfile';
+    /** Service-profile page variant: Level switch is a single Carrier-Profile toggle,
+     *  defaulting INTO the carriers of the first service profile. */
+    carrierLevelOnly?: boolean;
+} = {}) => {
+    // Each route is locked to a single level (no in-page Level switch) so the
+    // hierarchy stays unambiguous: root = service-profile, the rest = carrier.
+    const [scope] = useState<'carrier' | 'serviceProfile'>(carrierLevelOnly ? 'carrier' : mode);
+    const isServiceProfile = scope === 'serviceProfile';
+
+    // Persistent route identity (does NOT change with the in-page Level switch):
+    // tells the user which dedicated page they're on.
+    const workspace: Workspace = carrierLevelOnly ? 'serviceProfile'
+        : mode === 'serviceProfile' ? 'root'
+        : 'carrierAdmin';
+    const ws = WORKSPACE_THEME[workspace];
+    const WsIcon = ws.icon;
+    // In Carrier Profile level, optionally scope the carrier list to one service
+    // profile so you can go through that profile's carriers ('' = all carriers).
+    const [profileFilterId, setProfileFilterId] = useState<string>(carrierLevelOnly ? (SERVICE_PROFILES_DB[0]?.id ?? '') : '');
+    // The configurable entities: carriers (per-carrier setup) or service
+    // profiles (a template provided to all related carrier profiles).
+    const entityList = useMemo(() => {
+        if (isServiceProfile) {
+            return SERVICE_PROFILES_DB.map(s => ({ id: s.id, name: s.dbaName || s.legalName }));
+        }
+        const carriers = profileFilterId ? getAccountsByServiceProfileId(profileFilterId) : ACCOUNTS_DB;
+        return carriers.map(c => ({ id: c.id, name: c.dbaName || c.legalName }));
+    }, [isServiceProfile, profileFilterId]);
+
+    // Carrier level exposes all tabs (default Compliance); service-profile level only templates.
+    const [pageMode, setPageMode] = useState<PageMode>((carrierLevelOnly || mode === 'carrier') ? 'compliance' : 'assigned');
+    const [carrierId, setCarrierId] = useState<string>(entityList[0]?.id ?? '');
     const [assignment, setAssignment] = useState<CarrierComplianceAssignment>(() => loadCarrierAssignment(carrierId));
     const [toastMessages, setToastMessages] = useState<string[]>([]);
     const [savedFlash, setSavedFlash] = useState(false);
-    const [templates, setTemplates] = useState<ComplianceTemplate[]>(() => loadTemplates());
+    const [templates] = useState<ComplianceTemplate[]>(() => loadTemplates());
     const [hiringTemplates] = useState<DriverHiringTemplate[]>(() => loadHiringTemplates());
     const [formType, setFormType] = useState<string>('hiring-driver');
-    const [showTemplateManager, setShowTemplateManager] = useState(false);
+    // Inline monitoring (shared by the Compliance and Documents tabs), scoped to the entity.
+    const [monConfigs, setMonConfigs] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs(carrierId));
+    const [editingMonitor, setEditingMonitor] = useState<{ key: string; name: string } | null>(null);
+    // Downstream: a template the user is assigning to the current carrier (awaiting override/add choice).
+    const [applyingTemplate, setApplyingTemplate] = useState<ComplianceTemplate | null>(null);
+    const monCfgFor = (key: string) => monConfigs[key] ?? DEFAULT_MONITORING;
+    const setMonCfg = (key: string, cfg: MonitoringConfig) =>
+        setMonConfigs(prev => { const next = { ...prev, [key]: cfg }; saveMonitoringConfigs(carrierId, next); return next; });
+    const rowMonitoring: RowMonitoring = {
+        cfgFor: monCfgFor,
+        onToggle: (key, on) => setMonCfg(key, { ...monCfgFor(key), enabled: on }),
+        onEdit: (key, name) => setEditingMonitor({ key, name }),
+    };
 
-    // Form-type options surface from the hiring-templates catalog so the
-    // dropdown stays in lockstep with what actually exists in the system.
+    // The service profile whose hand-over (provisioning) we read/write.
+    // Root scope → the selected service profile itself; carrier scope → its parent profile.
+    const governingSpId = isServiceProfile ? carrierId : ACCOUNTS_DB.find(c => c.id === carrierId)?.serviceProfileId;
+    // Hand-over is reactive state so toggling on the root page re-renders immediately.
+    const [handover, setHandoverState] = useState<TemplateHandover>(() =>
+        governingSpId ? loadHandover(governingSpId) : { complianceTemplateIds: [], hiringTemplateIds: [] });
+
+    const isRoot = workspace === 'root';
+
+    // Root is the SOURCE: it lists the FULL catalog and toggling provisions
+    // (hands over) to the service profile. Downstream pages only see what's
+    // already been handed over.
+    const availableTemplates = useMemo(
+        () => isRoot ? templates : templates.filter(t => handover.complianceTemplateIds.includes(t.id)),
+        [templates, handover, isRoot],
+    );
+    const availableHiring = useMemo(
+        () => isRoot ? hiringTemplates : hiringTemplates.filter(t => handover.hiringTemplateIds.includes(t.id)),
+        [hiringTemplates, handover, isRoot],
+    );
+
+    /** Provision/de-provision a compliance template to the service profile (root page). */
+    const toggleHandoverTemplate = (t: ComplianceTemplate, on: boolean) => {
+        if (!governingSpId) return;
+        const ids = on
+            ? [...new Set([...handover.complianceTemplateIds, t.id])]
+            : handover.complianceTemplateIds.filter(id => id !== t.id);
+        const next: TemplateHandover = { ...handover, complianceTemplateIds: ids };
+        persistHandover(governingSpId, next);
+        setHandoverState(next);
+        flashSaved();
+    };
+    /** Provision/de-provision a hiring template to the service profile (root page). */
+    const toggleHandoverHiring = (templateId: string, on: boolean) => {
+        if (!governingSpId) return;
+        const ids = on
+            ? [...new Set([...handover.hiringTemplateIds, templateId])]
+            : handover.hiringTemplateIds.filter(id => id !== templateId);
+        const next: TemplateHandover = { ...handover, hiringTemplateIds: ids };
+        persistHandover(governingSpId, next);
+        setHandoverState(next);
+        flashSaved();
+    };
+    const bulkHandoverHiring = (enable: boolean) => {
+        if (!governingSpId) return;
+        const next: TemplateHandover = { ...handover, hiringTemplateIds: enable ? availableHiring.map(t => t.id) : [] };
+        persistHandover(governingSpId, next);
+        setHandoverState(next);
+        flashSaved();
+    };
+
+    // Form-type options surface from the handed-over hiring templates.
     const formTypeOptions = useMemo(() => {
         const seen = new Set<string>();
         const out: { id: string; label: string }[] = [];
-        for (const t of hiringTemplates) {
+        for (const t of availableHiring) {
             if (seen.has(t.formType)) continue;
             seen.add(t.formType);
             out.push({ id: t.formType, label: formTypeLabel(t.formType) });
         }
         if (out.length === 0) out.push({ id: 'hiring-driver', label: 'Hiring Driver' });
         return out;
-    }, [hiringTemplates]);
+    }, [availableHiring]);
 
     const filteredHiringTemplates = useMemo(
-        () => hiringTemplates.filter(t => t.formType === formType),
-        [hiringTemplates, formType],
+        () => availableHiring.filter(t => t.formType === formType),
+        [availableHiring, formType],
     );
 
-    // Reload assignment when the carrier changes.
+    // Reload assignment + monitoring when the carrier changes.
     useEffect(() => {
         if (!carrierId) return;
         setAssignment(loadCarrierAssignment(carrierId));
+        setMonConfigs(loadMonitoringConfigs(carrierId));
     }, [carrierId]);
+
+    // Reload hand-over when the governing service profile changes.
+    useEffect(() => {
+        setHandoverState(governingSpId ? loadHandover(governingSpId) : { complianceTemplateIds: [], hiringTemplateIds: [] });
+    }, [governingSpId]);
 
     // Show a brief "Saved" check after each change.
     const flashSaved = () => {
@@ -1239,6 +1129,36 @@ export const CarrierComplianceSetupPage = () => {
 
     const enabledKnSet = useMemo(() => new Set(assignment.enabledKeyNumberIds), [assignment]);
     const enabledDocSet = useMemo(() => new Set(assignment.enabledDocumentTypeIds), [assignment]);
+
+    /**
+     * Keep monitoring in lockstep with field enablement: a date-bearing item
+     * that gets enabled has its monitoring switched on; disabling turns it off.
+     * Covers the toggled item AND its cascaded KN↔Doc partner. Users can still
+     * fine-tune per item on the Monitoring tab afterwards.
+     */
+    const syncMonitoring = (kind: 'keynumber' | 'document', id: string, enable: boolean) => {
+        const affected: { k: 'kn' | 'doc'; id: string }[] = [];
+        if (kind === 'keynumber') {
+            affected.push({ k: 'kn', id });
+            for (const docId of DOC_IDS_BY_KN_ID.get(id) ?? []) affected.push({ k: 'doc', id: docId });
+        } else {
+            affected.push({ k: 'doc', id });
+            const knId = KN_ID_BY_DOC_ID.get(id);
+            if (knId) affected.push({ k: 'kn', id: knId });
+        }
+        const configs = loadMonitoringConfigs(carrierId);
+        let changed = false;
+        for (const a of affected) {
+            const dateBearing = a.k === 'kn'
+                ? (() => { const r = SEED_KEY_NUMBERS.find(x => x.id === a.id); return !!r && (r.hasExpiry || r.issueDateRequired); })()
+                : (() => { const r = DOCUMENTS.find(x => x.id === a.id); return !!r && (r.expiryRequired || r.issueDateRequired); })();
+            if (!dateBearing) continue;
+            const key = monitorItemKey(a.k, a.id);
+            const cur = configs[key] ?? DEFAULT_MONITORING;
+            if (cur.enabled !== enable) { configs[key] = { ...cur, enabled: enable }; changed = true; }
+        }
+        if (changed) saveMonitoringConfigs(carrierId, configs);
+    };
 
     /**
      * Single toggle (with cascade). Uses functional setState so rapid clicks
@@ -1257,6 +1177,8 @@ export const CarrierComplianceSetupPage = () => {
             flashSaved();
             return next;
         });
+        syncMonitoring(kind, id, enable);
+        setMonConfigs(loadMonitoringConfigs(carrierId));
     };
 
     /** Bulk toggle for "Enable all" / "Disable all" buttons (current view only). */
@@ -1267,6 +1189,8 @@ export const CarrierComplianceSetupPage = () => {
             flashSaved();
             return next;
         });
+        for (const id of ids) syncMonitoring(kind, id, enable);
+        setMonConfigs(loadMonitoringConfigs(carrierId));
     };
 
     /** Reset this carrier's assignment back to the catalog defaults. */
@@ -1278,55 +1202,109 @@ export const CarrierComplianceSetupPage = () => {
         flashSaved();
     };
 
-    /** Apply a template to the current carrier (overwrites + cascades). */
-    const handleApplyTemplate = (t: ComplianceTemplate) => {
-        const next = applyTemplate(assignment, t);
+    /** Switch between viewing/configuring service profiles vs carrier profiles.
+     *  Switching to carriers scopes the list to the profile you were inspecting. */
+    /** In carrier level, change which service profile's carriers are listed. */
+    const handleProfileFilterChange = (spId: string) => {
+        setProfileFilterId(spId);
+        const carriers = spId ? getAccountsByServiceProfileId(spId) : ACCOUNTS_DB;
+        setCarrierId(carriers[0]?.id ?? '');
+    };
+
+    /** Templates currently enabled (available) on this entity. */
+    const selectedTplIds = selectedTemplateIds(assignment);
+
+    /**
+     * Apply a handed-over template to the CURRENT carrier (downstream pages).
+     * `override` replaces the carrier's setup with this template; `add` merges
+     * it onto whatever is already enabled (nothing removed). Monitoring follows
+     * the same rule. Also records the template in appliedTemplateIds.
+     */
+    const applyTemplateToCarrier = (t: ComplianceTemplate, mode: 'override' | 'add') => {
+        const next = mode === 'override' ? applyTemplates(assignment, [t]) : stackTemplateOnto(assignment, t);
         setAssignment(next);
         saveCarrierAssignment(next);
-        setToastMessages([`Applied template: ${t.name}`]);
+        const tplMon = mergeTemplateMonitoring([t]);
+        const mergedMon = mode === 'override' ? tplMon : { ...loadMonitoringConfigs(carrierId), ...tplMon };
+        saveMonitoringConfigs(carrierId, mergedMon);
+        setMonConfigs(mergedMon);
         flashSaved();
-        setShowTemplateManager(false);
+        setApplyingTemplate(null);
+    };
+
+    /** Un-assign a template from the current carrier (drops it from appliedTemplateIds; leaves items in place). */
+    const unapplyTemplateFromCarrier = (t: ComplianceTemplate) => {
+        const ids = selectedTplIds.filter(id => id !== t.id);
+        const na: CarrierComplianceAssignment = { ...assignment, appliedTemplateId: undefined, appliedTemplateIds: ids };
+        setAssignment(na);
+        saveCarrierAssignment(na);
+        flashSaved();
+    };
+
+    /** Carrier page: record availability only (no override/add apply). */
+    const toggleTemplateAvailability = (t: ComplianceTemplate, on: boolean) => {
+        const ids = on ? [...new Set([...selectedTplIds, t.id])] : selectedTplIds.filter(id => id !== t.id);
+        const na: CarrierComplianceAssignment = { ...assignment, appliedTemplateId: undefined, appliedTemplateIds: ids };
+        setAssignment(na);
+        saveCarrierAssignment(na);
+        flashSaved();
+    };
+
+    /**
+     * Template list toggle, by workspace:
+     *   • root           → provisions (hand-over) to the service profile
+     *   • serviceProfile → assigns to the carrier WITH an override/add prompt
+     *   • carrierAdmin   → records availability only
+     */
+    const onTemplateToggle = (t: ComplianceTemplate, on: boolean) => {
+        if (isRoot) { toggleHandoverTemplate(t, on); return; }
+        if (workspace === 'serviceProfile') {
+            if (on) setApplyingTemplate(t);
+            else unapplyTemplateFromCarrier(t);
+            return;
+        }
+        toggleTemplateAvailability(t, on);
+    };
+
+    /** Hiring pipelines collect the "used in hiring" Key Numbers + Documents, so
+     *  enabling a hiring template auto-includes those items (linked dimensions). */
+    const withHiringRequirements = (a: CarrierComplianceAssignment): CarrierComplianceAssignment => {
+        let next = a;
+        for (const k of SEED_KEY_NUMBERS) {
+            if (k.status === 'Active' && k.usedInHiring && !next.enabledKeyNumberIds.includes(k.id)) {
+                next = applyToggle(next, 'keynumber', k.id, true).next;
+            }
+        }
+        for (const d of DOCUMENTS) {
+            if (d.status === 'Active' && d.usedInHiring && !next.enabledDocumentTypeIds.includes(d.id)) {
+                next = applyToggle(next, 'document', d.id, true).next;
+            }
+        }
+        return next;
     };
 
     /** Toggle a hiring template's enabled state for this carrier. */
     const handleToggleHiringTemplate = (templateId: string, enabled: boolean) => {
         const current = assignment.enabledHiringTemplateIds ?? [];
-        const next = enabled
+        const ids = enabled
             ? [...current.filter(id => id !== templateId), templateId]
             : current.filter(id => id !== templateId);
-        const nextAssignment = { ...assignment, enabledHiringTemplateIds: next };
+        let nextAssignment: CarrierComplianceAssignment = { ...assignment, enabledHiringTemplateIds: ids };
+        if (enabled) nextAssignment = withHiringRequirements(nextAssignment);
         setAssignment(nextAssignment);
         saveCarrierAssignment(nextAssignment);
         flashSaved();
     };
 
-    /** Bulk enable/disable all hiring templates. */
+    /** Bulk enable/disable the handed-over hiring templates. */
     const handleBulkHiringTemplates = (enable: boolean) => {
-        const next = enable ? hiringTemplates.map(t => t.id) : [];
-        const nextAssignment = { ...assignment, enabledHiringTemplateIds: next };
+        const ids = enable ? availableHiring.map(t => t.id) : [];
+        let nextAssignment: CarrierComplianceAssignment = { ...assignment, enabledHiringTemplateIds: ids };
+        if (enable) nextAssignment = withHiringRequirements(nextAssignment);
         setAssignment(nextAssignment);
         saveCarrierAssignment(nextAssignment);
         flashSaved();
     };
-
-    /** Clear the template binding (admin enters fully-custom mode). */
-    const handleClearTemplate = () => {
-        const next = { ...assignment, appliedTemplateId: undefined };
-        setAssignment(next);
-        saveCarrierAssignment(next);
-        flashSaved();
-    };
-
-    const handleDeleteTemplate = (t: ComplianceTemplate) => {
-        if (!window.confirm(`Delete template "${t.name}"? Carriers currently bound to it will become "Custom".`)) return;
-        deleteTemplate(t.id);
-        setTemplates(loadTemplates());
-        // If this carrier was bound to the deleted template, clear the link.
-        if (assignment.appliedTemplateId === t.id) handleClearTemplate();
-    };
-
-    const appliedTemplate = templates.find(t => t.id === assignment.appliedTemplateId);
-    const templateDrift = appliedTemplate ? !templateMatches(assignment, appliedTemplate) : false;
 
     const pillBtn = (mode: PageMode, label: string) => (
         <button
@@ -1335,7 +1313,7 @@ export const CarrierComplianceSetupPage = () => {
             className={cn(
                 "rounded-md px-4 py-1.5 text-[13px] font-semibold leading-5 transition-colors whitespace-nowrap",
                 pageMode === mode
-                    ? "bg-white text-blue-700 shadow-sm"
+                    ? cn("bg-white shadow-sm", ws.accentText)
                     : "text-slate-600 hover:text-slate-900",
             )}
         >
@@ -1344,6 +1322,28 @@ export const CarrierComplianceSetupPage = () => {
     );
 
     const selectedCarrier = ACCOUNTS_DB.find(c => c.id === carrierId);
+    const relatedCarrierCount = isServiceProfile ? getAccountsByServiceProfileId(carrierId).length : 0;
+    // Carrier mode: name the service profile this carrier was seeded from.
+    const seedProfile = !isServiceProfile && selectedCarrier?.serviceProfileId
+        ? SERVICE_PROFILES_DB.find(p => p.id === selectedCarrier.serviceProfileId)
+        : undefined;
+    const seedProfileName = seedProfile ? (seedProfile.dbaName || seedProfile.legalName) : undefined;
+
+    // Purpose-aware hero line — tells each page its actual job in the hierarchy
+    // (cascade source vs inheritor vs per-carrier), instead of a generic banner.
+    const configuringName = entityList.find(e => e.id === carrierId)?.name ?? '';
+    const filterProfile = SERVICE_PROFILES_DB.find(p => p.id === profileFilterId);
+    const profileName = filterProfile ? (filterProfile.dbaName || filterProfile.legalName) : (seedProfileName ?? 'your service profile');
+    const heroText: React.ReactNode = workspace === 'root'
+        ? (isServiceProfile
+            ? <>Source bundle — everything enabled here <span className="font-bold">cascades</span> to <span className="font-bold">{relatedCarrierCount}</span> carrier profile{relatedCarrierCount === 1 ? '' : 's'} under <span className="font-bold">{configuringName}</span>.</>
+            : <>Carrier preview — changes override the inherited bundle for <span className="font-bold">{configuringName}</span> only.</>)
+        : workspace === 'serviceProfile'
+            ? <>Managing <span className="font-bold">{entityList.length}</span> carrier{entityList.length === 1 ? '' : 's'} under <span className="font-bold">{profileName}</span> — each inherits your template; fine-tune per carrier.</>
+            : (seedProfileName
+                ? <>Started from <span className="font-bold">{seedProfileName}</span>'s template · changes apply to this carrier only.</>
+                : null);
+
     // Denominators count only assignable (Active) catalog items.
     const knTotal = useMemo(() => SEED_KEY_NUMBERS.filter(k => k.status === 'Active').length, []);
     const docTotal = useMemo(() => DOCUMENTS.filter(d => d.status === 'Active').length, []);
@@ -1356,36 +1356,34 @@ export const CarrierComplianceSetupPage = () => {
             <header className="sticky top-0 z-20 bg-white border-b border-slate-200">
                 <div className="px-6 pt-4">
                     <nav className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-500" aria-label="Breadcrumb">
-                        <span>Super Admin</span>
+                        <span>{ws.crumb}</span>
                         <span className="text-slate-300">/</span>
-                        <span className="text-slate-900">Carrier Compliance Setup</span>
+                        <span className="text-slate-900">{ws.title}</span>
                     </nav>
                 </div>
 
                 <div className="px-6 pb-4 flex flex-wrap items-start justify-between gap-4">
                     {/* Left: icon + title + subtitle */}
                     <div className="flex items-start gap-3 min-w-0">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-500 text-white shadow-sm">
-                            <Network size={18} />
+                        <span className={cn("flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm", ws.gradient)}>
+                            <WsIcon size={18} />
                         </span>
                         <div className="min-w-0">
+                            {/* Persistent workspace badge — the dedicated-page differentiator */}
+                            <span className={cn("mb-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", ws.chip)}>
+                                <WsIcon size={11} /> {ws.badge}
+                            </span>
                             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                                Carrier Compliance Setup
+                                {ws.title}
                             </h1>
                             <p className="mt-0.5 text-sm text-slate-500">
-                                Pick which Key Numbers and Document Types each carrier tracks.
-                                Linked items cascade automatically.
+                                {ws.desc}
                             </p>
                         </div>
                     </div>
 
-                    {/* Right: mode switch on top, Reset below */}
+                    {/* Right: saved flash + Reset (the view switch now sits under the progress bars) */}
                     <div className="flex flex-col items-end gap-3">
-                        <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
-                            {pillBtn('compliance', 'Compliance')}
-                            {pillBtn('documents',  'Documents')}
-                            {pillBtn('templates',  'Hiring Templates')}
-                        </div>
                         <div className="flex items-center gap-2">
                             {savedFlash && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
@@ -1405,13 +1403,44 @@ export const CarrierComplianceSetupPage = () => {
                     </div>
                 </div>
 
-                {/* Unified context strip — carrier on left, template on right */}
-                <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-6">
+                {/* Unified context strip — scope switch, then entity + template pickers */}
+                <div className={cn("border-t border-t-slate-100 border-l-4 px-6 py-3", ws.stripe)}>
+                    {/* Purpose-aware context line — what this page does in the hierarchy */}
+                    {heroText && (
+                        <p className="mb-3 flex items-start gap-1.5 text-[12px] font-medium text-slate-700">
+                            <WsIcon size={13} className={cn("mt-px shrink-0", ws.accentText)} />
+                            <span>{heroText}</span>
+                        </p>
+                    )}
+                    <div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+                        {/* Service-profile selector — pick the profile whose carriers we configure
+                            (shown on the Service Profile page and the carrier-admin page). */}
+                        {!isRoot && (
+                            <div>
+                                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                    Service profile
+                                </label>
+                                <select
+                                    value={profileFilterId}
+                                    onChange={(e) => handleProfileFilterChange(e.target.value)}
+                                    className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                >
+                                    {workspace === 'carrierAdmin' && <option value="">All carriers</option>}
+                                    {SERVICE_PROFILES_DB.map(s => (
+                                        <option key={s.id} value={s.id}>{s.dbaName || s.legalName}</option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 truncate text-[11px] text-slate-500">
+                                    {profileFilterId
+                                        ? <>Showing this profile's <span className="font-semibold text-slate-700">{entityList.length}</span> carrier{entityList.length === 1 ? '' : 's'}.</>
+                                        : 'Showing all carriers.'}
+                                </p>
+                            </div>
+                        )}
                         {/* Carrier picker */}
                         <div>
                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                Configuring carrier
+                                {isServiceProfile ? 'Configuring service profile' : 'Configuring carrier'}
                             </label>
                             <div className="flex items-center gap-2">
                                 <select
@@ -1419,12 +1448,16 @@ export const CarrierComplianceSetupPage = () => {
                                     onChange={(e) => setCarrierId(e.target.value)}
                                     className="h-10 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 >
-                                    {ACCOUNTS_DB.map(c => (
-                                        <option key={c.id} value={c.id}>{c.dbaName || c.legalName}</option>
+                                    {entityList.map(e => (
+                                        <option key={e.id} value={e.id}>{e.name}</option>
                                     ))}
                                 </select>
                             </div>
-                            {selectedCarrier && (
+                            {isServiceProfile ? (
+                                <p className="mt-1 truncate text-[11px] text-slate-500">
+                                    Template applies to <span className="font-semibold text-slate-700">{relatedCarrierCount}</span> related carrier profile{relatedCarrierCount === 1 ? '' : 's'}.
+                                </p>
+                            ) : selectedCarrier && (
                                 <p className="mt-1 truncate text-[11px] text-slate-500">
                                     USDOT <span className="font-semibold text-slate-700">{selectedCarrier.dotNumber || '—'}</span>
                                     {' · '}{selectedCarrier.city}, {selectedCarrier.state}, {selectedCarrier.country}
@@ -1432,57 +1465,6 @@ export const CarrierComplianceSetupPage = () => {
                             )}
                         </div>
 
-                        {/* Template picker */}
-                        <div>
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                Apply template
-                            </label>
-                            <div className="flex items-center gap-2">
-                                <select
-                                    value={assignment.appliedTemplateId ?? ''}
-                                    onChange={(e) => {
-                                        if (!e.target.value) { handleClearTemplate(); return; }
-                                        const t = templates.find(x => x.id === e.target.value);
-                                        if (t) handleApplyTemplate(t);
-                                    }}
-                                    className="h-10 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                >
-                                    <option value="">None (Custom)</option>
-                                    <optgroup label="Built-in">
-                                        {templates.filter(t => t.isSeed).map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </optgroup>
-                                    {templates.some(t => !t.isSeed) && (
-                                        <optgroup label="Custom">
-                                            {templates.filter(t => !t.isSeed).map(t => (
-                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                            ))}
-                                        </optgroup>
-                                    )}
-                                </select>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => setShowTemplateManager(true)}
-                                    className="h-10 shrink-0 gap-1.5"
-                                >
-                                    <LayoutTemplate size={14} /> Manage
-                                </Button>
-                            </div>
-                            <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
-                                {appliedTemplate ? (
-                                    <span className={cn(
-                                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
-                                        templateDrift ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700",
-                                    )}>
-                                        {templateDrift ? '● Modified from template' : <><Check size={11} /> In sync with template</>}
-                                    </span>
-                                ) : (
-                                    <span className="text-slate-400">No template applied · fully custom configuration</span>
-                                )}
-                            </div>
-                        </div>
                     </div>
 
                     {/* Compact progress row */}
@@ -1507,6 +1489,16 @@ export const CarrierComplianceSetupPage = () => {
                             </span>
                         </div>
                     </div>
+
+                    {/* View switch — Compliance / Documents / Hiring Templates */}
+                    <div className="mt-3 flex justify-end border-t border-slate-200/70 pt-3">
+                        <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
+                            {!isServiceProfile && pillBtn('compliance', 'Compliance')}
+                            {!isServiceProfile && pillBtn('documents',  'Documents')}
+                            {pillBtn('templates',  'Hiring Templates')}
+                            {pillBtn('assigned',   'Templates')}
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -1517,6 +1509,7 @@ export const CarrierComplianceSetupPage = () => {
                         enabledIds={enabledKnSet}
                         onToggle={(id, enabled) => handleToggle('keynumber', id, enabled)}
                         onBulk={(ids, enable) => handleBulk('keynumber', ids, enable)}
+                        monitoring={rowMonitoring}
                     />
                 )}
                 {pageMode === 'documents' && (
@@ -1524,6 +1517,7 @@ export const CarrierComplianceSetupPage = () => {
                         enabledIds={enabledDocSet}
                         onToggle={(id, enabled) => handleToggle('document', id, enabled)}
                         onBulk={(ids, enable) => handleBulk('document', ids, enable)}
+                        monitoring={rowMonitoring}
                     />
                 )}
                 {pageMode === 'templates' && (
@@ -1532,10 +1526,77 @@ export const CarrierComplianceSetupPage = () => {
                         formType={formType}
                         formTypeOptions={formTypeOptions}
                         onFormTypeChange={setFormType}
-                        enabledHiringIds={assignment.enabledHiringTemplateIds ?? []}
-                        onToggleHiring={handleToggleHiringTemplate}
-                        onBulkHiring={handleBulkHiringTemplates}
+                        enabledHiringIds={isRoot ? handover.hiringTemplateIds : (assignment.enabledHiringTemplateIds ?? [])}
+                        onToggleHiring={isRoot ? toggleHandoverHiring : handleToggleHiringTemplate}
+                        onBulkHiring={isRoot ? bulkHandoverHiring : handleBulkHiringTemplates}
                     />
+                )}
+                {pageMode === 'assigned' && (
+                    <div className="px-6 py-5">
+                        <p className="mb-3 text-[12px] text-slate-500">
+                            {isRoot
+                                ? <>Choose which compliance templates <span className="font-semibold text-slate-700">{entityList.find(e => e.id === carrierId)?.name ?? ''}</span> provides — enabled ones cascade to its <span className="font-semibold text-slate-700">{relatedCarrierCount}</span> related carrier profile{relatedCarrierCount === 1 ? '' : 's'}.</>
+                                : workspace === 'serviceProfile'
+                                    ? <>Enable a template to assign it to <span className="font-semibold text-slate-700">{selectedCarrier?.dbaName || selectedCarrier?.legalName || 'this carrier'}</span> — you'll choose whether to <span className="font-semibold text-slate-700">override</span> or <span className="font-semibold text-slate-700">add to</span> its current setup.</>
+                                    : <>Enable the templates available to this carrier.</>}
+                        </p>
+                        {availableTemplates.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-12 text-center">
+                                <LayoutTemplate size={28} className="mx-auto text-slate-300" />
+                                <p className="mt-2 text-sm font-medium text-slate-600">{isRoot ? 'No compliance templates created yet' : 'No templates handed over yet'}</p>
+                                <p className="mt-1 text-[12px] text-slate-400">{isRoot ? 'Create them in Super Admin → Compliance Templates.' : 'Hand them over from Super Admin → Compliance Templates.'}</p>
+                            </div>
+                        ) : (
+                            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <ul className="divide-y divide-slate-100">
+                                    {availableTemplates.map(t => {
+                                        const on = isRoot ? handover.complianceTemplateIds.includes(t.id) : selectedTplIds.includes(t.id);
+                                        return (
+                                            <li
+                                                key={t.id}
+                                                onClick={() => onTemplateToggle(t, !on)}
+                                                className={cn(
+                                                    "group relative flex cursor-pointer items-center gap-3 py-3 pl-5 pr-4 transition-colors",
+                                                    on ? "bg-white hover:bg-blue-50/40" : "bg-slate-50/60 hover:bg-slate-100/70",
+                                                )}
+                                            >
+                                                <span className={cn("absolute inset-y-0 left-0 w-1", on ? "bg-blue-500" : "bg-transparent")} />
+                                                <span className={cn(
+                                                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
+                                                    on ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-400",
+                                                )}>
+                                                    <LayoutTemplate size={15} />
+                                                </span>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                        <span className={cn("text-sm font-semibold", on ? "text-slate-900" : "text-slate-500")}>{t.name}</span>
+                                                        {t.isSeed && (
+                                                            <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600">
+                                                                <Lock size={9} /> Built-in
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {t.description && (
+                                                        <p className={cn("mt-0.5 text-[12px] leading-snug", on ? "text-slate-500" : "text-slate-400")}>{t.description}</p>
+                                                    )}
+                                                    <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
+                                                        <span className="rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-700">{t.enabledKeyNumberIds.length} key numbers</span>
+                                                        <span className="rounded-full bg-violet-50 px-2 py-0.5 font-semibold text-violet-700">{t.enabledDocumentTypeIds.length} documents</span>
+                                                        {(t.enabledHiringTemplateIds?.length ?? 0) > 0 && (
+                                                            <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">{t.enabledHiringTemplateIds!.length} hiring</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                                                    <Toggle checked={on} onCheckedChange={(v) => onTemplateToggle(t, v)} />
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
                 )}
             </main>
 
@@ -1544,18 +1605,88 @@ export const CarrierComplianceSetupPage = () => {
                 onDismiss={() => setToastMessages([])}
             />
 
-            {showTemplateManager && (
-                <TemplateManagerModal
-                    templates={templates}
-                    appliedTemplateId={assignment.appliedTemplateId}
-                    onApply={handleApplyTemplate}
-                    onSave={(t) => { upsertTemplate(t); setTemplates(loadTemplates()); }}
-                    onDelete={handleDeleteTemplate}
-                    onClose={() => setShowTemplateManager(false)}
+            {editingMonitor && (
+                <MonitoringEditModal
+                    name={editingMonitor.name}
+                    value={monCfgFor(editingMonitor.key)}
+                    onSave={(cfg) => { setMonCfg(editingMonitor.key, cfg); setEditingMonitor(null); }}
+                    onClose={() => setEditingMonitor(null)}
+                />
+            )}
+
+            {applyingTemplate && (
+                <ApplyTemplateModal
+                    template={applyingTemplate}
+                    carrierName={selectedCarrier?.dbaName || selectedCarrier?.legalName || 'this carrier'}
+                    onOverride={() => applyTemplateToCarrier(applyingTemplate, 'override')}
+                    onAdd={() => applyTemplateToCarrier(applyingTemplate, 'add')}
+                    onClose={() => setApplyingTemplate(null)}
                 />
             )}
         </div>
     );
 };
+
+/**
+ * Asks how to apply a template to a carrier: override (replace) the current
+ * setup, or add (merge) onto it. Only used on the Service Profile page.
+ */
+function ApplyTemplateModal({ template, carrierName, onOverride, onAdd, onClose }: {
+    template: ComplianceTemplate;
+    carrierName: string;
+    onOverride: () => void;
+    onAdd: () => void;
+    onClose: () => void;
+}) {
+    const knCount = template.enabledKeyNumberIds.length;
+    const docCount = template.enabledDocumentTypeIds.length;
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+            <div className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50/30 px-6 py-5">
+                    <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-slate-900">Assign template</h3>
+                        <p className="mt-0.5 text-sm text-slate-500">
+                            Apply <span className="font-semibold text-slate-700">{template.name}</span> to <span className="font-semibold text-slate-700">{carrierName}</span>
+                            {' '}({knCount} key numbers · {docCount} documents).
+                        </p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button>
+                </div>
+                <div className="space-y-3 p-6">
+                    <button
+                        type="button"
+                        onClick={onOverride}
+                        className="flex w-full items-start gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/40"
+                    >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600">
+                            <RotateCcw size={15} />
+                        </span>
+                        <span className="min-w-0">
+                            <span className="block text-sm font-bold text-slate-900">Override current setup</span>
+                            <span className="block text-[12px] text-slate-500">Replace the carrier's enabled items + monitoring with exactly this template.</span>
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onAdd}
+                        className="flex w-full items-start gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/40"
+                    >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+                            <CheckCircle2 size={15} />
+                        </span>
+                        <span className="min-w-0">
+                            <span className="block text-sm font-bold text-slate-900">Add to current setup</span>
+                            <span className="block text-[12px] text-slate-500">Merge this template into what's already enabled — nothing is removed.</span>
+                        </span>
+                    </button>
+                </div>
+                <div className="flex justify-end border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default CarrierComplianceSetupPage;

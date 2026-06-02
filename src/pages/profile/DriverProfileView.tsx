@@ -685,7 +685,10 @@ const ProfileTab = ({ data, onEditPersonal, onEditAddress, onEditContacts, onEdi
 import { KeyNumberModal, type KeyNumberModalData } from '@/components/key-numbers/KeyNumberModal';
 import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig } from '@/types/key-numbers.types';
-import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
+import { calculateComplianceStatus, calculateDriverComplianceStats } from '@/utils/compliance-utils';
+import { Toggle as UiToggle } from '@/components/ui/toggle';
+import { loadMonitoringConfigs, monitorItemKey } from '@/pages/compliance/compliance-monitoring.data';
+import { resolveEntityMonitoring, setEntityMonitoring, nextAlertIndicator, maxReminderDays, type MonitoringConfig } from '@/utils/entity-monitoring';
 
 
 // ... (existing helper components)
@@ -965,6 +968,25 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
   const [isKeyNumberModalOpen, setIsKeyNumberModalOpen] = useState(false);
   const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
   const [keyNumberModalMode, setKeyNumberModalMode] = useState<'add' | 'edit'>('edit');
+
+  // Per-driver monitoring configs (keyed kn:<id> / doc:<id>), reloaded per driver.
+  const [mon, setMon] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs(initialDriverData?.id ?? ''));
+  useEffect(() => { setMon(loadMonitoringConfigs(driverData?.id ?? '')); }, [driverData?.id]);
+  const refreshMon = () => setMon(loadMonitoringConfigs(driverData?.id ?? ''));
+
+  // Inline Monitoring cell: per-driver toggle + a "next alert" indicator.
+  const TONE_CLASS: Record<string, string> = {
+    ok: 'text-emerald-600', warning: 'text-amber-600 font-semibold', danger: 'text-rose-600 font-semibold', muted: 'text-slate-400',
+  };
+  const renderMonitoringCell = (kind: 'kn' | 'doc', id: string, rawExpiry: string | null, cfg: MonitoringConfig, linkedId?: string | null) => {
+    const ind = nextAlertIndicator(rawExpiry, cfg);
+    return (
+      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <UiToggle checked={cfg.enabled} onCheckedChange={(v: boolean) => { setEntityMonitoring(driverData.id, kind, id, { ...cfg, enabled: v }, linkedId); refreshMon(); }} />
+        <span className={`text-[11px] whitespace-nowrap ${TONE_CLASS[ind.tone]}`}>{ind.text}</span>
+      </div>
+    );
+  };
 
   // Accidents Tab State
   const [accQ, setAccQ] = useState('');
@@ -1503,9 +1525,8 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             const expiryDate = driverKn?.expiryDate || null;
             const hasValue = !!value && value !== '';
 
-            const enabled = isMonitoringEnabled(kn);
-            const maxDays = getMaxReminderDays(kn);
-            const status = calculateComplianceStatus(expiryDate, enabled, maxDays, hasValue, kn.hasExpiry, kn.numberRequired ?? true);
+            const cfg = resolveEntityMonitoring(driverData.id, 'kn', kn.id, kn);
+            const status = calculateComplianceStatus(expiryDate, cfg.enabled, maxReminderDays(cfg), hasValue, kn.hasExpiry, kn.numberRequired ?? true);
 
             return {
                 id: kn.id,
@@ -1514,6 +1535,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 expiryDate: expiryDate ? formatDate(expiryDate) : (kn.hasExpiry ? 'Not set' : '-'),
                 status,
                 config: kn,
+                monitoring: cfg,
                 rawExpiry: expiryDate
             };
         }).filter((item: any) => {
@@ -1525,7 +1547,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
              return true;
         })
     })).filter((group: any) => group.items.length > 0);
-  }, [keyNumbers, driverData?.keyNumbers, driverData?.licenses, driverData?.travelDocuments, activeComplianceFilter]);
+  }, [keyNumbers, driverData?.id, driverData?.keyNumbers, driverData?.licenses, driverData?.travelDocuments, activeComplianceFilter, mon]);
 
   // Calculate Compliance Stats
   const complianceStats = React.useMemo(() => {
@@ -1664,10 +1686,18 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
           else if (['1', '2', '3', '4', '5'].includes(typeId)) category = 'Company'; // Carrier docs usually not here but just in case
           else category = 'Compliance'; // Medical, Training, etc.
 
-          return { ...doc, category };
+          // Per-driver monitoring for this doc — shared with its linked key number.
+          const linkedKn = keyNumbers.find((k: KeyNumberConfig) => k.requiredDocumentTypeId === doc.typeId && k.entityType === 'Driver');
+          const monitoring = resolveEntityMonitoring(
+              driverData.id, 'doc', String(doc.typeId), linkedKn,
+              linkedKn ? monitorItemKey('kn', linkedKn.id) : undefined,
+          );
+          const rawExpiry = (doc.expiryDate && doc.expiryDate !== '—') ? doc.expiryDate : null;
+
+          return { ...doc, category, monitoring, rawExpiry, linkedKnId: linkedKn ? linkedKn.id : null };
       });
 
-  }, [documents, keyNumbers, driverData?.documents, driverData?.keyNumbers]);
+  }, [documents, keyNumbers, driverData?.id, driverData?.documents, driverData?.keyNumbers, mon]);
 
   // Document filter counts
   const docCounts = React.useMemo(() => ({
@@ -1983,10 +2013,11 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                             <table className="w-full text-left text-sm table-fixed">
                                 <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
                                     <tr>
-                                        <th className="px-6 py-3 w-1/4">Number Type</th>
-                                        <th className="px-6 py-3 w-1/4">Value</th>
-                                        <th className="px-6 py-3 w-1/4">Status</th>
-                                        <th className="px-6 py-3 w-1/4">Expiry</th>
+                                        <th className="px-6 py-3 w-1/5">Number Type</th>
+                                        <th className="px-6 py-3 w-1/5">Value</th>
+                                        <th className="px-6 py-3 w-[14%]">Status</th>
+                                        <th className="px-6 py-3 w-[14%]">Expiry</th>
+                                        <th className="px-6 py-3 w-[22%]">Monitoring</th>
                                         <th className="px-6 py-3 w-24 text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -1999,7 +2030,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                         return (
                                             <React.Fragment key={group.key}>
                                                 <tr className="bg-slate-50/50 cursor-pointer hover:bg-slate-50 transition-colors border-b border-slate-100" onClick={() => toggleKeyNumberGroup(group.key)}>
-                                                    <td colSpan={5} className="px-6 py-2.5">
+                                                    <td colSpan={6} className="px-6 py-2.5">
                                                         <div className="flex items-center justify-between">
                                                             <span className="font-bold text-xs uppercase text-slate-500 tracking-wider pl-2">{group.label}</span>
                                                             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
@@ -2025,8 +2056,11 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                                                 <Badge variant={getStatusTone(item.status)}>{item.status}</Badge>
                                                             </td>
                                                             <td className="px-6 py-4 text-slate-500 italic">{item.expiryDate}</td>
+                                                            <td className="px-6 py-4">
+                                                                {renderMonitoringCell('kn', item.id, item.rawExpiry, item.monitoring, item.config?.requiredDocumentTypeId)}
+                                                            </td>
                                                             <td className="px-6 py-4 text-right">
-                                                                <button 
+                                                                <button
                                                                     onClick={() => handleEditKeyNumber(item.config, item.number !== 'Not entered' ? item.number : '', item.rawExpiry)}
                                                                     className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                                                 >
@@ -2040,7 +2074,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                         );
                                     })}
                                     {complianceGroups.length === 0 && (
-                                        <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                                        <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400">
                                             {activeComplianceFilter ? 'No items match the selected filter.' : 'No Key Numbers configured for Drivers.'}
                                         </td></tr>
                                     )}
@@ -2463,9 +2497,10 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                             <table className="w-full text-left text-sm table-fixed">
                                 <thead className="bg-white border-b border-slate-200 text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0">
                                     <tr>
-                                        <th className="px-6 py-3 w-1/3">Document Type</th>
-                                        <th className="px-6 py-3 w-1/4">Status</th>
-                                        <th className="px-6 py-3 w-1/4">Expiry</th>
+                                        <th className="px-6 py-3 w-[28%]">Document Type</th>
+                                        <th className="px-6 py-3 w-[14%]">Status</th>
+                                        <th className="px-6 py-3 w-[16%]">Expiry</th>
+                                        <th className="px-6 py-3 w-[22%]">Monitoring</th>
                                         <th className="px-6 py-3 w-24 text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -2494,14 +2529,14 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
                                         if (sortedGroups.length === 0) {
                                             return (
-                                                <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">No documents found matching the criteria.</td></tr>
+                                                <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No documents found matching the criteria.</td></tr>
                                             );
                                         }
 
                                         return sortedGroups.map((group) => (
                                             <React.Fragment key={group.key}>
                                                 <tr className="bg-slate-50 border-b border-slate-100">
-                                                    <td colSpan={4} className="px-6 py-2">
+                                                    <td colSpan={5} className="px-6 py-2">
                                                         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                                                             <group.icon className="w-3.5 h-3.5" />
                                                             {group.label}
@@ -2550,6 +2585,11 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                                                             ) : (
                                                                 <span className="text-slate-300 italic">No Expiry</span>
                                                             )}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            {doc.monitoring
+                                                                ? renderMonitoringCell('doc', String(doc.typeId), doc.rawExpiry, doc.monitoring, doc.linkedKnId)
+                                                                : <span className="text-[11px] text-slate-300">—</span>}
                                                         </td>
                                                         <td className="px-6 py-4 text-right">
                                                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -4100,6 +4140,15 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             availableKeyNumbers={keyNumbers.filter(k => k.entityType === 'Driver')}
             tagSections={tagSections}
             getDocumentTypeById={getDocumentTypeById}
+            monitoringValue={editingKeyNumber?.configId
+              ? resolveEntityMonitoring(driverData.id, 'kn', editingKeyNumber.configId, keyNumbers.find(k => k.id === editingKeyNumber!.configId))
+              : undefined}
+            onSaveMonitoring={(cfg) => {
+              if (!editingKeyNumber?.configId) return;
+              const linked = keyNumbers.find(k => k.id === editingKeyNumber.configId)?.requiredDocumentTypeId;
+              setEntityMonitoring(driverData.id, 'kn', editingKeyNumber.configId, cfg, linked);
+              refreshMon();
+            }}
         />
         
         {/* Section Edit Modals */}

@@ -2,12 +2,14 @@ import { useMemo, useState, useEffect } from "react";
 import {
     LayoutGrid, Building2, Truck, User, Search, X, Save, Bell, ChevronDown,
     AlertTriangle, AlertCircle, Clock, CheckCircle2, ShieldCheck, FileText, Link2, CalendarClock,
-    CalendarDays, ChevronLeft, ChevronRight, Send,
+    CalendarDays, ChevronLeft, ChevronRight, Send, Pencil, Circle,
 } from "lucide-react";
 import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import { Toggle } from "@/components/ui/toggle";
+import { SubTabs } from "@/components/ui/SubTabs";
 import { useAppData } from "@/context/AppDataContext";
 import {
     SEED_KEY_NUMBERS, DOCUMENTS,
@@ -22,6 +24,7 @@ import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import {
     loadMonitoringConfigs, saveMonitoringConfigs, monitorItemKey, reminderSummary,
     DEFAULT_MONITORING, REMINDER_DAYS, type MonitoringConfig,
+    type MonitorBasedOn, type RenewalRecurrence,
     loadTasks, saveTasks, taskKeyOf, taskTone, TASK_STATUS_LABEL,
     type ComplianceTask, type TaskStatus, type RequestRecord, type Recipient,
 } from "@/pages/compliance/compliance-monitoring.data";
@@ -30,6 +33,18 @@ import { RequestDocumentModal } from "@/components/compliance/RequestDocumentMod
 
 type Scope = 'Carrier' | 'Driver' | 'Asset';
 type Tab = 'Dashboard' | 'Calendar' | Scope;
+
+const RECURRENCE_LABEL: Record<RenewalRecurrence, string> = {
+    annually: 'Annually',
+    biannually: 'Biannually',
+    quarterly: 'Quarterly',
+    monthly: 'Monthly',
+    none: 'No recurrence',
+};
+const CHANNEL_DEFS: { id: keyof MonitoringConfig['channels']; label: string }[] = [
+    { id: 'email', label: 'Email' },
+    { id: 'inApp', label: 'In-App' },
+];
 type CalTone = 'red' | 'amber' | 'blue' | 'slate';
 
 interface DueEvent { date: string; key: string; entityId?: string; name: string; scope: Scope; kind: 'kn' | 'doc'; entityName: string; tone: CalTone; daysLeft: number | null }
@@ -66,17 +81,28 @@ const daysUntil = (dateStr?: string): number | null => {
 };
 const maxWindowOf = (cfg: MonitoringConfig) => Math.max(0, ...REMINDER_DAYS.filter(d => cfg.reminders[d]));
 
-export function ComplianceMonitoringPage({ accountId }: { accountId?: string } = {}) {
+export function ComplianceMonitoringPage({ accountId, scopesOnly = false, monitoringScopeId, assignMode = false, embedded = false }: {
+    accountId?: string;
+    scopesOnly?: boolean;
+    /** Scope monitoring configs to this id (service-profile / carrier). Defaults to the carrier account. */
+    monitoringScopeId?: string;
+    /** Assignment mode: show ALL monitorable items with a direct enable/disable toggle (root/admin template). */
+    assignMode?: boolean;
+    /** Embedded inside another page (Compliance Setup tab): drop the page-level
+     *  header/chrome and render the scope switch as shared SubTabs. */
+    embedded?: boolean;
+} = {}) {
     const carrier = useMemo<AccountRecord>(() => {
         if (accountId) { const a = ACCOUNTS_DB.find(x => x.id === accountId); if (a) return a; }
         return ACCOUNTS_DB[0];
     }, [accountId]);
+    const scopeId = monitoringScopeId ?? carrier.id;
 
     const assignment = useMemo(() => loadCarrierAssignment(carrier.id), [carrier.id]);
     const { keyNumberValues, documentUploads } = useAppData();
 
-    const [tab, setTab] = useState<Tab>('Dashboard');
-    const [configs, setConfigs] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs());
+    const [tab, setTab] = useState<Tab>(scopesOnly ? 'Carrier' : 'Dashboard');
+    const [configs, setConfigs] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs(scopeId));
     const [configuring, setConfiguring] = useState<MonitorItem | null>(null);
     const [calRequest, setCalRequest] = useState<DueEvent | null>(null);
     const [driverId, setDriverId] = useState<string | null>(null);
@@ -104,7 +130,21 @@ export function ComplianceMonitoringPage({ accountId }: { accountId?: string } =
 
     const configFor = (key: string): MonitoringConfig => configs[key] ?? DEFAULT_MONITORING;
     const saveConfig = (key: string, cfg: MonitoringConfig) =>
-        setConfigs(prev => { const next = { ...prev, [key]: cfg }; saveMonitoringConfigs(next); return next; });
+        setConfigs(prev => { const next = { ...prev, [key]: cfg }; saveMonitoringConfigs(scopeId, next); return next; });
+    /** Direct enable/disable for the assignment view — merges onto the existing (or default) config. */
+    const setMonitorEnabled = (key: string, enabled: boolean) =>
+        saveConfig(key, { ...(configs[key] ?? DEFAULT_MONITORING), enabled });
+    /** Inline edit of any config field from the assignment columns. */
+    const updateConfig = (key: string, patch: Partial<MonitoringConfig>) =>
+        saveConfig(key, { ...(configs[key] ?? DEFAULT_MONITORING), ...patch });
+    /** Bulk Monitor all / none over the given item keys (assignment view). */
+    const setMonitorBulk = (keys: string[], enabled: boolean) =>
+        setConfigs(prev => {
+            const next = { ...prev };
+            for (const key of keys) next[key] = { ...(prev[key] ?? DEFAULT_MONITORING), enabled };
+            saveMonitoringConfigs(scopeId, next);
+            return next;
+        });
 
     // Entities per scope
     const drivers = useMemo<EntityOpt[]>(() => (CARRIER_DRIVERS[carrier.id] ?? []).map((d: any) => ({ id: d.id, name: d.name, sub: d.licenseNumber })), [carrier.id]);
@@ -285,36 +325,54 @@ export function ComplianceMonitoringPage({ accountId }: { accountId?: string } =
         return itemsByScope[scope].filter(i => i.kind === 'kn' ? knSet.has(i.id) : docSet.has(i.id));
     }, [scope, selectedEntityId, itemsByScope, assignment]);
 
-    return (
-        <div className="flex-1 min-h-screen bg-slate-50">
-            <div className="bg-white border-b border-slate-200 px-8 py-5">
-                <h1 className="text-2xl font-bold text-slate-900">Compliance Monitoring</h1>
-                <p className="text-sm text-slate-500 mt-0.5">
-                    Track expiries and renewals for {carrier.dbaName || carrier.legalName} and route action items to the right people.
-                </p>
-                <div className="flex items-center gap-1 mt-4 -mb-5">
-                    {([
-                        { id: 'Dashboard', label: 'Dashboard', Icon: LayoutGrid },
-                        { id: 'Calendar', label: 'Calendar', Icon: CalendarDays },
-                        { id: 'Carrier', label: 'Carrier', Icon: Building2 },
-                        { id: 'Driver', label: 'Driver', Icon: User },
-                        { id: 'Asset', label: 'Asset', Icon: Truck },
-                    ] as const).map(t => {
-                        const active = tab === t.id;
-                        return (
-                            <button key={t.id} type="button" onClick={() => setTab(t.id)}
-                                className={cn(
-                                    "inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors",
-                                    active ? "text-blue-600 border-blue-600" : "text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300",
-                                )}>
-                                <t.Icon size={15} className={active ? "text-blue-600" : "text-slate-400"} /> {t.label}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
+    const tabDefs = ([
+        { id: 'Dashboard', label: 'Dashboard', icon: LayoutGrid },
+        { id: 'Calendar', label: 'Calendar', icon: CalendarDays },
+        { id: 'Carrier', label: 'Carrier', icon: Building2 },
+        { id: 'Driver', label: 'Driver', icon: User },
+        { id: 'Asset', label: 'Asset', icon: Truck },
+    ] as { id: Tab; label: string; icon: React.ElementType }[]).filter(t =>
+        scopesOnly
+            // Settings → Monitoring embed: only the per-scope tabs.
+            ? (t.id !== 'Dashboard' && t.id !== 'Calendar')
+            // Full Compliance Monitoring page: just Dashboard + Calendar (scope
+            // item lists live on the New Compliance & Documents / detail pages now).
+            : (t.id === 'Dashboard' || t.id === 'Calendar'));
 
-            <div className="px-8 py-6 space-y-5">
+    return (
+        <div className={embedded ? '' : 'flex-1 min-h-screen bg-slate-50'}>
+            {embedded ? (
+                /* Embedded in the Compliance Setup tab — just the scope sub-tabs. */
+                <div className="px-6 pt-4">
+                    <SubTabs tabs={tabDefs} activeId={tab} onChange={setTab} />
+                </div>
+            ) : (
+                <div className="bg-white border-b border-slate-200 px-8 py-5">
+                    <h1 className="text-2xl font-bold text-slate-900">{assignMode ? 'Monitoring Setup' : 'Compliance Monitoring'}</h1>
+                    <p className="text-sm text-slate-500 mt-0.5">
+                        {assignMode
+                            ? 'Choose which compliance items are monitored and set how renewal reminders are sent. Edit each row directly.'
+                            : <>Track expiries and renewals for {carrier.dbaName || carrier.legalName} and route action items to the right people.</>}
+                    </p>
+                    <div className="flex items-center gap-1 mt-4 -mb-5">
+                        {tabDefs.map(t => {
+                            const Icon = t.icon;
+                            const active = tab === t.id;
+                            return (
+                                <button key={t.id} type="button" onClick={() => setTab(t.id)}
+                                    className={cn(
+                                        "inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors",
+                                        active ? "text-blue-600 border-blue-600" : "text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300",
+                                    )}>
+                                    <Icon size={15} className={active ? "text-blue-600" : "text-slate-400"} /> {t.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            <div className={cn("space-y-5", embedded ? "px-6 py-5" : "px-8 py-6")}>
                 {tab === 'Dashboard' ? (
                     <MonitoringDashboard
                         kpis={kpis} severityData={severityData} timeline={timeline}
@@ -334,6 +392,10 @@ export function ComplianceMonitoringPage({ accountId }: { accountId?: string } =
                         statusFor={(item) => rowStatusFor(item, selectedEntityId ?? undefined)}
                         configFor={configFor}
                         onConfigure={setConfiguring}
+                        assignMode={assignMode}
+                        onSetEnabled={setMonitorEnabled}
+                        onUpdateConfig={updateConfig}
+                        onBulkEnabled={setMonitorBulk}
                     />
                 )}
             </div>
@@ -466,7 +528,7 @@ function MonitoringDashboard({ kpis, severityData, timeline, itemsByScope, confi
 
 // ── List view ───────────────────────────────────────────────────────────
 
-function MonitoringList({ scope, items, entities, selectedEntityId, onSelectEntity, statusFor, configFor, onConfigure }: {
+function MonitoringList({ scope, items, entities, selectedEntityId, onSelectEntity, statusFor, configFor, onConfigure, assignMode = false, onSetEnabled, onUpdateConfig, onBulkEnabled }: {
     scope: Scope;
     items: MonitorItem[];
     entities: EntityOpt[];
@@ -475,6 +537,11 @@ function MonitoringList({ scope, items, entities, selectedEntityId, onSelectEnti
     statusFor: (item: MonitorItem) => RowStatus;
     configFor: (key: string) => MonitoringConfig;
     onConfigure: (item: MonitorItem) => void;
+    /** Assignment mode: show all items + inline-editable monitoring columns. */
+    assignMode?: boolean;
+    onSetEnabled?: (key: string, enabled: boolean) => void;
+    onUpdateConfig?: (key: string, patch: Partial<MonitoringConfig>) => void;
+    onBulkEnabled?: (keys: string[], enabled: boolean) => void;
 }) {
     const [search, setSearch] = useState("");
     const isEntityScope = scope === 'Driver' || scope === 'Asset';
@@ -483,24 +550,42 @@ function MonitoringList({ scope, items, entities, selectedEntityId, onSelectEnti
         const q = search.trim().toLowerCase();
         return items.filter(i => !q || i.name.toLowerCase().includes(q));
     }, [items, search]);
+    // Operational view shows only items whose monitoring is actually enabled.
+    // Assignment view shows ALL monitorable items so they can be toggled on/off.
+    const visibleRows = assignMode ? rows : rows.filter(i => configFor(i.key).enabled);
+    const enabledCount = items.filter(i => configFor(i.key).enabled).length;
+
+    // Pagination — long catalogs (47+ items) page through 10 at a time.
+    const PAGE_SIZE = 10;
+    const [page, setPage] = useState(1);
+    useEffect(() => { setPage(1); }, [search, selectedEntityId, scope]);
+    const total = visibleRows.length;
+    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const safePage = Math.min(page, pageCount);
+    const pageRows = visibleRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    const showEmpty = isEntityScope && !selected ? 'select' : total === 0 ? 'empty' : null;
 
     return (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center gap-3 p-5 pb-4">
-                <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                    {scope === 'Carrier' ? <Building2 size={18} /> : scope === 'Driver' ? <User size={18} /> : <Truck size={18} />}
+            {/* Interior title — only in the operational (non-assign) view; in the
+                Compliance Setup tab the scope sub-tabs already label the section. */}
+            {!assignMode && (
+                <div className="flex items-center gap-3 p-5 pb-4">
+                    <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        {scope === 'Carrier' ? <Building2 size={18} /> : scope === 'Driver' ? <User size={18} /> : <Truck size={18} />}
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800 leading-tight">{scope} monitoring</h3>
+                        <p className="text-[12px] text-slate-500">
+                            {isEntityScope ? `Pick a ${scope.toLowerCase()} to see its captured dates and status.` : 'Items that carry a date — captured dates and status.'}
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <h3 className="text-lg font-bold text-slate-800 leading-tight">{scope} monitoring</h3>
-                    <p className="text-[12px] text-slate-500">
-                        {isEntityScope ? `Pick a ${scope.toLowerCase()} to see its captured dates and status.` : 'Items that carry a date — captured dates and status.'}
-                    </p>
-                </div>
-            </div>
+            )}
 
             {/* Entity selector (Driver / Asset) */}
             {isEntityScope && (
-                <div className="px-5 pb-3">
+                <div className={cn("px-5 pb-3", assignMode && "pt-4")}>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Configuring {scope}</label>
                     <div className="relative max-w-sm">
                         <select
@@ -518,79 +603,245 @@ function MonitoringList({ scope, items, entities, selectedEntityId, onSelectEnti
                 </div>
             )}
 
-            <div className="px-5 pb-3">
-                <div className="relative max-w-md">
+            <div className={cn("px-5 pb-3 flex items-center justify-between gap-3", assignMode && !isEntityScope && "pt-4")}>
+                <div className="relative w-full max-w-md">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items..."
                         className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                 </div>
+                {(!isEntityScope || selected) && (
+                    <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-[12px] text-slate-500">
+                            {assignMode
+                                ? <><span className="font-semibold text-emerald-600">{enabledCount}</span> of {items.length} monitored</>
+                                : <><span className="font-semibold text-slate-700">{total}</span> monitored item{total === 1 ? '' : 's'}</>}
+                        </span>
+                        {assignMode && onBulkEnabled && items.length > 0 && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => onBulkEnabled(items.map(i => monitorItemKey(i.kind, i.id)), true)}
+                                    disabled={enabledCount === items.length}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-300 bg-white px-3 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                                >
+                                    <CheckCircle2 size={14} /> Monitor all
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onBulkEnabled(items.map(i => monitorItemKey(i.kind, i.id)), false)}
+                                    disabled={enabledCount === 0}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-300 bg-white px-3 text-[12px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                                >
+                                    <Circle size={14} /> Monitor none
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="overflow-x-auto border-t border-slate-100">
-                <table className="min-w-full text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50/50">
-                        <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                            <th className="px-5 py-3">Item</th>
-                            <th className="px-3 py-3">Date Tracked</th>
-                            <th className="px-3 py-3">Captured</th>
-                            <th className="px-3 py-3">Status</th>
-                            <th className="px-3 py-3">Monitoring</th>
-                            <th className="px-3 py-3 text-right pr-5">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {isEntityScope && !selected ? (
-                            <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">Select a {scope.toLowerCase()} to view monitoring.</td></tr>
-                        ) : rows.length === 0 ? (
-                            <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">No date-bearing items for this {scope.toLowerCase()}.</td></tr>
-                        ) : rows.map(item => {
-                            const cfg = configFor(item.key);
-                            const st = statusFor(item);
-                            return (
-                                <tr key={item.key} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/40">
-                                    <td className="px-5 py-3 align-top">
-                                        <div className="flex items-center gap-2">
-                                            <span className={cn("inline-flex h-6 items-center rounded px-1.5 text-[9px] font-bold uppercase tracking-wide", item.kind === 'kn' ? "bg-blue-50 text-blue-600" : "bg-violet-50 text-violet-600")}>
-                                                {item.kind === 'kn' ? 'Key #' : 'Doc'}
-                                            </span>
-                                            <span className="text-sm font-semibold text-slate-900">{item.name}</span>
-                                        </div>
-                                        {item.linkedName && (
-                                            <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-blue-600"><Link2 size={10} /> Linked to: {item.linkedName}</span>
-                                        )}
-                                    </td>
-                                    <td className="px-3 py-3 align-top">
-                                        <div className="flex flex-wrap gap-1">
-                                            {item.hasExpiry && <DateChip label="Expiry" />}
-                                            {item.hasIssueDate && <DateChip label="Issue date" />}
-                                        </div>
-                                    </td>
-                                    <td className="px-3 py-3 align-top text-sm">
-                                        {st.date ? <span className="text-slate-700">{st.date}</span> : <span className="text-slate-400 italic">—</span>}
-                                    </td>
-                                    <td className="px-3 py-3 align-top"><StatusBadge status={st} /></td>
-                                    <td className="px-3 py-3 align-top">
-                                        {cfg.enabled ? (
-                                            <div>
-                                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 size={11} /> On</span>
-                                                <p className="mt-0.5 text-[11px] text-slate-500">{cfg.monitorBasedOn === 'expiry' ? 'Expiry' : 'Issue'} · {reminderSummary(cfg)}</p>
+                {assignMode ? (
+                    /* Assignment mode — inline-editable monitoring template columns. */
+                    <table className="min-w-full text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50/50">
+                            <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                <th className="px-5 py-3">Item</th>
+                                <th className="px-3 py-3">Monitor</th>
+                                <th className="px-3 py-3">Based On</th>
+                                <th className="px-3 py-3">Renewal</th>
+                                <th className="px-3 py-3">Reminders (days before)</th>
+                                <th className="px-3 py-3">Channels</th>
+                                <th className="px-3 py-3 text-right pr-5">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {showEmpty === 'select' ? (
+                                <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-500">Select a {scope.toLowerCase()} to configure monitoring.</td></tr>
+                            ) : showEmpty === 'empty' ? (
+                                <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-500">No date-bearing items for this {scope.toLowerCase()}.</td></tr>
+                            ) : pageRows.map(item => {
+                                const cfg = configFor(item.key);
+                                const on = cfg.enabled;
+                                return (
+                                    <tr key={item.key} className={cn("border-b border-slate-100 last:border-b-0", on ? "hover:bg-slate-50/40" : "bg-slate-50/40")}>
+                                        <td className="px-5 py-3 align-top">
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn("inline-flex h-6 items-center rounded px-1.5 text-[9px] font-bold uppercase tracking-wide", item.kind === 'kn' ? "bg-blue-50 text-blue-600" : "bg-violet-50 text-violet-600")}>
+                                                    {item.kind === 'kn' ? 'Key #' : 'Doc'}
+                                                </span>
+                                                <span className={cn("text-sm font-semibold", on ? "text-slate-900" : "text-slate-400")}>{item.name}</span>
                                             </div>
-                                        ) : (
-                                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Off</span>
-                                        )}
-                                    </td>
-                                    <td className="px-3 py-3 align-top text-right pr-5">
-                                        <button type="button" onClick={() => onConfigure(item)}
-                                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">
-                                            <Bell size={13} /> Configure
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                                            {item.linkedName && (
+                                                <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-blue-600"><Link2 size={10} /> Linked to: {item.linkedName}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-3 align-top">
+                                            <Toggle checked={on} onCheckedChange={(v) => onSetEnabled?.(item.key, v)} />
+                                        </td>
+                                        <td className="px-3 py-3 align-top">
+                                            <select
+                                                value={cfg.monitorBasedOn}
+                                                disabled={!on}
+                                                onChange={(e) => onUpdateConfig?.(item.key, { monitorBasedOn: e.target.value as MonitorBasedOn })}
+                                                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:bg-slate-100 disabled:text-slate-400"
+                                            >
+                                                <option value="expiry" disabled={!item.hasExpiry}>Expiry Date</option>
+                                                <option value="issue_date" disabled={!item.hasIssueDate}>Issue Date</option>
+                                            </select>
+                                        </td>
+                                        <td className="px-3 py-3 align-top">
+                                            <select
+                                                value={cfg.renewalRecurrence}
+                                                disabled={!on}
+                                                onChange={(e) => onUpdateConfig?.(item.key, { renewalRecurrence: e.target.value as RenewalRecurrence })}
+                                                className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:bg-slate-100 disabled:text-slate-400"
+                                            >
+                                                {(Object.keys(RECURRENCE_LABEL) as RenewalRecurrence[]).map(r => (
+                                                    <option key={r} value={r}>{RECURRENCE_LABEL[r]}</option>
+                                                ))}
+                                            </select>
+                                        </td>
+                                        <td className="px-3 py-3 align-top">
+                                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                                {REMINDER_DAYS.map(d => (
+                                                    <label key={d} className={cn("flex items-center gap-1 text-[12px]", on ? "cursor-pointer text-slate-700" : "text-slate-400")}>
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled={!on}
+                                                            checked={!!cfg.reminders[d]}
+                                                            onChange={(e) => onUpdateConfig?.(item.key, { reminders: { ...cfg.reminders, [d]: e.target.checked } })}
+                                                            className="h-3.5 w-3.5 rounded accent-blue-600"
+                                                        />
+                                                        {d}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-3 align-top pr-5">
+                                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                                {CHANNEL_DEFS.map(c => (
+                                                    <label key={c.id} className={cn("flex items-center gap-1 text-[12px]", on ? "cursor-pointer text-slate-700" : "text-slate-400")}>
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled={!on}
+                                                            checked={cfg.channels[c.id]}
+                                                            onChange={(e) => onUpdateConfig?.(item.key, { channels: { ...cfg.channels, [c.id]: e.target.checked } })}
+                                                            className="h-3.5 w-3.5 rounded accent-blue-600"
+                                                        />
+                                                        {c.label}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-3 align-top text-right pr-5">
+                                            <button type="button" onClick={() => onConfigure(item)}
+                                                title="Edit monitoring settings"
+                                                aria-label="Edit monitoring settings"
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">
+                                                <Pencil size={14} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                ) : (
+                    /* Operational mode — captured dates + status, configure via modal. */
+                    <table className="min-w-full text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50/50">
+                            <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                <th className="px-5 py-3">Item</th>
+                                <th className="px-3 py-3">Date Tracked</th>
+                                <th className="px-3 py-3">Captured</th>
+                                <th className="px-3 py-3">Status</th>
+                                <th className="px-3 py-3">Monitoring</th>
+                                <th className="px-3 py-3 text-right pr-5">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {showEmpty === 'select' ? (
+                                <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">Select a {scope.toLowerCase()} to view monitoring.</td></tr>
+                            ) : showEmpty === 'empty' ? (
+                                <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">No monitored items for this {scope.toLowerCase()} — turn monitoring on for an item to see it here.</td></tr>
+                            ) : pageRows.map(item => {
+                                const cfg = configFor(item.key);
+                                const st = statusFor(item);
+                                return (
+                                    <tr key={item.key} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/40">
+                                        <td className="px-5 py-3 align-top">
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn("inline-flex h-6 items-center rounded px-1.5 text-[9px] font-bold uppercase tracking-wide", item.kind === 'kn' ? "bg-blue-50 text-blue-600" : "bg-violet-50 text-violet-600")}>
+                                                    {item.kind === 'kn' ? 'Key #' : 'Doc'}
+                                                </span>
+                                                <span className="text-sm font-semibold text-slate-900">{item.name}</span>
+                                            </div>
+                                            {item.linkedName && (
+                                                <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-blue-600"><Link2 size={10} /> Linked to: {item.linkedName}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-3 align-top">
+                                            <div className="flex flex-wrap gap-1">
+                                                {item.hasExpiry && <DateChip label="Expiry" />}
+                                                {item.hasIssueDate && <DateChip label="Issue date" />}
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-3 align-top text-sm">
+                                            {st.date ? <span className="text-slate-700">{st.date}</span> : <span className="text-slate-400 italic">—</span>}
+                                        </td>
+                                        <td className="px-3 py-3 align-top"><StatusBadge status={st} /></td>
+                                        <td className="px-3 py-3 align-top">
+                                            {cfg.enabled ? (
+                                                <div>
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 size={11} /> On</span>
+                                                    <p className="mt-0.5 text-[11px] text-slate-500">{cfg.monitorBasedOn === 'expiry' ? 'Expiry' : 'Issue'} · {reminderSummary(cfg)}</p>
+                                                </div>
+                                            ) : (
+                                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Off</span>
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-3 align-top text-right pr-5">
+                                            <button type="button" onClick={() => onConfigure(item)}
+                                                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">
+                                                <Bell size={13} /> Configure
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
             </div>
+
+            {/* Pagination */}
+            {!showEmpty && total > PAGE_SIZE && (
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+                    <span className="text-[12px] text-slate-500">
+                        Showing <span className="font-semibold text-slate-700">{(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, total)}</span> of {total}
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={safePage <= 1}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                        >
+                            <ChevronLeft size={14} /> Prev
+                        </button>
+                        <span className="px-2 text-[12px] font-medium text-slate-500">{safePage} / {pageCount}</span>
+                        <button
+                            type="button"
+                            onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                            disabled={safePage >= pageCount}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                        >
+                            Next <ChevronRight size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

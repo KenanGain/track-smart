@@ -24,7 +24,10 @@ import { INITIAL_VENDORS } from '@/data/vendors.data';
 import { INITIAL_EXPENSE_TYPES, INITIAL_ASSET_EXPENSES, type AssetExpense } from '@/pages/settings/expenses.data';
 import { MOCK_ASSET_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
 import { DollarSign, Car, Eye, AlertTriangle } from 'lucide-react';
-import { calculateComplianceStatus, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
+import { calculateComplianceStatus } from '@/utils/compliance-utils';
+import { Toggle } from '@/components/ui/toggle';
+import { loadMonitoringConfigs, monitorItemKey } from '@/pages/compliance/compliance-monitoring.data';
+import { resolveEntityMonitoring, setEntityMonitoring, nextAlertIndicator, maxReminderDays, type MonitoringConfig } from '@/utils/entity-monitoring';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { INCIDENTS } from '@/pages/incidents/incidents.data';
 import { inspectionsData } from '@/pages/inspections/inspectionsData';
@@ -511,6 +514,25 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   useEffect(() => { setCurrentVehicle(asset); }, [asset]);
 
+  // Per-asset monitoring configs (keyed kn:<id> / doc:<id>), reloaded per vehicle.
+  const [mon, setMon] = useState<Record<string, import('@/pages/compliance/compliance-monitoring.data').MonitoringConfig>>(() => loadMonitoringConfigs(asset.id));
+  useEffect(() => { setMon(loadMonitoringConfigs(asset.id)); }, [asset.id]);
+  const refreshMon = () => setMon(loadMonitoringConfigs(currentVehicle.id));
+
+  // Inline Monitoring cell: per-asset toggle + a "next alert" indicator.
+  const TONE_CLASS: Record<string, string> = {
+    ok: 'text-emerald-600', warning: 'text-amber-600 font-semibold', danger: 'text-rose-600 font-semibold', muted: 'text-slate-400',
+  };
+  const renderMonitoringCell = (kind: 'kn' | 'doc', id: string, rawExpiry: string | null, cfg: MonitoringConfig, linkedId?: string | null) => {
+    const ind = nextAlertIndicator(rawExpiry, cfg);
+    return (
+      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <Toggle checked={cfg.enabled} onCheckedChange={(v) => { setEntityMonitoring(currentVehicle.id, kind, id, { ...cfg, enabled: v }, linkedId); refreshMon(); }} />
+        <span className={`text-[11px] whitespace-nowrap ${TONE_CLASS[ind.tone]}`}>{ind.text}</span>
+      </div>
+    );
+  };
+
   // Modal State
   const [isKeyNumberModalOpen, setIsKeyNumberModalOpen] = useState(false);
   const [editingKeyNumber, setEditingKeyNumber] = useState<KeyNumberModalData | null>(null);
@@ -617,14 +639,13 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
             // Sync Value if "Not entered" logic needed
             const hasValue = (!!value && value.trim() !== '' && value !== '—');
-            
-            // Calculate status
-            const enabled = isMonitoringEnabled(kn);
-            const maxDays = getMaxReminderDays(kn);
+
+            // Per-asset monitoring config (override → catalog seed → default).
+            const cfg = resolveEntityMonitoring(currentVehicle.id, 'kn', kn.id, kn);
             const status = calculateComplianceStatus(
                 expiryDate,
-                enabled,
-                maxDays,
+                cfg.enabled,
+                maxReminderDays(cfg),
                 hasValue,
                 kn.hasExpiry,
                 kn.numberRequired ?? true
@@ -635,7 +656,9 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                 name: kn.numberTypeName,
                 number: hasValue ? value : 'Not entered',
                 expiryDate: expiryDate ? expiryDate : (kn.hasExpiry ? 'Not set' : '-'),
+                rawExpiry: expiryDate || null,
                 status,
+                monitoring: cfg,
                 config: kn
             };
         }).filter(item => {
@@ -648,7 +671,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
              return true;
         })
     })).filter(group => group.items.length > 0); // Remove empty groups
-  }, [keyNumbers, currentVehicle, activeComplianceFilter]);
+  }, [keyNumbers, currentVehicle, activeComplianceFilter, mon]);
 
   // Derive stats from the mapped items (Need to calculate based on all items)
   const complianceStats = useMemo(() => {
@@ -684,13 +707,12 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
         }
 
         const hasValue = (!!value && value.trim() !== '' && value !== '—');
-        
-        const enabled = isMonitoringEnabled(kn);
-        const maxDays = getMaxReminderDays(kn);
+
+        const cfg = resolveEntityMonitoring(currentVehicle.id, 'kn', kn.id, kn);
         const status = calculateComplianceStatus(
             expiryDate,
-            enabled,
-            maxDays,
+            cfg.enabled,
+            maxReminderDays(cfg),
             hasValue,
             kn.hasExpiry,
             kn.numberRequired ?? true
@@ -704,7 +726,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
     });
 
      return { total, expired, expiring, missingNumber, missingExpiry, missingDoc: 0 };
-  }, [keyNumbers, currentVehicle]);
+  }, [keyNumbers, currentVehicle, mon]);
 
   // Cross-cutting alerts surfaced in the Notifications tab. Computed here so
   // the same numbers drive the tab badge and the rendered list — single source
@@ -1112,10 +1134,16 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
           let dateUploaded = '—';
           let documentName = '—';
           
+          // Per-asset monitoring for this doc — shared with its linked key number.
+          const docCfg = resolveEntityMonitoring(
+              currentVehicle.id, 'doc', docType.id, linkedKn,
+              linkedKn ? monitorItemKey('kn', linkedKn.id) : undefined,
+          );
+
           // Logic: Check if the Asset has a value/document for this requirement
           if (linkedKn) {
-              const enabled = isMonitoringEnabled(linkedKn);
-              const maxDays = getMaxReminderDays(linkedKn);
+              const enabled = docCfg.enabled;
+              const maxDays = maxReminderDays(docCfg);
               const isRequired = linkedKn.numberRequired ?? true; // or documentRequired?
 
               // A. It's a Key Number Document (e.g. Registration linked to Plate)
@@ -1197,9 +1225,12 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
               dateUploaded,
               status,
               expiryDate,
+              rawExpiry: (expiryDate && expiryDate !== '—') ? expiryDate : null,
               hasUpload,
               requirementLevel: docType.requirementLevel,
               linkedKeyNumber: linkedKn ? linkedKn.numberTypeName : null,
+              linkedKnId: linkedKn ? linkedKn.id : null,
+              monitoring: docCfg,
               linkedModule: docType.linkedModule || null
           };
       }).sort((a: any, b: any) => {
@@ -1208,7 +1239,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
           if (a.status === 'Missing' && b.status !== 'Missing') return -1;
           return 0;
       });
-  }, [documents, keyNumbers, currentVehicle]);
+  }, [documents, keyNumbers, currentVehicle, mon]);
 
   const handleSaveDocument = () => {
       // Mock save logic
@@ -1579,7 +1610,8 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                     (() => {
                         const plateKn = keyNumbers.find((k: KeyNumberConfig) => k.id === 'kn-plate');
                         if (!currentVehicle.registrationExpiryDate) return 'bg-slate-100 text-slate-500';
-                        const status = calculateComplianceStatus(currentVehicle.registrationExpiryDate, isMonitoringEnabled(plateKn), getMaxReminderDays(plateKn), true, true);
+                        const plateCfg = resolveEntityMonitoring(currentVehicle.id, 'kn', 'kn-plate', plateKn);
+                        const status = calculateComplianceStatus(currentVehicle.registrationExpiryDate, plateCfg.enabled, maxReminderDays(plateCfg), true, true);
                         return status === 'Expired'
                           ? 'bg-rose-50 text-rose-600'
                           : status === 'Expiring Soon'
@@ -1608,10 +1640,11 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                     (() => {
                         const plateKn = keyNumbers.find((k: KeyNumberConfig) => k.id === 'kn-plate');
                         if (!currentVehicle.registrationExpiryDate) return false;
+                        const plateCfg = resolveEntityMonitoring(currentVehicle.id, 'kn', 'kn-plate', plateKn);
                         const status = calculateComplianceStatus(
                             currentVehicle.registrationExpiryDate,
-                            isMonitoringEnabled(plateKn),
-                            getMaxReminderDays(plateKn),
+                            plateCfg.enabled,
+                            maxReminderDays(plateCfg),
                             true,
                             true
                         );
@@ -2097,6 +2130,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                           <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-1/4">Value</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center w-[150px]">Status</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[150px]">Expiry</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[240px]">Monitoring</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right w-[100px]">Actions</th>
                         </tr>
                       </thead>
@@ -2108,7 +2142,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                                     className="bg-slate-50/80 border-b border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors"
                                     onClick={() => toggleGroup(group.key)}
                                 >
-                                    <td colSpan={5} className="px-6 py-2.5">
+                                    <td colSpan={6} className="px-6 py-2.5">
                                         <div className="flex items-center gap-2">
                                             {collapsedGroups[group.key] ? <ChevronRight size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
                                             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{group.label}</span>
@@ -2137,8 +2171,11 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                                         <td className="px-6 py-4 text-sm text-slate-600 font-medium">
                                             {item.expiryDate}
                                         </td>
+                                        <td className="px-6 py-4">
+                                            {renderMonitoringCell('kn', item.id, item.rawExpiry, item.monitoring, item.config.requiredDocumentTypeId)}
+                                        </td>
                                         <td className="px-6 py-4 text-right">
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     handleEditKeyNumber(item.config, item.number, item.expiryDate === '-' || item.expiryDate === 'Not set' ? undefined : item.expiryDate);
                                                 }}
@@ -2151,7 +2188,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                                 ))}
                            </React.Fragment>
                         )) : (
-                            <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400 text-sm">No compliance monitors found matching filter.</td></tr>
+                            <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400 text-sm">No compliance monitors found matching filter.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -3843,6 +3880,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                             <th className="px-6 py-4">Date Uploaded</th>
                             <th className="px-6 py-4">Status</th>
                             <th className="px-6 py-4">Expiry</th>
+                            <th className="px-6 py-4">Monitoring</th>
                             <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
@@ -3871,6 +3909,11 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                                      <Badge variant={doc.status === 'Active' ? 'success' : doc.status === 'Expired' ? 'danger' : 'warning'}>{doc.status}</Badge>
                                  </td>
                                  <td className="px-6 py-4 text-slate-500">{doc.expiryDate}</td>
+                                 <td className="px-6 py-4">
+                                     {doc.monitoring
+                                         ? renderMonitoringCell('doc', doc.id, doc.rawExpiry, doc.monitoring, doc.linkedKnId)
+                                         : <span className="text-[11px] text-slate-300">—</span>}
+                                 </td>
                                  <td className="px-6 py-4 text-right">
                                       <div className="flex justify-end gap-1">
                                          {doc.hasUpload && (
@@ -4450,6 +4493,15 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
         availableKeyNumbers={keyNumbers}
         tagSections={tagSections}
         getDocumentTypeById={getDocumentTypeById}
+        monitoringValue={editingKeyNumber?.configId
+          ? resolveEntityMonitoring(currentVehicle.id, 'kn', editingKeyNumber.configId, keyNumbers.find(k => k.id === editingKeyNumber!.configId))
+          : undefined}
+        onSaveMonitoring={(cfg) => {
+          if (!editingKeyNumber?.configId) return;
+          const linked = keyNumbers.find(k => k.id === editingKeyNumber.configId)?.requiredDocumentTypeId;
+          setEntityMonitoring(currentVehicle.id, 'kn', editingKeyNumber.configId, cfg, linked);
+          refreshMon();
+        }}
       />
 
       {/* The Schedule and Add Work Order forms are now rendered as

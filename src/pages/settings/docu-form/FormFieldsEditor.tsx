@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2, Pencil, Upload, Check } from 'lucide-react';
+import { Plus, Trash2, Pencil, Upload, Check, GripVertical } from 'lucide-react';
+import {
+    DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    SortableContext, rectSortingStrategy, useSortable, arrayMove,
+    sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +17,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import {
-    newFormField, loadApplicationForms,
+    newFormField, loadApplicationForms, chunkFieldRows,
     type FormField, type FormFieldType,
 } from '@/pages/ats/application-forms.data';
 import { loadDocumentTypes } from '@/pages/ats/document-types.data';
@@ -89,15 +98,15 @@ function FieldInputPreview({ field }: { field: FormField }) {
             const issueStateRequired   = linkedType?.issueStateRequired   ?? false;
             const issueCountryRequired = linkedType?.issueCountryRequired ?? false;
             return (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                     {/* Upload widget */}
                     <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400">
                         <Upload size={14} /> {allowMultiple ? 'Upload documents (multiple allowed)' : 'Upload document'}
                     </div>
 
-                    {/* Meta inputs — only render the ones the catalog turned on */}
+                    {/* Meta inputs — only render the ones the catalog turned on; above or below per the field setting */}
                     {(expiryRequired || issueDateRequired || issueStateRequired || issueCountryRequired) && (
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className={cn("grid grid-cols-1 gap-2 sm:grid-cols-2", field.metaPosition === 'above' && "order-first")}>
                             {expiryRequired && (
                                 <div>
                                     <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Expiry date</p>
@@ -310,16 +319,29 @@ function FieldInputPreview({ field }: { field: FormField }) {
 }
 
 /** Header row inside a FieldCard: label + edit/remove buttons. */
-function FieldHeader({ field, onEdit, onRemove, condensed }: {
+function FieldHeader({ field, onEdit, onRemove, condensed, dragHandleProps }: {
     field: FormField;
     onEdit: () => void;
     onRemove: () => void;
     condensed?: boolean;
+    /** Spread from useSortable (attributes + listeners) onto the grip button. */
+    dragHandleProps?: Record<string, unknown>;
 }) {
     const def = getFieldTypeDef(field.type);
     const TypeIcon = def.icon;
     return (
         <div className="mb-2 flex items-center gap-2">
+            {dragHandleProps && (
+                <button
+                    type="button"
+                    {...dragHandleProps}
+                    className="flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded text-slate-300 hover:bg-slate-100 hover:text-slate-500 active:cursor-grabbing"
+                    title="Drag to reorder"
+                    aria-label="Drag to reorder"
+                >
+                    <GripVertical size={14} />
+                </button>
+            )}
             <TypeIcon size={condensed ? 12 : 13} className="shrink-0 text-slate-400" />
             <div className={cn(
                 "flex flex-1 flex-wrap items-baseline gap-x-2",
@@ -354,17 +376,18 @@ function FieldHeader({ field, onEdit, onRemove, condensed }: {
 }
 
 /** A field card; if `dependents` are passed they nest inside (e.g. a toggle + its conditional checklist). */
-function FieldCard({ field, dependents, onEdit, onRemove, onEditDependent, onRemoveDependent }: {
+function FieldCard({ field, dependents, onEdit, onRemove, onEditDependent, onRemoveDependent, dragHandleProps }: {
     field: FormField;
     dependents: FormField[];
     onEdit: () => void;
     onRemove: () => void;
     onEditDependent: (f: FormField) => void;
     onRemoveDependent: (f: FormField) => void;
+    dragHandleProps?: Record<string, unknown>;
 }) {
     return (
         <div className="rounded-lg border border-slate-200 bg-white p-4 hover:border-blue-300">
-            <FieldHeader field={field} onEdit={onEdit} onRemove={onRemove} />
+            <FieldHeader field={field} onEdit={onEdit} onRemove={onRemove} dragHandleProps={dragHandleProps} />
             <FieldInputPreview field={field} />
             {field.instruction && (
                 <p className="mt-1.5 text-[11px] text-slate-400">{field.instruction}</p>
@@ -746,6 +769,35 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
                                     />
                                     <span className="text-sm font-medium text-slate-800">Required field</span>
                                 </label>
+
+                                {/* Width — Full / Half (side by side) */}
+                                <div className="mt-4">
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">Width on form</label>
+                                    <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
+                                        {([
+                                            { v: 'full', label: 'Full width' },
+                                            { v: 'half', label: 'Half (side by side)' },
+                                        ] as const).map(o => {
+                                            const active = (draft.width ?? 'full') === o.v;
+                                            return (
+                                                <button
+                                                    key={o.v}
+                                                    type="button"
+                                                    onClick={() => up({ width: o.v })}
+                                                    className={cn(
+                                                        "px-3 py-1.5 text-[12px] font-medium",
+                                                        active ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50",
+                                                    )}
+                                                >
+                                                    {o.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-slate-500">
+                                        Two consecutive half-width fields render side by side.
+                                    </p>
+                                </div>
                             </div>
 
                             {/* Field type chip + picker */}
@@ -906,6 +958,37 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
                                 />
                             )}
 
+                            {/* Date inputs position — above or below the Upload widget */}
+                            {draft.type === 'document' && (
+                                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                    <SectionEyebrow accent="blue">Date inputs position</SectionEyebrow>
+                                    <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
+                                        {([
+                                            { v: 'below', label: 'Below upload' },
+                                            { v: 'above', label: 'Above upload' },
+                                        ] as const).map(o => {
+                                            const active = (draft.metaPosition ?? 'below') === o.v;
+                                            return (
+                                                <button
+                                                    key={o.v}
+                                                    type="button"
+                                                    onClick={() => up({ metaPosition: o.v })}
+                                                    className={cn(
+                                                        "px-3 py-1.5 text-[12px] font-medium",
+                                                        active ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50",
+                                                    )}
+                                                >
+                                                    {o.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="mt-1.5 text-[11px] text-slate-500">
+                                        Whether expiry / issue-date / state / country render above or below the Upload widget.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Follow-up fields — toggle-only quick wizard */}
                             {draft.type === 'toggle' && onAddRelated && (
                                 <FollowUpFieldsConfig
@@ -957,6 +1040,29 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
     );
 }
 
+/** A FieldCard made draggable for the builder list. The grip in its header is the handle. */
+function SortableFieldCard(props: {
+    field: FormField;
+    dependents: FormField[];
+    onEdit: () => void;
+    onRemove: () => void;
+    onEditDependent: (f: FormField) => void;
+    onRemoveDependent: (f: FormField) => void;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.field.id });
+    const style: React.CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : undefined,
+        zIndex: isDragging ? 10 : undefined,
+    };
+    return (
+        <div ref={setNodeRef} style={style}>
+            <FieldCard {...props} dragHandleProps={{ ...attributes, ...listeners }} />
+        </div>
+    );
+}
+
 export function FormFieldsEditor({ fields, onChange }: {
     fields: FormField[];
     onChange: (fields: FormField[]) => void;
@@ -974,6 +1080,58 @@ export function FormFieldsEditor({ fields, onChange }: {
         setEditing(null);
     };
 
+    const dependentsByController = useMemo(() => {
+        const m = new Map<string, FormField[]>();
+        for (const f of fields) {
+            if (!f.showWhen) continue;
+            const list = m.get(f.showWhen.fieldId) ?? [];
+            list.push(f);
+            m.set(f.showWhen.fieldId, list);
+        }
+        return m;
+    }, [fields]);
+    const topLevel = useMemo(() => fields.filter(f => !f.showWhen), [fields]);
+    const topLevelIds = topLevel.map(f => f.id);
+    const rows = useMemo(
+        () => chunkFieldRows(topLevel, (f) => (dependentsByController.get(f.id)?.length ?? 0) > 0),
+        [topLevel, dependentsByController],
+    );
+
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
+
+    const onDragEnd = (e: DragEndEvent) => {
+        const { active, over } = e;
+        if (!over || active.id === over.id) return;
+        const oldIndex = topLevelIds.indexOf(String(active.id));
+        const newIndex = topLevelIds.indexOf(String(over.id));
+        if (oldIndex < 0 || newIndex < 0) return;
+        const newOrder = arrayMove(topLevel, oldIndex, newIndex);
+        // Rebuild the flat list: each controller immediately followed by its dependents.
+        const next: FormField[] = [];
+        for (const f of newOrder) {
+            next.push(f);
+            for (const dep of dependentsByController.get(f.id) ?? []) next.push(dep);
+        }
+        // Safeguard: keep any orphan dependents whose controller isn't top-level.
+        for (const f of fields) if (!next.includes(f)) next.push(f);
+        onChange(next);
+    };
+
+    const renderCard = (f: FormField) => (
+        <SortableFieldCard
+            key={f.id}
+            field={f}
+            dependents={dependentsByController.get(f.id) ?? []}
+            onEdit={() => setEditing(f)}
+            onRemove={() => removeField(f.id)}
+            onEditDependent={(dep) => setEditing(dep)}
+            onRemoveDependent={(dep) => removeField(dep.id)}
+        />
+    );
+
     return (
         <div className="space-y-3">
             {fields.length === 0 && (
@@ -981,28 +1139,21 @@ export function FormFieldsEditor({ fields, onChange }: {
                     No fields yet — add the first field below.
                 </div>
             )}
-            {(() => {
-                const dependentsByController = new Map<string, FormField[]>();
-                for (const f of fields) {
-                    if (!f.showWhen) continue;
-                    const list = dependentsByController.get(f.showWhen.fieldId) ?? [];
-                    list.push(f);
-                    dependentsByController.set(f.showWhen.fieldId, list);
-                }
-                return fields
-                    .filter(f => !f.showWhen)
-                    .map(f => (
-                        <FieldCard
-                            key={f.id}
-                            field={f}
-                            dependents={dependentsByController.get(f.id) ?? []}
-                            onEdit={() => setEditing(f)}
-                            onRemove={() => removeField(f.id)}
-                            onEditDependent={(dep) => setEditing(dep)}
-                            onRemoveDependent={(dep) => removeField(dep.id)}
-                        />
-                    ));
-            })()}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={topLevelIds} strategy={rectSortingStrategy}>
+                    <div className="space-y-3">
+                        {rows.map((row) =>
+                            row.length === 2 ? (
+                                <div key={row[0].id} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {row.map(renderCard)}
+                                </div>
+                            ) : (
+                                renderCard(row[0])
+                            ),
+                        )}
+                    </div>
+                </SortableContext>
+            </DndContext>
             <button
                 type="button"
                 onClick={addField}

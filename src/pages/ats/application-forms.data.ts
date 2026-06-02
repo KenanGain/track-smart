@@ -50,6 +50,37 @@ export interface FormField {
      *  The button is rendered with the subform's `buttonName` (falls back to its name) and
      *  opens a popup containing every field on the linked subform. */
     subformId?: string;
+    /** Layout width on the form. 'half' lets two consecutive half-width fields sit
+     *  side by side in a 2-column row. Missing = 'full' (back-compatible). */
+    width?: 'full' | 'half';
+    /** For type === 'document': where the expiry/issue meta inputs render relative to
+     *  the Upload widget. Missing = 'below' (current behavior). */
+    metaPosition?: 'above' | 'below';
+}
+
+/**
+ * Chunk ordered fields into layout rows. A `half`-width field with no dependents
+ * pairs with the next consecutive `half` (no-dependent) field to sit side by side;
+ * everything else is its own full-width row. Fields that control dependents stay
+ * full-width so their nested block isn't squeezed. Shared by the builder list and
+ * the runtime renderer so both lay fields out identically.
+ */
+export function chunkFieldRows<T extends FormField>(
+    fields: T[],
+    hasDeps: (f: T) => boolean,
+): T[][] {
+    const rows: T[][] = [];
+    for (let i = 0; i < fields.length; i++) {
+        const f = fields[i];
+        const next = fields[i + 1];
+        if (f.width === 'half' && !hasDeps(f) && next && next.width === 'half' && !hasDeps(next)) {
+            rows.push([f, next]);
+            i++;
+        } else {
+            rows.push([f]);
+        }
+    }
+    return rows;
 }
 
 /** Value captured by a typed document upload field. */

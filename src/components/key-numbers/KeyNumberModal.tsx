@@ -5,6 +5,7 @@ import { useAppData } from '@/context/AppDataContext';
 import type { KeyNumberConfig, UploadedDocument } from '@/types/key-numbers.types';
 import type { DocumentType, TagSection } from '@/data/mock-app-data';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
+import type { MonitoringConfig } from '@/pages/compliance/compliance-monitoring.data';
 
 // Key Number Add/Edit Modal Types
 export interface KeyNumberModalData {
@@ -32,9 +33,13 @@ interface KeyNumberModalProps {
     availableKeyNumbers: KeyNumberConfig[];
     tagSections: TagSection[];
     getDocumentTypeById?: (id: string) => DocumentType | undefined;
+    /** Per-entity monitoring: when provided, the monitoring section is seeded from
+     *  this config and saved via onSaveMonitoring instead of the global catalog. */
+    monitoringValue?: MonitoringConfig;
+    onSaveMonitoring?: (cfg: MonitoringConfig) => void;
 }
 
-export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, editData, availableKeyNumbers, tagSections }: KeyNumberModalProps) => {
+export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, editData, availableKeyNumbers, tagSections, monitoringValue, onSaveMonitoring }: KeyNumberModalProps) => {
     const [selectedTypeId, setSelectedTypeId] = useState<string>('');
     const [formValue, setFormValue] = useState('');
     const [formExpiry, setFormExpiry] = useState('');
@@ -81,14 +86,23 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
                 setFormTags(tagsRecord);
 
 
-                // Load Monitoring Config
-                const config = availableKeyNumbers.find(kn => kn.id === editData.configId);
-                if (config) {
-                    setMonitoringEnabled(config.monitoringEnabled ?? false);
-                    setMonitorBasedOn(config.monitorBasedOn || 'expiry');
-                    setRenewalRecurrence((config.renewalRecurrence as any) || 'annually');
-                    setReminderDays(config.reminderDays || { 90: true, 60: true, 30: true, 7: false });
-                    setNotificationChannels(config.notificationChannels || { email: true, inApp: true, sms: false });
+                // Load Monitoring Config — prefer the per-entity value when supplied,
+                // otherwise fall back to the catalog config's embedded fields.
+                if (monitoringValue) {
+                    setMonitoringEnabled(monitoringValue.enabled);
+                    setMonitorBasedOn(monitoringValue.monitorBasedOn);
+                    setRenewalRecurrence(monitoringValue.renewalRecurrence as any);
+                    setReminderDays(monitoringValue.reminders || { 90: true, 60: true, 30: true, 7: false });
+                    setNotificationChannels(monitoringValue.channels || { email: true, inApp: true, sms: false });
+                } else {
+                    const config = availableKeyNumbers.find(kn => kn.id === editData.configId);
+                    if (config) {
+                        setMonitoringEnabled(config.monitoringEnabled ?? false);
+                        setMonitorBasedOn(config.monitorBasedOn || 'expiry');
+                        setRenewalRecurrence((config.renewalRecurrence as any) || 'annually');
+                        setReminderDays(config.reminderDays || { 90: true, 60: true, 30: true, 7: false });
+                        setNotificationChannels(config.notificationChannels || { email: true, inApp: true, sms: false });
+                    }
                 }
             } else {
                 setSelectedTypeId('');
@@ -108,7 +122,7 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
             }
             setErrors({});
         }
-    }, [isOpen, mode, editData, tagSections]);
+    }, [isOpen, mode, editData, tagSections, monitoringValue]);
 
     if (!isOpen) return null;
 
@@ -146,20 +160,32 @@ export const KeyNumberModal = ({ isOpen, onClose, onSave, mode, entityType, edit
             documents: (mode === 'edit' && editData?.documents) ? editData.documents : []
         });
 
-        // Update Global Config with new monitoring settings
-        setKeyNumbers(prev => prev.map(k => {
-            if (k.id === activeConfig.id) {
-                return {
-                    ...k,
-                    monitoringEnabled,
-                    monitorBasedOn,
-                    renewalRecurrence,
-                    reminderDays,
-                    notificationChannels
-                };
-            }
-            return k;
-        }));
+        if (onSaveMonitoring) {
+            // Per-entity monitoring (asset/driver) — persist to the entity scope,
+            // leaving the global catalog config untouched.
+            onSaveMonitoring({
+                enabled: monitoringEnabled,
+                monitorBasedOn,
+                renewalRecurrence,
+                reminders: reminderDays,
+                channels: notificationChannels,
+            });
+        } else {
+            // Update Global Config with new monitoring settings
+            setKeyNumbers(prev => prev.map(k => {
+                if (k.id === activeConfig.id) {
+                    return {
+                        ...k,
+                        monitoringEnabled,
+                        monitorBasedOn,
+                        renewalRecurrence,
+                        reminderDays,
+                        notificationChannels
+                    };
+                }
+                return k;
+            }));
+        }
 
         onClose();
     };
