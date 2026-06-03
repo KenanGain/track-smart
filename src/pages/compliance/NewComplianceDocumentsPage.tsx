@@ -759,6 +759,8 @@ function DocumentsCard({ documents, entityId, monitorScopeId }: { documents: Doc
                 issueStateRequired={!!uploadRow?.issueStateRequired}
                 issueCountryRequired={!!uploadRow?.issueCountryRequired}
                 allowMultiple={!!uploadRow?.allowMultiple}
+                numberOfSlots={uploadRow?.numberOfSlots}
+                slotLabels={uploadRow?.slotLabels}
                 existing={uploadRow ? uploadedFor(uploadRow.id) : null}
                 onSave={(docs) => { if (uploadRow) uploadDocument(uploadKey('doc', uploadRow.id, entityId), docs); }}
             />

@@ -87,6 +87,7 @@ export interface UploadedDocument {
     issuingState?: string;          // Captured when the item requires an issuing state/province
     issuingCountry?: string;        // Captured when the item requires an issuing country
     selectedTags?: Record<string, string[]>;  // sectionId -> array of tagIds
+    slotLabel?: string;             // Which labeled upload slot this file belongs to (e.g. "Front")
     notes?: string;
 }
 

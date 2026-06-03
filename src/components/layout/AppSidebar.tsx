@@ -34,6 +34,36 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
         return false;
     });
 
+    // Drag-to-resize width (expanded only), persisted across sessions.
+    const MIN_W = 220;
+    const MAX_W = 480;
+    const [width, setWidth] = React.useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = Number(localStorage.getItem('sidebar_width'));
+            if (saved >= MIN_W && saved <= MAX_W) return saved;
+        }
+        return 260;
+    });
+    const [isResizing, setIsResizing] = React.useState(false);
+
+    React.useEffect(() => { localStorage.setItem('sidebar_width', String(width)); }, [width]);
+
+    React.useEffect(() => {
+        if (!isResizing) return;
+        const onMove = (e: MouseEvent) => setWidth(Math.min(MAX_W, Math.max(MIN_W, e.clientX)));
+        const onUp = () => setIsResizing(false);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+    }, [isResizing]);
+
     const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() => {
         const initial: Record<string, boolean> = {};
         for (const n of SIDEBAR_NODES) {
@@ -55,9 +85,11 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
 
     return (
         <aside
+            style={{ width: isCollapsed ? 70 : width }}
             className={cn(
-                "h-screen border-r border-slate-200 bg-white flex flex-col transition-all duration-300 ease-in-out relative z-50",
-                isCollapsed ? "w-[70px]" : "w-[260px]",
+                "h-screen border-r border-slate-200 bg-white flex flex-col ease-in-out relative z-50",
+                // Animate width only when collapsing/expanding — not while dragging.
+                isResizing ? "" : "transition-all duration-300",
                 className
             )}
         >
@@ -98,6 +130,24 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
                     </nav>
                 </div>
             </ScrollArea>
+
+            {/* Drag handle to resize the sidebar (double-click to reset) */}
+            {!isCollapsed && (
+                <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Drag to resize · double-click to reset"
+                    onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+                    onDoubleClick={() => setWidth(260)}
+                    className={cn(
+                        "absolute right-0 top-0 h-full w-1.5 -mr-0.5 cursor-col-resize group/resize",
+                        "hover:bg-blue-200/60 transition-colors",
+                        isResizing && "bg-blue-300/70",
+                    )}
+                >
+                    <span className="absolute right-0 top-1/2 -translate-y-1/2 h-8 w-1 rounded-full bg-slate-200 group-hover/resize:bg-blue-400 transition-colors" />
+                </div>
+            )}
         </aside>
     );
 }
@@ -125,7 +175,7 @@ function SidebarNodeView(props: {
     const handleMouseLeave = React.useCallback(() => {
         hoverTimeoutRef.current = setTimeout(() => {
             setIsHovered(false);
-        }, 500); // 500ms grace period - very stable
+        }, 140); // short grace — the transparent bridge keeps travel stable
     }, []);
 
     // Determine active state
@@ -347,26 +397,31 @@ function SidebarTooltip({
     if (typeof document === 'undefined') return null;
 
     return createPortal(
-        <div 
+        // Outer wrapper keeps the hover alive and adds a small transparent bridge
+        // (pl-2) so the cursor can travel from the collapsed rail into the popover
+        // without it flickering closed.
+        <div
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
-            className={cn(
-                "fixed z-[9999] animate-in fade-in zoom-in-95 duration-100",
-                isGroup && "bg-white border border-slate-200 rounded-lg shadow-xl"
-            )}
-            style={{ 
+            className="fixed z-[9999] pl-2"
+            style={{
                 // For Group: Align Top. For Leaf: Center Vertically.
-                top: isGroup ? coords.top : coords.top + (coords.height / 2), 
+                top: isGroup ? coords.top : coords.top + (coords.height / 2),
                 left: coords.left,
-                transform: isGroup ? 'translateY(-10px)' : 'translateY(-50%)' 
+                transform: isGroup ? 'translateY(-10px)' : 'translateY(-50%)',
             }}
         >
-             {!isGroup && title && (
-                 <div className="px-3 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md shadow-lg whitespace-nowrap">
-                     {title}
-                 </div>
-             )}
-             {isGroup && children}
+            <div className={cn(
+                "animate-in fade-in slide-in-from-left-1 duration-100",
+                isGroup && "bg-white border border-slate-200 rounded-lg shadow-xl",
+            )}>
+                {!isGroup && title && (
+                    <div className="px-3 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md shadow-lg whitespace-nowrap">
+                        {title}
+                    </div>
+                )}
+                {isGroup && children}
+            </div>
         </div>,
         document.body
     );

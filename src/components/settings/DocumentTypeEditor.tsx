@@ -195,6 +195,9 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
     // Config Rules
     const [category, setCategory] = useState<DocTypeCategory>(initialData?.category || 'Other');
     const [allowMultiple, setAllowMultiple] = useState<boolean>(initialData?.allowMultiple ?? false);
+    // Multiple-upload slots: blank = unlimited; a finite N renders N labeled blocks.
+    const [limitSlots, setLimitSlots] = useState<boolean>(initialData?.numberOfSlots === 2);
+    const [slotLabels, setSlotLabels] = useState<string[]>(initialData?.slotLabels ?? ['Front', 'Rear']);
     const [expiryRequired, setExpiryRequired] = useState(initialData?.expiryRequired ?? true);
     const [issueDateRequired, setIssueDateRequired] = useState(initialData?.issueDateRequired ?? false);
     const [issueStateRequired, setIssueStateRequired] = useState(initialData?.issueStateRequired ?? false);
@@ -233,6 +236,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             setSelectedDriver(initialData.destination?.driverId || '');
             setCategory(initialData.category || 'Other');
             setAllowMultiple(initialData.allowMultiple ?? false);
+            setLimitSlots(initialData.numberOfSlots === 2);
+            setSlotLabels(initialData.slotLabels ?? ['Front', 'Rear']);
             setExpiryRequired(initialData.expiryRequired);
             setIssueDateRequired(initialData.issueDateRequired);
             setIssueStateRequired(initialData.issueStateRequired ?? false);
@@ -341,6 +346,8 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
             category,
             requirementLevel,
             allowMultiple,
+            numberOfSlots: (allowMultiple && limitSlots) ? 2 : undefined,
+            slotLabels: (allowMultiple && limitSlots) ? [slotLabels[0]?.trim() || 'Front', slotLabels[1]?.trim() || 'Rear'] : undefined,
             expiryRequired,
             issueDateRequired,
             issueStateRequired,
@@ -622,6 +629,35 @@ export const DocumentTypeEditor: React.FC<DocumentTypeEditorProps> = ({ initialD
                                     </div>
                                     <Switch checked={allowMultiple} onCheckedChange={!isLockedByExpenseType ? setAllowMultiple : () => {}} />
                                 </div>
+
+                                {allowMultiple && (
+                                    <div className="col-span-1 sm:col-span-2 rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <span className="text-sm font-medium text-slate-700 block">Two labeled upload slots</span>
+                                                <span className="text-xs text-slate-500">For a front + rear pair (e.g. license). Off = one upload field.</span>
+                                            </div>
+                                            <Switch checked={limitSlots} onCheckedChange={setLimitSlots} />
+                                        </div>
+                                        {limitSlots && (
+                                            <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                                                {[0, 1].map(i => (
+                                                    <div key={i}>
+                                                        <label className="mb-1 block text-[11px] font-semibold text-slate-500">{i === 0 ? 'First slot' : 'Second slot'} label</label>
+                                                        <input
+                                                            type="text"
+                                                            value={slotLabels[i] ?? ''}
+                                                            onChange={(e) => setSlotLabels(prev => { const next = [...prev]; next[i] = e.target.value; return next; })}
+                                                            placeholder={i === 0 ? 'Front' : 'Rear'}
+                                                            className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 ${isLockedByExpenseType ? 'opacity-60 grayscale' : ''}`}>
                                     <span className="text-sm font-medium text-slate-700">Expiry Date Input</span>
                                     <Switch checked={expiryRequired} onCheckedChange={!isLockedByExpenseType ? setExpiryRequired : () => {}} />

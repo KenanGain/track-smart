@@ -379,6 +379,10 @@ export interface FormDocument {
     required: boolean;
     /** Whether the applicant can upload multiple files for this document. */
     allowMultiple?: boolean;
+    /** When allowMultiple is on: number of labeled upload slots (undefined = unlimited). */
+    numberOfSlots?: number;
+    /** Per-slot labels, e.g. ["Front", "Rear"]. */
+    slotLabels?: string[];
     /** Whether an expiry date is required for this document. */
     expiryRequired?: boolean;
     /** Whether an issue date is required for this document. */

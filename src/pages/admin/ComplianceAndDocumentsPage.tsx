@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     FileText, Search, Plus, Pencil, Trash2, ChevronDown, ChevronUp, ChevronsUpDown,
     Building2, Truck, User, Filter, Save,
-    ArrowLeft, Info, ExternalLink, Link2, ShieldAlert, Receipt,
+    ArrowLeft, Info, ExternalLink, Link2, ShieldAlert, Receipt, Eye, X, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { Toggle } from '@/components/ui/toggle';
 import { Button } from '@/components/ui/button';
 import { DocumentTagsView } from '@/pages/settings/docu-form/DocumentTagsView';
+import { DocumentFormPreviewModal } from '@/components/compliance/DocumentFormPreviewModal';
+import { loadAdminDocuments, saveAdminDocuments } from '@/pages/admin/compliance-catalog.data';
 import {
     loadTagSections, saveTagSections, newTag,
     type DocTagSection, type TagColorTheme,
@@ -175,6 +177,10 @@ export interface DocumentRow {
     requirementLevel?: DocumentRequirement;
     /** Whether multiple files may be uploaded for this document. */
     allowMultiple?: boolean;
+    /** When allowMultiple is on: fixed number of labeled upload slots (undefined = unlimited). */
+    numberOfSlots?: number;
+    /** Per-slot labels, e.g. ["Front", "Rear"]. */
+    slotLabels?: string[];
     /**
      * Surfaces this document inside the Hiring / Templates / Form flows
      * (ATS hiring templates, applicant document collection forms, etc.).
@@ -1866,7 +1872,7 @@ function docLinkBucket(r: DocumentRow): 'number' | 'expense' | 'system' | 'none'
     return 'none';
 }
 
-function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatchKeyNumber, onLinkKeyNumber, onUnlinkKeyNumber, onEdit, onDelete }: {
+function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatchKeyNumber, onLinkKeyNumber, onUnlinkKeyNumber, onEdit, onDelete, onPreview, onOpenInGenerator }: {
     rows: DocumentRow[];
     total: number;
     allDocuments: DocumentRow[];
@@ -1877,10 +1883,13 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
     onUnlinkKeyNumber: (documentId: string) => void;
     onEdit: (row: DocumentRow) => void;
     onDelete: (id: string) => void;
+    onPreview: (row: DocumentRow) => void;
+    onOpenInGenerator?: () => void;
 }) {
     const [query, setQuery] = useState('');
     const [linkFilter, setLinkFilter] = useState<DocLinkFilter>('all');
     const [linkingFor, setLinkingFor] = useState<DocumentRow | null>(null);
+    const [slotDoc, setSlotDoc] = useState<DocumentRow | null>(null);
 
     const keyNumberById = useMemo(
         () => new Map(keyNumbers.map(k => [k.id, k])),
@@ -2083,8 +2092,25 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                                             </div>
                                         </td>
                                         <td className="px-2 py-3 align-top">
-                                            <div className="flex justify-center">
+                                            <div className="flex flex-col items-center gap-1.5">
                                                 <Toggle checked={!!r.allowMultiple} onCheckedChange={(v) => onPatch(r.id, { allowMultiple: v })} />
+                                                {r.allowMultiple && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSlotDoc(r)}
+                                                        title="Configure upload slots"
+                                                        className={cn(
+                                                            "inline-flex items-center gap-1 rounded-full border px-2 py-[3px] text-[10px] font-semibold leading-none transition-colors",
+                                                            r.numberOfSlots === 2
+                                                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                                                : "border-slate-200 bg-slate-50 text-slate-500 hover:border-blue-300 hover:text-blue-700",
+                                                        )}
+                                                    >
+                                                        {r.numberOfSlots === 2
+                                                            ? <><Layers size={10} /> 2 slots</>
+                                                            : <><Pencil size={9} /> Configure</>}
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-2 py-3 align-top">
@@ -2110,10 +2136,18 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                                         <td className="px-3 py-3 align-top"><DocTypeStatusPill status={r.status} /></td>
                                         <td className="px-3 py-3 align-top text-right">
                                             <div className="inline-flex items-center gap-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onPreview(r)}
+                                                    className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                                    title="Preview on form"
+                                                >
+                                                    <Eye size={14} />
+                                                </button>
                                                 {isDocuForm ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => onEdit(r)}
+                                                        onClick={onOpenInGenerator ?? (() => onEdit(r))}
                                                         className="flex h-8 w-8 items-center justify-center rounded-md text-violet-500 hover:bg-violet-50 hover:text-violet-700"
                                                         title="Open in Docu/Form Generator"
                                                     >
@@ -2129,6 +2163,16 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                                                         >
                                                             <Pencil size={14} />
                                                         </button>
+                                                        {onOpenInGenerator && r.usedInHiring && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={onOpenInGenerator}
+                                                                className="flex h-8 w-8 items-center justify-center rounded-md text-violet-500 hover:bg-violet-50 hover:text-violet-700"
+                                                                title="Open in Docu/Form Generator"
+                                                            >
+                                                                <ExternalLink size={14} />
+                                                            </button>
+                                                        )}
                                                         {r.linkedType === 'expense' ? (
                                                             <button
                                                                 type="button"
@@ -2173,6 +2217,69 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                         onCancel={() => setLinkingFor(null)}
                     />
                 )}
+
+                {slotDoc && (
+                    <SlotConfigModal
+                        document={slotDoc}
+                        onSave={(patch) => { onPatch(slotDoc.id, patch); setSlotDoc(null); }}
+                        onClose={() => setSlotDoc(null)}
+                    />
+                )}
+        </div>
+    );
+}
+
+/** Compact editor for a document's upload slots — number + per-slot labels. */
+function SlotConfigModal({ document, onSave, onClose }: {
+    document: DocumentRow;
+    onSave: (patch: Partial<DocumentRow>) => void;
+    onClose: () => void;
+}) {
+    const [twoSlots, setTwoSlots] = useState<boolean>(document.numberOfSlots === 2);
+    const [labels, setLabels] = useState<string[]>(document.slotLabels ?? ['Front', 'Rear']);
+    return (
+        <div role="dialog" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6" onClick={onClose}>
+            <div className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                    <div>
+                        <h3 className="text-base font-bold text-slate-900">Upload slots</h3>
+                        <p className="mt-0.5 text-[12px] text-slate-500">{document.name}</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={16} /></button>
+                </div>
+                <div className="space-y-3 px-5 py-4">
+                    <label className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5">
+                        <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-slate-800">Two labeled upload slots</span>
+                            <span className="block text-[11px] text-slate-500">For a front + rear pair (e.g. license). Off = one upload field.</span>
+                        </span>
+                        <Toggle checked={twoSlots} onCheckedChange={setTwoSlots} />
+                    </label>
+                    {twoSlots && (
+                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 p-3">
+                            {[0, 1].map(i => (
+                                <div key={i}>
+                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">{i === 0 ? 'First slot' : 'Second slot'} label</label>
+                                    <input type="text" value={labels[i] ?? ''}
+                                        placeholder={i === 0 ? 'Front' : 'Rear'}
+                                        onChange={(e) => setLabels(prev => { const next = [...prev]; next[i] = e.target.value; return next; })}
+                                        className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-5 py-3">
+                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button type="button"
+                        onClick={() => onSave(twoSlots
+                            ? { allowMultiple: true, numberOfSlots: 2, slotLabels: [labels[0]?.trim() || 'Front', labels[1]?.trim() || 'Rear'] }
+                            : { numberOfSlots: undefined, slotLabels: undefined })}
+                        className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700">
+                        <Save className="h-4 w-4" /> Save
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -2704,6 +2811,50 @@ function DocumentTypeFormPage({ initial, isNew, onSave, onCancel }: {
                             />
                         </div>
 
+                        {/* Multiple-upload slots — fixed number of labeled blocks (e.g. Front / Rear) */}
+                        {draft.allowMultiple && (
+                            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                                <RequirementRow
+                                    label="Fixed number of upload slots"
+                                    help="Off = unlimited uploads. On = a set number of labeled blocks (e.g. Front / Rear)."
+                                    checked={(draft.numberOfSlots ?? 0) > 0}
+                                    onChange={(v) => up(v
+                                        ? { numberOfSlots: draft.numberOfSlots && draft.numberOfSlots > 0 ? draft.numberOfSlots : 2, slotLabels: draft.slotLabels?.length ? draft.slotLabels : ['Front', 'Rear'] }
+                                        : { numberOfSlots: undefined, slotLabels: undefined })}
+                                />
+                                {(draft.numberOfSlots ?? 0) > 0 && (
+                                    <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[12px] font-semibold text-slate-600">Number of slots</span>
+                                            <input
+                                                type="number" min={1} max={6}
+                                                value={draft.numberOfSlots ?? 2}
+                                                onChange={(e) => {
+                                                    const n = Math.min(6, Math.max(1, Number(e.target.value) || 1));
+                                                    up({ numberOfSlots: n, slotLabels: (draft.slotLabels ?? []).slice(0, n) });
+                                                }}
+                                                className="h-8 w-20 rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {Array.from({ length: draft.numberOfSlots ?? 2 }).map((_, i) => (
+                                                <div key={i}>
+                                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">Slot {i + 1} label</label>
+                                                    <input
+                                                        type="text"
+                                                        value={draft.slotLabels?.[i] ?? ''}
+                                                        placeholder={i === 0 ? 'Front' : i === 1 ? 'Rear' : `Slot ${i + 1}`}
+                                                        onChange={(e) => { const next = [...(draft.slotLabels ?? [])]; next[i] = e.target.value; up({ slotLabels: next }); }}
+                                                        className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Expiry + Issue Date — 2-col */}
                         <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <RequirementRow
@@ -2760,8 +2911,17 @@ function DocumentTypeFormPage({ initial, isNew, onSave, onCancel }: {
 
 // ── Page shell ────────────────────────────────────────────────────────
 
-export const ComplianceAndDocumentsPage = () => {
+export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, enabledDocumentTypeIds }: {
+    onNavigate?: (path: string) => void;
+    /** When provided (Settings view), only show the items root enabled for this carrier. */
+    enabledKeyNumberIds?: string[];
+    enabledDocumentTypeIds?: string[];
+} = {}) => {
+    const enabledKnSet = useMemo(() => enabledKeyNumberIds ? new Set(enabledKeyNumberIds) : null, [enabledKeyNumberIds]);
+    const enabledDocSet = useMemo(() => enabledDocumentTypeIds ? new Set(enabledDocumentTypeIds) : null, [enabledDocumentTypeIds]);
     const [pageMode, setPageMode] = useState<PageMode>('compliance');
+    // Document the user is previewing as it appears on a form.
+    const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
 
     // Compliance state — key numbers + active category tab.
     const [keyNumbers, setKeyNumbers] = useState<KeyNumberRow[]>(SEED_KEY_NUMBERS);
@@ -2776,8 +2936,10 @@ export const ComplianceAndDocumentsPage = () => {
     // Document Tags pill: parent-controlled "open Create Section modal" flag.
     const [addingTagSection, setAddingTagSection] = useState(false);
 
-    // Documents state — list + active relatedTo sub-tab + Add/Edit form view.
-    const [documents, setDocuments] = useState<DocumentRow[]>(DOCUMENTS);
+    // Documents state — persisted so it's the single source reflected into the
+    // Docu/Form Generator. Seeds from the catalog on first run.
+    const [documents, setDocuments] = useState<DocumentRow[]>(() => loadAdminDocuments(DOCUMENTS));
+    useEffect(() => { saveAdminDocuments(documents); }, [documents]);
     const [documentsTab, setDocumentsTab] = useState<DocumentsSubTabId>('all');
     const [docFormState, setDocFormState] = useState<
         | { mode: 'add' | 'edit'; initial: DocumentRow }
@@ -3008,13 +3170,15 @@ export const ComplianceAndDocumentsPage = () => {
     );
 
     const filteredKeyNumbers = useMemo(
-        () => keyNumbers.filter(r => complianceGroup === 'All' || r.group === complianceGroup),
-        [keyNumbers, complianceGroup],
+        () => keyNumbers.filter(r => (complianceGroup === 'All' || r.group === complianceGroup)
+            && (!enabledKnSet || enabledKnSet.has(r.id))),
+        [keyNumbers, complianceGroup, enabledKnSet],
     );
 
     const filteredDocuments = useMemo(
-        () => documents.filter(r => documentsTab === 'all' || r.scope === documentsTab),
-        [documents, documentsTab],
+        () => documents.filter(r => (documentsTab === 'all' || r.scope === documentsTab)
+            && (!enabledDocSet || enabledDocSet.has(r.id))),
+        [documents, documentsTab, enabledDocSet],
     );
 
     // Early return: dedicated Add/Edit page replaces the list view entirely.
@@ -3183,6 +3347,23 @@ export const ComplianceAndDocumentsPage = () => {
                         onUnlinkKeyNumber={unlinkDocKey}
                         onEdit={(row) => setDocFormState({ mode: 'edit', initial: row })}
                         onDelete={deleteDocument}
+                        onPreview={setPreviewDoc}
+                        onOpenInGenerator={onNavigate ? () => onNavigate('/admin/docu-form') : undefined}
+                    />
+                )}
+
+                {previewDoc && (
+                    <DocumentFormPreviewModal
+                        name={previewDoc.name}
+                        subtitle={`${SCOPE_LABEL[previewDoc.scope]} · ${previewDoc.folder}`}
+                        expiryRequired={previewDoc.expiryRequired}
+                        issueDateRequired={previewDoc.issueDateRequired}
+                        issueStateRequired={previewDoc.issueStateRequired}
+                        issueCountryRequired={previewDoc.issueCountryRequired}
+                        allowMultiple={previewDoc.allowMultiple}
+                        numberOfSlots={previewDoc.numberOfSlots}
+                        slotLabels={previewDoc.slotLabels}
+                        onClose={() => setPreviewDoc(null)}
                     />
                 )}
                 {pageMode === 'tags' && (

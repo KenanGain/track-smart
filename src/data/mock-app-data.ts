@@ -41,6 +41,11 @@ export interface DocumentType {
     requirementLevel: 'required' | 'optional' | 'not_required';
     /** Whether the applicant can upload more than one file for this document. */
     allowMultiple?: boolean;
+    /** When allowMultiple is on: cap the number of upload slots (undefined = unlimited).
+     *  A finite count renders that many labeled upload blocks side-by-side. */
+    numberOfSlots?: number;
+    /** Per-slot labels, e.g. ["Front", "Rear"]. Index aligns with the slot. */
+    slotLabels?: string[];
     expiryRequired: boolean;
     issueDateRequired: boolean;
     issueStateRequired?: boolean;

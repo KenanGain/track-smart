@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, UploadCloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UploadedDocument } from '@/types/key-numbers.types';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
@@ -17,17 +17,26 @@ interface ComplianceUploadModalProps {
     issueCountryRequired?: boolean;
     /** When true (document's "Allow multiple" flag), several files can be attached. */
     allowMultiple?: boolean;
+    /** Fixed number of labeled upload slots (e.g. 2 → Front / Rear). Undefined = unlimited. */
+    numberOfSlots?: number;
+    slotLabels?: string[];
     existing?: UploadedDocument[] | null;
     onSave: (docs: UploadedDocument[]) => void;
 }
 
-interface PendingFile { id: string; fileName: string; fileSize?: number }
+interface PendingFile { id: string; fileName: string; fileSize?: number; slotLabel?: string }
 
 const makeId = () => `up_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function ComplianceUploadModal({
-    isOpen, onClose, title, expiryRequired, issueDateRequired, issueStateRequired, issueCountryRequired, allowMultiple, existing, onSave,
+    isOpen, onClose, title, expiryRequired, issueDateRequired, issueStateRequired, issueCountryRequired, allowMultiple, numberOfSlots, slotLabels, existing, onSave,
 }: ComplianceUploadModalProps) {
+    // Labeled slots are only for exactly TWO (e.g. Front / Rear); any other
+    // count falls back to a single/multiple upload.
+    const slotMode = numberOfSlots === 2;
+    const slots = slotMode
+        ? [slotLabels?.[0]?.trim() || 'Front', slotLabels?.[1]?.trim() || 'Rear']
+        : [];
     const [files, setFiles] = useState<PendingFile[]>([]);
     const [expiryDate, setExpiryDate] = useState('');
     const [issueDate, setIssueDate] = useState('');
@@ -37,7 +46,7 @@ export function ComplianceUploadModal({
 
     useEffect(() => {
         if (!isOpen) return;
-        setFiles((existing ?? []).map(d => ({ id: d.id, fileName: d.fileName, fileSize: d.fileSize })));
+        setFiles((existing ?? []).map(d => ({ id: d.id, fileName: d.fileName, fileSize: d.fileSize, slotLabel: d.slotLabel })));
         setExpiryDate(existing?.[0]?.expiryDate ?? '');
         setIssueDate(existing?.[0]?.issueDate ?? '');
         setIssuingState(existing?.[0]?.issuingState ?? '');
@@ -55,6 +64,15 @@ export function ComplianceUploadModal({
     };
     const removeFile = (id: string) => setFiles(prev => prev.filter(f => f.id !== id));
 
+    /** Set/replace the single file held in a labeled slot. */
+    const setSlotFile = (slot: string, list: FileList | null | undefined) => {
+        const f = list?.[0];
+        if (!f) return;
+        setFiles(prev => [...prev.filter(p => p.slotLabel !== slot), { id: makeId(), fileName: f.name, fileSize: f.size, slotLabel: slot }]);
+        setError('');
+    };
+    const fileForSlot = (slot: string) => files.find(f => f.slotLabel === slot);
+
     const handleSave = () => {
         if (files.length === 0) { setError('Please choose a file to upload.'); return; }
         if (expiryRequired && !expiryDate) { setError('An expiry date is required for this document.'); return; }
@@ -67,6 +85,7 @@ export function ComplianceUploadModal({
             fileName: f.fileName,
             fileSize: f.fileSize,
             uploadedAt: stamp,
+            slotLabel: f.slotLabel,
             expiryDate: expiryDate || undefined,
             issueDate: issueDate || undefined,
             issuingState: issuingState || undefined,
@@ -92,8 +111,6 @@ export function ComplianceUploadModal({
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-y-auto p-6">
-                    <FileDropZone files={files} onAdd={addFiles} onRemove={removeFile} multiple={allowMultiple} />
-
                     {/* Dates — only the ones Settings requires */}
                     {showDates && (
                         <div className={cn("grid gap-4", expiryRequired && issueDateRequired ? "grid-cols-2" : "grid-cols-1")}>
@@ -147,6 +164,35 @@ export function ComplianceUploadModal({
                                 </div>
                             )}
                         </div>
+                    )}
+
+                    {/* Upload widget — after the detail fields */}
+                    {slotMode ? (
+                        <div className={cn("grid gap-3", slots.length >= 2 ? "grid-cols-2" : "grid-cols-1")}>
+                            {slots.map(slot => {
+                                const f = fileForSlot(slot);
+                                return (
+                                    <div key={slot} className="rounded-lg border border-slate-200 p-3">
+                                        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">{slot}</div>
+                                        <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-3 py-4 text-center hover:bg-blue-50/60">
+                                            <UploadCloud size={20} className="mb-1 text-slate-300" />
+                                            <span className="text-[11px] font-medium text-blue-600">{f ? 'Replace file' : 'Click to upload'}</span>
+                                            <input type="file" className="hidden" onChange={(e) => { setSlotFile(slot, e.target.files); e.target.value = ''; }} />
+                                        </label>
+                                        {f && (
+                                            <div className="mt-2 flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1.5 text-xs">
+                                                <span className="truncate text-slate-700">{f.fileName}</span>
+                                                <button type="button" onClick={() => removeFile(f.id)} className="shrink-0 text-rose-500 hover:text-rose-700" title="Remove">
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <FileDropZone files={files} onAdd={addFiles} onRemove={removeFile} multiple={allowMultiple} />
                     )}
 
                     {error && <p className="text-xs text-red-500">{error}</p>}

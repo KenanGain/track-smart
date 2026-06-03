@@ -38,6 +38,10 @@ export interface DocumentType {
     /** Whether this document type is offered inside Hiring / Application Forms / Templates. */
     usingInHiring: boolean;
     allowMultiple: boolean;
+    /** When allowMultiple is on: number of labeled upload slots (undefined = unlimited). */
+    numberOfSlots?: number;
+    /** Per-slot labels, e.g. ["Front", "Rear"]. */
+    slotLabels?: string[];
     expiryRequired: boolean;
     issueDateRequired: boolean;
     issueStateRequired: boolean;

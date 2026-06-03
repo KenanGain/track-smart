@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     Network, Building2, Truck, User, ShieldAlert, FileText, Search, Filter,
     ChevronDown, ChevronLeft, ChevronRight, Link2, Check, RotateCcw, CheckCircle2, Circle,
-    LayoutTemplate, Lock, Pencil, X, Save, Crown,
+    LayoutTemplate, Lock, Pencil, X, Save, Crown, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import {
     SEED_KEY_NUMBERS, DOCUMENTS, KEY_NUMBER_GROUPS,
     type KeyNumberGroup, type DocumentsSubTabId, type RelatedToScope,
+    type KeyNumberRow, type DocumentRow,
 } from './ComplianceAndDocumentsPage';
 import {
     loadCarrierAssignment, saveCarrierAssignment, applyToggle, applyBulk, defaultAssignmentFor,
@@ -22,6 +23,7 @@ import {
 import { ACCOUNTS_DB, getAccountsByServiceProfileId } from '@/pages/accounts/accounts.data';
 import { loadMonitoringConfigs, saveMonitoringConfigs, monitorItemKey, reminderSummary, DEFAULT_MONITORING, type MonitoringConfig } from '@/pages/compliance/compliance-monitoring.data';
 import { MonitoringNotificationsForm } from '@/components/compliance/MonitoringNotificationsForm';
+import { DocumentFormPreviewModal } from '@/components/compliance/DocumentFormPreviewModal';
 import { SERVICE_PROFILES_DB } from '@/pages/accounts/service-profiles.data';
 import {
     loadTemplates as loadHiringTemplates,
@@ -462,11 +464,13 @@ function TablePagination({ total, page, perPage, onPageChange, onPerPageChange }
     );
 }
 
-export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring }: {
+export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring, visibleIds }: {
     enabledIds: Set<string>;
     onToggle: (id: string, enabled: boolean) => void;
     onBulk: (ids: string[], enable: boolean) => void;
     monitoring?: RowMonitoring;
+    /** When set, restrict the list to these ids (e.g. Settings: only root-enabled items). */
+    visibleIds?: Set<string>;
 }) {
     const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'all'>('all');
     const [query, setQuery] = useState('');
@@ -479,12 +483,13 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
         for (const g of KEY_NUMBER_GROUPS) out[g] = { enabled: 0, total: 0 };
         for (const k of SEED_KEY_NUMBERS) {
             if (k.status !== 'Active') continue;   // only Active numbers are assignable
+            if (visibleIds && !visibleIds.has(k.id)) continue;
             out.all.total += 1;
             out[k.group].total += 1;
             if (enabledIds.has(k.id)) { out.all.enabled += 1; out[k.group].enabled += 1; }
         }
         return out;
-    }, [enabledIds]);
+    }, [enabledIds, visibleIds]);
 
     const groupTabs: SubTab<KeyNumberGroup | 'all'>[] = useMemo(() => {
         const base: SubTab<KeyNumberGroup | 'all'>[] = [
@@ -498,15 +503,17 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
     const relatedCounts = useMemo(() => {
         const c: Record<'all' | RelatedToScope, number> = { all: 0, Carrier: 0, Asset: 0, Driver: 0 };
         for (const k of SEED_KEY_NUMBERS) {
+            if (visibleIds && !visibleIds.has(k.id)) continue;
             if (activeGroup !== 'all' && k.group !== activeGroup) continue;
             c.all += 1;
             c[k.relatedTo] += 1;
         }
         return c;
-    }, [activeGroup]);
+    }, [activeGroup, visibleIds]);
 
     const q = query.trim().toLowerCase();
     const rows = SEED_KEY_NUMBERS
+        .filter(k => !visibleIds || visibleIds.has(k.id))
         .filter(k => activeGroup === 'all' || k.group === activeGroup)
         .filter(k => relatedFilter === 'all' || k.relatedTo === relatedFilter)
         .filter(k => !q
@@ -523,6 +530,10 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
     const [perPage, setPerPage] = useState(10);
     useEffect(() => { setPage(1); }, [activeGroup, relatedFilter, q, perPage]);
     const pageRows = rows.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
+
+    // "How the input form looks" preview + inline editor for a key number.
+    const [previewKn, setPreviewKn] = useState<KeyNumberRow | null>(null);
+    const [, setRefresh] = useState(0);
 
     return (
         <div>
@@ -551,18 +562,19 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                             <tr>
-                                <th className="px-4 py-3 w-[34%]">Number Name</th>
+                                <th className="px-4 py-3 w-[30%]">Number Name</th>
                                 <th className="px-3 py-3 w-[12%]">Related To</th>
                                 <th className="px-3 py-3 w-[10%]">Status</th>
-                                <th className="px-3 py-3 w-[14%]">Linked Document</th>
-                                {monitoring && <th className="px-3 py-3 w-[22%]">Monitoring</th>}
+                                <th className="px-3 py-3 w-[12%]">Linked Document</th>
+                                {monitoring && <th className="px-3 py-3 w-[20%]">Monitoring</th>}
                                 <th className="px-3 py-3 w-[8%] text-right">Enabled</th>
+                                <th className="px-3 py-3 w-[6%] text-center">Form</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={monitoring ? 6 : 5} className="px-3 py-12 text-center">
+                                    <td colSpan={monitoring ? 7 : 6} className="px-3 py-12 text-center">
                                         <p className="text-sm font-medium text-slate-700">No key numbers in this category</p>
                                         <p className="mt-1 text-[12px] text-slate-500">Try a different tab or clear the search.</p>
                                     </td>
@@ -646,6 +658,16 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
                                                 />
                                             </div>
                                         </td>
+                                        <td className="px-3 py-3 align-top text-center" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewKn(k)}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                                title="Preview / edit how this looks on a form"
+                                            >
+                                                <Eye size={14} />
+                                            </button>
+                                        </td>
                                     </tr>
                                 );
                             })}
@@ -656,6 +678,29 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
                     )}
                 </div>
             </div>
+
+            {previewKn && (
+                <DocumentFormPreviewModal
+                    name={previewKn.name}
+                    numberInput={{ label: previewKn.name }}
+                    expiryRequired={previewKn.hasExpiry}
+                    issueDateRequired={previewKn.issueDateRequired}
+                    issueStateRequired={previewKn.issueStateRequired}
+                    issueCountryRequired={previewKn.issueCountryRequired}
+                    showUpload={!!(previewKn.docRequired || (DOC_IDS_BY_KN_ID.get(previewKn.id)?.length ?? 0) > 0)}
+                    onSave={(cfg) => {
+                        Object.assign(previewKn, {
+                            hasExpiry: cfg.expiryRequired,
+                            issueDateRequired: cfg.issueDateRequired,
+                            issueStateRequired: cfg.issueStateRequired,
+                            issueCountryRequired: cfg.issueCountryRequired,
+                            docRequired: cfg.showUpload,
+                        });
+                        setRefresh(x => x + 1);
+                    }}
+                    onClose={() => setPreviewKn(null)}
+                />
+            )}
         </div>
     );
 }
@@ -664,11 +709,13 @@ export function KeyNumbersAssignment({ enabledIds, onToggle, onBulk, monitoring 
 
 const DOC_SUB_TAB_IDS: DocumentsSubTabId[] = ['all', 'carrier', 'asset', 'driver', 'accidents', 'violation'];
 
-export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }: {
+export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring, visibleIds }: {
     enabledIds: Set<string>;
     onToggle: (id: string, enabled: boolean) => void;
     onBulk: (ids: string[], enable: boolean) => void;
     monitoring?: RowMonitoring;
+    /** When set, restrict the list to these ids (e.g. Settings: only root-enabled items). */
+    visibleIds?: Set<string>;
 }) {
     const [activeScope, setActiveScope] = useState<DocumentsSubTabId>('all');
     const [query, setQuery] = useState('');
@@ -679,6 +726,7 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
         for (const t of DOC_SUB_TAB_IDS) out[t] = { enabled: 0, total: 0 };
         for (const d of DOCUMENTS) {
             if (d.status !== 'Active') continue;   // only Active docs are assignable
+            if (visibleIds && !visibleIds.has(d.id) && !isSystemFormDoc(d)) continue;
             out.all.total += 1;
             out[d.scope].total += 1;
             // Mandatory system/form docs always count as enabled.
@@ -688,7 +736,7 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
             }
         }
         return out;
-    }, [enabledIds]);
+    }, [enabledIds, visibleIds]);
 
     const docTabs: SubTab<DocumentsSubTabId>[] = useMemo(() => withCount([
         { id: 'all',        label: 'All' },
@@ -701,6 +749,7 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
 
     const q = query.trim().toLowerCase();
     const rows = DOCUMENTS
+        .filter(d => !visibleIds || visibleIds.has(d.id) || isSystemFormDoc(d))
         .filter(d => activeScope === 'all' || d.scope === activeScope)
         .filter(d => !q
             || d.name.toLowerCase().includes(q)
@@ -718,6 +767,10 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
     const [perPage, setPerPage] = useState(10);
     useEffect(() => { setPage(1); }, [activeScope, q, perPage]);
     const pageRows = rows.slice((page - 1) * perPage, (page - 1) * perPage + perPage);
+
+    // "How the upload looks on a form" preview + inline editor for a document.
+    const [previewDocRow, setPreviewDocRow] = useState<DocumentRow | null>(null);
+    const [, setRefresh] = useState(0);
 
     return (
         <div>
@@ -745,18 +798,19 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
                     <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                             <tr>
-                                <th className="px-4 py-3 w-[34%]">Document Name</th>
+                                <th className="px-4 py-3 w-[30%]">Document Name</th>
                                 <th className="px-3 py-3 w-[12%]">Category</th>
                                 <th className="px-3 py-3 w-[10%]">Status</th>
-                                <th className="px-3 py-3 w-[14%]">Linked Key Number</th>
-                                {monitoring && <th className="px-3 py-3 w-[22%]">Monitoring</th>}
+                                <th className="px-3 py-3 w-[12%]">Linked Key Number</th>
+                                {monitoring && <th className="px-3 py-3 w-[20%]">Monitoring</th>}
                                 <th className="px-3 py-3 w-[8%] text-right">Enabled</th>
+                                <th className="px-3 py-3 w-[6%] text-center">Form</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={monitoring ? 6 : 5} className="px-3 py-12 text-center">
+                                    <td colSpan={monitoring ? 7 : 6} className="px-3 py-12 text-center">
                                         <p className="text-sm font-medium text-slate-700">No documents in this scope</p>
                                         <p className="mt-1 text-[12px] text-slate-500">Try a different tab or clear the search.</p>
                                     </td>
@@ -884,6 +938,16 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
                                                 </span>
                                             </div>
                                         </td>
+                                        <td className="px-3 py-3 align-top text-center" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewDocRow(d)}
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                                title="Preview / edit how this looks on a form"
+                                            >
+                                                <Eye size={14} />
+                                            </button>
+                                        </td>
                                     </tr>
                                 );
                             })}
@@ -894,6 +958,32 @@ export function DocumentsAssignment({ enabledIds, onToggle, onBulk, monitoring }
                     )}
                 </div>
             </div>
+
+            {previewDocRow && (
+                <DocumentFormPreviewModal
+                    name={previewDocRow.name}
+                    expiryRequired={previewDocRow.expiryRequired}
+                    issueDateRequired={previewDocRow.issueDateRequired}
+                    issueStateRequired={previewDocRow.issueStateRequired}
+                    issueCountryRequired={previewDocRow.issueCountryRequired}
+                    allowMultiple={previewDocRow.allowMultiple}
+                    numberOfSlots={previewDocRow.numberOfSlots}
+                    slotLabels={previewDocRow.slotLabels}
+                    onSave={(cfg) => {
+                        Object.assign(previewDocRow, {
+                            expiryRequired: cfg.expiryRequired,
+                            issueDateRequired: cfg.issueDateRequired,
+                            issueStateRequired: cfg.issueStateRequired,
+                            issueCountryRequired: cfg.issueCountryRequired,
+                            allowMultiple: cfg.allowMultiple,
+                            numberOfSlots: cfg.numberOfSlots,
+                            slotLabels: cfg.slotLabels,
+                        });
+                        setRefresh(x => x + 1);
+                    }}
+                    onClose={() => setPreviewDocRow(null)}
+                />
+            )}
         </div>
     );
 }

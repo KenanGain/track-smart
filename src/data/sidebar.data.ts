@@ -7,7 +7,6 @@ import {
     AlertTriangle,
     FileText,
     Settings,
-    KeyRound,
     Wrench,
     Folder,
     DollarSign,
@@ -17,7 +16,6 @@ import {
     Ticket,
     Clock3,
     Fuel,
-    TrendingUp,
     ShieldCheck,
     Sliders,
     Users,
@@ -53,16 +51,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/account/profile",
     },
     {
-        key: "service-profile",
-        label: "Service Profile",
-        icon: Briefcase,
-        children: [
-            { key: "service-profile-profile", label: "Profile", icon: Briefcase, path: "/service-profile" },
-            { key: "service-profile-compliance", label: "Compliance Setup", icon: ShieldCheck, path: "/service-profile/compliance-setup" },
-        ],
-    },
-
-    {
         key: "inventory",
         label: "Inventory",
         icon: Boxes,
@@ -72,13 +60,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         ],
     },
 
-    {
-        key: "compliance",
-        label: "Compliance & Documents",
-        icon: FileText,
-        path: "/compliance",
-        disabled: true,
-    },
     {
         key: "new-compliance",
         label: "New Compliance & Documents",
@@ -102,12 +83,6 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Paystubs",
         icon: DollarSign,
         path: "/paystubs",
-    },
-    {
-        key: "ats",
-        label: "Hiring (ATS)",
-        icon: Briefcase,
-        path: "/ats",
     },
     {
         key: "ats-main",
@@ -165,29 +140,16 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/safety-events",
     },
     {
-        key: "safety-analysis",
-        label: "Safety Analysis",
-        icon: TrendingUp,
-        path: "/safety-analysis",
-    },
-    {
-        key: "safety-analysis-legacy",
-        label: "Old Safety Analysis",
-        icon: History,
-        path: "/safety-analysis/legacy",
-    },
-    {
         key: "settings",
         label: "Settings",
         icon: Settings,
         defaultOpen: true,
         children: [
             { key: "general-settings", label: "General Settings", icon: Sliders, path: "/settings/general" },
-            { key: "compliance-setup", label: "Compliance Setup", icon: ShieldCheck, path: "/settings/compliance-setup" },
-            { key: "key-numbers", label: "Key Numbers", icon: KeyRound, path: "/settings/key-numbers" },
+            { key: "compliance-setup", label: "Compliance and Documents", icon: ShieldCheck, path: "/settings/compliance-setup" },
+            { key: "settings-compliance-and-documents", label: "Compliance Setup", icon: FileText, path: "/settings/compliance-and-documents" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },
-            { key: "document-types", label: "Document Types", icon: FileText, path: "/settings/document-types" },
             { key: "document-folders", label: "Document Folders", icon: Folder, path: "/settings/document-folders", disabled: true },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },
@@ -197,6 +159,15 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "fuel-settings", label: "Fuel", icon: Fuel, path: "/settings/fuel" },
             { key: "settings-alerts", label: "Alerts", icon: AlertTriangle, path: "/settings/alerts" },
             { key: "safety-settings", label: "Safety", icon: ShieldCheck, path: "/settings/safety" },
+        ],
+    },
+    {
+        key: "service-profile",
+        label: "Service Profile",
+        icon: Briefcase,
+        children: [
+            { key: "service-profile-profile", label: "Profile", icon: Briefcase, path: "/service-profile" },
+            { key: "service-profile-compliance", label: "Compliance Setup", icon: ShieldCheck, path: "/service-profile/compliance-setup" },
         ],
     },
     {

@@ -9,6 +9,8 @@ import {
 import { type FormDocument, type FormField } from '@/pages/ats/application-forms.data';
 import { uid } from '@/pages/ats/driver-application.data';
 import { loadDocumentTypes, type DocumentType } from '@/pages/ats/document-types.data';
+import { DOCUMENTS } from '@/pages/admin/ComplianceAndDocumentsPage';
+import { loadAdminDocuments, adminDocsAsFormTypes } from '@/pages/admin/compliance-catalog.data';
 
 /**
  * Per-form documents editor.
@@ -58,6 +60,8 @@ function fromType(t: DocumentType, label?: string, placement?: string): FormDocu
         category: t.category,
         required: t.required,
         allowMultiple: t.allowMultiple,
+        numberOfSlots: t.numberOfSlots,
+        slotLabels: t.slotLabels,
         expiryRequired: t.expiryRequired,
         issueDateRequired: t.issueDateRequired,
         issueStateRequired: t.issueStateRequired,
@@ -85,11 +89,14 @@ function DocumentPicker({ fields, alreadyLinkedIds, onPick, onClose }: {
     // Only show document types flagged for Hiring/Templates/Form usage. The
     // catalog admin sets `usingInHiring` (Super Admin → Compliance and
     // Documents → "Used in Hiring / Templates / Form") to decide what flows
-    // into the Docu/Form Generator.
-    const types = useMemo(
-        () => loadDocumentTypes().filter(t => t.status === 'Active' && t.usingInHiring),
-        [],
-    );
+    // into the Docu/Form Generator. We reflect the admin Compliance & Documents
+    // catalog as the source, merged with any legacy ATS types (deduped by id).
+    const types = useMemo(() => {
+        const adminTypes = adminDocsAsFormTypes(loadAdminDocuments(DOCUMENTS));
+        const legacy = loadDocumentTypes().filter(t => t.status === 'Active' && t.usingInHiring);
+        const seen = new Set(adminTypes.map(t => t.id));
+        return [...adminTypes, ...legacy.filter(t => !seen.has(t.id))];
+    }, []);
     const [query, setQuery] = useState('');
     const [drafts, setDrafts] = useState<Record<string, PickerDraft>>({});
     const placements = useMemo(() => placementOptions(fields), [fields]);
@@ -351,6 +358,35 @@ export function FormDocumentsEditor({ documents, fields, onChange }: {
                                             <MapPin size={9} /> {placementLabel(d.placement, fields)}
                                         </span>
                                     </div>
+
+                                    {/* Two labeled upload slots (e.g. license Front / Rear). */}
+                                    {d.allowMultiple && (
+                                        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
+                                            <label className="flex items-center justify-between gap-2">
+                                                <span className="text-[11px] font-semibold text-slate-600">Two labeled slots <span className="font-normal text-slate-400">(off = one upload)</span></span>
+                                                <Toggle
+                                                    checked={d.numberOfSlots === 2}
+                                                    onCheckedChange={(v) => update(d.id, v
+                                                        ? { numberOfSlots: 2, slotLabels: d.slotLabels?.length ? d.slotLabels : ['Front', 'Rear'] }
+                                                        : { numberOfSlots: undefined, slotLabels: undefined })}
+                                                />
+                                            </label>
+                                            {d.numberOfSlots === 2 && (
+                                                <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2">
+                                                    {[0, 1].map(i => (
+                                                        <input
+                                                            key={i}
+                                                            type="text"
+                                                            value={d.slotLabels?.[i] ?? ''}
+                                                            placeholder={i === 0 ? 'Front' : 'Rear'}
+                                                            onChange={(e) => { const next = [...(d.slotLabels ?? ['', ''])]; next[i] = e.target.value; update(d.id, { slotLabels: next }); }}
+                                                            className="h-7 w-full rounded-md border border-slate-300 px-2 text-[12px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Required toggle + delete */}

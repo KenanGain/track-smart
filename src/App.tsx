@@ -12,13 +12,12 @@ import { EmptyCarrierProfile } from '@/pages/account/EmptyCarrierProfile'
 import { ServiceProfilePage } from '@/pages/service/ServiceProfilePage'
 import { EmptyServiceProfile } from '@/pages/service/EmptyServiceProfile'
 import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/service-profiles.data'
-import { KeyNumbersPage } from '@/pages/settings/KeyNumbersPage'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
-import DocumentTypesPage from '@/pages/settings/DocumentTypesPage'
 import { SettingsCompliancePage } from '@/pages/settings/SettingsCompliancePage'
 import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
 import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
 import { ComplianceTemplatesPage } from '@/pages/admin/ComplianceTemplatesPage'
+import { loadCarrierAssignment } from '@/pages/admin/carrier-compliance.data'
 import DocumentFoldersPage from '@/pages/settings/DocumentFoldersPage'
 import { MaintenancePage } from '@/pages/settings/MaintenancePage'
 import { CarrierProfilePage } from '@/pages/profile/CarrierProfilePage'
@@ -48,6 +47,9 @@ import { TemplatesPage } from '@/pages/settings/TemplatesPage'
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { AtsPage } from '@/pages/ats/AtsPage'
 import { AtsAssignmentsPage } from '@/pages/ats/AtsAssignmentsPage'
+import { IssueHiringPage } from '@/pages/ats/IssueHiringPage'
+import { ApplicantPortalPage } from '@/pages/ats/ApplicantPortalPage'
+import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -197,7 +199,18 @@ function App() {
             return <SuperAdminDashboardPage currentUser={currentUser} />
         }
         if (path === "/admin/compliance-and-documents") {
-            return <ComplianceAndDocumentsPage />
+            return <ComplianceAndDocumentsPage onNavigate={handleNavigate} />
+        }
+        if (path === "/settings/compliance-and-documents") {
+            // Settings view — scoped to the items root enabled for this carrier.
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const asg = account ? loadCarrierAssignment(account.id) : null
+            return <ComplianceAndDocumentsPage
+                onNavigate={handleNavigate}
+                enabledKeyNumberIds={asg?.enabledKeyNumberIds}
+                enabledDocumentTypeIds={asg?.enabledDocumentTypeIds}
+            />
         }
         if (path === "/admin/carrier-compliance-setup" || path === "/admin/carrier-profile-configuration") {
             // Carrier-level configuration (per-carrier overrides). Surfaced under
@@ -356,13 +369,9 @@ function App() {
             return <GeneralSettingsPage />
         }
         if (path === "/settings/compliance-setup") {
-            return <SettingsCompliancePage />
-        }
-        if (path === "/settings/key-numbers") {
-            return <KeyNumbersPage />
-        }
-        if (path === "/settings/document-types") {
-            return <DocumentTypesPage onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <SettingsCompliancePage accountId={account?.id} />
         }
         if (path === "/settings/document-folders") {
             return <DocumentFoldersPage />
@@ -447,7 +456,16 @@ function App() {
             return <AtsPage />
         }
         if (path === "/ats-main") {
-            return <AtsAssignmentsPage />
+            return <AtsAssignmentsPage onNavigate={handleNavigate} />
+        }
+        if (path === "/ats/issue-hiring") {
+            return <IssueHiringPage onNavigate={handleNavigate} />
+        }
+        if (path.startsWith("/apply/")) {
+            return <ApplicantPortalPage applicantId={path.slice("/apply/".length)} onNavigate={handleNavigate} />
+        }
+        if (path.startsWith("/ats/application/")) {
+            return <ApplicationDetailPage applicantId={path.slice("/ats/application/".length)} onNavigate={handleNavigate} />
         }
         if (path === "/admin/docu-form" || path === "/settings/docu-form") {
             return <DocuFormGeneratorPage />

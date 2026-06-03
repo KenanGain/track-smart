@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    FileText, Search, Filter, ChevronDown, Info, ShieldCheck, Building2, Truck, User,
-    Pencil, Lock, Save, X, Link2,
+    FileText, ChevronDown, Info, ShieldCheck, Building2, Truck, User,
+    Lock, Save, X,
     Shield, Calendar, PieChart, Award, Tag as TagIcon, Bookmark, Layers, Hash,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Toggle } from '@/components/ui/toggle';
-import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import {
-    SEED_KEY_NUMBERS, DOCUMENTS, KEY_NUMBER_GROUPS,
-    type KeyNumberRow, type DocumentRow, type KeyNumberGroup,
-    type DocumentsSubTabId,
+    SEED_KEY_NUMBERS, DOCUMENTS,
 } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     loadCarrierAssignment, saveCarrierAssignment, applyToggle,
@@ -20,9 +16,10 @@ import {
 } from '@/pages/admin/carrier-compliance.data';
 import {
     loadMonitoringConfigs, saveMonitoringConfigs, monitorItemKey,
-    reminderSummary, DEFAULT_MONITORING, type MonitoringConfig,
+    DEFAULT_MONITORING, type MonitoringConfig,
 } from '@/pages/compliance/compliance-monitoring.data';
 import { MonitoringNotificationsForm } from '@/components/compliance/MonitoringNotificationsForm';
+import { KeyNumbersAssignment, DocumentsAssignment } from '@/pages/admin/CarrierComplianceSetupPage';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { getDriversForAccount, getAssetsForAccount } from '@/pages/accounts/carrier-fleet.data';
 import {
@@ -31,15 +28,15 @@ import {
 } from '@/pages/settings/docu-form/document-tags.data';
 
 /**
- * Settings → Compliance Setup (carrier-facing).
+ * Settings â†’ Compliance Setup (carrier-facing).
  *
  * Scope-aware view of the root catalog. A Carrier / Driver / Asset switch
  * picks whose configuration we're editing:
- *   • Carrier  — the carrier-wide defaults (assignment + monitoring scope = carrierId)
- *   • Driver   — one driver's per-entity override (driverAssignments + monitoring scope = driverId)
- *   • Asset    — one asset's per-entity override  (assetAssignments + monitoring scope = assetId)
+ *   â€¢ Carrier  â€” the carrier-wide defaults (assignment + monitoring scope = carrierId)
+ *   â€¢ Driver   â€” one driver's per-entity override (driverAssignments + monitoring scope = driverId)
+ *   â€¢ Asset    â€” one asset's per-entity override  (assetAssignments + monitoring scope = assetId)
  *
- * Each row offers exactly two controls — **Enable/disable** and **Monitoring**
+ * Each row offers exactly two controls â€” **Enable/disable** and **Monitoring**
  * (a toggle + reminder summary + pencil for date-bearing items). The per-flag
  * columns and the catalog (names, requirements, linkage) stay root-managed.
  *
@@ -52,14 +49,6 @@ import {
 type PageMode = 'compliance' | 'documents' | 'tags';
 type ScopeKind = 'carrier' | 'driver' | 'asset';
 
-const DOCUMENTS_SUB_TABS: SubTab<DocumentsSubTabId>[] = [
-    { id: 'all',        label: 'All' },
-    { id: 'carrier',    label: 'Carrier' },
-    { id: 'asset',      label: 'Asset' },
-    { id: 'driver',     label: 'Driver' },
-    { id: 'accidents',  label: 'Accidents' },
-    { id: 'violation',  label: 'Violation' },
-];
 
 const SCOPE_META: Record<ScopeKind, { label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
     carrier: { label: 'Carrier Profile', icon: Building2 },
@@ -74,13 +63,13 @@ type RowMonitoring = {
     onEdit: (key: string, name: string) => void;
 };
 
-export const SettingsCompliancePage = () => {
+export const SettingsCompliancePage = ({ accountId }: { accountId?: string } = {}) => {
     const [scope, setScope] = useState<ScopeKind>('carrier');
     const [pageMode, setPageMode] = useState<PageMode>('compliance');
 
-    // Carrier scope — in production this would come from a carrier context;
-    // for the prototype we pick the first carrier in the directory.
-    const carrierId = ACCOUNTS_DB[0]?.id ?? '';
+    // The individual carrier profile being configured follows the top navbar
+    // account switcher; fall back to the first carrier if none is selected.
+    const carrierId = (accountId && ACCOUNTS_DB.some(c => c.id === accountId)) ? accountId : (ACCOUNTS_DB[0]?.id ?? '');
     const carrier = ACCOUNTS_DB.find(c => c.id === carrierId);
     const [assignment, setAssignment] = useState<CarrierComplianceAssignment>(() => loadCarrierAssignment(carrierId));
 
@@ -89,11 +78,14 @@ export const SettingsCompliancePage = () => {
         setAssignment(loadCarrierAssignment(carrierId));
     }, [carrierId]);
 
+    // Reset entity selection + scope back to Carrier when the carrier changes.
+    useEffect(() => { setScope('carrier'); }, [carrierId]);
+
     // Drivers / assets for the picker (driver & asset scopes).
     const drivers = useMemo(() => getDriversForAccount(carrierId), [carrierId]);
     const assets = useMemo(() => getAssetsForAccount(carrierId), [carrierId]);
     const entities = scope === 'driver' ? drivers.map(d => ({ id: d.id, label: d.name }))
-        : scope === 'asset' ? assets.map(a => ({ id: a.id, label: `${a.year} ${a.make} ${a.model} · #${a.unitNumber}` }))
+        : scope === 'asset' ? assets.map(a => ({ id: a.id, label: `${a.year} ${a.make} ${a.model} Â· #${a.unitNumber}` }))
         : [];
 
     const [entityId, setEntityId] = useState('');
@@ -121,7 +113,7 @@ export const SettingsCompliancePage = () => {
         scope === 'carrier' ? assignment.enabledDocumentTypeIds : (entityAssignment?.enabledDocumentTypeIds ?? []),
     ), [assignment, entityAssignment, scope]);
 
-    // ── Monitoring (per active scope id) ──────────────────────────────────
+    // â”€â”€ Monitoring (per active scope id) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [monConfigs, setMonConfigs] = useState<Record<string, MonitoringConfig>>(() => loadMonitoringConfigs(carrierId));
     const [editingMonitor, setEditingMonitor] = useState<{ key: string; name: string } | null>(null);
 
@@ -139,8 +131,16 @@ export const SettingsCompliancePage = () => {
         onEdit: (key, name) => setEditingMonitor({ key, name }),
     };
 
-    const catalogKeyNumbers = useMemo(() => SEED_KEY_NUMBERS.filter(k => k.status === 'Active'), []);
-    const catalogDocuments  = useMemo(() => DOCUMENTS.filter(d => d.status === 'Active'), []);
+    // Only the items root has enabled for this carrier/entity are shown here
+    // (system/form docs are always included). Disabled items don't appear.
+    const catalogKeyNumbers = useMemo(
+        () => SEED_KEY_NUMBERS.filter(k => k.status === 'Active' && enabledKnSet.has(k.id)),
+        [enabledKnSet],
+    );
+    const catalogDocuments = useMemo(
+        () => DOCUMENTS.filter(d => d.status === 'Active' && (enabledDocSet.has(d.id) || isSystemFormDoc(d))),
+        [enabledDocSet],
+    );
 
     const enabledKnCount  = catalogKeyNumbers.filter(k => enabledKnSet.has(k.id)).length;
     const enabledDocCount = catalogDocuments.filter(d => enabledDocSet.has(d.id)).length;
@@ -148,7 +148,7 @@ export const SettingsCompliancePage = () => {
     /**
      * Keep monitoring in lockstep with field enablement: a date-bearing item
      * that gets enabled has its monitoring switched on; disabling turns it off.
-     * Covers the toggled item AND its cascaded KN↔Doc partner.
+     * Covers the toggled item AND its cascaded KNâ†”Doc partner.
      */
     const syncMonitoring = (kind: 'keynumber' | 'document', id: string, enable: boolean) => {
         if (!scopeId) return;
@@ -186,6 +186,11 @@ export const SettingsCompliancePage = () => {
         });
         syncMonitoring(kind, id, enable);
         if (scopeId) setMonConfigs(loadMonitoringConfigs(scopeId));
+    };
+
+    /** Enable all / Disable all for the visible rows. */
+    const bulkToggle = (kind: 'keynumber' | 'document', ids: string[], enable: boolean) => {
+        ids.forEach(id => toggleEnabled(kind, id, enable));
     };
 
     const changeScope = (next: ScopeKind) => {
@@ -299,7 +304,7 @@ export const SettingsCompliancePage = () => {
                             <>Select a {scope} above to configure its compliance items.</>
                         ) : (
                             <>
-                                Per-{scope} configuration for <span className="font-semibold">{entityLabel}</span> — overrides the carrier default for this {scope} only.
+                                Per-{scope} configuration for <span className="font-semibold">{entityLabel}</span> â€” overrides the carrier default for this {scope} only.
                                 <span className="font-semibold"> {enabledKnCount}</span> key numbers and{' '}
                                 <span className="font-semibold">{enabledDocCount}</span> documents currently enabled.
                             </>
@@ -319,19 +324,21 @@ export const SettingsCompliancePage = () => {
                 ) : (
                     <>
                         {pageMode === 'compliance' && (
-                            <CarrierKeyNumbersView
-                                rows={catalogKeyNumbers}
+                            <KeyNumbersAssignment
                                 enabledIds={enabledKnSet}
-                                onToggleEnabled={(id, enable) => toggleEnabled('keynumber', id, enable)}
+                                onToggle={(id, enable) => toggleEnabled('keynumber', id, enable)}
+                                onBulk={(ids, enable) => bulkToggle('keynumber', ids, enable)}
                                 monitoring={rowMonitoring}
+                                visibleIds={enabledKnSet}
                             />
                         )}
                         {pageMode === 'documents' && (
-                            <CarrierDocumentsView
-                                rows={catalogDocuments}
+                            <DocumentsAssignment
                                 enabledIds={enabledDocSet}
-                                onToggleEnabled={(id, enable) => toggleEnabled('document', id, enable)}
+                                onToggle={(id, enable) => toggleEnabled('document', id, enable)}
+                                onBulk={(ids, enable) => bulkToggle('document', ids, enable)}
                                 monitoring={rowMonitoring}
+                                visibleIds={enabledDocSet}
                             />
                         )}
                         {pageMode === 'tags' && scope === 'carrier' && (
@@ -349,11 +356,12 @@ export const SettingsCompliancePage = () => {
                     onClose={() => setEditingMonitor(null)}
                 />
             )}
+
         </div>
     );
 };
 
-// ── Document Tags (read-only, root-managed) ───────────────────────────
+// â”€â”€ Document Tags (read-only, root-managed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TAG_ICON_MAP: Record<TagIconName, React.ComponentType<{ size?: number; className?: string }>> = {
     Shield, FileText, Calendar, PieChart, Award, Tag: TagIcon, Bookmark, Layers, Hash,
@@ -417,314 +425,6 @@ function CarrierDocumentTagsView() {
     );
 }
 
-// ── Monitoring cell ────────────────────────────────────────────────────
-
-/** A compact monitoring cell — toggle + reminder summary + edit pencil; "—" when the item carries no date. */
-function MonitoringCell({ itemKey, name, dateBearing, mon }: {
-    itemKey: string; name: string; dateBearing: boolean; mon: RowMonitoring;
-}) {
-    if (!dateBearing) return <span className="text-[12px] text-slate-300">—</span>;
-    const cfg = mon.cfgFor(itemKey);
-    return (
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <Toggle checked={cfg.enabled} onCheckedChange={(v) => mon.onToggle(itemKey, v)} />
-            {cfg.enabled
-                ? <span className="text-[11px] text-slate-500">{reminderSummary(cfg)}</span>
-                : <span className="text-[11px] text-slate-400">Off</span>}
-            <button type="button" onClick={() => mon.onEdit(itemKey, name)} title="Edit monitoring settings"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">
-                <Pencil size={13} />
-            </button>
-        </div>
-    );
-}
-
-// ── Compliance view ───────────────────────────────────────────────────
-
-function CarrierKeyNumbersView({ rows, enabledIds, onToggleEnabled, monitoring }: {
-    rows: KeyNumberRow[];
-    enabledIds: Set<string>;
-    onToggleEnabled: (id: string, enable: boolean) => void;
-    monitoring: RowMonitoring;
-}) {
-    const [activeGroup, setActiveGroup] = useState<KeyNumberGroup | 'All'>('All');
-    const [query, setQuery] = useState('');
-
-    const counts = useMemo(() => {
-        const out = {} as Record<KeyNumberGroup, number>;
-        for (const g of KEY_NUMBER_GROUPS) out[g] = 0;
-        for (const r of rows) out[r.group] += 1;
-        return out;
-    }, [rows]);
-
-    const tabs: SubTab<KeyNumberGroup | 'All'>[] = useMemo(
-        () => [
-            { id: 'All', label: `All (${rows.length})` },
-            ...KEY_NUMBER_GROUPS.map(g => ({ id: g, label: `${g} (${counts[g]})` })),
-        ],
-        [counts, rows.length],
-    );
-
-    const q = query.trim().toLowerCase();
-    const filtered = rows
-        .filter(r => activeGroup === 'All' || r.group === activeGroup)
-        .filter(r => !q || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q));
-
-    if (rows.length === 0) {
-        return (
-            <EmptyState
-                title="No key numbers in the catalog"
-                hint="Ask your account administrator to add key numbers via Compliance & Documents."
-            />
-        );
-    }
-
-    return (
-        <div className="space-y-3">
-            <SubTabs tabs={tabs} activeId={activeGroup} onChange={setActiveGroup} bordered={false} />
-
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <Toolbar query={query} onQueryChange={setQuery} placeholder="Search key numbers…" total={filtered.length} totalAll={rows.length} />
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-sm">
-                        <thead>
-                            <tr className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-                                <th className="px-3 py-3 w-[8%] text-center">Enabled</th>
-                                <th className="px-4 py-3 w-[44%]">Number Name</th>
-                                <th className="px-4 py-3 w-[34%]">Monitoring</th>
-                                <th className="px-3 py-3 w-[14%]">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filtered.length === 0 ? (
-                                <tr>
-                                    <td colSpan={4} className="px-4 py-12 text-center">
-                                        <p className="text-sm font-medium text-slate-700">No key numbers in this category</p>
-                                        <p className="mt-1 text-[12px] text-slate-500">Try a different tab or clear the search.</p>
-                                    </td>
-                                </tr>
-                            ) : filtered.map(k => {
-                                const linkedDocIds = DOC_IDS_BY_KN_ID.get(k.id) ?? [];
-                                const linkedDocNames = linkedDocIds
-                                    .map(id => DOCUMENTS.find(d => d.id === id)?.name)
-                                    .filter((n): n is string => !!n);
-                                const enabled = enabledIds.has(k.id);
-                                const dateBearing = !!(k.hasExpiry || k.issueDateRequired);
-                                return (
-                                    <tr key={k.id} className={cn("border-t border-slate-100 transition-colors hover:bg-blue-50/30", !enabled && "bg-slate-50/40")}>
-                                        <td className="px-3 py-3 align-top">
-                                            <div className="flex justify-center">
-                                                <Toggle checked={enabled} onCheckedChange={(v) => onToggleEnabled(k.id, v)} />
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 align-top">
-                                            <p className={cn("font-semibold", enabled ? "text-slate-900" : "text-slate-400")}>{k.name}</p>
-                                            {linkedDocNames.length > 0 ? (
-                                                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-blue-600">
-                                                    <Link2 size={10} className="shrink-0" />
-                                                    Linked to: {linkedDocNames.join(', ')}
-                                                </p>
-                                            ) : (
-                                                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
-                                                    <Link2 size={10} className="shrink-0" />
-                                                    Not linked
-                                                </p>
-                                            )}
-                                            <p className="mt-0.5 text-[12px] text-slate-500">{k.description}</p>
-                                        </td>
-                                        <td className="px-4 py-3 align-top">
-                                            <MonitoringCell
-                                                itemKey={monitorItemKey('kn', k.id)}
-                                                name={k.name}
-                                                dateBearing={enabled && dateBearing}
-                                                mon={monitoring}
-                                            />
-                                        </td>
-                                        <td className="px-3 py-3 align-top">
-                                            <StatusPill status={k.status} />
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ── Documents view ────────────────────────────────────────────────────
-
-function CarrierDocumentsView({ rows, enabledIds, onToggleEnabled, monitoring }: {
-    rows: DocumentRow[];
-    enabledIds: Set<string>;
-    onToggleEnabled: (id: string, enable: boolean) => void;
-    monitoring: RowMonitoring;
-}) {
-    const [activeScope, setActiveScope] = useState<DocumentsSubTabId>('all');
-    const [query, setQuery] = useState('');
-
-    const counts = useMemo(() => {
-        const out: Record<DocumentsSubTabId, number> = { all: 0, carrier: 0, asset: 0, driver: 0, accidents: 0, violation: 0 };
-        for (const d of rows) {
-            out.all += 1;
-            out[d.scope] += 1;
-        }
-        return out;
-    }, [rows]);
-
-    const tabs: SubTab<DocumentsSubTabId>[] = useMemo(() => DOCUMENTS_SUB_TABS
-        .map(t => ({ ...t, label: `${t.label} (${counts[t.id]})` })), [counts]);
-
-    const q = query.trim().toLowerCase();
-    const filtered = rows
-        .filter(d => activeScope === 'all' || d.scope === activeScope)
-        .filter(d => !q || d.name.toLowerCase().includes(q) || (d.linkedTo ?? '').toLowerCase().includes(q));
-
-    if (rows.length === 0) {
-        return (
-            <EmptyState
-                title="No documents in the catalog"
-                hint="Ask your account administrator to add document types via Compliance & Documents."
-            />
-        );
-    }
-
-    return (
-        <div className="space-y-3">
-            <SubTabs tabs={tabs} activeId={activeScope} onChange={setActiveScope} bordered={false} />
-
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <Toolbar query={query} onQueryChange={setQuery} placeholder="Search documents…" total={filtered.length} totalAll={rows.length} />
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-sm">
-                        <thead className="bg-slate-50">
-                            <tr className="text-left text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-                                <th className="px-3 py-3 w-[8%] text-center">Enabled</th>
-                                <th className="px-4 py-3 w-[44%]">Document Name</th>
-                                <th className="px-4 py-3 w-[34%]">Monitoring</th>
-                                <th className="px-3 py-3 w-[14%]">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {filtered.length === 0 ? (
-                                <tr>
-                                    <td colSpan={4} className="px-4 py-12 text-center">
-                                        <p className="text-sm font-medium text-slate-700">No documents in this scope</p>
-                                        <p className="mt-1 text-[12px] text-slate-500">Try a different sub-tab or clear the search.</p>
-                                    </td>
-                                </tr>
-                            ) : filtered.map(d => {
-                                const linkedKnId = d.linkedKeyNumberId ?? KN_ID_BY_DOC_ID.get(d.id);
-                                const linkedKnName = linkedKnId
-                                    ? SEED_KEY_NUMBERS.find(k => k.id === linkedKnId)?.name
-                                    : (d.linkedType === 'keynumber' ? d.linkedTo : undefined);
-                                const mandatory = isSystemFormDoc(d);
-                                const enabled = mandatory || enabledIds.has(d.id);
-                                const dateBearing = !!(d.expiryRequired || d.issueDateRequired);
-                                return (
-                                <tr key={d.id} className={cn("transition-colors hover:bg-blue-50/30", !enabled && "bg-slate-50/40")}>
-                                    <td className="px-3 py-3 align-top">
-                                        <div className="flex flex-col items-center gap-1">
-                                            <Toggle checked={enabled} disabled={mandatory} onCheckedChange={(v) => onToggleEnabled(d.id, v)} />
-                                            {mandatory && (
-                                                <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                                                    <Lock size={9} /> Req.
-                                                </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 align-top">
-                                        <div className="flex items-start gap-2.5">
-                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50">
-                                                <FileText className="h-4 w-4 text-blue-500" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className={cn("font-semibold", enabled ? "text-slate-900" : "text-slate-400")}>{d.name}</p>
-                                                {linkedKnName ? (
-                                                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-blue-600">
-                                                        <Link2 size={10} className="shrink-0" />
-                                                        Linked to: {linkedKnName}
-                                                    </p>
-                                                ) : (
-                                                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
-                                                        <Link2 size={10} className="shrink-0" />
-                                                        Not linked
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 align-top">
-                                        <MonitoringCell
-                                            itemKey={monitorItemKey('doc', d.id)}
-                                            name={d.name}
-                                            dateBearing={enabled && dateBearing}
-                                            mon={monitoring}
-                                        />
-                                    </td>
-                                    <td className="px-3 py-3 align-top">
-                                        <StatusPill status={d.status === 'Draft' ? 'Inactive' : d.status} />
-                                    </td>
-                                </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ── Shared bits ────────────────────────────────────────────────────────
-
-function Toolbar({ query, onQueryChange, placeholder, total, totalAll }: {
-    query: string;
-    onQueryChange: (q: string) => void;
-    placeholder: string;
-    total: number;
-    totalAll: number;
-}) {
-    return (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/40 px-4 py-3">
-            <div className="flex items-center gap-2">
-                <div className="relative">
-                    <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-slate-400" />
-                    <input
-                        value={query}
-                        onChange={(e) => onQueryChange(e.target.value)}
-                        placeholder={placeholder}
-                        className="h-9 w-72 rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                </div>
-                <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                    <Filter size={13} /> Filter <ChevronDown size={12} />
-                </button>
-            </div>
-            <span className="text-[12px] text-slate-500">
-                Showing <span className="font-semibold text-slate-800">{total}</span> of {totalAll}
-            </span>
-        </div>
-    );
-}
-
-function StatusPill({ status }: { status: 'Active' | 'Inactive' }) {
-    return (
-        <span className={cn(
-            "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-            status === 'Active'
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-slate-200 bg-slate-100 text-slate-500",
-        )}>
-            {status}
-        </span>
-    );
-}
 
 function EmptyState({ title, hint }: { title: string; hint: string }) {
     return (
@@ -738,7 +438,7 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
     );
 }
 
-// ── Monitoring edit modal ──────────────────────────────────────────────
+// â”€â”€ Monitoring edit modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function MonitoringEditModal({ name, value, onSave, onClose }: {
     name: string; value: MonitoringConfig; onSave: (cfg: MonitoringConfig) => void; onClose: () => void;

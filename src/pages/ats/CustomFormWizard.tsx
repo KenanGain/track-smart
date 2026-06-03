@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
  * a section card with the form's fields in a two-column grid.
  */
 
-type FieldValue =
+export type FieldValue =
     | string | boolean | string[]
     | FormLicenseEntry[] | FormAddressEntry[] | FormDisqualificationEntry[]
     | FormAccidentEntry[] | FormViolationEntry[] | FormDrivingExperienceEntry[]
@@ -1155,7 +1155,7 @@ function EmploymentEntryModal({ initial, onSave, onClose }: {
  *
  * If no DocumentType is linked, falls back to a simple drop-zone file picker.
  */
-function DocumentUploadControl({ docType, value, onChange, metaPosition = 'below' }: {
+function DocumentUploadControl({ docType, value, onChange, metaPosition = 'above' }: {
     docType: DocumentType | undefined;
     value: FormDocumentUploadValue;
     onChange: (v: FormDocumentUploadValue) => void;
@@ -1173,6 +1173,12 @@ function DocumentUploadControl({ docType, value, onChange, metaPosition = 'below
     const removeFile = (name: string) =>
         up({ files: files.filter((f) => f !== name) });
 
+    // Labeled slots only for exactly two (e.g. License Front / Rear): one file per slot, slot i ↔ files[i].
+    const slotCount = docType?.numberOfSlots === 2 ? 2 : 0;
+    const slotLabels = docType?.slotLabels ?? [];
+    const setSlot = (i: number, name: string) => { const next = [...files]; next[i] = name; up({ files: next }); };
+    const clearSlot = (i: number) => { const next = [...files]; next[i] = ''; up({ files: next }); };
+
     const showMeta = !!docType && (
         docType.issueCountryRequired || docType.issueStateRequired
         || docType.issueDateRequired || docType.expiryRequired
@@ -1180,7 +1186,32 @@ function DocumentUploadControl({ docType, value, onChange, metaPosition = 'below
 
     return (
         <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
-            {/* Drop zone */}
+            {slotCount > 0 ? (
+                /* Fixed labeled slots — N upload blocks side-by-side (e.g. Front / Rear). */
+                <div className={cn("grid gap-3", slotCount >= 2 ? "grid-cols-2" : "grid-cols-1")}>
+                    {Array.from({ length: slotCount }).map((_, i) => {
+                        const slot = slotLabels[i]?.trim() || `Slot ${i + 1}`;
+                        const fname = files[i];
+                        return (
+                            <div key={i} className="rounded-md border border-slate-200 bg-white p-3">
+                                <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">{slot}</div>
+                                <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-3 py-4 text-center hover:bg-blue-50/60">
+                                    <UploadCloud size={20} className="mb-1 text-slate-300" />
+                                    <span className="text-[11px] font-medium text-blue-600">{fname ? 'Replace file' : 'Click to upload'}</span>
+                                    <input type="file" className="hidden" onChange={(e) => { const n = e.target.files?.[0]?.name; if (n) setSlot(i, n); e.target.value = ''; }} />
+                                </label>
+                                {fname && (
+                                    <div className="mt-2 flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1.5 text-xs">
+                                        <span className="truncate text-slate-700">{fname}</span>
+                                        <button type="button" onClick={() => clearSlot(i)} className="shrink-0 text-rose-500 hover:text-rose-700" title="Remove"><X size={12} /></button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+            /* Drop zone */
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-4 py-5 text-center hover:bg-blue-50/60">
                 <UploadCloud size={28} className="mb-2 text-slate-300" />
                 <div className="flex items-center gap-2">
@@ -1203,9 +1234,10 @@ function DocumentUploadControl({ docType, value, onChange, metaPosition = 'below
                     onChange={onFile}
                 />
             </label>
+            )}
 
             {/* Uploaded-file chips (only when multiple uploads are allowed and there's > 1 file) */}
-            {docType?.allowMultiple && files.length > 0 && (
+            {slotCount === 0 && docType?.allowMultiple && files.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                     {files.map((f) => (
                         <span

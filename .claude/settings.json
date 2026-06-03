@@ -14,7 +14,10 @@
       "Bash(sed -i '996,1670d' src/pages/settings/SettingsCompliancePage.tsx)",
       "Bash(awk 'NR>=988 && NR<=1006 {printf \"%d: %s\\\\n\", NR, $0}' src/pages/settings/SettingsCompliancePage.tsx)",
       "Bash(npm install *)",
-      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(Object.entries\\(p.dependencies\\).filter\\(\\([k]\\)=>k.includes\\('dnd-kit'\\)\\)\\)\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(Object.entries\\(p.dependencies\\).filter\\(\\([k]\\)=>k.includes\\('dnd-kit'\\)\\)\\)\")",
+      "PowerShell(npx tsc -b 2>&1)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell($p = \"src/pages/settings/SettingsCompliancePage.tsx\"; $l = Get-Content $p; \"lines: $\\($l.Count\\); 440=[$\\($l[439]\\)]; 771=[$\\($l[770]\\)]; 773=[$\\($l[772]\\)]\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\kenan\\.claude\\projects\\c--Users-kenan-Full-prototpye-code\\memory"
