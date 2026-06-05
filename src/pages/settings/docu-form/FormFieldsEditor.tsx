@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2, Pencil, Upload, Check, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Pencil, Upload, Check, GripVertical, Search, X, KeyRound, FileText, ShieldCheck } from 'lucide-react';
 import {
     DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
     type DragEndEvent,
@@ -20,7 +20,8 @@ import {
     newFormField, loadApplicationForms, chunkFieldRows,
     type FormField, type FormFieldType,
 } from '@/pages/ats/application-forms.data';
-import { loadDocumentTypes } from '@/pages/ats/document-types.data';
+import { allFormDocTypes, hiringKeyNumbers, rootFormDocTypes, complianceFieldConfig } from '@/pages/ats/form-doc-resolver';
+import type { KeyNumberRow } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     fieldTypesByCategory, getFieldTypeDef,
 } from '@/pages/ats/field-types';
@@ -38,7 +39,7 @@ const PREVIEW_INPUT = 'pointer-events-none w-full rounded-md border border-slate
 // Document type catalog cached at module level — used by the document field
 // preview so the inputs (expiry, issue date, state, country, multiple)
 // reflect the configured catalog row, not generic defaults.
-const DOC_TYPES_CACHE = (() => loadDocumentTypes())();
+const DOC_TYPES_CACHE = allFormDocTypes();
 
 function FieldInputPreview({ field }: { field: FormField }) {
     const opts = field.options.length ? field.options : ['Option 1', 'Option 2'];
@@ -97,12 +98,28 @@ function FieldInputPreview({ field }: { field: FormField }) {
             const issueDateRequired    = linkedType?.issueDateRequired    ?? false;
             const issueStateRequired   = linkedType?.issueStateRequired   ?? false;
             const issueCountryRequired = linkedType?.issueCountryRequired ?? false;
+            const slotCount = linkedType?.numberOfSlots && linkedType.numberOfSlots >= 2 ? linkedType.numberOfSlots : 0;
+            const slotLabel = (i: number) => linkedType?.slotLabels?.[i]?.trim() || (i === 0 ? 'Front' : i === 1 ? 'Back' : `Slot ${i + 1}`);
             return (
                 <div className="flex flex-col gap-2">
-                    {/* Upload widget */}
-                    <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400">
-                        <Upload size={14} /> {allowMultiple ? 'Upload documents (multiple allowed)' : 'Upload document'}
-                    </div>
+                    {/* Upload widget — labeled slots (e.g. Front/Back) or a single drop-zone */}
+                    {slotCount > 0 ? (
+                        <div className="grid grid-cols-2 gap-2">
+                            {Array.from({ length: slotCount }).map((_, i) => (
+                                <div key={i} className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
+                                    <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{slotLabel(i)}</div>
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><Upload size={12} /> Upload</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400">
+                            <Upload size={14} /> {allowMultiple ? 'Upload documents (multiple allowed)' : 'Upload document'}
+                        </div>
+                    )}
+                    {slotCount > 0 && allowMultiple && (
+                        <p className="text-[10px] font-medium text-violet-600">+ Repeatable — driver can add more {slotLabel(0)}/{slotLabel(1)} sets</p>
+                    )}
 
                     {/* Meta inputs — only render the ones the catalog turned on; above or below per the field setting */}
                     {(expiryRequired || issueDateRequired || issueStateRequired || issueCountryRequired) && (
@@ -144,122 +161,78 @@ function FieldInputPreview({ field }: { field: FormField }) {
                 </div>
             );
         }
+        case 'compliance': {
+            const { keyNumber, docType } = complianceFieldConfig(field.complianceKeyNumberId);
+            const slotCount = docType?.numberOfSlots && docType.numberOfSlots >= 2 ? docType.numberOfSlots : 0;
+            const slotLabel = (i: number) => docType?.slotLabels?.[i]?.trim() || (i === 0 ? 'Front' : i === 1 ? 'Back' : `Slot ${i + 1}`);
+            return (
+                <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+                    <p className="text-[11px] text-slate-500">Combined compliance item from <span className="font-semibold text-violet-700">Settings</span>{keyNumber ? <> · <span className="font-semibold text-slate-700">{keyNumber.name}</span></> : ' — pick a Key Number'}.</p>
+                    <div>
+                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{keyNumber?.name || 'Number'}</p>
+                        <div className={cn(PREVIEW_INPUT, 'flex h-9 items-center px-3 text-slate-400')}>Enter number…</div>
+                    </div>
+                    {docType ? (
+                        slotCount > 0 ? (
+                            <div className="grid grid-cols-2 gap-2">
+                                {Array.from({ length: slotCount }).map((_, i) => (
+                                    <div key={i} className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2">
+                                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{slotLabel(i)}</div>
+                                        <div className="flex items-center gap-1.5 text-xs text-slate-400"><Upload size={12} /> Upload</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400"><Upload size={14} /> Upload document</div>
+                        )
+                    ) : null}
+                </div>
+            );
+        }
         case 'license-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            Class A • 1234567 • ON
-                            <span className="text-blue-400">×</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            Class B • 7890123 • QC
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add License
-                    </div>
-                </div>
-            );
         case 'address-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            123 Main St, Toronto, ON
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Address
-                    </div>
-                </div>
-            );
         case 'disqualification-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            2024-03-12 · 90 days · 1 offence
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Disqualification
-                    </div>
-                </div>
-            );
         case 'accident-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            2024-03-12 · Rear-end · Toronto, ON
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Accident
-                    </div>
-                </div>
-            );
         case 'violation-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            2024-03-12 · Speeding · Fine · Toronto
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Violation
-                    </div>
-                </div>
-            );
         case 'driving-experience-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            Tractor-trailer · 2022-2024 · 120,000 mi
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Experience
-                    </div>
-                </div>
-            );
         case 'employment-list':
+        case 'education-list': {
+            // List fields are backed by an editable subform — the preview mirrors
+            // the runtime: a linked-subform note + a structured record card + Add button.
+            const sub = field.subformId ? loadApplicationForms().find(f => f.id === field.subformId && f.isSubform) : undefined;
+            const addLabel = sub?.buttonName || field.label || 'Add record';
+            const sampleFields = (sub?.fields ?? [])
+                .filter(f => !['heading', 'paragraph', 'bullet-list', 'alert', 'document', 'signature', 'subform-button'].includes(f.type))
+                .slice(0, 4);
             return (
                 <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            Acme Trucking · 2020-2024 · Contract Employee
-                            <span className="text-blue-400">×</span>
-                        </span>
+                    <p className="text-[11px] text-slate-500">
+                        {sub
+                            ? <>Records collected via the <span className="font-semibold text-violet-700">{sub.name}</span> subform — saved as structured data.</>
+                            : <span className="italic text-amber-600">No subform linked — using the built-in popup.</span>}
+                    </p>
+                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-3 py-1.5 text-[11px] font-bold text-slate-600">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-100 text-[10px] text-violet-700">1</span>
+                            Saved record
+                        </div>
+                        {sampleFields.length > 0 && (
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 py-2">
+                                {sampleFields.map(f => (
+                                    <div key={f.id}>
+                                        <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{f.label}</p>
+                                        <p className="truncate text-[11px] text-slate-500">—</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Employer
+                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-violet-300 bg-violet-50/40 px-3 py-1.5 text-xs font-semibold text-violet-700">
+                        <Plus size={12} /> {/^add\b/i.test(addLabel) ? addLabel : `Add ${addLabel}`}
                     </div>
                 </div>
             );
-        case 'education-list':
-            return (
-                <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                            Bachelor · University of Toronto · 2018
-                            <span className="text-blue-400">×</span>
-                        </span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-xs font-semibold text-blue-600">
-                        <Plus size={12} /> Add Education
-                    </div>
-                </div>
-            );
+        }
         case 'paragraph':
             return (
                 <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">
@@ -319,13 +292,15 @@ function FieldInputPreview({ field }: { field: FormField }) {
 }
 
 /** Header row inside a FieldCard: label + edit/remove buttons. */
-function FieldHeader({ field, onEdit, onRemove, condensed, dragHandleProps }: {
+function FieldHeader({ field, onEdit, onRemove, condensed, dragHandleProps, onWidth }: {
     field: FormField;
     onEdit: () => void;
     onRemove: () => void;
     condensed?: boolean;
     /** Spread from useSortable (attributes + listeners) onto the grip button. */
     dragHandleProps?: Record<string, unknown>;
+    /** When provided, shows a Full / Half width toggle (two Half fields sit side by side). */
+    onWidth?: (w: 'full' | 'half') => void;
 }) {
     const def = getFieldTypeDef(field.type);
     const TypeIcon = def.icon;
@@ -355,6 +330,17 @@ function FieldHeader({ field, onEdit, onRemove, condensed, dragHandleProps }: {
                     {def.label}
                 </span>
             </div>
+            {onWidth && (
+                <div className="flex overflow-hidden rounded-md border border-slate-200" title="Field width — two Half fields sit side by side">
+                    {(['full', 'half'] as const).map(w => (
+                        <button key={w} type="button" onClick={() => onWidth(w)}
+                            className={cn('px-2 py-1 text-[10px] font-bold capitalize',
+                                (field.width ?? 'full') === w ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50')}>
+                            {w}
+                        </button>
+                    ))}
+                </div>
+            )}
             <button
                 type="button"
                 onClick={onEdit}
@@ -376,7 +362,7 @@ function FieldHeader({ field, onEdit, onRemove, condensed, dragHandleProps }: {
 }
 
 /** A field card; if `dependents` are passed they nest inside (e.g. a toggle + its conditional checklist). */
-function FieldCard({ field, dependents, onEdit, onRemove, onEditDependent, onRemoveDependent, dragHandleProps }: {
+function FieldCard({ field, dependents, onEdit, onRemove, onEditDependent, onRemoveDependent, dragHandleProps, onWidth }: {
     field: FormField;
     dependents: FormField[];
     onEdit: () => void;
@@ -384,10 +370,14 @@ function FieldCard({ field, dependents, onEdit, onRemove, onEditDependent, onRem
     onEditDependent: (f: FormField) => void;
     onRemoveDependent: (f: FormField) => void;
     dragHandleProps?: Record<string, unknown>;
+    onWidth?: (w: 'full' | 'half') => void;
 }) {
+    // Half/Full only makes sense for compact scalar inputs/choices (not display, document, lists, signature).
+    const widthEligible = ['input', 'choice'].includes(getFieldTypeDef(field.type).category)
+        && !['textarea', 'document', 'signature'].includes(field.type);
     return (
         <div className="rounded-lg border border-slate-200 bg-white p-4 hover:border-blue-300">
-            <FieldHeader field={field} onEdit={onEdit} onRemove={onRemove} dragHandleProps={dragHandleProps} />
+            <FieldHeader field={field} onEdit={onEdit} onRemove={onRemove} dragHandleProps={dragHandleProps} onWidth={widthEligible ? onWidth : undefined} />
             <FieldInputPreview field={field} />
             {field.instruction && (
                 <p className="mt-1.5 text-[11px] text-slate-400">{field.instruction}</p>
@@ -459,7 +449,7 @@ function FollowUpFieldsConfig({ toggleField, allFields, onAddFollowUp }: {
 
     // Only Hiring-flagged active types appear in the form builder picker.
     const docTypes = useMemo(
-        () => loadDocumentTypes().filter(t => t.status === 'Active' && t.usingInHiring),
+        () => allFormDocTypes().filter(t => t.usingInHiring),
         [stage],
     );
     const dependents = allFields.filter(f => f.showWhen?.fieldId === toggleField.id);
@@ -705,7 +695,10 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
     const up = (patch: Partial<FormField>) => setDraft(d => ({ ...d, ...patch }));
     const def = getFieldTypeDef(draft.type);
     const usesOptions = def.usesOptions;
-    const subforms = draft.type === 'subform-button' ? loadApplicationForms().filter(f => f.isSubform) : [];
+    // Both the subform-button AND the list fields are subform-backed (their popup
+    // renders an editable subform). List fields keep their own label.
+    const isListField = def.category === 'list';
+    const subforms = def.usesSubform ? loadApplicationForms().filter(f => f.isSubform) : [];
     const linkedSubform = subforms.find(s => s.id === draft.subformId);
     const categories = fieldTypesByCategory();
     // Auto-open the picker for brand-new fields (still has the default "New field" label).
@@ -717,6 +710,7 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
     const canSave =
         draft.label.trim().length > 0
         && !(draft.type === 'document' && !draft.documentTypeId)
+        && !(draft.type === 'compliance' && !draft.complianceKeyNumberId)
         && !(draft.type === 'subform-button' && !draft.subformId);
 
     return (
@@ -911,33 +905,37 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
                                 </div>
                             )}
 
-                            {/* Subform picker */}
-                            {draft.type === 'subform-button' && (
+                            {/* Subform picker — subform-button + list fields (their "add more" popup is an editable subform) */}
+                            {def.usesSubform && (
                                 <div className="rounded-xl border border-violet-200 bg-violet-50/30 p-4">
-                                    <SectionEyebrow accent="violet">Linked subform <span className="text-rose-600">*</span></SectionEyebrow>
+                                    <SectionEyebrow accent="violet">
+                                        {isListField ? '"Add more" subform' : 'Linked subform'} {draft.type === 'subform-button' && <span className="text-rose-600">*</span>}
+                                    </SectionEyebrow>
                                     <select
                                         value={draft.subformId ?? ''}
                                         onChange={e => {
                                             const sub = subforms.find(s => s.id === e.target.value);
-                                            up({
-                                                subformId: e.target.value,
-                                                label: sub?.buttonName || sub?.name || draft.label,
-                                            });
+                                            // List fields keep their own label; only the button field adopts the subform's button name.
+                                            up(isListField
+                                                ? { subformId: e.target.value }
+                                                : { subformId: e.target.value, label: sub?.buttonName || sub?.name || draft.label });
                                         }}
                                         className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                     >
-                                        <option value="">— Pick a subform —</option>
+                                        <option value="">{isListField ? '— Use built-in popup —' : '— Pick a subform —'}</option>
                                         {subforms.map(s => (
                                             <option key={s.id} value={s.id}>
                                                 {s.name}{s.buttonName ? ` · "${s.buttonName}"` : ''}
                                             </option>
                                         ))}
                                     </select>
-                                    {linkedSubform && (
-                                        <p className="mt-2 rounded-md bg-white/70 px-3 py-2 text-[11px] text-slate-600">
-                                            Button label on the form: <span className="font-semibold text-slate-900">{draft.label || linkedSubform.buttonName || linkedSubform.name}</span>
-                                        </p>
-                                    )}
+                                    <p className="mt-2 rounded-md bg-white/70 px-3 py-2 text-[11px] text-slate-600">
+                                        {isListField
+                                            ? 'The fields applicants fill in this list’s "add more" popup come from this subform — edit them in the Subforms tab.'
+                                            : (linkedSubform
+                                                ? <>Button label on the form: <span className="font-semibold text-slate-900">{draft.label || linkedSubform.buttonName || linkedSubform.name}</span></>
+                                                : 'Pick which subform this button opens.')}
+                                    </p>
                                     {subforms.length === 0 && (
                                         <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
                                             No subforms exist yet. Add one from the Subforms tab first.
@@ -948,14 +946,19 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
 
                             {/* Document Type picker — required for `document` fields */}
                             {draft.type === 'document' && (
-                                <DocumentTypeConfig
-                                    documentTypeId={draft.documentTypeId}
-                                    currentLabel={draft.label}
-                                    onPick={({ documentTypeId, label }) => up({
-                                        documentTypeId: documentTypeId || undefined,
-                                        label,
-                                    })}
-                                />
+                                <>
+                                    <DocumentTypeConfig
+                                        documentTypeId={draft.documentTypeId}
+                                        currentLabel={draft.label}
+                                        onPick={({ documentTypeId, label }) => up({
+                                            documentTypeId: documentTypeId || undefined,
+                                            label,
+                                        })}
+                                    />
+                                    <div className="rounded-lg border border-blue-200 bg-blue-50/40 px-3 py-2 text-[11px] text-blue-800">
+                                        This upload also captures the dates / state / country defined on its Document Type — you don't need to add a separate date field for the same document.
+                                    </div>
+                                </>
                             )}
 
                             {/* Date inputs position — above or below the Upload widget */}
@@ -986,6 +989,39 @@ function FieldSettingsModal({ field, allFields, onSave, onAddRelated, onClose }:
                                     <p className="mt-1.5 text-[11px] text-slate-500">
                                         Whether expiry / issue-date / state / country render above or below the Upload widget.
                                     </p>
+                                </div>
+                            )}
+
+                            {/* Compliance item — pick a Key Number from Settings (its linked document comes along) */}
+                            {draft.type === 'compliance' && (
+                                <div className="rounded-xl border border-violet-200 bg-violet-50/30 p-4">
+                                    <SectionEyebrow accent="violet">Compliance Key Number <span className="text-rose-600">*</span></SectionEyebrow>
+                                    <p className="mb-2 text-[11px] text-slate-500">From Super Admin → Compliance &amp; Documents. The number + its linked document (Front/Back + dates) are captured together as one.</p>
+                                    <select
+                                        value={draft.complianceKeyNumberId ?? ''}
+                                        onChange={e => {
+                                            const kn = hiringKeyNumbers().find(k => k.id === e.target.value);
+                                            up({ complianceKeyNumberId: e.target.value || undefined, label: kn?.name || draft.label });
+                                        }}
+                                        className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    >
+                                        <option value="">— Pick a Key Number —</option>
+                                        {hiringKeyNumbers().map(k => (
+                                            <option key={k.id} value={k.id}>{k.name}{k.docRequired ? ' · + document' : ''}</option>
+                                        ))}
+                                    </select>
+                                    {(() => {
+                                        const { keyNumber, docType } = complianceFieldConfig(draft.complianceKeyNumberId);
+                                        if (!keyNumber) return null;
+                                        return (
+                                            <p className="mt-2 rounded-md bg-white/70 px-3 py-2 text-[11px] text-slate-600">
+                                                Captures: <span className="font-semibold text-slate-900">{keyNumber.name}</span> number
+                                                {docType && <> + <span className="font-semibold text-slate-900">{docType.name}</span> upload{docType.numberOfSlots ? ` (${docType.numberOfSlots} slots)` : ''}</>}
+                                                {[keyNumber.issueDateRequired && 'issue date', keyNumber.hasExpiry && 'expiry', keyNumber.issueStateRequired && 'state', keyNumber.issueCountryRequired && 'country'].filter(Boolean).length > 0 &&
+                                                    <> · dates: {[keyNumber.issueDateRequired && 'issue', keyNumber.hasExpiry && 'expiry', keyNumber.issueStateRequired && 'state', keyNumber.issueCountryRequired && 'country'].filter(Boolean).join(', ')}</>}
+                                            </p>
+                                        );
+                                    })()}
                                 </div>
                             )}
 
@@ -1048,6 +1084,7 @@ function SortableFieldCard(props: {
     onRemove: () => void;
     onEditDependent: (f: FormField) => void;
     onRemoveDependent: (f: FormField) => void;
+    onWidth?: (w: 'full' | 'half') => void;
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.field.id });
     const style: React.CSSProperties = {
@@ -1068,13 +1105,17 @@ export function FormFieldsEditor({ fields, onChange }: {
     onChange: (fields: FormField[]) => void;
 }) {
     const [editing, setEditing] = useState<FormField | null>(null);
+    const [quickAddOpen, setQuickAddOpen] = useState(false);
 
     const removeField = (id: string) => onChange(fields.filter(f => f.id !== id));
+    const setWidth = (id: string, w: 'full' | 'half') => onChange(fields.map(f => f.id === id ? { ...f, width: w } : f));
     const addField = () => {
         const field = newFormField();
         onChange([...fields, field]);
         setEditing(field);
     };
+    // Insert ready-made fields from the root Compliance & Documents catalog.
+    const addComplianceFields = (next: FormField[]) => onChange([...fields, ...next]);
     const saveField = (field: FormField) => {
         onChange(fields.map(f => f.id === field.id ? field : f));
         setEditing(null);
@@ -1129,6 +1170,7 @@ export function FormFieldsEditor({ fields, onChange }: {
             onRemove={() => removeField(f.id)}
             onEditDependent={(dep) => setEditing(dep)}
             onRemoveDependent={(dep) => removeField(dep.id)}
+            onWidth={(w) => setWidth(f.id, w)}
         />
     );
 
@@ -1154,13 +1196,29 @@ export function FormFieldsEditor({ fields, onChange }: {
                     </div>
                 </SortableContext>
             </DndContext>
-            <button
-                type="button"
-                onClick={addField}
-                className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/50 px-3.5 py-2 text-[12px] font-semibold text-blue-600 hover:bg-blue-50"
-            >
-                <Plus size={14} /> Add field
-            </button>
+            <div className="mt-1 flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    onClick={addField}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-blue-300 bg-blue-50/50 px-3.5 py-2 text-[12px] font-semibold text-blue-600 hover:bg-blue-50"
+                >
+                    <Plus size={14} /> Add field
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setQuickAddOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-violet-300 bg-violet-50/50 px-3.5 py-2 text-[12px] font-semibold text-violet-700 hover:bg-violet-50"
+                >
+                    <ShieldCheck size={14} /> Add from Compliance &amp; Documents
+                </button>
+            </div>
+
+            {quickAddOpen && (
+                <ComplianceQuickAdd
+                    onAdd={addComplianceFields}
+                    onClose={() => setQuickAddOpen(false)}
+                />
+            )}
 
             {editing && (
                 <FieldSettingsModal
@@ -1179,5 +1237,129 @@ export function FormFieldsEditor({ fields, onChange }: {
                 />
             )}
         </div>
+    );
+}
+
+// ── Quick-add from the root Compliance & Documents catalog ──────────────────
+
+/** A root Document → a ready-to-use `document` field (renders its meta/slots). */
+function fieldForRootDocument(docId: string, label: string): FormField {
+    return { ...newFormField(), type: 'document', label, options: [], documentTypeId: docId };
+}
+
+/** A root Key Number → a single combined `compliance` field (number + its linked document + dates). */
+function fieldsForKeyNumber(kn: KeyNumberRow): FormField[] {
+    return [{
+        ...newFormField(), type: 'compliance', label: kn.name, required: !!kn.numberRequired,
+        instruction: kn.description || '', options: [], complianceKeyNumberId: kn.id,
+    }];
+}
+
+function ComplianceQuickAdd({ onAdd, onClose }: {
+    onAdd: (fields: FormField[]) => void;
+    onClose: () => void;
+}) {
+    const [tab, setTab] = useState<'keynumber' | 'document'>('keynumber');
+    const [query, setQuery] = useState('');
+    const [added, setAdded] = useState<Set<string>>(new Set());
+
+    const keyNumbers = useMemo(() => hiringKeyNumbers(), []);
+    const documents = useMemo(() => rootFormDocTypes(), []);
+    const q = query.trim().toLowerCase();
+    const kns = q ? keyNumbers.filter(k => k.name.toLowerCase().includes(q)) : keyNumbers;
+    const docs = q ? documents.filter(d => d.name.toLowerCase().includes(q)) : documents;
+
+    const markAdded = (id: string) => setAdded(prev => new Set(prev).add(id));
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6" onClick={onClose}>
+            <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
+                    <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">Compliance &amp; Documents · root catalog</p>
+                        <h3 className="mt-0.5 text-base font-bold text-slate-900">Add to this form</h3>
+                        <p className="mt-0.5 text-[12px] text-slate-500">Pick a Key Number or Document defined at Super Admin — it drops in as ready, fully-editable fields.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={16} /></button>
+                </div>
+
+                <div className="border-b border-slate-100 px-6 pt-3">
+                    <div className="flex gap-1">
+                        {([
+                            { id: 'keynumber', label: 'Key Numbers', Icon: KeyRound, count: keyNumbers.length },
+                            { id: 'document', label: 'Documents', Icon: FileText, count: documents.length },
+                        ] as const).map(t => (
+                            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+                                className={cn('inline-flex items-center gap-1.5 rounded-t-md px-3 py-2 text-[12px] font-semibold border-b-2 -mb-px',
+                                    tab === t.id ? 'border-violet-500 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700')}>
+                                <t.Icon size={13} /> {t.label} <span className="text-[10px] text-slate-400">{t.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="px-6 py-3">
+                    <div className="relative">
+                        <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-slate-400" />
+                        <input value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${tab === 'keynumber' ? 'key numbers' : 'documents'}…`}
+                            className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-300" />
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-6 pb-4">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {tab === 'keynumber' && kns.map(kn => (
+                            <QuickAddRow
+                                key={kn.id}
+                                Icon={KeyRound}
+                                title={kn.name}
+                                subtitle={[kn.relatedTo, kn.docRequired ? 'has document' : null].filter(Boolean).join(' · ')}
+                                done={added.has(kn.id)}
+                                onAdd={() => { onAdd(fieldsForKeyNumber(kn)); markAdded(kn.id); }}
+                            />
+                        ))}
+                        {tab === 'document' && docs.map(d => (
+                            <QuickAddRow
+                                key={d.id}
+                                Icon={FileText}
+                                title={d.name}
+                                subtitle={[d.category, d.expiryRequired ? 'expiry' : null, d.numberOfSlots ? `${d.numberOfSlots} slots` : null].filter(Boolean).join(' · ')}
+                                done={added.has(d.id)}
+                                onAdd={() => { onAdd([fieldForRootDocument(d.id, d.name)]); markAdded(d.id); }}
+                            />
+                        ))}
+                        {((tab === 'keynumber' && kns.length === 0) || (tab === 'document' && docs.length === 0)) && (
+                            <div className="col-span-full rounded-lg border border-dashed border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-400">
+                                Nothing matches "{query}".
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-white px-6 py-3">
+                    <span className="text-[11px] text-slate-500">{added.size > 0 ? `${added.size} added to the form` : 'Click an item to add it'}</span>
+                    <button type="button" onClick={onClose} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700">Done</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function QuickAddRow({ Icon, title, subtitle, done, onAdd }: {
+    Icon: typeof KeyRound; title: string; subtitle: string; done: boolean; onAdd: () => void;
+}) {
+    return (
+        <button type="button" onClick={onAdd}
+            className={cn('flex items-center gap-2.5 rounded-lg border bg-white px-3 py-2.5 text-left transition-colors',
+                done ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-200 hover:border-violet-400 hover:bg-violet-50/40')}>
+            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+                {done ? <Check size={15} /> : <Icon size={15} />}
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold text-slate-800">{title}</span>
+                {subtitle && <span className="block truncate text-[11px] text-slate-500">{subtitle}</span>}
+            </span>
+            <span className={cn('shrink-0 text-[11px] font-bold', done ? 'text-emerald-600' : 'text-violet-600')}>{done ? 'Added' : '+ Add'}</span>
+        </button>
     );
 }

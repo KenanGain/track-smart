@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     FileText, Search, Plus, Pencil, Trash2, ChevronDown, ChevronUp, ChevronsUpDown,
     Building2, Truck, User, Filter, Save,
-    ArrowLeft, Info, ExternalLink, Link2, ShieldAlert, Receipt, Eye, X, Layers,
+    ArrowLeft, Info, ExternalLink, Link2, ShieldAlert, Receipt, Eye, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { Toggle } from '@/components/ui/toggle';
 import { Button } from '@/components/ui/button';
 import { DocumentTagsView } from '@/pages/settings/docu-form/DocumentTagsView';
-import { DocumentFormPreviewModal } from '@/components/compliance/DocumentFormPreviewModal';
+import { DocumentFormPreviewModal, type DocumentFormPreviewProps } from '@/components/compliance/DocumentFormPreviewModal';
 import { loadAdminDocuments, saveAdminDocuments } from '@/pages/admin/compliance-catalog.data';
 import {
     loadTagSections, saveTagSections, newTag,
@@ -63,6 +63,10 @@ export interface KeyNumberRow {
      * Off = compliance/back-office only. Mirrors the same flag on documents.
      */
     usedInHiring?: boolean;
+    /** Persisted order of the fields in the form view (number / upload / meta). */
+    formFieldOrder?: string[];
+    /** Persisted per-field width (full / half) in the form view. */
+    formFieldWidths?: Record<string, string>;
 }
 
 export const KEY_NUMBER_GROUPS: KeyNumberGroup[] = [
@@ -93,8 +97,7 @@ export const SEED_KEY_NUMBERS: KeyNumberRow[] = [
     { id: 'kn-copr',            name: 'COPR / Carrier Safety Profile ID',   description: 'Provincial carrier safety profile identifier',            relatedTo: 'Carrier', group: 'Regulatory and Safety Numbers', numberRequired: true, docRequired: true,  hasExpiry: false, issueDateRequired: false, issueStateRequired: false, issueCountryRequired: false, status: 'Inactive' },
     { id: 'kn-cvsa-decal',      name: 'CVSA Decal Number',                  description: 'CVSA inspection decal number',                            relatedTo: 'Asset',   group: 'Regulatory and Safety Numbers', numberRequired: true, docRequired: true,  hasExpiry: true,  issueDateRequired: false, issueStateRequired: false, issueCountryRequired: false, status: 'Active' },
     { id: 'kn-mvi',             name: 'MVI Number',                         description: 'Motor Vehicle Inspection number',                         relatedTo: 'Asset',   group: 'Regulatory and Safety Numbers', numberRequired: true, docRequired: false, hasExpiry: true,  issueDateRequired: false, issueStateRequired: false, issueCountryRequired: false, status: 'Active' },
-    { id: 'kn-dl-std',          name: 'Driver License (Standard)',          description: 'Standard driver license number',                          relatedTo: 'Driver',  group: 'Regulatory and Safety Numbers', numberRequired: true, docRequired: true,  hasExpiry: true,  issueDateRequired: false, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', usedInHiring: true },
-    { id: 'kn-cdl',             name: 'Commercial Driver License (CDL)',    description: 'Commercial driver license number',                        relatedTo: 'Driver',  group: 'Regulatory and Safety Numbers', numberRequired: true, docRequired: true,  hasExpiry: true,  issueDateRequired: false, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', usedInHiring: true },
+    { id: 'kn-dl-std',          name: 'Driver License',                     description: 'Driver license number (incl. CDL)',                       relatedTo: 'Driver',  group: 'Regulatory and Safety Numbers', numberRequired: true, docRequired: true,  hasExpiry: true,  issueDateRequired: false, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', usedInHiring: true },
 
     // ── Tax and Business Identification Numbers ───────────────────────
     { id: 'kn-ein',             name: 'EIN',                                description: 'Employer Identification Number',                          relatedTo: 'Carrier', group: 'Tax and Business Identification Numbers', numberRequired: true, docRequired: true,  hasExpiry: false, issueDateRequired: false, issueStateRequired: false, issueCountryRequired: false, status: 'Active' },
@@ -177,6 +180,11 @@ export interface DocumentRow {
     requirementLevel?: DocumentRequirement;
     /** Whether multiple files may be uploaded for this document. */
     allowMultiple?: boolean;
+    /** When allowMultiple is on (and linked to a Key Number): what repeats —
+     *  'all' = the whole item (number + dates + upload), 'document' = only the upload. Default 'all'. */
+    repeatScope?: 'all' | 'document';
+    /** Allow capturing previous/historical copies of this document (each with its own number + dates). */
+    allowHistorical?: boolean;
     /** When allowMultiple is on: fixed number of labeled upload slots (undefined = unlimited). */
     numberOfSlots?: number;
     /** Per-slot labels, e.g. ["Front", "Rear"]. */
@@ -215,6 +223,10 @@ export interface DocumentRow {
     issueCountryRequired: boolean;
     status: DocumentTypeStatus;
     scope: Exclude<DocumentsSubTabId, 'all'>;
+    /** Persisted order of the fields in the form view (number / upload / meta). */
+    formFieldOrder?: string[];
+    /** Persisted per-field width (full / half) in the form view. */
+    formFieldWidths?: Record<string, string>;
 }
 
 const DOCUMENTS_SUB_TABS: SubTab<DocumentsSubTabId>[] = [
@@ -237,6 +249,8 @@ const expand = (r: DR): DocumentRow => ({
     folder: r.folder, status: r.status, scope: r.scope,
     expiryRequired: !!r.e, issueDateRequired: !!r.d,
     issueStateRequired: !!r.s, issueCountryRequired: !!r.c,
+    // Upload config (labeled slots / repeatable sets) carried through when set.
+    allowMultiple: r.allowMultiple, repeatScope: r.repeatScope, allowHistorical: r.allowHistorical, numberOfSlots: r.numberOfSlots, slotLabels: r.slotLabels,
     // Default: every docu-form catalog row participates in hiring forms.
     usedInHiring: r.h !== undefined ? !!r.h : r.source === 'docu-form',
 });
@@ -300,8 +314,7 @@ export const DOCUMENTS: DocumentRow[] = ([
     // ── Driver ────────────────────────────────────────────────────────
     { id: 'd-paystub',         name: 'Paystub',                      linkedTo: 'Paystubs',                             linkedType: 'module',     folder: 'Company Documents',       status: 'Active', scope: 'driver' },
     { id: 'd-emp-reference',   name: 'Employment Reference',                                                                                       folder: 'Company Documents',       status: 'Active', scope: 'driver', h: 1 },
-    { id: 'd-dl-std',          name: 'Driver License (Standard)',    linkedTo: 'Driver License (Standard)',            linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
-    { id: 'd-cdl-link',        name: 'Commercial Driver License (CDL)', linkedTo: 'Commercial Driver License (CDL)',   linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, h: 1 },
+    { id: 'd-dl-std',          name: 'Driver License',               linkedTo: 'Driver License',                       linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, d: 1, s: 1, c: 1, h: 1, allowMultiple: true, numberOfSlots: 2, slotLabels: ['Front', 'Back'], allowHistorical: true },
     { id: 'd-med-cert-link',   name: 'Medical Examiner Certificate',                                                                               folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, d: 1, h: 1 },
     { id: 'd-training-cert',   name: 'Training Certificate',                                                                                       folder: 'Company Documents',       status: 'Active', scope: 'driver', d: 1, h: 1 },
     { id: 'd-drug-consortium', name: 'Drug Consortium',              linkedTo: 'Drug & Alcohol Consortium ID',         linkedType: 'keynumber',  folder: 'Company Documents',       status: 'Active', scope: 'driver', e: 1, d: 1, h: 1 },
@@ -378,7 +391,7 @@ export const DOCUMENTS: DocumentRow[] = ([
  * the Add/Edit form. Anything missing here falls back to 'Other'.
  */
 const DOC_CATEGORY_SEED: Record<DocumentCategory, string[]> = {
-    'License':                 ['d-dl-std', 'd-cdl-link', 'd-df-cdl', 'd-df-dl-front', 'd-df-dl-back'],
+    'License':                 ['d-dl-std', 'd-df-cdl', 'd-df-dl-front', 'd-df-dl-back'],
     'Medical':                 ['d-med-cert-link', 'd-df-med'],
     'Identity & Travel':       ['d-passport-link', 'd-fast-link', 'd-visa-link', 'd-twic-link', 'd-df-passport', 'd-df-ssn', 'd-df-birth'],
     'Background & Screening':  ['d-emp-reference', 'd-training-cert', 'd-drug-consortium', 'd-df-criminal', 'd-df-mvr', 'd-df-cvor', 'd-df-psp', 'd-df-abstract', 'd-df-emp-exp'],
@@ -576,8 +589,114 @@ function RequirementRow({ label, help, checked, onChange }: {
     );
 }
 
+/**
+ * Document-specific upload & repeat configuration — the options that are NOT the
+ * common Key-Number flags (expiry / issue date / state / country): fixed labeled
+ * slots, the repeat MODE (Single / Multiple-same / Multiple-each), and historical
+ * copies. Shared by the Document form AND the Key Number form (where it edits the
+ * LINKED document), so the upload config looks and behaves identically wherever
+ * it appears, and a key number's settings stay one entity with its document.
+ */
+function DocumentUploadConfig({ value, onChange, linked }: {
+    value: Pick<DocumentRow, 'allowMultiple' | 'repeatScope' | 'allowHistorical' | 'numberOfSlots' | 'slotLabels'>;
+    onChange: (patch: Partial<DocumentRow>) => void;
+    linked: boolean;
+}) {
+    const draft = value;
+    const up = onChange;
+    const slotsOn = (draft.numberOfSlots ?? 0) > 0;
+    const l1 = draft.slotLabels?.[0]?.trim() || 'Front';
+    const l2 = draft.slotLabels?.[1]?.trim() || 'Back';
+    // Derive the current repeat mode from the two underlying flags.
+    const mode: 'single' | 'same' | 'each' =
+        !draft.allowMultiple ? 'single'
+            : (linked && draft.repeatScope === 'document') ? 'same'
+                : (linked ? 'each' : 'same');
+    const setMode = (m: 'single' | 'same' | 'each') =>
+        up(m === 'single' ? { allowMultiple: false, repeatScope: undefined }
+            : m === 'same' ? { allowMultiple: true, repeatScope: 'document' }
+                : { allowMultiple: true, repeatScope: 'all' });
+    const ModeCard = (val: 'single' | 'same' | 'each', title: string, sub: string) => (
+        <button type="button" onClick={() => setMode(val)}
+            className={cn('flex-1 rounded-md border px-3 py-2 text-left transition',
+                mode === val ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:border-slate-300')}>
+            <span className={cn('block text-[12px] font-semibold', mode === val ? 'text-blue-800' : 'text-slate-700')}>{title}</span>
+            <span className="mt-0.5 block text-[11px] text-slate-500">{sub}</span>
+        </button>
+    );
+    const uploadWord = slotsOn ? `${l1}/${l2} upload` : 'upload';
+    return (
+        <>
+            {/* 1 — Fixed labeled upload slots (e.g. Front / Back). */}
+            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <RequirementRow
+                    label="Fixed upload slots (e.g. Front / Back)"
+                    help="On = a set number of labeled blocks. Off = one upload (or many if multiple is on)."
+                    checked={slotsOn}
+                    onChange={(v) => up(v
+                        ? { numberOfSlots: draft.numberOfSlots && draft.numberOfSlots >= 2 ? draft.numberOfSlots : 2, slotLabels: draft.slotLabels?.length ? draft.slotLabels : ['Front', 'Back'] }
+                        : { numberOfSlots: undefined, slotLabels: undefined })}
+                />
+                {slotsOn && (
+                    <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[12px] font-semibold text-slate-600">Number of slots</span>
+                            <input
+                                type="number" min={2} max={6}
+                                value={draft.numberOfSlots ?? 2}
+                                onChange={(e) => {
+                                    const n = Math.min(6, Math.max(2, Number(e.target.value) || 2));
+                                    up({ numberOfSlots: n, slotLabels: (draft.slotLabels ?? []).slice(0, n) });
+                                }}
+                                className="h-8 w-20 rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {Array.from({ length: draft.numberOfSlots ?? 2 }).map((_, i) => (
+                                <div key={i}>
+                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">Slot {i + 1} label</label>
+                                    <input
+                                        type="text"
+                                        value={draft.slotLabels?.[i] ?? ''}
+                                        placeholder={i === 0 ? 'Front' : i === 1 ? 'Back' : `Slot ${i + 1}`}
+                                        onChange={(e) => { const next = [...(draft.slotLabels ?? [])]; next[i] = e.target.value; up({ slotLabels: next }); }}
+                                        className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* 2 — Repeat behaviour mode. */}
+            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <p className="mb-2 text-[12px] font-semibold text-slate-600">How many times can this be filled in?</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                    {ModeCard('single', 'Single',
+                        linked ? `One ${uploadWord} with its number + date.` : `One ${uploadWord} with its date.`)}
+                    {ModeCard('same', linked ? 'Multiple — same number & date' : 'Multiple files',
+                        linked ? 'Keep one number + date; just add more document uploads.' : 'Add more than one file.')}
+                    {linked && ModeCard('each', 'Multiple — each its own',
+                        'Each copy has its own number + date + document.')}
+                </div>
+            </div>
+
+            {/* 3 — Historical / previous documents. */}
+            <div className="mb-3">
+                <RequirementRow
+                    label="Allow historical / previous documents"
+                    help="On a form, the applicant can add past or expired copies — each with its own number + dates (e.g. a prior license or permit). Kept as a history alongside the current one."
+                    checked={!!draft.allowHistorical}
+                    onChange={(v) => up({ allowHistorical: v })}
+                />
+            </div>
+        </>
+    );
+}
+
 /** Dedicated page-style Add/Edit view — replaces the previous modal. */
-function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCreateDocument }: {
+function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCreateDocument, onUpdateDocument }: {
     initial: KeyNumberRow;
     isNew: boolean;
     onSave: (row: KeyNumberRow) => void;
@@ -586,10 +705,14 @@ function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCrea
     documents: DocumentRow[];
     /** Create a brand-new document from the inline "+" quick-create modal. */
     onCreateDocument: (doc: DocumentRow) => void;
+    /** Patch the linked document — used so the shared form-view edits (slots / repeat / historical) persist to it. */
+    onUpdateDocument: (id: string, patch: Partial<DocumentRow>) => void;
 }) {
     const [draft, setDraft] = useState<KeyNumberRow>(initial);
     const [creatingDoc, setCreatingDoc] = useState(false);
+    const [layoutOpen, setLayoutOpen] = useState(false);
     const up = (p: Partial<KeyNumberRow>) => setDraft(d => ({ ...d, ...p }));
+    const linkedDoc = draft.linkedDocumentTypeId ? documents.find(d => d.id === draft.linkedDocumentTypeId) : undefined;
     // When a supporting document is required, a linked document type must be picked.
     const canSave = draft.name.trim().length > 0 && (!draft.docRequired || !!draft.linkedDocumentTypeId);
 
@@ -784,36 +907,12 @@ function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCrea
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="mb-3">
                             <RequirementRow
                                 label="Number Required?"
                                 help="Makes this number mandatory"
                                 checked={draft.numberRequired}
                                 onChange={(v) => up({ numberRequired: v })}
-                            />
-                            <RequirementRow
-                                label="Has Expiry?"
-                                help="Enables expiry & renewal tracking"
-                                checked={draft.hasExpiry}
-                                onChange={(v) => up({ hasExpiry: v })}
-                            />
-                            <RequirementRow
-                                label="Issue Date Required?"
-                                help="Makes issue date mandatory"
-                                checked={draft.issueDateRequired}
-                                onChange={(v) => up({ issueDateRequired: v })}
-                            />
-                            <RequirementRow
-                                label="Issue State Required?"
-                                help="Requires selection of issuing state/province"
-                                checked={draft.issueStateRequired}
-                                onChange={(v) => up({ issueStateRequired: v })}
-                            />
-                            <RequirementRow
-                                label="Issue Country Required?"
-                                help="Requires selection of issuing country"
-                                checked={draft.issueCountryRequired}
-                                onChange={(v) => up({ issueCountryRequired: v })}
                             />
                         </div>
 
@@ -870,8 +969,71 @@ function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCrea
                                         Pick or create a document type to satisfy "Supporting Document Required".
                                     </p>
                                 )}
+
+                                {/* Document-specific upload options (slots / repeat / historical) — shown once a
+                                    document is linked. These live on the document and are shared by both. */}
+                                {linkedDoc && (
+                                    <div className="mt-4 border-t border-blue-200 pt-4">
+                                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                                            <label className="text-sm font-semibold text-slate-700">Document upload &amp; repeat</label>
+                                            <span className="inline-flex items-center rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                                Shared with “{linkedDoc.name}”
+                                            </span>
+                                        </div>
+                                        <DocumentUploadConfig
+                                            value={linkedDoc}
+                                            onChange={(p) => onUpdateDocument(linkedDoc.id, p)}
+                                            linked
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
+
+                        {/* Captured on upload — date / location fields (shared with the linked document). */}
+                        <p className="mb-2 mt-4 text-[12px] font-bold uppercase tracking-wide text-slate-500">Captured on upload</p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <RequirementRow
+                                label="Expiry date"
+                                help="Enables expiry & renewal tracking."
+                                checked={draft.hasExpiry}
+                                onChange={(v) => up({ hasExpiry: v })}
+                            />
+                            <RequirementRow
+                                label="Issue date"
+                                help="Capture an issue date."
+                                checked={draft.issueDateRequired}
+                                onChange={(v) => up({ issueDateRequired: v })}
+                            />
+                            <RequirementRow
+                                label="Issue state / province"
+                                help="Requires selection of issuing state/province."
+                                checked={draft.issueStateRequired}
+                                onChange={(v) => up({ issueStateRequired: v })}
+                            />
+                            <RequirementRow
+                                label="Issue country"
+                                help="Requires selection of issuing country."
+                                checked={draft.issueCountryRequired}
+                                onChange={(v) => up({ issueCountryRequired: v })}
+                            />
+                        </div>
+                    </section>
+
+                    {/* ── Form Layout ───────────────────────────────── */}
+                    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900">Form Layout</h3>
+                                <p className="mt-0.5 text-[12px] text-slate-500">
+                                    Arrange how this number's fields appear on the applicant form — drag to reorder,
+                                    set each field Full or Half width (two halves sit side by side){draft.docRequired ? ', and choose the upload style' : ''}.
+                                </p>
+                            </div>
+                            <Button variant="outline" onClick={() => setLayoutOpen(true)} className="gap-1.5 shrink-0">
+                                <Eye className="h-4 w-4" /> Preview &amp; edit form
+                            </Button>
+                        </div>
                     </section>
                 </div>
 
@@ -880,6 +1042,52 @@ function KeyNumberFormPage({ initial, isNew, onSave, onCancel, documents, onCrea
                         scope={draft.relatedTo.toLowerCase() as Exclude<DocumentsSubTabId, 'all' | 'accidents' | 'violation'>}
                         onCreate={handleCreateDocument}
                         onClose={() => setCreatingDoc(false)}
+                    />
+                )}
+
+                {layoutOpen && (
+                    <DocumentFormPreviewModal
+                        name={draft.name.trim() || 'Key Number'}
+                        subtitle={`${draft.relatedTo} · ${draft.group}${linkedDoc ? ` · one entity with “${linkedDoc.name}”` : ''}`}
+                        numberInput={{ label: draft.name.trim() || 'Number' }}
+                        showUpload={draft.docRequired}
+                        expiryRequired={draft.hasExpiry}
+                        issueDateRequired={draft.issueDateRequired}
+                        issueStateRequired={draft.issueStateRequired}
+                        issueCountryRequired={draft.issueCountryRequired}
+                        allowMultiple={linkedDoc?.allowMultiple}
+                        repeatScope={linkedDoc?.repeatScope}
+                        allowHistorical={linkedDoc?.allowHistorical}
+                        numberOfSlots={linkedDoc?.numberOfSlots}
+                        slotLabels={linkedDoc?.slotLabels}
+                        fieldOrder={draft.formFieldOrder}
+                        fieldWidths={draft.formFieldWidths}
+                        onSave={(cfg) => {
+                            up({
+                                hasExpiry: cfg.expiryRequired,
+                                issueDateRequired: cfg.issueDateRequired,
+                                issueStateRequired: cfg.issueStateRequired,
+                                issueCountryRequired: cfg.issueCountryRequired,
+                                docRequired: cfg.showUpload,
+                                formFieldOrder: cfg.fieldOrder,
+                                formFieldWidths: cfg.fieldWidths,
+                            });
+                            // The upload / repeat / historical config lives on the linked document — persist it there so both sides match.
+                            if (linkedDoc) onUpdateDocument(linkedDoc.id, {
+                                expiryRequired: cfg.expiryRequired,
+                                issueDateRequired: cfg.issueDateRequired,
+                                issueStateRequired: cfg.issueStateRequired,
+                                issueCountryRequired: cfg.issueCountryRequired,
+                                allowMultiple: cfg.allowMultiple,
+                                repeatScope: cfg.repeatScope,
+                                allowHistorical: cfg.allowHistorical,
+                                numberOfSlots: cfg.numberOfSlots,
+                                slotLabels: cfg.slotLabels,
+                                formFieldOrder: cfg.fieldOrder,
+                                formFieldWidths: cfg.fieldWidths,
+                            });
+                        }}
+                        onClose={() => setLayoutOpen(false)}
                     />
                 )}
             </main>
@@ -1532,17 +1740,18 @@ const KEY_NUMBER_BOOLEAN_SORT_KEYS = new Set<KeyNumberSortKey>([
 ]);
 
 /** Clickable table header that sorts the list by its column. */
-function SortableTh({ label, sortKey, sort, onSort, className, align = 'left' }: {
+function SortableTh({ label, sortKey, sort, onSort, className, align = 'left', rowSpan }: {
     label: React.ReactNode;
     sortKey: KeyNumberSortKey;
     sort: { key: KeyNumberSortKey; dir: 'asc' | 'desc' } | null;
     onSort: (k: KeyNumberSortKey) => void;
     className?: string;
     align?: 'left' | 'center';
+    rowSpan?: number;
 }) {
     const active = sort?.key === sortKey;
     return (
-        <th className={className}>
+        <th className={className} rowSpan={rowSpan}>
             <button
                 type="button"
                 onClick={() => onSort(sortKey)}
@@ -1561,7 +1770,7 @@ function SortableTh({ label, sortKey, sort, onSort, className, align = 'left' }:
     );
 }
 
-function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocument, onLinkDocument, onUnlinkDocument, onEdit, onDelete }: {
+function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocument, onLinkDocument, onUnlinkDocument, onEdit, onDelete, onPreview }: {
     rows: KeyNumberRow[];
     allKeyNumbers: KeyNumberRow[];
     documents: DocumentRow[];
@@ -1571,6 +1780,7 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
     onUnlinkDocument: (keyNumberId: string) => void;
     onEdit: (row: KeyNumberRow) => void;
     onDelete: (id: string) => void;
+    onPreview: (row: KeyNumberRow) => void;
 }) {
     const [query, setQuery] = useState('');
     const [relatedFilter, setRelatedFilter] = useState<'all' | RelatedToScope>('all');
@@ -1600,16 +1810,11 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
     }, [rows]);
 
     /**
-     * Doc Required toggle behaviour:
-     *   • ON  → open picker modal, defer the patch until the admin confirms
-     *   • OFF → clear the link on both sides (parent handles the mirror)
+     * Doc Required toggle: ON → open the link picker; OFF → unlink on both sides.
      */
     const handleDocRequiredToggle = (row: KeyNumberRow, v: boolean) => {
-        if (v) {
-            setLinkingFor(row);
-        } else {
-            onUnlinkDocument(row.id);
-        }
+        if (v) setLinkingFor(row);
+        else onUnlinkDocument(row.id);
     };
 
     const handleLinkConfirm = (documentId: string) => {
@@ -1724,26 +1929,33 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
 
             {/* Table */}
             <div className="overflow-x-auto">
-                <table className="w-full min-w-[1200px] text-sm">
-                    <thead>
-                        <tr className="bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-                            <SortableTh label="Number Name" sortKey="name" sort={sort} onSort={handleSort} className="px-4 py-3 w-[27%]" />
-                            <SortableTh label="Related To" sortKey="relatedTo" sort={sort} onSort={handleSort} className="px-3 py-3 w-[8%]" />
-                            <SortableTh label={<>In Hiring /<br/>Form</>} sortKey="usedInHiring" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label={<>Number<br/>Required</>} sortKey="numberRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label={<>Doc<br/>Required</>} sortKey="docRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label={<>Has<br/>Expiry</>} sortKey="hasExpiry" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label={<>Issue<br/>Date</>} sortKey="issueDateRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label={<>Issue<br/>State</>} sortKey="issueStateRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label={<>Issue<br/>Country</>} sortKey="issueCountryRequired" sort={sort} onSort={handleSort} className="px-2 py-3 w-[7%] text-center" align="center" />
-                            <SortableTh label="Status" sortKey="status" sort={sort} onSort={handleSort} className="px-3 py-3 w-[8%]" />
-                            <th className="px-3 py-3 w-[6%] text-right">Actions</th>
+                <table className="w-full min-w-[1600px] text-sm">
+                    <thead className="bg-slate-50">
+                        <tr className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
+                            <SortableTh label="Number Name" sortKey="name" sort={sort} onSort={handleSort} className="px-4 py-3 align-bottom w-[18%]" rowSpan={2} />
+                            <SortableTh label="Scope" sortKey="relatedTo" sort={sort} onSort={handleSort} className="px-3 py-3 align-bottom w-[7%]" rowSpan={2} />
+                            <SortableTh label={<>Number<br/>Req.</>} sortKey="numberRequired" sort={sort} onSort={handleSort} className="px-2 py-3 align-bottom text-center" align="center" rowSpan={2} />
+                            <SortableTh label={<>Doc<br/>Req.</>} sortKey="docRequired" sort={sort} onSort={handleSort} className="px-2 py-3 align-bottom text-center" align="center" rowSpan={2} />
+                            <SortableTh label={<>In Hiring /<br/>Form</>} sortKey="usedInHiring" sort={sort} onSort={handleSort} className="px-2 py-3 align-bottom text-center" align="center" rowSpan={2} />
+                            <th colSpan={3} className="border-l border-slate-200 px-2 pt-3 pb-1 text-center text-[9px] text-blue-600">Upload &amp; Repeat</th>
+                            <th colSpan={4} className="border-l border-slate-200 px-2 pt-3 pb-1 text-center text-[9px] text-blue-600">Captured on Upload</th>
+                            <SortableTh label="Status" sortKey="status" sort={sort} onSort={handleSort} className="border-l border-slate-200 px-3 py-3 align-bottom w-[7%]" rowSpan={2} />
+                            <th rowSpan={2} className="px-3 py-3 text-right align-bottom w-[5%]">Actions</th>
+                        </tr>
+                        <tr className="text-[9px] font-semibold uppercase tracking-[0.04em] text-slate-400">
+                            <th className="border-l border-slate-200 px-1 pb-2.5 text-center font-semibold">Allow<br/>Multiple</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Fixed<br/>Slots</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Historical</th>
+                            <SortableTh label="Expiry" sortKey="hasExpiry" sort={sort} onSort={handleSort} className="border-l border-slate-200 px-1 pb-2.5 text-center" align="center" />
+                            <SortableTh label={<>Issue<br/>Date</>} sortKey="issueDateRequired" sort={sort} onSort={handleSort} className="px-1 pb-2.5 text-center" align="center" />
+                            <SortableTh label={<>Issue<br/>State</>} sortKey="issueStateRequired" sort={sort} onSort={handleSort} className="px-1 pb-2.5 text-center" align="center" />
+                            <SortableTh label={<>Issue<br/>Country</>} sortKey="issueCountryRequired" sort={sort} onSort={handleSort} className="px-1 pb-2.5 text-center" align="center" />
                         </tr>
                     </thead>
                     <tbody>
                         {sorted.length === 0 ? (
                             <tr>
-                                <td colSpan={11} className="px-4 py-20 text-center">
+                                <td colSpan={14} className="px-4 py-20 text-center">
                                     <div className="mx-auto flex max-w-md flex-col items-center gap-2">
                                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
                                             <Search className="h-5 w-5 text-slate-400" />
@@ -1756,61 +1968,118 @@ function KeyNumbersView({ rows, allKeyNumbers, documents, onPatch, onPatchDocume
                         ) : (
                             sorted.map((r) => {
                                 const linkedName = resolveLinkedName(r);
+                                const linkedDoc = r.linkedDocumentTypeId ? documents.find(d => d.id === r.linkedDocumentTypeId) : undefined;
                                 return (
                                 <tr key={r.id} className="border-t border-slate-100 transition-colors hover:bg-blue-50/30">
                                     <td className="px-4 py-3 align-top">
                                         <div className="font-semibold text-slate-900">{r.name}</div>
-                                        {linkedName && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setLinkingFor(r)}
-                                                className="mt-0.5 inline-flex rounded text-left hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
-                                                title="Change linked document"
-                                            >
-                                                <LinkedToLabel label={linkedName} />
-                                            </button>
-                                        )}
+                                        <div className="mt-0.5 flex flex-col items-start gap-1">
+                                            {linkedName ? (
+                                                <span className="inline-flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setLinkingFor(r)}
+                                                        className="inline-flex rounded text-left hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                                        title="Change linked document"
+                                                    >
+                                                        <LinkedToLabel label={linkedName} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onUnlinkDocument(r.id)}
+                                                        className="text-[11px] leading-none text-slate-400 hover:text-rose-600"
+                                                        title="Unlink document"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLinkingFor(r)}
+                                                    className="inline-flex items-center gap-1 rounded text-[11px] text-slate-400 hover:text-blue-600 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                                    title="Link a document"
+                                                >
+                                                    <Link2 size={10} /> Link document
+                                                </button>
+                                            )}
+                                        </div>
                                         <div className="mt-0.5 text-[12px] leading-snug text-slate-500">{r.description}</div>
                                     </td>
                                     <td className="px-3 py-3 align-top"><RelatedToBadge scope={r.relatedTo} /></td>
-                                    <td className="px-2 py-3 align-top">
-                                        <div className="flex justify-center">
-                                            <Toggle checked={!!r.usedInHiring} onCheckedChange={(v) => onPatch(r.id, { usedInHiring: v })} />
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-3 align-top">
+                                    <td className="px-2 py-3 align-middle">
                                         <div className="flex justify-center">
                                             <Toggle checked={r.numberRequired} onCheckedChange={(v) => onPatch(r.id, { numberRequired: v })} />
                                         </div>
                                     </td>
-                                    <td className="px-2 py-3 align-top">
+                                    <td className="px-2 py-3 align-middle">
                                         <div className="flex justify-center">
                                             <Toggle checked={r.docRequired} onCheckedChange={(v) => handleDocRequiredToggle(r, v)} />
                                         </div>
                                     </td>
-                                    <td className="px-2 py-3 align-top">
+                                    <td className="px-2 py-3 align-middle">
+                                        <div className="flex justify-center">
+                                            <Toggle checked={!!r.usedInHiring} onCheckedChange={(v) => onPatch(r.id, { usedInHiring: v })} />
+                                        </div>
+                                    </td>
+                                    {/* Upload toggles live on the linked document (one entity) — disabled until a doc is linked. */}
+                                    <td className="border-l border-slate-100 px-2 py-3 align-middle">
+                                        <div className="flex justify-center">
+                                            {linkedDoc
+                                                ? <Toggle checked={!!linkedDoc.allowMultiple} onCheckedChange={(v) => onPatchDocument(linkedDoc.id, { allowMultiple: v })} />
+                                                : <span className="text-slate-300">—</span>}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-3 align-middle">
+                                        <div className="flex justify-center">
+                                            {linkedDoc
+                                                ? <Toggle
+                                                    checked={(linkedDoc.numberOfSlots ?? 0) >= 2}
+                                                    onCheckedChange={(v) => onPatchDocument(linkedDoc.id, v
+                                                        ? { numberOfSlots: linkedDoc.numberOfSlots && linkedDoc.numberOfSlots >= 2 ? linkedDoc.numberOfSlots : 2, slotLabels: linkedDoc.slotLabels?.length ? linkedDoc.slotLabels : ['Front', 'Back'] }
+                                                        : { numberOfSlots: undefined, slotLabels: undefined })}
+                                                  />
+                                                : <span className="text-slate-300">—</span>}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-3 align-middle">
+                                        <div className="flex justify-center">
+                                            {linkedDoc
+                                                ? <Toggle checked={!!linkedDoc.allowHistorical} onCheckedChange={(v) => onPatchDocument(linkedDoc.id, { allowHistorical: v })} />
+                                                : <span className="text-slate-300">—</span>}
+                                        </div>
+                                    </td>
+                                    <td className="border-l border-slate-100 px-2 py-3 align-middle">
                                         <div className="flex justify-center">
                                             <Toggle checked={r.hasExpiry} onCheckedChange={(v) => onPatch(r.id, { hasExpiry: v })} />
                                         </div>
                                     </td>
-                                    <td className="px-2 py-3 align-top">
+                                    <td className="px-2 py-3 align-middle">
                                         <div className="flex justify-center">
                                             <Toggle checked={r.issueDateRequired} onCheckedChange={(v) => onPatch(r.id, { issueDateRequired: v })} />
                                         </div>
                                     </td>
-                                    <td className="px-2 py-3 align-top">
+                                    <td className="px-2 py-3 align-middle">
                                         <div className="flex justify-center">
                                             <Toggle checked={r.issueStateRequired} onCheckedChange={(v) => onPatch(r.id, { issueStateRequired: v })} />
                                         </div>
                                     </td>
-                                    <td className="px-2 py-3 align-top">
+                                    <td className="px-2 py-3 align-middle">
                                         <div className="flex justify-center">
                                             <Toggle checked={r.issueCountryRequired} onCheckedChange={(v) => onPatch(r.id, { issueCountryRequired: v })} />
                                         </div>
                                     </td>
-                                    <td className="px-3 py-3 align-top"><StatusPill status={r.status} /></td>
+                                    <td className="border-l border-slate-100 px-3 py-3 align-middle"><StatusPill status={r.status} /></td>
                                     <td className="px-3 py-3 align-top text-right">
                                         <div className="inline-flex items-center gap-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => onPreview(r)}
+                                                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                                                title="Form view — how this looks on the form"
+                                            >
+                                                <Eye size={14} />
+                                            </button>
                                             <button
                                                 type="button"
                                                 onClick={() => onEdit(r)}
@@ -1995,26 +2264,32 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
             </div>
 
             <div className="overflow-x-auto">
-                <table className="w-full min-w-[1350px] text-sm">
+                <table className="w-full min-w-[1500px] text-sm">
                     <thead className="bg-slate-50">
-                        <tr className="text-left text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
-                            <th className="px-4 py-3 w-[22%]">Document Name</th>
-                            <th className="px-3 py-3 w-[8%]">Category</th>
-                            <th className="px-3 py-3 w-[9%]">Requirement</th>
-                            <th className="px-2 py-3 w-[7%] text-center">In Hiring /<br/>Form</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Allow<br/>Multiple</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Expiry<br/>Req.</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Issue<br/>Date</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Issue<br/>State</th>
-                            <th className="px-2 py-3 w-[7%] text-center">Issue<br/>Country</th>
-                            <th className="px-3 py-3 w-[7%]">Status</th>
-                            <th className="px-3 py-3 w-[5%] text-right">Actions</th>
+                        <tr className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">
+                            <th rowSpan={2} className="px-4 py-3 text-left align-bottom w-[18%]">Document Name</th>
+                            <th rowSpan={2} className="px-3 py-3 text-left align-bottom w-[7%]">Scope</th>
+                            <th rowSpan={2} className="px-3 py-3 text-left align-bottom w-[9%]">Requirement</th>
+                            <th rowSpan={2} className="px-2 py-3 text-center align-bottom">In Hiring /<br/>Form</th>
+                            <th colSpan={3} className="border-l border-slate-200 px-2 pt-3 pb-1 text-center text-[9px] text-blue-600">Upload &amp; Repeat</th>
+                            <th colSpan={4} className="border-l border-slate-200 px-2 pt-3 pb-1 text-center text-[9px] text-blue-600">Captured on Upload</th>
+                            <th rowSpan={2} className="border-l border-slate-200 px-3 py-3 text-left align-bottom w-[7%]">Status</th>
+                            <th rowSpan={2} className="px-3 py-3 text-right align-bottom w-[5%]">Actions</th>
+                        </tr>
+                        <tr className="text-[9px] font-semibold uppercase tracking-[0.04em] text-slate-400">
+                            <th className="border-l border-slate-200 px-1 pb-2.5 text-center font-semibold">Allow<br/>Multiple</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Fixed<br/>Slots</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Historical</th>
+                            <th className="border-l border-slate-200 px-1 pb-2.5 text-center font-semibold">Expiry</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Issue<br/>Date</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Issue<br/>State</th>
+                            <th className="px-1 pb-2.5 text-center font-semibold">Issue<br/>Country</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {filtered.length === 0 ? (
                             <tr>
-                                <td colSpan={11} className="px-4 py-20 text-center">
+                                <td colSpan={13} className="px-4 py-20 text-center">
                                     <div className="mx-auto flex max-w-md flex-col items-center gap-2">
                                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
                                             <FileText className="h-5 w-5 text-slate-400" />
@@ -2086,54 +2361,52 @@ function DocumentsView({ rows, total, allDocuments, keyNumbers, onPatch, onPatch
                                         <td className="px-3 py-3 align-top">
                                             <RequirementPill level={r.requirementLevel} />
                                         </td>
-                                        <td className="px-2 py-3 align-top">
+                                        <td className="px-2 py-3 align-middle">
                                             <div className="flex justify-center">
                                                 <Toggle checked={!!r.usedInHiring} onCheckedChange={(v) => onPatch(r.id, { usedInHiring: v })} />
                                             </div>
                                         </td>
-                                        <td className="px-2 py-3 align-top">
-                                            <div className="flex flex-col items-center gap-1.5">
+                                        <td className="border-l border-slate-100 px-2 py-3 align-middle">
+                                            <div className="flex justify-center">
                                                 <Toggle checked={!!r.allowMultiple} onCheckedChange={(v) => onPatch(r.id, { allowMultiple: v })} />
-                                                {r.allowMultiple && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSlotDoc(r)}
-                                                        title="Configure upload slots"
-                                                        className={cn(
-                                                            "inline-flex items-center gap-1 rounded-full border px-2 py-[3px] text-[10px] font-semibold leading-none transition-colors",
-                                                            r.numberOfSlots === 2
-                                                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                                                                : "border-slate-200 bg-slate-50 text-slate-500 hover:border-blue-300 hover:text-blue-700",
-                                                        )}
-                                                    >
-                                                        {r.numberOfSlots === 2
-                                                            ? <><Layers size={10} /> 2 slots</>
-                                                            : <><Pencil size={9} /> Configure</>}
-                                                    </button>
-                                                )}
                                             </div>
                                         </td>
-                                        <td className="px-2 py-3 align-top">
+                                        <td className="px-2 py-3 align-middle">
+                                            <div className="flex justify-center">
+                                                <Toggle
+                                                    checked={(r.numberOfSlots ?? 0) >= 2}
+                                                    onCheckedChange={(v) => onPatch(r.id, v
+                                                        ? { numberOfSlots: r.numberOfSlots && r.numberOfSlots >= 2 ? r.numberOfSlots : 2, slotLabels: r.slotLabels?.length ? r.slotLabels : ['Front', 'Back'] }
+                                                        : { numberOfSlots: undefined, slotLabels: undefined })}
+                                                />
+                                            </div>
+                                        </td>
+                                        <td className="px-2 py-3 align-middle">
+                                            <div className="flex justify-center">
+                                                <Toggle checked={!!r.allowHistorical} onCheckedChange={(v) => onPatch(r.id, { allowHistorical: v })} />
+                                            </div>
+                                        </td>
+                                        <td className="border-l border-slate-100 px-2 py-3 align-middle">
                                             <div className="flex justify-center">
                                                 <Toggle checked={r.expiryRequired} onCheckedChange={(v) => onPatch(r.id, { expiryRequired: v })} />
                                             </div>
                                         </td>
-                                        <td className="px-2 py-3 align-top">
+                                        <td className="px-2 py-3 align-middle">
                                             <div className="flex justify-center">
                                                 <Toggle checked={r.issueDateRequired} onCheckedChange={(v) => onPatch(r.id, { issueDateRequired: v })} />
                                             </div>
                                         </td>
-                                        <td className="px-2 py-3 align-top">
+                                        <td className="px-2 py-3 align-middle">
                                             <div className="flex justify-center">
                                                 <Toggle checked={r.issueStateRequired} onCheckedChange={(v) => onPatch(r.id, { issueStateRequired: v })} />
                                             </div>
                                         </td>
-                                        <td className="px-2 py-3 align-top">
+                                        <td className="px-2 py-3 align-middle">
                                             <div className="flex justify-center">
                                                 <Toggle checked={r.issueCountryRequired} onCheckedChange={(v) => onPatch(r.id, { issueCountryRequired: v })} />
                                             </div>
                                         </td>
-                                        <td className="px-3 py-3 align-top"><DocTypeStatusPill status={r.status} /></td>
+                                        <td className="border-l border-slate-100 px-3 py-3 align-middle"><DocTypeStatusPill status={r.status} /></td>
                                         <td className="px-3 py-3 align-top text-right">
                                             <div className="inline-flex items-center gap-0.5">
                                                 <button
@@ -2535,18 +2808,46 @@ function RequirementCard({ active, title, description, onSelect }: {
     );
 }
 
-function DocumentTypeFormPage({ initial, isNew, onSave, onCancel }: {
+function DocumentTypeFormPage({ initial, isNew, onSave, onCancel, keyNumbers }: {
     initial: DocumentRow;
     isNew: boolean;
     onSave: (row: DocumentRow) => void;
     onCancel: () => void;
+    /** Live key-number catalog — drives the "Link to Key Number" picker. */
+    keyNumbers: KeyNumberRow[];
 }) {
     const [draft, setDraft] = useState<DocumentRow>(initial);
     const [managingTags, setManagingTags] = useState(false);
+    const [layoutOpen, setLayoutOpen] = useState(false);
     // Load tag sections once so the chips can render with the right section colour theme.
     const [tagSections, setTagSections] = useState<DocTagSection[]>(() => loadTagSections());
     const up = (p: Partial<DocumentRow>) => setDraft(d => ({ ...d, ...p }));
     const canSave = draft.name.trim().length > 0;
+
+    // Key numbers this document can be linked to — scoped to the same Related-To.
+    const knOptions = useMemo(
+        () => keyNumbers.filter(k => k.status === 'Active' && k.relatedTo.toLowerCase() === draft.scope),
+        [keyNumbers, draft.scope],
+    );
+    const linkedKn = draft.linkedKeyNumberId ? keyNumbers.find(k => k.id === draft.linkedKeyNumberId) : undefined;
+    /** Link / unlink a key number. Linking mirrors the number's date flags onto the
+     *  document for immediate display; the full bidirectional link is finalised on Save. */
+    const linkKeyNumber = (id: string) => {
+        const kn = keyNumbers.find(k => k.id === id);
+        if (!kn) {
+            up({ linkedKeyNumberId: undefined, ...(draft.linkedType === 'keynumber' ? { linkedType: undefined, linkedTo: undefined } : {}) });
+            return;
+        }
+        const preserveDisplay = draft.linkedType === 'expense' || draft.linkedType === 'module';
+        up({
+            linkedKeyNumberId: kn.id,
+            ...(preserveDisplay ? {} : { linkedTo: kn.name, linkedType: 'keynumber' as const }),
+            expiryRequired: kn.hasExpiry || draft.expiryRequired,
+            issueDateRequired: kn.issueDateRequired || draft.issueDateRequired,
+            issueStateRequired: kn.issueStateRequired || draft.issueStateRequired,
+            issueCountryRequired: kn.issueCountryRequired || draft.issueCountryRequired,
+        });
+    };
 
     return (
         <div className="flex h-full flex-col bg-slate-50/50">
@@ -2801,95 +3102,116 @@ function DocumentTypeFormPage({ initial, isNew, onSave, onCancel }: {
                             />
                         </div>
 
-                        {/* Allow multiple — full width */}
-                        <div className="mb-3">
-                            <RequirementRow
-                                label="Allow multiple"
-                                help="More than one file per applicant."
-                                checked={!!draft.allowMultiple}
-                                onChange={(v) => up({ allowMultiple: v })}
-                            />
+                        {/* Link to Key Number — makes this document + a number one entity. */}
+                        <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/30 p-4">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                                <label className="text-sm font-semibold text-slate-700">Link to Key Number</label>
+                                <span className="inline-flex items-center rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Auto-syncs settings
+                                </span>
+                            </div>
+                            <select
+                                value={draft.linkedKeyNumberId ?? ''}
+                                onChange={(e) => linkKeyNumber(e.target.value)}
+                                className={INPUT_CLS}
+                            >
+                                <option value="">Not linked (standalone document)</option>
+                                {knOptions.map(k => (
+                                    <option key={k.id} value={k.id}>{k.name}</option>
+                                ))}
+                            </select>
+                            <p className="mt-2 flex items-start gap-1.5 text-[11px] text-blue-700">
+                                <Info size={12} className="mt-0.5 shrink-0" />
+                                {draft.linkedKeyNumberId
+                                    ? 'Linked — number entry + this upload are one entity and share dates. The repeat options below include “each its own / same number”.'
+                                    : `Showing ${SCOPE_LABEL[draft.scope]} numbers. Linking adds a number entry to this document and shares its date settings.`}
+                            </p>
                         </div>
 
-                        {/* Multiple-upload slots — fixed number of labeled blocks (e.g. Front / Rear) */}
-                        {draft.allowMultiple && (
-                            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                                <RequirementRow
-                                    label="Fixed number of upload slots"
-                                    help="Off = unlimited uploads. On = a set number of labeled blocks (e.g. Front / Rear)."
-                                    checked={(draft.numberOfSlots ?? 0) > 0}
-                                    onChange={(v) => up(v
-                                        ? { numberOfSlots: draft.numberOfSlots && draft.numberOfSlots > 0 ? draft.numberOfSlots : 2, slotLabels: draft.slotLabels?.length ? draft.slotLabels : ['Front', 'Rear'] }
-                                        : { numberOfSlots: undefined, slotLabels: undefined })}
-                                />
-                                {(draft.numberOfSlots ?? 0) > 0 && (
-                                    <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[12px] font-semibold text-slate-600">Number of slots</span>
-                                            <input
-                                                type="number" min={1} max={6}
-                                                value={draft.numberOfSlots ?? 2}
-                                                onChange={(e) => {
-                                                    const n = Math.min(6, Math.max(1, Number(e.target.value) || 1));
-                                                    up({ numberOfSlots: n, slotLabels: (draft.slotLabels ?? []).slice(0, n) });
-                                                }}
-                                                className="h-8 w-20 rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {Array.from({ length: draft.numberOfSlots ?? 2 }).map((_, i) => (
-                                                <div key={i}>
-                                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">Slot {i + 1} label</label>
-                                                    <input
-                                                        type="text"
-                                                        value={draft.slotLabels?.[i] ?? ''}
-                                                        placeholder={i === 0 ? 'Front' : i === 1 ? 'Rear' : `Slot ${i + 1}`}
-                                                        onChange={(e) => { const next = [...(draft.slotLabels ?? [])]; next[i] = e.target.value; up({ slotLabels: next }); }}
-                                                        className="h-8 w-full rounded-md border border-slate-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        {/* Document upload & repeat — the options that aren't the common KN flags. */}
+                        <DocumentUploadConfig value={draft} onChange={up} linked={!!draft.linkedKeyNumberId} />
 
-                        {/* Expiry + Issue Date — 2-col */}
+                        {/* Captured on upload — the date / location fields the applicant fills in. */}
+                        <p className="mb-2 mt-1 text-[12px] font-bold uppercase tracking-wide text-slate-500">Captured on upload</p>
                         <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <RequirementRow
-                                label="Expiry Date Input"
+                                label="Expiry date"
                                 help="Capture an expiry date on upload."
                                 checked={draft.expiryRequired}
                                 onChange={(v) => up({ expiryRequired: v })}
                             />
                             <RequirementRow
-                                label="Issue Date Input"
+                                label="Issue date"
                                 help="Capture an issue date on upload."
                                 checked={draft.issueDateRequired}
                                 onChange={(v) => up({ issueDateRequired: v })}
                             />
-                        </div>
-
-                        {/* Issue State / Country — full width each */}
-                        <div className="mb-3">
                             <RequirementRow
-                                label="Issue State Required?"
-                                help="Requires selection of issuing state/province"
+                                label="Issue state / province"
+                                help="Requires selection of issuing state/province."
                                 checked={draft.issueStateRequired}
                                 onChange={(v) => up({ issueStateRequired: v })}
                             />
-                        </div>
-                        <div>
                             <RequirementRow
-                                label="Issue Country Required?"
-                                help="Requires selection of issuing country"
+                                label="Issue country"
+                                help="Requires selection of issuing country."
                                 checked={draft.issueCountryRequired}
                                 onChange={(v) => up({ issueCountryRequired: v })}
                             />
                         </div>
                     </section>
+
+                    {/* ── Form Layout ───────────────────────────────── */}
+                    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h3 className="text-base font-bold text-slate-900">Form Layout</h3>
+                                <p className="mt-0.5 text-[12px] text-slate-500">
+                                    Arrange how this document's fields appear on the applicant form — drag to reorder,
+                                    set Full or Half width (two halves sit side by side), and choose the upload style (single, labeled slots, or unlimited).
+                                </p>
+                            </div>
+                            <Button variant="outline" onClick={() => setLayoutOpen(true)} className="gap-1.5 shrink-0">
+                                <Eye className="h-4 w-4" /> Preview &amp; edit form
+                            </Button>
+                        </div>
+                    </section>
                 </div>
+
+                {layoutOpen && (
+                    <DocumentFormPreviewModal
+                        name={draft.name.trim() || 'Document'}
+                        subtitle={`${SCOPE_LABEL[draft.scope]} · ${draft.folder}${linkedKn ? ` · one entity with “${linkedKn.name}”` : ''}`}
+                        numberInput={linkedKn ? { label: linkedKn.name } : undefined}
+                        showUpload
+                        expiryRequired={draft.expiryRequired}
+                        issueDateRequired={draft.issueDateRequired}
+                        issueStateRequired={draft.issueStateRequired}
+                        issueCountryRequired={draft.issueCountryRequired}
+                        allowMultiple={draft.allowMultiple}
+                        repeatScope={draft.repeatScope}
+                        allowHistorical={draft.allowHistorical}
+                        linked={!!draft.linkedKeyNumberId}
+                        numberOfSlots={draft.numberOfSlots}
+                        slotLabels={draft.slotLabels}
+                        fieldOrder={draft.formFieldOrder}
+                        fieldWidths={draft.formFieldWidths}
+                        onSave={(cfg) => up({
+                            expiryRequired: cfg.expiryRequired,
+                            issueDateRequired: cfg.issueDateRequired,
+                            issueStateRequired: cfg.issueStateRequired,
+                            issueCountryRequired: cfg.issueCountryRequired,
+                            allowMultiple: cfg.allowMultiple,
+                            repeatScope: cfg.repeatScope,
+                            allowHistorical: cfg.allowHistorical,
+                            numberOfSlots: cfg.numberOfSlots,
+                            slotLabels: cfg.slotLabels,
+                            formFieldOrder: cfg.fieldOrder,
+                            formFieldWidths: cfg.fieldWidths,
+                        })}
+                        onClose={() => setLayoutOpen(false)}
+                    />
+                )}
 
                 {/* Tag manager modal — sources from the Document Tags library */}
                 {managingTags && (
@@ -2919,9 +3241,13 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
 } = {}) => {
     const enabledKnSet = useMemo(() => enabledKeyNumberIds ? new Set(enabledKeyNumberIds) : null, [enabledKeyNumberIds]);
     const enabledDocSet = useMemo(() => enabledDocumentTypeIds ? new Set(enabledDocumentTypeIds) : null, [enabledDocumentTypeIds]);
+    // Settings/scoped view (a carrier's enabled set) — read-only catalog: no Add buttons.
+    const scoped = !!enabledKnSet || !!enabledDocSet;
     const [pageMode, setPageMode] = useState<PageMode>('compliance');
-    // Document the user is previewing as it appears on a form.
-    const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
+    // Form-view preview — a key number or a document. When the previewed item is
+    // linked to its partner, the two render as one combined entity (number entry
+    // + upload + shared meta) and edits save to both sides.
+    const [preview, setPreview] = useState<{ kind: 'kn' | 'doc'; id: string } | null>(null);
 
     // Compliance state — key numbers + active category tab.
     const [keyNumbers, setKeyNumbers] = useState<KeyNumberRow[]>(SEED_KEY_NUMBERS);
@@ -2954,6 +3280,18 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
             next[idx] = row;
             return next;
         });
+        // Linked entity: keep the key-number side of the link in sync — point the
+        // partner KN back at this doc (+ require a doc + mirror flags), and detach
+        // any KN that used to point here but is no longer the chosen partner.
+        setKeyNumbers(prev => prev.map(k => {
+            if (row.linkedKeyNumberId && k.id === row.linkedKeyNumberId) {
+                return { ...k, docRequired: true, linkedDocumentTypeId: row.id, ...knFlagsFromDoc(row) };
+            }
+            if (k.linkedDocumentTypeId === row.id && k.id !== row.linkedKeyNumberId) {
+                return { ...k, linkedDocumentTypeId: undefined };
+            }
+            return k;
+        }));
         setDocumentsTab(row.scope);
         setDocFormState(null);
     };
@@ -3144,7 +3482,8 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
         // attach the chosen document's back-reference and detach any stale partner.
         setDocuments(prev => prev.map(d => {
             if (row.linkedDocumentTypeId && d.id === row.linkedDocumentTypeId) {
-                return { ...d, linkedKeyNumberId: row.id, linkedTo: row.name, linkedType: 'keynumber' };
+                // Linked entity: the document adopts the saved key number's flags so both stay identical.
+                return { ...d, linkedKeyNumberId: row.id, linkedTo: row.name, linkedType: 'keynumber', ...docFlagsFromKn(row) };
             }
             if (d.linkedKeyNumberId === row.id && d.id !== row.linkedDocumentTypeId) {
                 return { ...d, linkedKeyNumberId: undefined };
@@ -3163,6 +3502,103 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
         setDocuments(prev => prev.map(d =>
             d.linkedKeyNumberId === id ? { ...d, linkedKeyNumberId: undefined } : d));
     };
+
+    /**
+     * Resolve the form-view props for whatever is being previewed. A key number
+     * and its linked document are shown as ONE entity — number entry + the
+     * partner's upload widget + the shared meta fields — and Save writes back to
+     * both rows (the patch helpers mirror the compliance flags across the link).
+     */
+    const previewProps = useMemo((): Omit<DocumentFormPreviewProps, 'onClose'> | null => {
+        if (!preview) return null;
+
+        if (preview.kind === 'doc') {
+            const d = documents.find(x => x.id === preview.id);
+            if (!d) return null;
+            const kn = d.linkedKeyNumberId ? keyNumbers.find(k => k.id === d.linkedKeyNumberId) : undefined;
+            return {
+                name: d.name,
+                subtitle: `${SCOPE_LABEL[d.scope]} · ${d.folder}${kn ? ` · one entity with “${kn.name}”` : ''}`,
+                numberInput: kn ? { label: kn.name } : undefined,
+                showUpload: true,
+                expiryRequired: d.expiryRequired,
+                issueDateRequired: d.issueDateRequired,
+                issueStateRequired: d.issueStateRequired,
+                issueCountryRequired: d.issueCountryRequired,
+                allowMultiple: d.allowMultiple,
+                repeatScope: d.repeatScope,
+                allowHistorical: d.allowHistorical,
+                linked: !!d.linkedKeyNumberId,
+                numberOfSlots: d.numberOfSlots,
+                slotLabels: d.slotLabels,
+                fieldOrder: d.formFieldOrder,
+                fieldWidths: d.formFieldWidths,
+                onSave: (cfg) => {
+                    // patchDocument mirrors the meta flags onto the linked key number.
+                    patchDocument(d.id, {
+                        expiryRequired: cfg.expiryRequired,
+                        issueDateRequired: cfg.issueDateRequired,
+                        issueStateRequired: cfg.issueStateRequired,
+                        issueCountryRequired: cfg.issueCountryRequired,
+                        allowMultiple: cfg.allowMultiple,
+                        repeatScope: cfg.repeatScope,
+                        allowHistorical: cfg.allowHistorical,
+                        numberOfSlots: cfg.numberOfSlots,
+                        slotLabels: cfg.slotLabels,
+                        formFieldOrder: cfg.fieldOrder,
+                        formFieldWidths: cfg.fieldWidths,
+                    });
+                    // Share the layout with the linked key number (one entity).
+                    if (kn) patchKeyNumber(kn.id, { formFieldOrder: cfg.fieldOrder, formFieldWidths: cfg.fieldWidths });
+                },
+            };
+        }
+
+        const k = keyNumbers.find(x => x.id === preview.id);
+        if (!k) return null;
+        const doc = k.linkedDocumentTypeId ? documents.find(d => d.id === k.linkedDocumentTypeId) : undefined;
+        return {
+            name: k.name,
+            subtitle: `${k.relatedTo} · ${k.group}${doc ? ` · one entity with “${doc.name}”` : ''}`,
+            numberInput: { label: k.name },
+            showUpload: k.docRequired,
+            expiryRequired: k.hasExpiry,
+            issueDateRequired: k.issueDateRequired,
+            issueStateRequired: k.issueStateRequired,
+            issueCountryRequired: k.issueCountryRequired,
+            allowMultiple: doc?.allowMultiple,
+            repeatScope: doc?.repeatScope,
+            allowHistorical: doc?.allowHistorical,
+            linked: true,
+            numberOfSlots: doc?.numberOfSlots,
+            slotLabels: doc?.slotLabels,
+            fieldOrder: k.formFieldOrder,
+            fieldWidths: k.formFieldWidths,
+            onSave: (cfg) => {
+                // patchKeyNumber mirrors the meta flags onto the linked document.
+                patchKeyNumber(k.id, {
+                    hasExpiry: cfg.expiryRequired,
+                    issueDateRequired: cfg.issueDateRequired,
+                    issueStateRequired: cfg.issueStateRequired,
+                    issueCountryRequired: cfg.issueCountryRequired,
+                    docRequired: cfg.showUpload,
+                    formFieldOrder: cfg.fieldOrder,
+                    formFieldWidths: cfg.fieldWidths,
+                });
+                // Upload config + shared layout live on the document side — patch it too when linked.
+                if (doc) patchDocument(doc.id, {
+                    allowMultiple: cfg.allowMultiple,
+                    repeatScope: cfg.repeatScope,
+                    allowHistorical: cfg.allowHistorical,
+                    numberOfSlots: cfg.numberOfSlots,
+                    slotLabels: cfg.slotLabels,
+                    formFieldOrder: cfg.fieldOrder,
+                    formFieldWidths: cfg.fieldWidths,
+                });
+            },
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [preview, documents, keyNumbers]);
 
     const complianceTabs: SubTab<KeyNumberGroup | 'All'>[] = useMemo(
         () => [{ id: 'All', label: 'All' }, ...KEY_NUMBER_GROUPS.map(g => ({ id: g, label: g }))],
@@ -3191,6 +3627,7 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                 onCancel={() => setFormState(null)}
                 documents={documents}
                 onCreateDocument={upsertDocument}
+                onUpdateDocument={patchDocument}
             />
         );
     }
@@ -3201,6 +3638,7 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                 isNew={docFormState.mode === 'add'}
                 onSave={upsertDocument}
                 onCancel={() => setDocFormState(null)}
+                keyNumbers={keyNumbers}
             />
         );
     }
@@ -3252,7 +3690,7 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                             {pillBtn('documents',  'Documents')}
                             {pillBtn('tags',       'Document Tags')}
                         </div>
-                        {pageMode === 'compliance' && (
+                        {!scoped && pageMode === 'compliance' && (
                             <div className="relative">
                                 <button
                                     type="button"
@@ -3277,7 +3715,7 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                                 )}
                             </div>
                         )}
-                        {pageMode === 'documents' && (
+                        {!scoped && pageMode === 'documents' && (
                             <button
                                 type="button"
                                 onClick={() => setDocFormState({ mode: 'add', initial: newDocumentDraft() })}
@@ -3286,7 +3724,7 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                                 <Plus className="h-4 w-4" /> Add Document Type
                             </button>
                         )}
-                        {pageMode === 'tags' && (
+                        {!scoped && pageMode === 'tags' && (
                             <button
                                 type="button"
                                 onClick={() => setAddingTagSection(true)}
@@ -3333,6 +3771,7 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                         onUnlinkDocument={unlinkKeyDoc}
                         onEdit={(row) => setFormState({ mode: 'edit', initial: row })}
                         onDelete={deleteKeyNumber}
+                        onPreview={(row) => setPreview({ kind: 'kn', id: row.id })}
                     />
                 )}
                 {pageMode === 'documents' && (
@@ -3347,24 +3786,13 @@ export const ComplianceAndDocumentsPage = ({ onNavigate, enabledKeyNumberIds, en
                         onUnlinkKeyNumber={unlinkDocKey}
                         onEdit={(row) => setDocFormState({ mode: 'edit', initial: row })}
                         onDelete={deleteDocument}
-                        onPreview={setPreviewDoc}
+                        onPreview={(row) => setPreview({ kind: 'doc', id: row.id })}
                         onOpenInGenerator={onNavigate ? () => onNavigate('/admin/docu-form') : undefined}
                     />
                 )}
 
-                {previewDoc && (
-                    <DocumentFormPreviewModal
-                        name={previewDoc.name}
-                        subtitle={`${SCOPE_LABEL[previewDoc.scope]} · ${previewDoc.folder}`}
-                        expiryRequired={previewDoc.expiryRequired}
-                        issueDateRequired={previewDoc.issueDateRequired}
-                        issueStateRequired={previewDoc.issueStateRequired}
-                        issueCountryRequired={previewDoc.issueCountryRequired}
-                        allowMultiple={previewDoc.allowMultiple}
-                        numberOfSlots={previewDoc.numberOfSlots}
-                        slotLabels={previewDoc.slotLabels}
-                        onClose={() => setPreviewDoc(null)}
-                    />
+                {previewProps && (
+                    <DocumentFormPreviewModal {...previewProps} onClose={() => setPreview(null)} />
                 )}
                 {pageMode === 'tags' && (
                     <DocumentTagsView

@@ -208,7 +208,7 @@ export function DocumentsTab() {
                                                 <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                                                     <ScopeIcon size={12} className="text-slate-400" /> {SCOPE_LABEL[d.scope]}
                                                 </span>
-                                                {linkedKnName && (
+                                                {linkedKnName && linkedKnName.trim().toLowerCase() !== d.name.trim().toLowerCase() && (
                                                     <span className="inline-flex items-center gap-1 text-[11px] text-blue-600">
                                                         <Link2 size={11} /> {linkedKnName}
                                                     </span>
@@ -302,7 +302,7 @@ function DocumentPreviewModal({ document, onClose }: {
                         <h3 className="mt-0.5 text-base font-bold text-slate-900">{document.name}</h3>
                         <p className="mt-0.5 text-[12px] text-slate-500">
                             {SCOPE_LABEL[document.scope]} · {document.folder}
-                            {linkedKnName && <> · Linked to <span className="font-semibold text-blue-600">{linkedKnName}</span></>}
+                            {linkedKnName && linkedKnName.trim().toLowerCase() !== document.name.trim().toLowerCase() && <> · Linked to <span className="font-semibold text-blue-600">{linkedKnName}</span></>}
                         </p>
                     </div>
                     <button

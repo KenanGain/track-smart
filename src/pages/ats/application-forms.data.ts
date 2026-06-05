@@ -10,12 +10,15 @@
 // ATS wizard all share one source of truth.
 
 import { uid } from "./driver-application.data";
+import { complianceReviewForms } from "./compliance-review-forms.data";
+import { KNOWN_DATA_KEYS } from "./form-data-keys";
 
 // ── Custom-form building blocks ───────────────────────────────────────────
 
 export type FormFieldType =
     | 'text' | 'textarea' | 'date' | 'number'
     | 'select' | 'toggle' | 'radio' | 'checklist' | 'document'
+    | 'compliance'
     | 'license-list' | 'address-list' | 'disqualification-list' | 'accident-list'
     | 'violation-list' | 'driving-experience-list' | 'employment-list' | 'education-list'
     | 'subform-button'
@@ -46,6 +49,9 @@ export interface FormField {
     /** For type === 'document': references a row in the Document Types library; the type's
      *  flags drive which extra inputs the upload component renders (expiry / issue date / etc.). */
     documentTypeId?: string;
+    /** For type === 'compliance': the root Compliance Key Number (`kn-*`) this field captures.
+     *  Its linked document (the KN's `linkedDocumentTypeId`) supplies the combined upload + meta. */
+    complianceKeyNumberId?: string;
     /** For type === 'subform-button': references an Application Form marked as a subform.
      *  The button is rendered with the subform's `buttonName` (falls back to its name) and
      *  opens a popup containing every field on the linked subform. */
@@ -56,6 +62,27 @@ export interface FormField {
     /** For type === 'document': where the expiry/issue meta inputs render relative to
      *  the Upload widget. Missing = 'below' (current behavior). */
     metaPosition?: 'above' | 'below';
+    /** Canonical driver-data key (e.g. 'license.number') — fields sharing a dataKey
+     *  capture once and auto-fill each other across the hiring pipeline. */
+    dataKey?: string;
+}
+
+/**
+ * Whether a field's `showWhen` condition is satisfied by the current form values.
+ * Handles every controller kind: toggle (boolean), select/radio (string equals),
+ * and checklist (string[] membership). Shared by every render site so the live
+ * form, the test runner, and the print view all gate identically.
+ */
+export function showWhenSatisfied(
+    showWhen: { fieldId: string; equals: boolean | string } | undefined,
+    values: Record<string, unknown>,
+): boolean {
+    if (!showWhen) return true;
+    const current = values[showWhen.fieldId];
+    const expected = showWhen.equals;
+    if (typeof expected === 'boolean') return (current === true) === expected;
+    if (Array.isArray(current)) return current.map(String).includes(String(expected));
+    return current === expected;
 }
 
 /**
@@ -90,6 +117,10 @@ export interface FormDocumentUploadValue {
     issueDate?: string;
     issueState?: string;
     issueCountry?: string;
+    /** Per-set dates when labeled slots are repeatable (one entry per Front/Back set). */
+    groups?: Array<{ expiry?: string; issueDate?: string; issueState?: string; issueCountry?: string }>;
+    /** Previous / historical copies of this document — each with its own files + dates. */
+    historical?: Array<{ files: string[]; expiry?: string; issueDate?: string; issueState?: string; issueCountry?: string }>;
 }
 
 export function emptyDocumentUploadValue(): FormDocumentUploadValue {
@@ -434,21 +465,103 @@ export interface ApplicationFormDef {
     updatedAt: string;
 }
 
-const FORMS_KEY = 'ats:application-forms-v26';
+const FORMS_KEY = 'ats:application-forms-v28';
+
+/** Built-in forms that were retired — pruned from saved data on load. */
+const REMOVED_FORM_IDS = new Set(['form-hiring-decision']);
 
 /** Backfill the `showWhen` mapping for known seed field IDs in case older
  *  saved data was written before conditional reveal was added. */
 const KNOWN_SHOW_WHEN: Record<string, { fieldId: string; equals: boolean }> = {
-    'f-addr-history':      { fieldId: 'f-addr-3y',       equals: false },
-    'f-lic-endorsements':  { fieldId: 'f-lic-has-end',   equals: true },
-    'f-lic-restrictions':  { fieldId: 'f-lic-has-rest',  equals: true },
-    'f-lic-other-list':    { fieldId: 'f-lic-other',     equals: true },
+    'f-addr-history':         { fieldId: 'f-addr-3y',       equals: false },
+    'f-lic-endorsements':     { fieldId: 'f-lic-has-end',   equals: true },
+    'f-lic-restrictions':     { fieldId: 'f-lic-has-rest',  equals: true },
+    'f-lic-other-list':       { fieldId: 'f-lic-other',     equals: true },
+    // Incident/history sections — gated behind a leading Yes/No.
+    'f-acc-list':             { fieldId: 'f-acc-any',       equals: true },
+    'f-vio-list':             { fieldId: 'f-vio-any',       equals: true },
+    'f-disq-list':            { fieldId: 'f-disq-any',      equals: true },
+    'f-disq-denial-details':  { fieldId: 'f-disq-any',      equals: true },
 };
+
+/** US states (+ DC) and Canadian provinces/territories — the canonical address picker list. */
+export const US_STATES = [
+    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
+    'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+    'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
+    'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
+    'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+    'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
+    'West Virginia', 'Wisconsin', 'Wyoming',
+];
+export const CA_PROVINCES = [
+    'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador',
+    'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island',
+    'Quebec', 'Saskatchewan', 'Yukon',
+];
+export const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
+export const COUNTRY_OPTIONS = ['Canada', 'United States'];
 
 /** Force the field type for known seed IDs so older saved data adopts the latest renderer. */
 const KNOWN_FIELD_TYPES: Record<string, FormFieldType> = {
     'f-addr-history':   'address-list',
     'f-lic-other-list': 'license-list',
+    // Country & State pickers → proper dropdowns (system address format).
+    'f-addr-country': 'select', 'f-sa-country': 'select', 'f-sl-country': 'select',
+    'f-sac-country': 'select', 'f-sv-country': 'select',
+    'f-addr-state': 'select', 'f-sa-state': 'select', 'f-sl-state': 'select',
+    'f-sac-state': 'select', 'f-sv-state': 'select',
+};
+
+/** Canonical option lists for the country/state pickers, applied when a field has no options. */
+const KNOWN_OPTIONS: Record<string, string[]> = {
+    'f-addr-country': COUNTRY_OPTIONS, 'f-sa-country': COUNTRY_OPTIONS, 'f-sl-country': COUNTRY_OPTIONS,
+    'f-sac-country': COUNTRY_OPTIONS, 'f-sv-country': COUNTRY_OPTIONS,
+    'f-addr-state': STATES_PROVINCES, 'f-sa-state': STATES_PROVINCES, 'f-sl-state': STATES_PROVINCES,
+    'f-sac-state': STATES_PROVINCES, 'f-sv-state': STATES_PROVINCES,
+};
+
+/** Sensible half-width pairings for built-in forms so short fields sit side-by-side
+ *  (applied in normalize() without a storage bump — only when no width is already set). */
+const KNOWN_WIDTHS: Record<string, 'full' | 'half'> = {
+    // Applicant Information
+    'f-first-name': 'half', 'f-last-name': 'half',
+    'f-phone': 'half', 'f-dob': 'half',
+    // Address Details — current address block
+    'f-addr-city': 'half', 'f-addr-state': 'half',
+    'f-addr-zip': 'half', 'f-addr-from': 'half',
+    // Cross-Border — passport & FAST card number/expiry pairs
+    'f-cb-passport': 'half', 'f-cb-passport-expiry': 'half',
+    'f-cb-card-number': 'half', 'f-cb-card-expiry': 'half',
+    // Address subform popup
+    'f-sa-city': 'half', 'f-sa-state': 'half', 'f-sa-zip': 'half', 'f-sa-country': 'half',
+    'f-sa-from': 'half', 'f-sa-to': 'half',
+    // License subform popup
+    'f-sl-number': 'half', 'f-sl-class': 'half', 'f-sl-country': 'half', 'f-sl-state': 'half',
+    'f-sl-issued': 'half', 'f-sl-expiry': 'half',
+    // Accident subform popup
+    'f-sac-state': 'half', 'f-sac-city': 'half', 'f-sac-fatalities': 'half', 'f-sac-injuries': 'half',
+    // Violation subform popup
+    'f-sv-charge': 'half', 'f-sv-agency': 'half', 'f-sv-state': 'half', 'f-sv-city': 'half',
+    'f-sv-penalty': 'half', 'f-sv-amount': 'half',
+    // Disqualification subform popup
+    'f-sd-date': 'half', 'f-sd-duration': 'half',
+    // Education subform popup
+    'f-sed-school': 'half', 'f-sed-location': 'half', 'f-sed-course': 'half', 'f-sed-year': 'half',
+};
+
+/** Each built-in list field is backed by an editable subform — its "add more"
+ *  popup renders the subform's fields (managed in the Subforms tab) instead of a
+ *  hardcoded modal. Backfilled in normalize() so seeds + saved data both link. */
+const KNOWN_LIST_SUBFORMS: Record<string, string> = {
+    'f-addr-history':   'form-sub-address',
+    'f-lic-other-list': 'form-sub-license',
+    'f-disq-list':      'form-sub-disqualification',
+    'f-acc-list':       'form-sub-accident',
+    'f-vio-list':       'form-sub-violation',
+    'f-drv-list':       'form-sub-driving-experience',
+    'f-emp-list':       'form-employer-details',
+    'f-edu-list':       'form-sub-education',
 };
 
 /** Built-in form IDs that should be tagged as subforms (used inside another form via a popup). */
@@ -479,6 +592,13 @@ const KNOWN_DEFAULT_FORM_IDS = new Set([
     'form-cross-border-details',
     'form-additional-details',
     'form-acknowledgment',
+    // Compliance review pipeline forms
+    'form-psp-review',
+    'form-mvr-review',
+    'form-criminal-background',
+    'form-substance-testing',
+    'form-clearinghouse-query',
+    'form-employment-verification',
     // Subforms (one record each — opened via the "+ Add X" button on parent forms)
     'form-sub-address',
     'form-sub-license',
@@ -528,7 +648,7 @@ function seedForms(): ApplicationFormDef[] {
             { id: 'f-addr-country', label: 'Country', type: 'radio', required: true, instruction: '', options: ['Canada', 'United States'] },
             { id: 'f-addr-from', label: 'From', type: 'date', required: true, instruction: '', options: [] },
             { id: 'f-addr-3y', label: 'Lived here 3+ years?', type: 'toggle', required: false, instruction: 'If no, add prior addresses below covering the past 3 years.', options: [] },
-            { id: 'f-addr-history', label: 'Address History', type: 'address-list', required: false, instruction: "Please provide all addresses where you've lived in the past 3 years.", options: [], showWhen: { fieldId: 'f-addr-3y', equals: false } },
+            { id: 'f-addr-history', label: 'Address History', type: 'address-list', required: false, instruction: "Please provide all addresses where you've lived in the past 3 years.", options: [], subformId: 'form-sub-address', showWhen: { fieldId: 'f-addr-3y', equals: false } },
         ],
         documents: [],
         isDefault: true,
@@ -541,11 +661,9 @@ function seedForms(): ApplicationFormDef[] {
         description: 'Current driver\'s license with endorsements, restrictions, and front/back photos.',
         introText: "Enter your active driver's license information.",
         fields: [
-            { id: 'f-lic-number', label: 'License Number', type: 'text', required: true, instruction: '', options: [] },
-            { id: 'f-lic-country', label: 'Issuing Country', type: 'radio', required: true, instruction: '', options: ['Canada', 'United States'] },
-            { id: 'f-lic-state', label: 'Issuing State', type: 'select', required: true, instruction: '', options: [] },
-            { id: 'f-lic-issued', label: 'Issued Date', type: 'date', required: false, instruction: '', options: [] },
-            { id: 'f-lic-expiry', label: 'Expiry Date', type: 'date', required: true, instruction: '', options: [] },
+            // ONE combined component — the Driver License key number + its linked
+            // document (Front/Back + dates) captured together, because they're linked.
+            { id: 'f-lic-compliance', label: 'Driver License', type: 'compliance', required: true, instruction: 'Enter the license number and upload the Front & Back. Issue/expiry/state/country are captured once.', options: [], complianceKeyNumberId: 'kn-dl-std', dataKey: 'license.number' },
             {
                 id: 'f-lic-has-end', label: 'Have Endorsements?', type: 'toggle', required: false,
                 instruction: '', options: [],
@@ -591,10 +709,8 @@ function seedForms(): ApplicationFormDef[] {
                 ],
                 showWhen: { fieldId: 'f-lic-has-rest', equals: true },
             },
-            { id: 'f-lic-front', type: 'document', required: true,  options: [], instruction: '', label: 'Driving License Front', documentTypeId: 'dt-lic-front' },
-            { id: 'f-lic-back',  type: 'document', required: false, options: [], instruction: '', label: 'Driving License Back',  documentTypeId: 'dt-lic-back'  },
             { id: 'f-lic-other', label: 'Any Other Licenses (Last 3 Years)?', type: 'toggle', required: false, instruction: '', options: [] },
-            { id: 'f-lic-other-list', label: 'Previous Licenses', type: 'license-list', required: false, instruction: 'Add each prior license held in the last 3 years.', options: [], showWhen: { fieldId: 'f-lic-other', equals: true } },
+            { id: 'f-lic-other-list', label: 'Previous Licenses', type: 'license-list', required: false, instruction: 'Add each prior license held in the last 3 years.', options: [], subformId: 'form-sub-license', showWhen: { fieldId: 'f-lic-other', equals: true } },
         ],
         documents: [],
         isDefault: true,
@@ -608,22 +724,19 @@ function seedForms(): ApplicationFormDef[] {
         introText: '',
         fields: [
             {
-                id: 'f-disq-denied', type: 'toggle', required: false, options: [], instruction: '',
-                label: 'Have you ever been denied a license, permit, or privilege to operate a motor vehicle?',
+                id: 'f-disq-any', type: 'toggle', required: false, options: [], instruction: '',
+                label: 'Have you ever been denied, suspended, revoked, or disqualified from a license, permit, or privilege to operate a motor vehicle?',
             },
             {
-                id: 'f-disq-denial-details', type: 'text', required: false, options: [], instruction: '',
-                label: 'Add Denial Details',
-                showWhen: { fieldId: 'f-disq-denied', equals: true },
+                id: 'f-disq-denial-details', type: 'text', required: false, options: [], instruction: 'Briefly describe what happened.',
+                label: 'Details',
+                showWhen: { fieldId: 'f-disq-any', equals: true },
             },
             {
-                id: 'f-disq-heading', type: 'heading', required: false, options: [],
-                label: 'License / Permit Suspension or Revocation',
-                instruction: 'If any license, permit, or driving privilege has ever been revoked or suspended, please add one or more records below using the "+" button.',
-            },
-            {
-                id: 'f-disq-list', type: 'disqualification-list', required: false, options: [], instruction: '',
-                label: 'License Disqualification',
+                id: 'f-disq-list', type: 'disqualification-list', required: false, options: [], subformId: 'form-sub-disqualification',
+                label: 'Suspensions / Revocations',
+                instruction: 'Add each suspension, revocation, or disqualification using the "+" button.',
+                showWhen: { fieldId: 'f-disq-any', equals: true },
             },
         ],
         documents: [],
@@ -639,29 +752,18 @@ function seedForms(): ApplicationFormDef[] {
         fields: [
             {
                 id: 'f-acc-heading', type: 'heading', required: false, options: [],
-                label: 'Accident Record',
-                instruction: 'Please include the accident date, location, nature of the accident, and any injuries, fatalities, or cargo damage / spill.',
-            },
-            { id: 'f-acc-date', type: 'date', required: true, options: [], instruction: '', label: 'Accident Date' },
-            {
-                id: 'f-acc-nature', type: 'radio', required: true, instruction: '',
-                label: 'Nature of Accident',
-                options: ['Head-on', 'Hit fixed object', 'Jackknife', 'Other', 'Rear-end', 'Rear-to-rear', 'Rollover', 'Side-impact', 'Sideswipe', 'Upset'],
+                label: 'Accident History',
+                instruction: 'Accidents or incidents you have been involved in over the last 3 years.',
             },
             {
-                id: 'f-acc-country', type: 'radio', required: true, instruction: '',
-                label: 'Country',
-                options: ['Canada', 'United States'],
+                id: 'f-acc-any', type: 'toggle', required: false, options: [], instruction: '',
+                label: 'Have you been involved in any accidents or incidents in the last 3 years (even if not at fault)?',
             },
-            { id: 'f-acc-state', type: 'text', required: true, options: [], instruction: '', label: 'State / Province' },
-            { id: 'f-acc-city', type: 'text', required: true, options: [], instruction: '', label: 'Location City' },
-            { id: 'f-acc-fatalities', type: 'number', required: false, options: [], instruction: '', label: '# of Fatalities' },
-            { id: 'f-acc-injuries', type: 'number', required: false, options: [], instruction: '', label: '# of Injuries' },
-            { id: 'f-acc-cargo', type: 'toggle', required: false, options: [], instruction: '', label: 'Cargo Damage / Spill?' },
             {
-                id: 'f-acc-list', type: 'accident-list', required: false, options: [],
-                label: 'Additional Accidents',
-                instruction: 'If you have been involved in more than one accident, add the others using the "+" button.',
+                id: 'f-acc-list', type: 'accident-list', required: false, options: [], subformId: 'form-sub-accident',
+                label: 'Accidents',
+                instruction: 'Add each accident using the "+" button.',
+                showWhen: { fieldId: 'f-acc-any', equals: true },
             },
         ],
         documents: [],
@@ -677,31 +779,18 @@ function seedForms(): ApplicationFormDef[] {
         fields: [
             {
                 id: 'f-vio-heading', type: 'heading', required: false, options: [],
-                label: 'Traffic Violation Record',
-                instruction: 'Please provide details of the traffic violation, including the charge or offense, issuing authority, date, location, penalties, and any demerit points deducted.',
+                label: 'Traffic Violations',
+                instruction: 'Moving violations or traffic convictions over the last 3 years.',
             },
-            { id: 'f-vio-charge', type: 'text', required: true, options: [], instruction: '', label: 'Charge or Offense' },
-            { id: 'f-vio-agency', type: 'text', required: true, options: [], instruction: '', label: 'Issuing Agency / Police Department' },
-            { id: 'f-vio-date', type: 'date', required: true, options: [], instruction: '', label: 'Violation Date' },
             {
-                id: 'f-vio-country', type: 'radio', required: true, instruction: '',
-                label: 'Country',
-                options: ['Canada', 'United States'],
+                id: 'f-vio-any', type: 'toggle', required: false, options: [], instruction: '',
+                label: 'Have you had any moving violations or traffic convictions in the last 3 years?',
             },
-            { id: 'f-vio-state', type: 'text', required: true, options: [], instruction: '', label: 'State / Province' },
-            { id: 'f-vio-city', type: 'text', required: true, options: [], instruction: '', label: 'City' },
             {
-                id: 'f-vio-penalty', type: 'select', required: true, instruction: '',
-                label: 'Penalty',
-                options: ['Fine', 'Demerit Points', 'Licence Suspension', 'Licence Revocation', 'Jail Time', 'Community Service', 'Warning', 'Other'],
-            },
-            { id: 'f-vio-amount', type: 'text', required: false, options: [], instruction: '', label: 'Penalty Amount' },
-            { id: 'f-vio-description', type: 'textarea', required: false, options: [], instruction: '', label: 'Description' },
-            { id: 'f-vio-points', type: 'toggle', required: false, options: [], instruction: '', label: 'Did your points get deducted?' },
-            {
-                id: 'f-vio-list', type: 'violation-list', required: false, options: [],
-                label: 'Additional Violations',
-                instruction: 'If you have had more than one traffic violation, add the others using the "+" button.',
+                id: 'f-vio-list', type: 'violation-list', required: false, options: [], subformId: 'form-sub-violation',
+                label: 'Violations',
+                instruction: 'Add each violation using the "+" button.',
+                showWhen: { fieldId: 'f-vio-any', equals: true },
             },
         ],
         documents: [],
@@ -715,8 +804,7 @@ function seedForms(): ApplicationFormDef[] {
         description: 'Medical certificate, examiner, and commercial-driving health questions.',
         introText: 'Upload your medical card and answer a few quick health questions required for commercial driving.',
         fields: [
-            { id: 'f-med-cert', type: 'document', required: false, options: [], instruction: '', label: 'Medical Certificate Document', documentTypeId: 'dt-medcert' },
-            { id: 'f-med-expiry', type: 'date', required: false, options: [], instruction: '', label: 'Medical Card Expiry Date' },
+            { id: 'f-med-cert', type: 'document', required: false, options: [], instruction: 'The certificate upload also captures its issue & expiry dates — no separate date field needed.', label: 'Medical Certificate Document', documentTypeId: 'dt-medcert' },
             { id: 'f-med-doctor', type: 'text', required: false, options: [], instruction: '', label: 'Doctor / Examiner Name' },
             { id: 'f-med-fit', type: 'toggle', required: false, options: [], instruction: '', label: 'Are you generally fit to drive a commercial vehicle?' },
             { id: 'f-med-lenses', type: 'toggle', required: false, options: [], instruction: '', label: 'Do you need corrective lenses to drive?' },
@@ -745,31 +833,13 @@ function seedForms(): ApplicationFormDef[] {
         fields: [
             {
                 id: 'f-drv-heading', type: 'heading', required: false, options: [],
-                label: 'Driving Experience Record',
-                instruction: 'Please provide details of your driving experience, including equipment class, freight types, regions driven, dates, mileage, and owner-operator status.',
+                label: 'Driving Experience',
+                instruction: 'Add each equipment class you have driven — equipment, freight types, regions, dates, and mileage.',
             },
             {
-                id: 'f-drv-equipment', type: 'radio', required: true, instruction: '',
-                label: 'Equipment Class',
-                options: ['Bus', 'Doubles/Triples', 'Other', 'Straight truck', 'Tanker', 'Tractor-trailer'],
-            },
-            {
-                id: 'f-drv-freight', type: 'checklist', required: false, instruction: '',
-                label: 'Freight Types',
-                options: ['Auto', 'Bulk', 'Flat', 'Hazmat', 'Other', 'Reefer', 'Tank', 'Van'],
-            },
-            {
-                id: 'f-drv-regions', type: 'checklist', required: false, instruction: '',
-                label: 'Driving Regions',
-                options: ['Border', 'Canada', 'Canada-only', 'USA', 'USA-only', 'local'],
-            },
-            { id: 'f-drv-from', type: 'date', required: true, options: [], instruction: '', label: 'From Date' },
-            { id: 'f-drv-to', type: 'date', required: true, options: [], instruction: '', label: 'To Date' },
-            { id: 'f-drv-miles', type: 'number', required: true, options: [], instruction: '', label: 'Approximate Miles' },
-            {
-                id: 'f-drv-list', type: 'driving-experience-list', required: false, options: [],
-                label: 'Additional Experience',
-                instruction: 'For each additional equipment class you have driven, add a record using the "+" button.',
+                id: 'f-drv-list', type: 'driving-experience-list', required: true, options: [], subformId: 'form-sub-driving-experience',
+                label: 'Experience Records',
+                instruction: 'Add each driving-experience record using the "+" button.',
             },
         ],
         documents: [],
@@ -802,7 +872,7 @@ function seedForms(): ApplicationFormDef[] {
                 instruction: 'Please provide employment history: last 10 years for the United States, last 3 years for Canada. List employers in reverse order, starting with the most recent. Applicants applying to drive a commercial motor vehicle in intrastate or interstate commerce must also provide an additional 7 years of employment information for positions involving the operation of such vehicles.',
             },
             {
-                id: 'f-emp-list', type: 'employment-list', required: false, options: [],
+                id: 'f-emp-list', type: 'employment-list', required: false, options: [], subformId: 'form-employer-details',
                 label: 'Employers',
                 instruction: 'Use the "+" button to add each employer.',
             },
@@ -875,22 +945,12 @@ function seedForms(): ApplicationFormDef[] {
             {
                 id: 'f-edu-heading', type: 'heading', required: false, options: [],
                 label: 'Education',
-                instruction: 'Please provide details of your educational background, including highest level completed, institution name, course of study, years completed, and graduation status.',
+                instruction: 'Add each school you attended — highest level, institution, course of study, and graduation status.',
             },
             {
-                id: 'f-edu-level', type: 'radio', required: true, instruction: '',
-                label: 'Highest Education',
-                options: ['Bachelor', 'College diploma', 'Doctorate', 'High-school diploma', 'High-school or less', 'Master', 'Other'],
-            },
-            { id: 'f-edu-school', type: 'text', required: true, options: [], instruction: '', label: 'School' },
-            { id: 'f-edu-location', type: 'text', required: false, options: [], instruction: '', label: 'Location (City, State, Country)' },
-            { id: 'f-edu-course', type: 'text', required: false, options: [], instruction: '', label: 'Course of Study' },
-            { id: 'f-edu-year', type: 'number', required: true, options: [], instruction: '', label: 'Year Completed' },
-            { id: 'f-edu-not-grad', type: 'text', required: false, options: [], instruction: '', label: 'Reason for Not Graduating' },
-            {
-                id: 'f-edu-list', type: 'education-list', required: false, options: [],
-                label: 'Additional Education',
-                instruction: 'If you have more than one school, add each one using the "+" button.',
+                id: 'f-edu-list', type: 'education-list', required: true, options: [], subformId: 'form-sub-education',
+                label: 'Schools',
+                instruction: 'Add each school using the "+" button.',
             },
         ],
         documents: [],
@@ -933,26 +993,16 @@ function seedForms(): ApplicationFormDef[] {
     }, {
         id: 'form-additional-details',
         kind: 'custom',
-        name: 'Additional Details & Documents',
-        displayTitle: 'Additional Details & Documents',
-        description: 'Criminal-charges declaration, English proficiency, and required driving-record uploads.',
-        introText: "Upload the documents below. They're required for insurance and border clearance.",
+        name: 'Additional Declarations',
+        displayTitle: 'Additional Declarations',
+        description: 'Driver self-declarations (criminal charges, English proficiency). Compliance documents (MVR, PSP, abstract, background) are collected on their own review forms.',
+        introText: 'A couple of declarations. The driving-record, PSP, abstract and background documents are gathered on the dedicated review forms — not here.',
         fields: [
-            { id: 'f-add-criminal-charges', type: 'toggle', required: false, options: [], instruction: '', label: 'Do you have any criminal charges against you?' },
-            {
-                id: 'f-add-criminal-doc', type: 'document', required: false, options: [], instruction: '',
-                label: 'Criminal Record Document',
-                showWhen: { fieldId: 'f-add-criminal-charges', equals: true },
-                documentTypeId: 'dt-criminal',
-            },
+            { id: 'f-add-criminal-charges', type: 'toggle', required: false, options: [], instruction: 'Self-declaration. The criminal background report is collected on the Criminal Background Check form.', label: 'Do you have any criminal charges against you?' },
             {
                 id: 'f-add-english', type: 'toggle', required: false, options: [], instruction: '',
                 label: 'Can you speak and read English satisfactorily to converse with the general public, understand traffic signs and signals, respond to official questions, and make legible entries on reports and records?',
             },
-            { id: 'f-add-driving-record', type: 'document', required: false, options: [], instruction: '', label: 'State / Province Driving Record ("Full 3-year motor-vehicle record")', documentTypeId: 'dt-mvr' },
-            { id: 'f-add-cv-record', type: 'document', required: false, options: [], instruction: '', label: 'Commercial Vehicle Operator Record', documentTypeId: 'dt-cvor' },
-            { id: 'f-add-psp', type: 'document', required: false, options: [], instruction: '', label: 'Pre-Employment Screening Program Report', documentTypeId: 'dt-psp' },
-            { id: 'f-add-abstract', type: 'document', required: false, options: [], instruction: '', label: 'Driver Abstract Document ("3-year driver abstract (non-commercial)")', documentTypeId: 'dt-abstract' },
         ],
         documents: [],
         isDefault: true,
@@ -1049,14 +1099,11 @@ function seedForms(): ApplicationFormDef[] {
         isSubform: true,
         buttonName: 'Add License',
         fields: [
-            { id: 'f-sl-number',   type: 'text',  required: true,  options: [], instruction: '', label: 'License Number' },
-            { id: 'f-sl-class',    type: 'text',  required: false, options: [], instruction: 'e.g. Class A', label: 'License Class' },
-            { id: 'f-sl-country',  type: 'radio', required: true,  options: ['Canada', 'United States'], instruction: '', label: 'Issuing Country' },
-            { id: 'f-sl-state',    type: 'text',  required: false, options: [], instruction: 'e.g. Ontario', label: 'State / Province' },
-            { id: 'f-sl-issued',   type: 'date',  required: false, options: [], instruction: '', label: 'Issue Date' },
-            { id: 'f-sl-expiry',   type: 'date',  required: true,  options: [], instruction: '', label: 'Expiry Date' },
-            { id: 'f-sl-front',    type: 'document', required: false, options: [], instruction: '', label: 'License Front', documentTypeId: 'dt-lic-front' },
-            { id: 'f-sl-back',     type: 'document', required: false, options: [], instruction: '', label: 'License Back',  documentTypeId: 'dt-lic-back'  },
+            { id: 'f-sl-number',   type: 'text',  required: true,  options: [], instruction: '', label: 'License Number', width: 'half' },
+            { id: 'f-sl-class',    type: 'text',  required: false, options: [], instruction: 'e.g. Class A', label: 'License Class', width: 'half' },
+            // ONE combined Front/Back license document — issuing country/state + issue/expiry
+            // dates are captured here once, so we don't ask for the same data twice.
+            { id: 'f-sl-doc', type: 'document', required: true, options: [], instruction: 'Upload the Front & Back. Issuing country/state and issue/expiry dates are captured here once.', label: 'Driver License (Front & Back)', documentTypeId: 'dt-lic-frontback' },
         ],
         documents: [],
         isDefault: true,
@@ -1211,7 +1258,10 @@ function seedForms(): ApplicationFormDef[] {
         documents: [],
         isDefault: true,
         updatedAt: today(),
-    }];
+    },
+    // Back-office compliance pipeline forms (PSP / MVR / Background / Substance / Clearinghouse / Employment / Decision).
+    ...complianceReviewForms(),
+    ];
 }
 
 /** Fill in any fields missing from older localStorage data. */
@@ -1223,6 +1273,16 @@ function normalize(f: Partial<ApplicationFormDef> & { id: string; name: string }
         if (forcedType && field.type !== forcedType) next = { ...next, type: forcedType };
         const backfill = KNOWN_SHOW_WHEN[field.id];
         if (backfill && !next.showWhen) next = { ...next, showWhen: backfill };
+        const subBackfill = KNOWN_LIST_SUBFORMS[field.id];
+        if (subBackfill && !next.subformId) next = { ...next, subformId: subBackfill };
+        const widthBackfill = KNOWN_WIDTHS[field.id];
+        if (widthBackfill && !next.width) next = { ...next, width: widthBackfill };
+        // Country/State pickers: seed the canonical dropdown options when none are set.
+        const optBackfill = KNOWN_OPTIONS[field.id];
+        if (optBackfill && (!Array.isArray(next.options) || next.options.length === 0)) next = { ...next, options: optBackfill };
+        // Canonical data key — lets the same fact (license number, DOB…) capture once and reuse.
+        const keyBackfill = KNOWN_DATA_KEYS[field.id];
+        if (keyBackfill && !next.dataKey) next = { ...next, dataKey: keyBackfill };
         return next;
     });
 
@@ -1277,11 +1337,22 @@ export function loadApplicationForms(): ApplicationFormDef[] {
     try {
         const raw = localStorage.getItem(FORMS_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(normalize);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            const stored = parsed.map(normalize);
+            const seed = seedForms().map(normalize);
+            const seedIds = new Set(seed.map(f => f.id));
+            // Built-in forms ALWAYS reflect the latest seed design (so structural fixes —
+            // dedup, combined components, retired forms — take effect). The user's own
+            // custom forms are preserved; retired built-ins are pruned.
+            const custom = stored.filter(f => !seedIds.has(f.id) && !REMOVED_FORM_IDS.has(f.id));
+            return [...seed, ...custom];
+        }
     } catch {
         /* localStorage unavailable / corrupt — fall through to seed */
     }
-    return seedForms();
+    // Normalize the seed too, so width / showWhen / subform backfills apply identically
+    // whether the forms come from storage or the built-in seed.
+    return seedForms().map(normalize);
 }
 
 export function saveApplicationForms(forms: ApplicationFormDef[]): void {

@@ -11,7 +11,8 @@ import {
     MOCK_APPLICANTS, PIPELINE_BLUEPRINT,
     type Applicant, type LicenseType, type ApplicantType, type WorkflowStep,
 } from './ats.data';
-import type { FormDocumentUploadValue } from './application-forms.data';
+import { getApplicationForm, type FormDocumentUploadValue } from './application-forms.data';
+import { collectCanonical } from './form-data-keys';
 import { loadTemplates, type DriverHiringTemplate } from '@/pages/settings/driver-hiring-templates.data';
 import { CARRIER_DRIVERS } from '@/pages/accounts/carrier-drivers.data';
 import { MOCK_DRIVER_DETAILED_TEMPLATE } from '@/pages/profile/carrier-profile.data';
@@ -29,6 +30,9 @@ export interface StepState {
     docs?: Record<string, FormDocumentUploadValue>;
     signature?: string;
     returnNote?: string;
+    /** Admin marked this step optional/removed for THIS driver — excluded from progress. */
+    skipped?: boolean;
+    skippedReason?: string;
 }
 
 export interface ApplicationRequest {
@@ -51,7 +55,7 @@ export interface AppEvent {
     id: string;
     at: string;
     by: string;
-    type: 'created' | 'invited' | 'step_submitted' | 'step_approved' | 'step_returned' | 'requested' | 'added_as_driver' | 'cancelled';
+    type: 'created' | 'invited' | 'step_submitted' | 'step_approved' | 'step_returned' | 'requested' | 'added_as_driver' | 'cancelled' | 'reminder_sent' | 'step_skipped' | 'step_restored';
     detail?: string;
 }
 
@@ -66,6 +70,12 @@ export interface HiringApplication {
     steps: Record<string, StepState>;
     requests: ApplicationRequest[];
     events: AppEvent[];
+    /** Unified document + compliance fulfilment state, keyed by requirement id. */
+    requirements_v2?: Record<string, {
+        status?: 'missing' | 'uploaded' | 'verified' | 'ordered';
+        files?: { name: string; uploadedAt: string }[];
+        meta?: { number?: string; issue?: string; expiry?: string; state?: string; country?: string };
+    }>;
 }
 
 // ── ids / time ──────────────────────────────────────────────────────────────
@@ -81,7 +91,14 @@ export function loadApplicants(): Applicant[] {
     try {
         const raw = localStorage.getItem(APPLICANTS_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Applicant[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            const stored = parsed as Applicant[];
+            // Append any built-in seed applicants the user doesn't have yet (new test
+            // data) without wiping invited/created applicants.
+            const have = new Set(stored.map(a => a.id));
+            const missing = MOCK_APPLICANTS.filter(a => !have.has(a.id));
+            return [...stored, ...missing];
+        }
     } catch { /* fall through to seed */ }
     return MOCK_APPLICANTS;
 }
@@ -199,8 +216,10 @@ function recompute(app: HiringApplication): AppStatus {
     const tpl = templateFor(app);
     const stepIds = (tpl?.steps ?? []).map(s => s.id);
     if (stepIds.length === 0) return app.status === 'draft' ? 'draft' : app.status;
-    const states = stepIds.map(id => app.steps[id]?.status ?? 'not_started');
-    const allDone = states.every(s => s === 'submitted' || s === 'approved');
+    // Skipped steps don't block completion or count as "started".
+    const live = stepIds.filter(id => !app.steps[id]?.skipped);
+    const states = live.map(id => app.steps[id]?.status ?? 'not_started');
+    const allDone = states.length === 0 || states.every(s => s === 'submitted' || s === 'approved');
     if (allDone) return 'submitted';
     const anyStarted = states.some(s => s !== 'not_started');
     if (anyStarted) return 'in_progress';
@@ -298,26 +317,163 @@ export function deleteApplication(applicantId: string): void {
 export interface Progress { completed: number; total: number; pct: number; currentStepId?: string; }
 
 export function applicationProgress(app: HiringApplication | undefined, tpl: DriverHiringTemplate | undefined): Progress {
-    const stepIds = (tpl?.steps ?? []).map(s => s.id);
+    const allIds = (tpl?.steps ?? []).map(s => s.id);
+    if (!app || allIds.length === 0) return { completed: 0, total: allIds.length, pct: 0 };
+    // Skipped steps are excluded from the count entirely.
+    const stepIds = allIds.filter(id => !app.steps[id]?.skipped);
     const total = stepIds.length;
-    if (!app || total === 0) return { completed: 0, total, pct: 0 };
     const done = stepIds.filter(id => { const s = app.steps[id]?.status; return s === 'submitted' || s === 'approved'; }).length;
     const current = stepIds.find(id => { const s = app.steps[id]?.status ?? 'not_started'; return s !== 'submitted' && s !== 'approved'; });
     return { completed: done, total, pct: total ? Math.round((done / total) * 100) : 0, currentStepId: current };
 }
 
-/** Convert a completed applicant into a carrier driver. */
+/** Send a reminder/notification to the driver (mock) — logged on the application. */
+export function sendReminder(applicantId: string, message?: string): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    logEvent(app, 'reminder_sent', message?.trim() || 'Reminder sent to finish the application');
+    upsertApplication(app);
+}
+
+type ReqState = NonNullable<HiringApplication['requirements_v2']>[string];
+
+/** Patch a single document/compliance requirement's fulfilment state. */
+export function setRequirementState(applicantId: string, reqId: string, patch: Partial<ReqState>): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    const cur = app.requirements_v2 ?? {};
+    cur[reqId] = { ...cur[reqId], ...patch };
+    app.requirements_v2 = cur;
+    upsertApplication(app);
+}
+
+/** Attach a (mock) uploaded file and mark the requirement uploaded. */
+export function uploadRequirement(applicantId: string, reqId: string, label: string, fileName?: string): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    const cur = app.requirements_v2 ?? {};
+    const existing = cur[reqId] ?? {};
+    const files = [...(existing.files ?? []), { name: fileName || `${label.replace(/\s+/g, '-')}.pdf`, uploadedAt: now() }];
+    cur[reqId] = { ...existing, files, status: 'uploaded' };
+    app.requirements_v2 = cur;
+    logEvent(app, 'requested', `Uploaded ${label}`);
+    upsertApplication(app);
+}
+
+/** Mark a step optional/removed (or restore it) for THIS driver only. */
+export function setStepSkipped(applicantId: string, stepId: string, skipped: boolean, reason?: string): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    const cur = app.steps[stepId] ?? { status: 'not_started' as AppStepStatus };
+    app.steps[stepId] = { ...cur, skipped, skippedReason: skipped ? (reason?.trim() || undefined) : undefined };
+    app.status = recompute(app);
+    logEvent(app, skipped ? 'step_skipped' : 'step_restored', skipped ? (reason?.trim() ? `Step removed — ${reason}` : 'Step removed for this driver') : 'Step restored');
+    upsertApplication(app);
+}
+
+/** Whole-number days between an ISO timestamp and now (min 0). */
+export function daysSince(iso: string | undefined): number {
+    if (!iso) return 0;
+    const ms = Date.now() - new Date(iso).getTime();
+    return Math.max(0, Math.floor(ms / 86_400_000));
+}
+
+/** A short "5d" / "today" elapsed label since a timestamp. */
+export function elapsedLabel(iso: string | undefined): string {
+    if (!iso) return '—';
+    const d = daysSince(iso);
+    return d === 0 ? 'today' : `${d}d`;
+}
+
+// ── Driver application snapshot (what data came from which form) ─────────────
+// On hire we capture the submitted form data and keep it keyed by driver id so
+// the Driver profile can show exactly which data came from which application form.
+
+export interface DriverApplicationForm {
+    stepId: string;
+    formId?: string;
+    name: string;
+    kind: 'form' | 'consent';
+    values?: Record<string, unknown>;
+    docs?: Record<string, FormDocumentUploadValue>;
+    signature?: string;
+    submittedAt?: string;
+}
+export interface DriverApplicationSnapshot {
+    driverId: string;
+    applicantId: string;
+    templateId: string;
+    capturedAt: string;
+    forms: DriverApplicationForm[];
+    /** Canonical driver-data JSON ({ dataKey: value }) collected across all forms —
+     *  the deduped, reusable shape (license number / DOB / dates captured once). */
+    canonical?: Record<string, unknown>;
+}
+
+const SNAPSHOTS_KEY = 'ats:driver-application-snapshots-v1';
+
+function loadSnapshots(): Record<string, DriverApplicationSnapshot> {
+    try {
+        const raw = localStorage.getItem(SNAPSHOTS_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed && typeof parsed === 'object') return parsed as Record<string, DriverApplicationSnapshot>;
+    } catch { /* ignore */ }
+    return {};
+}
+/** The captured application data for a hired driver (by driver id), if any. */
+export function getDriverApplicationSnapshot(driverId: string | undefined | null): DriverApplicationSnapshot | undefined {
+    if (!driverId) return undefined;
+    return loadSnapshots()[driverId];
+}
+
+/** Build the per-form snapshot from an application's submitted steps. */
+function buildSnapshot(driverId: string, app: HiringApplication): DriverApplicationSnapshot {
+    const tpl = templateFor(app);
+    const forms: DriverApplicationForm[] = [];
+    for (const step of tpl?.steps ?? []) {
+        const st = app.steps[step.id];
+        if (!st) continue;
+        if ((step.kind ?? 'form') === 'consent') {
+            forms.push({ stepId: step.id, name: step.label || 'Consent', kind: 'consent', signature: st.signature, submittedAt: st.submittedAt });
+        } else {
+            const form = getApplicationForm(step.formId);
+            forms.push({
+                stepId: step.id, formId: form.id, kind: 'form',
+                name: step.label || form.displayTitle || form.name,
+                values: st.values, docs: st.docs, signature: st.signature, submittedAt: st.submittedAt,
+            });
+        }
+    }
+    // Collect the canonical { dataKey: value } JSON from every form's values.
+    const canonical = collectCanonical(
+        forms.filter(f => f.kind === 'form' && f.formId).map(f => ({
+            fields: getApplicationForm(f.formId!).fields,
+            values: (f.values ?? {}) as Record<string, unknown>,
+        })),
+    );
+    return { driverId, applicantId: app.applicantId, templateId: app.templateId, capturedAt: now(), forms, canonical };
+}
+
+/** Convert a completed applicant into a carrier driver — carrying the submitted form data. */
 export function addAsDriver(applicantId: string, carrierId: string): void {
     const applicant = getApplicant(applicantId);
     const app = getApplication(applicantId);
     if (!applicant) return;
+    const driverId = `drv_${applicantId}`;
     const driver = {
         ...MOCK_DRIVER_DETAILED_TEMPLATE,
-        id: `drv_${applicantId}`,
+        id: driverId,
         name: `${applicant.firstName} ${applicant.lastName}`,
         status: 'Active',
     } as (typeof CARRIER_DRIVERS)[string][number];
     CARRIER_DRIVERS[carrierId] = [driver, ...(CARRIER_DRIVERS[carrierId] ?? [])];
+
+    // Capture the submitted form data against the new driver (data ↔ form ↔ driver).
+    if (app) {
+        const snap = buildSnapshot(driverId, app);
+        try { const all = loadSnapshots(); all[driverId] = snap; localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(all)); } catch { /* ignore */ }
+    }
+
     // Mark applicant hired + application approved.
     const list = loadApplicants().map(a => a.id === applicantId
         ? { ...a, stage: 'hired' as const, decisionStatus: 'hired' as const }

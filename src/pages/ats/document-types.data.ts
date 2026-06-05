@@ -38,6 +38,10 @@ export interface DocumentType {
     /** Whether this document type is offered inside Hiring / Application Forms / Templates. */
     usingInHiring: boolean;
     allowMultiple: boolean;
+    /** When allowMultiple is on (compliance item): 'all' repeats number+dates+upload, 'document' repeats only the upload. */
+    repeatScope?: 'all' | 'document';
+    /** Allow capturing previous/historical copies of this document (each with its own number + dates). */
+    allowHistorical?: boolean;
     /** When allowMultiple is on: number of labeled upload slots (undefined = unlimited). */
     numberOfSlots?: number;
     /** Per-slot labels, e.g. ["Front", "Rear"]. */
@@ -152,6 +156,16 @@ function seedDocumentTypes(): DocumentType[] {
             required: false, allowMultiple: false,
             expiryRequired: false, issueDateRequired: false,
             issueStateRequired: false, issueCountryRequired: false,
+            status: 'Active', addedDate: d,
+        },
+        {
+            // Combined Front + Back license capture — TWO labeled slots, and the issuing
+            // country/state + issue/expiry dates captured ONCE on the document (so the
+            // license popup never asks for the same data twice).
+            id: 'dt-lic-frontback', name: 'Driver License (Front & Back)', category: 'License',
+            required: true, allowMultiple: false, numberOfSlots: 2, slotLabels: ['Front', 'Back'],
+            expiryRequired: true, issueDateRequired: true,
+            issueStateRequired: true, issueCountryRequired: true,
             status: 'Active', addedDate: d,
         },
         {
@@ -281,6 +295,33 @@ function seedDocumentTypes(): DocumentType[] {
             issueStateRequired: false, issueCountryRequired: false,
             status: 'Active', addedDate: d,
         },
+
+        /* ── Compliance review PDFs (PSP / MVR / Background / Substance / Clearinghouse / Employment) ── */
+        // PSP Review
+        { id: 'dt-psp-auth', name: 'PSP Disclosure & Authorization Form', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
+        { id: 'dt-psp-review-notes', name: 'PSP Review Notes', category: 'Background', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        // MVR / Abstract Review
+        { id: 'dt-mvr-auth', name: 'MVR / Abstract Authorization', category: 'License', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
+        { id: 'dt-annual-mvr', name: 'Annual MVR Review', category: 'License', required: false, allowMultiple: false, expiryRequired: true,  issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        // Criminal Background Check
+        { id: 'dt-bgc-consent', name: 'Background Check Consent', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
+        { id: 'dt-bgc-report', name: 'Criminal Background Report', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: true,  status: 'Active', addedDate: d },
+        { id: 'dt-bgc-adjudication', name: 'Adjudication / Decision Summary', category: 'Background', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        // Substance / DOT Drug & Alcohol Testing
+        { id: 'dt-da-policy', name: 'Drug/Alcohol Testing Policy Acknowledgment', category: 'Medical', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-da-order', name: 'Test Order / Authorization', category: 'Medical', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-da-ccf', name: 'Federal Drug Testing Custody and Control Form', category: 'Medical', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-da-mro', name: 'MRO Final Result', category: 'Medical', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-da-alcohol', name: 'U.S. DOT Alcohol Testing Form', category: 'Medical', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        // FMCSA Clearinghouse
+        { id: 'dt-ch-limited-consent', name: 'Clearinghouse Limited Query Consent', category: 'Background', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-ch-full-consent', name: 'Clearinghouse Full Query Consent Proof', category: 'Background', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-ch-result', name: 'Clearinghouse Query Result', category: 'Background', required: true,  allowMultiple: false, expiryRequired: true,  issueDateRequired: true, issueStateRequired: true,  issueCountryRequired: false, status: 'Active', addedDate: d },
+        // Employment / Safety Performance Verification
+        { id: 'dt-emp-verif-consent', name: 'Employment Verification Consent', category: 'Other', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-sphr-request', name: 'Safety Performance History Records Request', category: 'Other', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-emp-response', name: 'Employer Response', category: 'Other', required: false, allowMultiple: true,  expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-goodfaith-log', name: 'Good-Faith Attempt Log', category: 'Other', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
     ] as Partial<DocumentType>[]).map(normalize);
 }
 
@@ -289,7 +330,12 @@ export function loadDocumentTypes(): DocumentType[] {
         const raw = localStorage.getItem(STORAGE_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
         if (Array.isArray(parsed) && parsed.length > 0) {
-            return (parsed as Partial<DocumentType>[]).map(normalize);
+            const stored = (parsed as Partial<DocumentType>[]).map(normalize);
+            // Append any built-in document types the user doesn't have yet (new compliance
+            // PDFs etc.) without wiping their saved/custom types.
+            const have = new Set(stored.map(t => t.id));
+            const missing = seedDocumentTypes().filter(t => !have.has(t.id));
+            return [...stored, ...missing];
         }
     } catch {
         /* localStorage unavailable / corrupt — fall through to seed */

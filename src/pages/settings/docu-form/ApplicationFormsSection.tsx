@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Plus, Download, Trash2, Lock, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Download, Trash2, Lock, FileText, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { DEFAULT_TEMPLATE } from '@/pages/ats/hiring-templates.data';
 import { useCompanyBranding } from '@/pages/ats/company-branding.data';
-import { downloadApplicationPdf } from '@/pages/ats/generateApplicationPdf';
+import { generateApplicationFormPdf } from '@/pages/ats/generateApplicationFormPdf';
 import { newApplicationForm, type ApplicationFormDef } from '@/pages/ats/application-forms.data';
+import { CustomFormWizard } from '@/pages/ats/CustomFormWizard';
+import { PDF_TEMPLATES, type PdfVariant } from '@/pages/ats/ApplicationFormPrint';
 import { ApplicationFormBuilder } from './ApplicationFormEditor';
 import { PageHeader } from './PageHeader';
 import { StatStrip } from './StatStrip';
@@ -26,6 +27,13 @@ export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
 }) {
     const [branding] = useCompanyBranding();
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    // Front-end preview — renders the form the way an applicant sees it.
+    const [previewForm, setPreviewForm] = useState<ApplicationFormDef | null>(null);
+
+    const preview = (e: React.MouseEvent, f: ApplicationFormDef) => {
+        e.stopPropagation();
+        setPreviewForm(f);
+    };
 
     const updateForm = (next: ApplicationFormDef) =>
         onCommit(forms.map(f => f.id === next.id ? next : f));
@@ -44,13 +52,18 @@ export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
         if (expandedId === f.id) setExpandedId(null);
     };
 
-    const generate = (e: React.MouseEvent, f: ApplicationFormDef) => {
+    const [generatingId, setGeneratingId] = useState<string | null>(null);
+    const [pdfMenuId, setPdfMenuId] = useState<string | null>(null);
+    const generate = async (e: React.MouseEvent, f: ApplicationFormDef, variant: PdfVariant) => {
         e.stopPropagation();
-        downloadApplicationPdf({
-            template: { ...DEFAULT_TEMPLATE, name: f.name },
-            branding,
-            mode: 'blank',
-        });
+        setPdfMenuId(null);
+        if (generatingId) return; // in-flight guard against double-click
+        setGeneratingId(f.id);
+        try {
+            await generateApplicationFormPdf({ form: f, branding, variant });
+        } finally {
+            setGeneratingId(null);
+        }
     };
 
     const visibleForms = useMemo(
@@ -163,9 +176,25 @@ export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
                                     </p>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-1">
-                                    <Button variant="ghost" size="sm" onClick={(e) => generate(e, f)} className="text-slate-500" title="Generate PDF">
-                                        <Download className="h-4 w-4" />
+                                    <Button variant="ghost" size="sm" onClick={(e) => preview(e, f)} className="text-slate-500 hover:text-blue-700" title="View — how this looks to the applicant">
+                                        <Eye className="h-4 w-4" />
                                     </Button>
+                                    <div className="relative">
+                                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPdfMenuId(pdfMenuId === f.id ? null : f.id); }} className="text-slate-500" title="Download PDF — pick a template" disabled={generatingId === f.id}>
+                                            <Download className="h-4 w-4" />
+                                        </Button>
+                                        {pdfMenuId === f.id && (
+                                            <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg" onClick={(e) => e.stopPropagation()}>
+                                                <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">PDF template</p>
+                                                {PDF_TEMPLATES.map(t => (
+                                                    <button key={t.id} type="button" onClick={(e) => generate(e, f, t.id)} className="block w-full px-3 py-2 text-left hover:bg-slate-50">
+                                                        <span className="block text-[13px] font-semibold text-slate-800">{t.label}</span>
+                                                        <span className="block text-[11px] text-slate-500">{t.description}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                     {f.isDefault ? (
                                         <span className="flex h-9 w-9 items-center justify-center text-slate-300" title="Default form — cannot be deleted">
                                             <Lock className="h-4 w-4" />
@@ -189,6 +218,10 @@ export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
                 })}
             </ul>
 
+            {/* Front-end preview — exactly how the applicant sees this form. */}
+            {previewForm && (
+                <CustomFormWizard appForm={previewForm} onClose={() => setPreviewForm(null)} />
+            )}
         </div>
     );
 }

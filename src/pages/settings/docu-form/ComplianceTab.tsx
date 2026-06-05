@@ -186,7 +186,7 @@ export function ComplianceTab() {
                                                 <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                                                     <RIcon size={12} className="text-slate-400" /> {k.relatedTo}
                                                 </span>
-                                                {linkedDocName && (
+                                                {linkedDocName && linkedDocName.trim().toLowerCase() !== k.name.trim().toLowerCase() && (
                                                     <span className="inline-flex items-center gap-1 text-[11px] text-blue-600">
                                                         <Link2 size={11} /> {linkedDocName}
                                                     </span>
@@ -284,7 +284,7 @@ function KeyNumberPreviewModal({ keyNumber, onClose }: {
                         <h3 className="mt-0.5 text-base font-bold text-slate-900">{keyNumber.name}</h3>
                         <p className="mt-0.5 text-[12px] text-slate-500">
                             {keyNumber.relatedTo} · {keyNumber.group}
-                            {linkedDocName && <> · Linked to <span className="font-semibold text-blue-600">{linkedDocName}</span></>}
+                            {linkedDocName && linkedDocName.trim().toLowerCase() !== keyNumber.name.trim().toLowerCase() && <> · Linked to <span className="font-semibold text-blue-600">{linkedDocName}</span></>}
                         </p>
                     </div>
                     <button

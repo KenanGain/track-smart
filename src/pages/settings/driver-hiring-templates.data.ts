@@ -64,258 +64,107 @@ export function newStep(formId: string, kind: StepKind = 'form'): TemplateStep {
     return { id: `step-${uid()}`, kind, formId, required: true };
 }
 
-/**
- * Seed: four templates illustrating the full data-model relationship:
- *   Document Types → Application Forms / Subforms → Templates.
- *
- *   • Two defaults (locked) — one all-consents pipeline and one all-forms pipeline.
- *   • Two non-default examples — a short "Quick Hire" and a full "CDL-A OTR"
- *     pipeline that interleaves forms and consents in a realistic hiring order.
- */
-function seedTemplates(): DriverHiringTemplate[] {
-    const order = [
-        'form-applicant-information',
-        'form-address-details',
-        'form-license-details',
-        'form-license-disqualification',
-        'form-accident-details',
-        'form-violation-details',
-        'form-medical-details',
-        'form-driving-experience',
-        'form-employment-details',
-        'form-education-details',
-        'form-cross-border-details',
-        'form-additional-details',
-        'form-acknowledgment',
-    ];
-    const allConsents = [
-        'fcra_disclosure',
-        'driver_certification',
-        'pre_employment_drug',
-        'mvr_release',
-        'psp_disclosure',
-        'clearinghouse_query',
-        'background_check',
-        'safety_performance',
-    ];
+/* ── Master pipeline pieces — one source of truth the templates are built from ── */
 
+/** Every applicant-facing application form, in order. Acknowledgment always closes a template. */
+const APPLICATION_FORMS = [
+    'form-applicant-information',
+    'form-address-details',
+    'form-license-details',
+    'form-license-disqualification',
+    'form-accident-details',
+    'form-violation-details',
+    'form-driving-experience',
+    'form-employment-details',
+    'form-education-details',
+    'form-cross-border-details',
+    'form-medical-details',
+    'form-additional-details',
+];
+
+/** All built-in consent disclosures. */
+const CONSENTS = [
+    'fcra_disclosure',
+    'driver_certification',
+    'pre_employment_drug',
+    'mvr_release',
+    'psp_disclosure',
+    'clearinghouse_query',
+    'background_check',
+    'safety_performance',
+];
+
+/** Back-office compliance review forms (admin / safety filled). */
+const REVIEW_FORMS = [
+    'form-psp-review',
+    'form-mvr-review',
+    'form-criminal-background',
+    'form-substance-testing',
+    'form-clearinghouse-query',
+    'form-employment-verification',
+];
+
+/** All built-in template ids (current + retired) — used to re-seed built-ins on load
+ *  while preserving the user's own custom templates. */
+const BUILTIN_TEMPLATE_IDS = new Set([
+    // current
+    'tpl-complete-hiring', 'tpl-all-forms', 'tpl-quick-hire', 'tpl-cdl-a-otr', 'tpl-cross-border',
+    // retired (pruned on load)
+    'tpl-default-consents', 'tpl-default-application', 'tpl-owner-operator',
+    'tpl-local-regional', 'tpl-hazmat-tanker', 'tpl-rehire',
+]);
+
+function seedTemplates(): DriverHiringTemplate[] {
     const step = (kind: StepKind, formId: string, required = true): TemplateStep => ({
         id: `step-${uid()}`, kind, formId, required,
     });
+    const forms = (ids: string[], required = true) => ids.map(id => step('form', id, required));
+    const signs = (ids: string[]) => ids.map(id => step('consent', id));
+    const ack = () => step('form', 'form-acknowledgment');
+
+    const tpl = (
+        id: string, name: string, description: string, isDefault: boolean, steps: TemplateStep[],
+    ): DriverHiringTemplate => ({ id, name, description, formType: 'hiring-driver', isDefault, steps, updatedAt: today() });
 
     return [
-        // ── Default: every consent ────────────────────────────────────
-        {
-            id: "tpl-default-consents",
-            name: "Default Consent Pipeline",
-            description: "Every built-in consent disclosure the applicant must sign — FCRA, MVR Release, PSP, Clearinghouse, Background Check, and more.",
-            formType: 'hiring-driver',
-            isDefault: true,
-            steps: allConsents.map(cid => step('consent', cid)),
-            updatedAt: today(),
-        },
+        // ── DEFAULT (main, test this) — the complete driver hiring data set ──
+        tpl('tpl-complete-hiring', 'Complete Driver Hiring',
+            "The full driver hiring pipeline — every application form, all required consents, and the back-office compliance reviews (PSP, MVR, Background, Substance, Clearinghouse, Employment). Assign this to capture a driver's entire application.",
+            true,
+            [...forms(APPLICATION_FORMS), ...signs(CONSENTS), ...forms(REVIEW_FORMS, false), ack()]),
 
-        // ── Default: every application form ───────────────────────────
-        {
-            id: "tpl-default-application",
-            name: "Default Application Pipeline",
-            description: "Every built-in application form the applicant fills out — identity, license, medical, accidents, violations, employment, education, acknowledgment.",
-            formType: 'hiring-driver',
-            isDefault: true,
-            steps: order.map(fid => step('form', fid)),
-            updatedAt: today(),
-        },
+        // ── Just the application forms (no consents / reviews) ──
+        tpl('tpl-all-forms', 'Driver Application — All Forms',
+            "Every applicant-facing application form, start to finish — identity, address, license, driving history, employment, education, cross-border, medical, and declarations. No consents or back-office reviews.",
+            false,
+            [...forms(APPLICATION_FORMS), ack()]),
 
-        // ── Non-default: short pipeline for fast hiring ───────────────
-        {
-            id: "tpl-quick-hire",
-            name: "Quick Hire Pipeline",
-            description: "Minimal onboarding for short-term or contract drivers — just identity, address, license, plus the three legally-required consents (FCRA, MVR Release, Background Check) and a signed acknowledgment.",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                step('form',    'form-applicant-information'),
-                step('form',    'form-address-details'),
-                step('form',    'form-license-details'),
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'mvr_release'),
-                step('consent', 'background_check'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
+        // ── Short pipeline for fast hiring ──
+        tpl('tpl-quick-hire', 'Quick Hire',
+            "Fast onboarding — identity, address, and license, plus the three time-sensitive consents (FCRA, MVR release, background check) and a signed acknowledgment.",
+            false,
+            [
+                ...forms(['form-applicant-information', 'form-address-details', 'form-license-details']),
+                ...signs(['fcra_disclosure', 'mvr_release', 'background_check']),
+                ack(),
+            ]),
 
-        // ── Non-default: realistic CDL-A OTR onboarding ───────────────
-        {
-            id: "tpl-cdl-a-otr",
-            name: "CDL-A OTR Driver Pipeline",
-            description: "Full DOT-compliant onboarding for over-the-road CDL-A drivers — identity, full driving history, employment, all consents grouped before the medical and acknowledgment steps.",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                // Identity & contact
-                step('form',    'form-applicant-information'),
-                step('form',    'form-address-details'),
-                // Driving credentials & history
-                step('form',    'form-license-details'),
-                step('form',    'form-license-disqualification'),
-                step('form',    'form-accident-details'),
-                step('form',    'form-violation-details'),
-                step('form',    'form-driving-experience'),
-                step('form',    'form-employment-details'),
-                step('form',    'form-education-details'),
-                step('form',    'form-cross-border-details'),
-                // All required consents (signed in one sitting)
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'driver_certification'),
-                step('consent', 'pre_employment_drug'),
-                step('consent', 'mvr_release'),
-                step('consent', 'psp_disclosure'),
-                step('consent', 'clearinghouse_query'),
-                step('consent', 'background_check'),
-                step('consent', 'safety_performance'),
-                // Medical + closing
-                step('form',    'form-medical-details'),
-                step('form',    'form-additional-details'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
+        // ── Full DOT-compliant CDL-A over-the-road onboarding ──
+        tpl('tpl-cdl-a-otr', 'CDL-A OTR Driver',
+            "Full DOT-compliant onboarding for over-the-road CDL-A drivers — the complete application, every consent, and the full set of compliance reviews.",
+            false,
+            [...forms(APPLICATION_FORMS), ...signs(CONSENTS), ...forms(REVIEW_FORMS, false), ack()]),
 
-        // ── Non-default: owner-operator (lease-on) onboarding ─────────
-        {
-            id: "tpl-owner-operator",
-            name: "Owner-Operator Lease-On Pipeline",
-            description: "For owner-operators bringing their own truck under contract — full driving history and employment, with extra emphasis on vehicle/insurance documents collected via Additional Details.",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                step('form',    'form-applicant-information'),
-                step('form',    'form-address-details'),
-                step('form',    'form-license-details'),
-                step('form',    'form-license-disqualification'),
-                step('form',    'form-accident-details'),
-                step('form',    'form-violation-details'),
-                step('form',    'form-driving-experience'),
-                step('form',    'form-employment-details'),
-                // Vehicle & insurance docs collected here
-                step('form',    'form-additional-details'),
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'driver_certification'),
-                step('consent', 'mvr_release'),
-                step('consent', 'pre_employment_drug'),
-                step('consent', 'background_check'),
-                step('form',    'form-medical-details'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
-
-        // ── Non-default: local / regional (short-haul) ────────────────
-        {
-            id: "tpl-local-regional",
-            name: "Local / Regional Driver Pipeline",
-            description: "Short-haul home-daily routes — applicant identity, license, recent employment, and the essential consents. Cross-border and education details skipped for faster turnaround.",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                step('form',    'form-applicant-information'),
-                step('form',    'form-address-details'),
-                step('form',    'form-license-details'),
-                step('form',    'form-accident-details'),
-                step('form',    'form-violation-details'),
-                step('form',    'form-employment-details'),
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'mvr_release'),
-                step('consent', 'pre_employment_drug'),
-                step('consent', 'background_check'),
-                step('form',    'form-medical-details'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
-
-        // ── Non-default: cross-border (US/Canada) driver ──────────────
-        {
-            id: "tpl-cross-border",
-            name: "Cross-Border Driver Pipeline",
-            description: "For drivers running US ↔ Canada freight — emphasises identity verification, cross-border eligibility (FAST/passport), and full driving history.",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                step('form',    'form-applicant-information'),
-                step('form',    'form-address-details'),
-                step('form',    'form-license-details'),
-                step('form',    'form-license-disqualification'),
-                step('form',    'form-accident-details'),
-                step('form',    'form-violation-details'),
-                step('form',    'form-driving-experience'),
-                step('form',    'form-employment-details'),
-                step('form',    'form-cross-border-details'),
-                step('form',    'form-additional-details'),
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'driver_certification'),
-                step('consent', 'mvr_release'),
-                step('consent', 'psp_disclosure'),
-                step('consent', 'background_check'),
-                step('form',    'form-medical-details'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
-
-        // ── Non-default: hazmat / tanker endorsement driver ───────────
-        {
-            id: "tpl-hazmat-tanker",
-            name: "Hazmat / Tanker Driver Pipeline",
-            description: "Higher-scrutiny onboarding for hazmat-endorsed drivers — full driving history with mandatory PSP, Clearinghouse, and background check consents.",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                step('form',    'form-applicant-information'),
-                step('form',    'form-address-details'),
-                step('form',    'form-license-details'),
-                step('form',    'form-license-disqualification'),
-                step('form',    'form-accident-details'),
-                step('form',    'form-violation-details'),
-                step('form',    'form-driving-experience'),
-                step('form',    'form-employment-details'),
-                step('form',    'form-education-details'),
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'driver_certification'),
-                step('consent', 'pre_employment_drug'),
-                step('consent', 'mvr_release'),
-                step('consent', 'psp_disclosure'),
-                step('consent', 'clearinghouse_query'),
-                step('consent', 'background_check'),
-                step('consent', 'safety_performance'),
-                step('form',    'form-medical-details'),
-                step('form',    'form-additional-details'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
-
-        // ── Non-default: re-hire / returning driver ───────────────────
-        {
-            id: "tpl-rehire",
-            name: "Driver Re-Hire Pipeline",
-            description: "Abbreviated onboarding for returning drivers — refresh identity, license, recent driving record, and re-sign the time-sensitive consents (FCRA, MVR, drug screen).",
-            formType: 'hiring-driver',
-            isDefault: false,
-            steps: [
-                step('form',    'form-applicant-information'),
-                step('form',    'form-license-details'),
-                step('form',    'form-accident-details'),
-                step('form',    'form-violation-details'),
-                step('consent', 'fcra_disclosure'),
-                step('consent', 'mvr_release'),
-                step('consent', 'pre_employment_drug'),
-                step('form',    'form-medical-details'),
-                step('form',    'form-acknowledgment'),
-            ],
-            updatedAt: today(),
-        },
+        // ── Cross-border (US ↔ Canada) driver ──
+        tpl('tpl-cross-border', 'Cross-Border Driver',
+            "US ↔ Canada drivers — the full application (with cross-border eligibility), all consents, and the PSP / MVR / background reviews.",
+            false,
+            [
+                ...forms(APPLICATION_FORMS),
+                ...signs(CONSENTS),
+                ...forms(['form-psp-review', 'form-mvr-review', 'form-criminal-background'], false),
+                ack(),
+            ]),
     ];
 }
 
@@ -323,7 +172,14 @@ export function loadTemplates(): DriverHiringTemplate[] {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         const parsed = raw ? JSON.parse(raw) : null;
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed as DriverHiringTemplate[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            const stored = parsed as DriverHiringTemplate[];
+            // Built-in templates ALWAYS reflect the latest seed (so the cleaned-up set,
+            // retired templates, and new forms take effect). The user's own custom
+            // templates are preserved.
+            const custom = stored.filter(t => !BUILTIN_TEMPLATE_IDS.has(t.id));
+            return [...seedTemplates(), ...custom];
+        }
     } catch {
         /* localStorage unavailable / corrupt — fall through to seed */
     }

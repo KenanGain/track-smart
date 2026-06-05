@@ -51,6 +51,8 @@ export function adminDocsAsFormTypes(docs: DocumentRow[]): DocumentType[] {
             requirementLevel: d.requirementLevel ?? 'optional',
             usingInHiring: true,
             allowMultiple: !!d.allowMultiple,
+            repeatScope: d.repeatScope,
+            allowHistorical: d.allowHistorical,
             numberOfSlots: d.numberOfSlots,
             slotLabels: d.slotLabels,
             expiryRequired: !!d.expiryRequired,

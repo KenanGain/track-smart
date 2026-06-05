@@ -17,7 +17,8 @@ import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
-import { Boxes } from 'lucide-react';
+import { Boxes, ClipboardList } from 'lucide-react';
+import { DriverApplicationData } from './DriverApplicationData';
 import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
 import { type SubTab } from '@/components/ui/SubTabs';
 import { getSafetyEventsForDriver } from '@/data/safety-records';
@@ -1591,6 +1592,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         { id: 'Compliance',     label: 'Compliance',       icon: ShieldCheck,     group: 'identity' },
         // Records
         { id: 'Documents',      label: 'Documents',        icon: FileText,        group: 'records' },
+        { id: 'Application',    label: 'Application',      icon: ClipboardList,   group: 'records' },
         { id: 'Training',       label: 'Training',         icon: GraduationCap,   group: 'records' },
         { id: 'Certificates',   label: 'Certificates',     icon: Award,           group: 'records' },
         // Operations
@@ -2446,6 +2448,12 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                 onEditTravelDocs={() => setIsTravelDocsModalOpen(true)}
                 onEditEmployment={() => setIsEmploymentModalOpen(true)}
               />
+            )}
+
+            {activeTab === 'Application' && (
+                <div className="animate-in fade-in">
+                    <DriverApplicationData driverId={driverData.id} />
+                </div>
             )}
 
             {activeTab === 'Documents' && (

@@ -18,6 +18,7 @@ import {
     ShieldCheck,
     Sliders,
     Users,
+    ListChecks,
     Boxes,
     UserCog,
     List,
@@ -84,10 +85,14 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/paystubs",
     },
     {
-        key: "ats-main",
-        label: "ATS",
+        key: "hiring",
+        label: "Hiring",
         icon: Briefcase,
-        path: "/ats-main",
+        children: [
+            { key: "ats-main", label: "Application Tracking", icon: Briefcase, path: "/ats-main" },
+            { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },
+            { key: "dq-files", label: "DQ Files", icon: ListChecks, path: "/dq-files" },
+        ],
     },
     {
         key: "hours-of-service",

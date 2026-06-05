@@ -13,7 +13,6 @@ import { ServiceProfilePage } from '@/pages/service/ServiceProfilePage'
 import { EmptyServiceProfile } from '@/pages/service/EmptyServiceProfile'
 import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/service-profiles.data'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
-import { SettingsCompliancePage } from '@/pages/settings/SettingsCompliancePage'
 import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
 import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
 import { ComplianceTemplatesPage } from '@/pages/admin/ComplianceTemplatesPage'
@@ -47,6 +46,7 @@ import { TemplatesPage } from '@/pages/settings/TemplatesPage'
 import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { AtsPage } from '@/pages/ats/AtsPage'
 import { AtsAssignmentsPage } from '@/pages/ats/AtsAssignmentsPage'
+import { DqFilesPage } from '@/pages/ats/DqFilesPage'
 import { IssueHiringPage } from '@/pages/ats/IssueHiringPage'
 import { ApplicantPortalPage } from '@/pages/ats/ApplicantPortalPage'
 import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
@@ -369,9 +369,17 @@ function App() {
             return <GeneralSettingsPage />
         }
         if (path === "/settings/compliance-setup") {
+            // Settings view — same catalog UI (heads + filters) as Super Admin,
+            // scoped to the carrier's enabled set, read-only (no Add buttons).
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return <SettingsCompliancePage accountId={account?.id} />
+            const asg = account ? loadCarrierAssignment(account.id) : null
+            return <ComplianceAndDocumentsPage
+                key="settings-compliance-setup"
+                onNavigate={handleNavigate}
+                enabledKeyNumberIds={asg?.enabledKeyNumberIds}
+                enabledDocumentTypeIds={asg?.enabledDocumentTypeIds}
+            />
         }
         if (path === "/settings/document-folders") {
             return <DocumentFoldersPage />
@@ -457,6 +465,9 @@ function App() {
         }
         if (path === "/ats-main") {
             return <AtsAssignmentsPage onNavigate={handleNavigate} />
+        }
+        if (path === "/dq-files") {
+            return <DqFilesPage onNavigate={handleNavigate} />
         }
         if (path === "/ats/issue-hiring") {
             return <IssueHiringPage onNavigate={handleNavigate} />

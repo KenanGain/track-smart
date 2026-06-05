@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Save, FileText, UploadCloud, Plus, X, Check } from "lucide-react";
+import { ArrowLeft, Save, FileText, UploadCloud, Plus, X, Check, Download, Pencil, CornerDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     newLicenseEntry, newAddressEntry, newDisqualificationEntry, newAccidentEntry,
     newViolationEntry, newDrivingExperienceEntry, newEmploymentEntry, newEducationEntry,
-    emptyDocumentUploadValue, loadApplicationForms, chunkFieldRows,
+    emptyDocumentUploadValue, loadApplicationForms, chunkFieldRows, showWhenSatisfied,
     DISQUALIFICATION_OFFENCE_OPTIONS, ACCIDENT_NATURE_OPTIONS, VIOLATION_PENALTY_OPTIONS,
     EQUIPMENT_CLASS_OPTIONS, FREIGHT_TYPE_OPTIONS, DRIVING_REGION_OPTIONS,
     POSITION_HELD_OPTIONS, HIGHEST_EDUCATION_OPTIONS,
@@ -13,7 +13,10 @@ import {
     type FormAccidentEntry, type FormViolationEntry, type FormDrivingExperienceEntry,
     type FormEmploymentEntry, type FormEducationEntry, type FormDocumentUploadValue,
 } from "./application-forms.data";
-import { getDocumentType, type DocumentType } from "./document-types.data";
+import { type DocumentType } from "./document-types.data";
+import { resolveFormDocType, complianceFieldConfig } from "./form-doc-resolver";
+import { generateApplicationFormPdf } from "./generateApplicationFormPdf";
+import { PDF_TEMPLATES } from "./ApplicationFormPrint";
 import { SignaturePad } from "./SignaturePad";
 import { Toggle } from "@/components/ui/toggle";
 import { useCompanyBranding } from "./company-branding.data";
@@ -36,11 +39,17 @@ export type FieldValue =
     | FormDocumentUploadValue;
 
 const INPUT_CLS =
-    "w-full h-10 rounded-md border border-slate-300 px-3 text-sm text-slate-800 " +
-    "placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200";
+    "w-full h-11 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] text-slate-800 transition-colors " +
+    "placeholder:text-slate-400 outline-none hover:border-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15";
 
 /** Toggle fields render label + control on a single horizontal row. */
 const INLINE_LABEL_TYPES: FormField['type'][] = ['toggle'];
+
+/** List field types whose "add more" popup is backed by an editable subform. */
+const LIST_FIELD_TYPES = new Set<FormField['type']>([
+    'license-list', 'address-list', 'disqualification-list', 'accident-list',
+    'violation-list', 'driving-experience-list', 'employment-list', 'education-list',
+]);
 
 /** Pop-up form opened by the "+ Add License" button on a `license-list` field. */
 function LicenseEntryModal({ initial, onSave, onClose }: {
@@ -1155,11 +1164,15 @@ function EmploymentEntryModal({ initial, onSave, onClose }: {
  *
  * If no DocumentType is linked, falls back to a simple drop-zone file picker.
  */
-function DocumentUploadControl({ docType, value, onChange, metaPosition = 'above' }: {
+function DocumentUploadControl({ docType, value, onChange, metaPosition = 'above', forceSingle = false, metaOnce = false }: {
     docType: DocumentType | undefined;
     value: FormDocumentUploadValue;
     onChange: (v: FormDocumentUploadValue) => void;
     metaPosition?: 'above' | 'below';
+    /** Force a single set (no repeat) — used inside a repeatable Compliance item. */
+    forceSingle?: boolean;
+    /** Capture dates once even when the upload sets repeat (compliance 'document' repeat scope). */
+    metaOnce?: boolean;
 }) {
     const up = (p: Partial<FormDocumentUploadValue>) => onChange({ ...value, ...p });
     const files = value.files ?? [];
@@ -1173,42 +1186,140 @@ function DocumentUploadControl({ docType, value, onChange, metaPosition = 'above
     const removeFile = (name: string) =>
         up({ files: files.filter((f) => f !== name) });
 
-    // Labeled slots only for exactly two (e.g. License Front / Rear): one file per slot, slot i ↔ files[i].
-    const slotCount = docType?.numberOfSlots === 2 ? 2 : 0;
+    // Fixed labeled slots (e.g. License Front / Back). When allowMultiple is on,
+    // the slot group REPEATS — multiple Front/Back sets. files index = group*slotCount + slot.
+    const slotCount = docType?.numberOfSlots && docType.numberOfSlots >= 2 ? docType.numberOfSlots : 0;
     const slotLabels = docType?.slotLabels ?? [];
-    const setSlot = (i: number, name: string) => { const next = [...files]; next[i] = name; up({ files: next }); };
-    const clearSlot = (i: number) => { const next = [...files]; next[i] = ''; up({ files: next }); };
+    const repeatable = slotCount > 0 && !!docType?.allowMultiple && !forceSingle;
+    const groupCount = slotCount > 0 ? (forceSingle ? 1 : Math.max(1, Math.ceil(files.length / slotCount))) : 0;
+    const setSlot = (g: number, s: number, name: string) => {
+        const i = g * slotCount + s; const next = [...files]; while (next.length <= i) next.push(''); next[i] = name; up({ files: next });
+    };
+    const clearSlot = (g: number, s: number) => {
+        const i = g * slotCount + s; const next = [...files]; if (i < next.length) next[i] = ''; up({ files: next });
+    };
+    const addGroup = () => up({ files: [...files, ...Array(slotCount).fill('')] });
+    const removeGroup = (g: number) => {
+        const next = [...files]; next.splice(g * slotCount, slotCount);
+        const groups = value.groups ? [...value.groups] : undefined;
+        if (groups) groups.splice(g, 1);
+        up({ files: next, ...(groups ? { groups } : {}) });
+    };
 
     const showMeta = !!docType && (
         docType.issueCountryRequired || docType.issueStateRequired
         || docType.issueDateRequired || docType.expiryRequired
     );
+    // With repeatable sets, dates are captured PER SET; otherwise once for the document.
+    // metaOnce overrides this so dates are captured once even as the upload sets repeat.
+    const perSetMeta = showMeta && repeatable && !metaOnce;
+    const groupMeta = (g: number) => value.groups?.[g] ?? {};
+    const setGroupMeta = (g: number, key: 'expiry' | 'issueDate' | 'issueState' | 'issueCountry', val: string) => {
+        const groups = [...(value.groups ?? [])];
+        while (groups.length <= g) groups.push({});
+        groups[g] = { ...groups[g], [key]: val };
+        up({ groups });
+    };
+
+    /** Reusable meta inputs (issue country/state/date/expiry) bound via get/set. */
+    const MetaInputs = ({ get, set, position }: {
+        get: (k: 'expiry' | 'issueDate' | 'issueState' | 'issueCountry') => string;
+        set: (k: 'expiry' | 'issueDate' | 'issueState' | 'issueCountry', v: string) => void;
+        position?: 'above' | 'below';
+    }) => (
+        <div className={cn("grid grid-cols-2 gap-3 border-slate-200", position === 'above' ? "order-first border-b pb-3" : position === 'below' ? "border-t pt-3" : "")}>
+            {docType?.issueCountryRequired && (
+                <div className="col-span-2">
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">Issuing Country <span className="text-rose-500">*</span></label>
+                    <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
+                        {(['Canada', 'United States'] as const).map((c) => (
+                            <button key={c} type="button" onClick={() => set('issueCountry', c)}
+                                className={cn("px-4 py-1.5 text-[12px] font-medium", get('issueCountry') === c ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50")}>{c}</button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {docType?.issueStateRequired && (
+                <div>
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">Issuing State / Province <span className="text-rose-500">*</span></label>
+                    <input value={get('issueState')} onChange={(e) => set('issueState', e.target.value)} placeholder="e.g. Ontario" className={INPUT_CLS} />
+                </div>
+            )}
+            {docType?.issueDateRequired && (
+                <div>
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">Issue Date <span className="text-rose-500">*</span></label>
+                    <input type="date" value={get('issueDate')} onChange={(e) => set('issueDate', e.target.value)} className={INPUT_CLS} />
+                </div>
+            )}
+            {docType?.expiryRequired && (
+                <div>
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">Expiry Date <span className="text-rose-500">*</span></label>
+                    <input type="date" value={get('expiry')} onChange={(e) => set('expiry', e.target.value)} className={INPUT_CLS} />
+                </div>
+            )}
+        </div>
+    );
+
+    // Historical / previous copies — only for a standalone document field (the
+    // compliance item renders its own history, so suppress it when forceSingle).
+    const showHistorical = !!docType?.allowHistorical && !forceSingle;
+    const historical = value.historical ?? [];
+    const addHistorical = () => up({ historical: [...historical, { files: [] }] });
+    const removeHistorical = (i: number) => up({ historical: historical.filter((_, idx) => idx !== i) });
+    const setHistoricalFiles = (i: number, files: string[]) =>
+        up({ historical: historical.map((h, idx) => idx === i ? { ...h, files } : h) });
+    const setHistoricalMeta = (i: number, key: 'expiry' | 'issueDate' | 'issueState' | 'issueCountry', val: string) =>
+        up({ historical: historical.map((h, idx) => idx === i ? { ...h, [key]: val } : h) });
 
     return (
         <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
             {slotCount > 0 ? (
-                /* Fixed labeled slots — N upload blocks side-by-side (e.g. Front / Rear). */
-                <div className={cn("grid gap-3", slotCount >= 2 ? "grid-cols-2" : "grid-cols-1")}>
-                    {Array.from({ length: slotCount }).map((_, i) => {
-                        const slot = slotLabels[i]?.trim() || `Slot ${i + 1}`;
-                        const fname = files[i];
-                        return (
-                            <div key={i} className="rounded-md border border-slate-200 bg-white p-3">
-                                <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">{slot}</div>
-                                <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-3 py-4 text-center hover:bg-blue-50/60">
-                                    <UploadCloud size={20} className="mb-1 text-slate-300" />
-                                    <span className="text-[11px] font-medium text-blue-600">{fname ? 'Replace file' : 'Click to upload'}</span>
-                                    <input type="file" className="hidden" onChange={(e) => { const n = e.target.files?.[0]?.name; if (n) setSlot(i, n); e.target.value = ''; }} />
-                                </label>
-                                {fname && (
-                                    <div className="mt-2 flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1.5 text-xs">
-                                        <span className="truncate text-slate-700">{fname}</span>
-                                        <button type="button" onClick={() => clearSlot(i)} className="shrink-0 text-rose-500 hover:text-rose-700" title="Remove"><X size={12} /></button>
-                                    </div>
-                                )}
+                /* Labeled slots (e.g. Front / Back), repeated into sets when allowMultiple is on. */
+                <div className="flex flex-col gap-3">
+                    {Array.from({ length: groupCount }).map((_, g) => (
+                        <div key={g} className="rounded-md border border-slate-200 bg-white p-3">
+                            {repeatable && (
+                                <div className="mb-2 flex items-center justify-between">
+                                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Set {g + 1}</span>
+                                    {groupCount > 1 && (
+                                        <button type="button" onClick={() => removeGroup(g)} className="text-rose-500 hover:text-rose-700" title="Remove set"><X size={13} /></button>
+                                    )}
+                                </div>
+                            )}
+                            <div className={cn("grid gap-3", slotCount >= 2 ? "grid-cols-2" : "grid-cols-1")}>
+                                {Array.from({ length: slotCount }).map((_, s) => {
+                                    const slot = slotLabels[s]?.trim() || `Slot ${s + 1}`;
+                                    const fname = files[g * slotCount + s];
+                                    return (
+                                        <div key={s} className="rounded-md border border-slate-200 bg-slate-50/40 p-3">
+                                            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-600">{slot}</div>
+                                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-blue-300 bg-blue-50/30 px-3 py-4 text-center hover:bg-blue-50/60">
+                                                <UploadCloud size={20} className="mb-1 text-slate-300" />
+                                                <span className="text-[11px] font-medium text-blue-600">{fname ? 'Replace file' : 'Click to upload'}</span>
+                                                <input type="file" className="hidden" onChange={(e) => { const n = e.target.files?.[0]?.name; if (n) setSlot(g, s, n); e.target.value = ''; }} />
+                                            </label>
+                                            {fname && (
+                                                <div className="mt-2 flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1.5 text-xs">
+                                                    <span className="truncate text-slate-700">{fname}</span>
+                                                    <button type="button" onClick={() => clearSlot(g, s)} className="shrink-0 text-rose-500 hover:text-rose-700" title="Remove"><X size={12} /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        );
-                    })}
+                            {perSetMeta && (
+                                <div className="mt-3 border-t border-slate-200 pt-3">
+                                    <MetaInputs get={(k) => groupMeta(g)[k] ?? ''} set={(k, v) => setGroupMeta(g, k, v)} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {repeatable && (
+                        <button type="button" onClick={addGroup} className="inline-flex items-center gap-1.5 self-start rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-[12px] font-semibold text-blue-600 hover:bg-blue-50">
+                            <Plus size={13} /> Add another {slotLabels.length >= 2 ? `${slotLabels[0] || 'Front'}/${slotLabels[1] || 'Back'}` : 'set'}
+                        </button>
+                    )}
                 </div>
             ) : (
             /* Drop zone */
@@ -1258,75 +1369,44 @@ function DocumentUploadControl({ docType, value, onChange, metaPosition = 'above
                 </div>
             )}
 
-            {/* Type-driven metadata inputs — above or below the upload per the field setting */}
-            {showMeta && (
-                <div className={cn(
-                    "grid grid-cols-2 gap-3 border-slate-200",
-                    metaPosition === 'above' ? "order-first border-b pb-3" : "border-t pt-3",
-                )}>
-                    {docType?.issueCountryRequired && (
-                        <div className="col-span-2">
-                            <label className="mb-1 block text-[11px] font-semibold text-slate-700">
-                                Issuing Country <span className="text-rose-500">*</span>
-                            </label>
-                            <div className="inline-flex overflow-hidden rounded-md border border-slate-300">
-                                {(['Canada', 'United States'] as const).map((c) => (
-                                    <button
-                                        key={c}
-                                        type="button"
-                                        onClick={() => up({ issueCountry: c })}
-                                        className={cn(
-                                            "px-4 py-1.5 text-[12px] font-medium",
-                                            value.issueCountry === c
-                                                ? "bg-blue-600 text-white"
-                                                : "bg-white text-slate-600 hover:bg-slate-50",
-                                        )}
-                                    >
-                                        {c}
-                                    </button>
-                                ))}
+            {/* Document-level dates — only when NOT capturing per-set (repeatable handles its own) */}
+            {showMeta && !perSetMeta && (
+                <MetaInputs
+                    get={(k) => (value[k] as string) ?? ''}
+                    set={(k, v) => up({ [k]: v } as Partial<FormDocumentUploadValue>)}
+                    position={metaPosition}
+                />
+            )}
+
+            {/* Previous / historical documents — each its own upload + dates. */}
+            {showHistorical && (
+                <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50/30 p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Previous / historical documents</p>
+                    {historical.length === 0 && (
+                        <p className="text-[12px] text-slate-500">Add past or expired copies of this document — each keeps its own files and dates.</p>
+                    )}
+                    {historical.map((h, i) => (
+                        <div key={i} className="flex flex-col gap-2 rounded-md border border-amber-200 bg-white p-3">
+                            <div className="flex items-center justify-between">
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px]">Previous</span> #{i + 1}
+                                </span>
+                                <button type="button" onClick={() => removeHistorical(i)} className="text-rose-500 hover:text-rose-700" title="Remove"><X size={13} /></button>
                             </div>
-                        </div>
-                    )}
-                    {docType?.issueStateRequired && (
-                        <div>
-                            <label className="mb-1 block text-[11px] font-semibold text-slate-700">
-                                Issuing State / Province <span className="text-rose-500">*</span>
+                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-amber-300 bg-amber-50/30 px-3 py-3 text-center hover:bg-amber-50/60">
+                                <UploadCloud size={18} className="mb-1 text-amber-300" />
+                                <span className="text-[11px] font-medium text-amber-700">{h.files.length ? `${h.files.length} file${h.files.length === 1 ? '' : 's'} chosen` : 'Click to upload'}</span>
+                                <input type="file" multiple={docType?.allowMultiple ?? false} className="hidden"
+                                    onChange={(e) => { const fs = Array.from(e.target.files ?? []).map(f => f.name); if (fs.length) setHistoricalFiles(i, docType?.allowMultiple ? [...h.files, ...fs] : fs.slice(0, 1)); e.target.value = ''; }} />
                             </label>
-                            <input
-                                value={value.issueState ?? ''}
-                                onChange={(e) => up({ issueState: e.target.value })}
-                                placeholder="e.g. Ontario"
-                                className={INPUT_CLS}
-                            />
+                            {showMeta && (
+                                <MetaInputs get={(k) => (h[k] as string) ?? ''} set={(k, v) => setHistoricalMeta(i, k, v)} position="below" />
+                            )}
                         </div>
-                    )}
-                    {docType?.issueDateRequired && (
-                        <div>
-                            <label className="mb-1 block text-[11px] font-semibold text-slate-700">
-                                Issue Date <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                type="date"
-                                value={value.issueDate ?? ''}
-                                onChange={(e) => up({ issueDate: e.target.value })}
-                                className={INPUT_CLS}
-                            />
-                        </div>
-                    )}
-                    {docType?.expiryRequired && (
-                        <div>
-                            <label className="mb-1 block text-[11px] font-semibold text-slate-700">
-                                Expiry Date <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                type="date"
-                                value={value.expiry ?? ''}
-                                onChange={(e) => up({ expiry: e.target.value })}
-                                className={INPUT_CLS}
-                            />
-                        </div>
-                    )}
+                    ))}
+                    <button type="button" onClick={addHistorical} className="inline-flex items-center justify-center gap-1.5 self-start rounded-md border border-dashed border-amber-300 bg-amber-50/60 px-3 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-50">
+                        <Plus size={13} /> Add historical document
+                    </button>
                 </div>
             )}
         </div>
@@ -1524,16 +1604,34 @@ function SubformButtonField({ field, value, onChange }: {
         : []) as { id: string; values: Record<string, unknown> }[];
 
     const [drafts, setDrafts] = useState<Record<string, unknown>>({});
+    const [editingId, setEditingId] = useState<string | null>(null);
 
-    const summarize = (e: { values: Record<string, unknown> }) => {
-        if (!subform) return 'Entry';
-        // Prefer the first text-ish field value as the summary
-        for (const f of subform.fields) {
-            if (f.type === 'heading' || f.type === 'paragraph' || f.type === 'bullet-list' || f.type === 'alert') continue;
-            const v = e.values[f.id];
-            if (typeof v === 'string' && v.trim().length > 0) return v;
-        }
-        return 'Entry';
+    // Real, data-bearing fields of the linked subform — used to summarize each
+    // saved record so the entered data is visible and usable afterwards.
+    const summaryFields = useMemo(
+        () => (subform?.fields ?? []).filter(f =>
+            !['heading', 'paragraph', 'bullet-list', 'alert', 'document', 'signature', 'subform-button'].includes(f.type)),
+        [subform],
+    );
+    const fmtVal = (v: unknown): string => {
+        if (v == null || v === '') return '';
+        if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+        if (Array.isArray(v)) return (v as unknown[]).filter(x => typeof x === 'string').join(', ');
+        return String(v);
+    };
+    /** The non-empty {label,val} pairs for an entry, in field order. */
+    const entryParts = (e: { values: Record<string, unknown> }) =>
+        summaryFields.map(f => ({ label: f.label, val: fmtVal(e.values[f.id]) })).filter(p => p.val);
+
+    const openNew = () => { setDrafts({}); setEditingId(null); setOpen(true); };
+    const openEdit = (e: { id: string; values: Record<string, unknown> }) => { setDrafts(e.values); setEditingId(e.id); setOpen(true); };
+    const saveEntry = () => {
+        const next = editingId
+            ? entries.map(x => x.id === editingId ? { ...x, values: drafts } : x)
+            : [...entries, { id: Math.random().toString(36).slice(2, 9), values: drafts }];
+        onChange(next as unknown as FieldValue);
+        setOpen(false);
+        setEditingId(null);
     };
 
     const label = field.label || subform?.buttonName || subform?.name || 'Open subform';
@@ -1549,38 +1647,57 @@ function SubformButtonField({ field, value, onChange }: {
     return (
         <div>
             {entries.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                    {entries.map((e) => (
-                        <span
-                            key={e.id}
-                            className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700"
-                        >
-                            {summarize(e)}
-                            <button
-                                type="button"
-                                onClick={() => onChange((entries.filter(x => x.id !== e.id)) as unknown as FieldValue)}
-                                className="rounded-full text-violet-400 hover:bg-violet-100 hover:text-violet-700"
-                                title="Remove"
-                            >
-                                <X size={12} />
-                            </button>
-                        </span>
-                    ))}
+                <div className="mb-2.5">
+                    <div className="mb-1.5 flex items-center gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label.replace(/^add\s+/i, '') || 'Records'}</span>
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-100 px-1.5 text-[11px] font-bold text-violet-700">{entries.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                        {entries.map((e, idx) => {
+                            const parts = entryParts(e);
+                            const title = parts[0]?.val || 'Record';
+                            const rest = parts.slice(1, 7); // show the structured data, not just one line
+                            return (
+                                <div key={e.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                                    <div className="flex items-center gap-2.5 border-b border-slate-100 bg-slate-50/60 px-3 py-2">
+                                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[11px] font-bold text-violet-700">{idx + 1}</span>
+                                        <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">{title}</span>
+                                        <button type="button" onClick={() => openEdit(e)} className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-slate-500 hover:bg-white hover:text-blue-700" title="Edit">
+                                            <Pencil size={12} /> Edit
+                                        </button>
+                                        <button type="button" onClick={() => onChange((entries.filter(x => x.id !== e.id)) as unknown as FieldValue)} className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Remove">
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                    {rest.length > 0 && (
+                                        <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 px-3 py-2.5 sm:grid-cols-2">
+                                            {rest.map((p, i) => (
+                                                <div key={i} className="min-w-0">
+                                                    <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{p.label}</dt>
+                                                    <dd className="truncate text-[12px] text-slate-700">{p.val}</dd>
+                                                </div>
+                                            ))}
+                                        </dl>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
             <button
                 type="button"
-                onClick={() => { setDrafts({}); setOpen(true); }}
-                className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-violet-300 bg-violet-50/40 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50"
+                onClick={openNew}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-violet-300 bg-violet-50/40 px-3 py-2.5 text-[13px] font-semibold text-violet-700 hover:border-violet-400 hover:bg-violet-50"
             >
-                <Plus size={12} /> {label}
+                <Plus size={14} /> {entries.length > 0 ? `Add another` : label}
             </button>
 
             {open && (
-                <Dialog open onOpenChange={(o) => { if (!o) setOpen(false); }}>
+                <Dialog open onOpenChange={(o) => { if (!o) { setOpen(false); setEditingId(null); } }}>
                     <DialogContent className="max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>{subform.displayTitle || subform.name}</DialogTitle>
+                            <DialogTitle>{editingId ? 'Edit' : 'Add'} · {subform.displayTitle || subform.name}</DialogTitle>
                         </DialogHeader>
                         <div className="max-h-[70vh] overflow-y-auto pr-2">
                             <FormBody
@@ -1590,23 +1707,125 @@ function SubformButtonField({ field, value, onChange }: {
                             />
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                            <Button variant="outline" onClick={() => { setOpen(false); setEditingId(null); }}>Cancel</Button>
                             <Button
-                                onClick={() => {
-                                    const next = [
-                                        ...entries,
-                                        { id: Math.random().toString(36).slice(2, 9), values: drafts },
-                                    ];
-                                    onChange(next as unknown as FieldValue);
-                                    setOpen(false);
-                                }}
+                                onClick={saveEntry}
                                 className="gap-1.5 bg-blue-600 text-white hover:bg-blue-700"
                             >
-                                <Check className="h-4 w-4" /> Save
+                                <Check className="h-4 w-4" /> {editingId ? 'Update' : 'Save'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Combined Compliance + Document field — one card capturing a Key Number's
+ * NUMBER plus its linked Document (upload + dates), or the Key Number's own meta
+ * when it has no linked document. Value: { number, ...FormDocumentUploadValue }.
+ */
+function ComplianceField({ field, value, onChange }: {
+    field: FormField; value: FieldValue; onChange: (v: FieldValue) => void;
+}) {
+    const { keyNumber, docType } = complianceFieldConfig(field.complianceKeyNumberId);
+    // Allow-multiple repeat scope: 'all' repeats the WHOLE item (number + dates + upload),
+    // 'document' keeps one number + dates and only lets the document upload repeat.
+    const scope = docType?.repeatScope ?? 'all';
+    const repeatItem = !!docType?.allowMultiple && scope !== 'document';
+    const repeatDocOnly = !!docType?.allowMultiple && scope === 'document';
+    // Historical / previous copies — each captured as its own entry flagged `historical`.
+    const allowHistorical = !!docType?.allowHistorical;
+
+    // Value = { entries: Entry[] }. Back-compat: an old single-object value becomes one entry.
+    const raw = (value && typeof value === 'object' && !Array.isArray(value)) ? (value as unknown as Record<string, unknown>) : {};
+    const entries: Record<string, unknown>[] = Array.isArray(raw.entries)
+        ? (raw.entries as Record<string, unknown>[])
+        : (('files' in raw || 'number' in raw) ? [raw] : [{}]);
+    const list = entries.length ? entries : [{}];
+
+    const commit = (next: Record<string, unknown>[]) => onChange({ entries: next } as unknown as FieldValue);
+    const updateEntry = (i: number, patch: Record<string, unknown>) => commit(list.map((e, idx) => idx === i ? { ...e, ...patch } : e));
+    const addEntry = () => commit([...list, {}]);
+    const addHistorical = () => commit([...list, { historical: true }]);
+    const removeEntry = (i: number) => commit(list.filter((_, idx) => idx !== i));
+
+    // Split into current vs historical, keeping each entry's original index for edits.
+    const indexed = list.map((e, i) => ({ e, i }));
+    const currentItems = indexed.filter(x => !x.e.historical);
+    const historicalItems = indexed.filter(x => !!x.e.historical);
+
+    // KN's own meta fields when there's no linked document.
+    const knMeta: { key: 'issueDate' | 'expiry' | 'issueState' | 'issueCountry'; label: string; type: 'date' | 'text' }[] = [];
+    if (keyNumber?.issueDateRequired)    knMeta.push({ key: 'issueDate',    label: 'Issue date',             type: 'date' });
+    if (keyNumber?.hasExpiry)            knMeta.push({ key: 'expiry',       label: 'Expiry date',            type: 'date' });
+    if (keyNumber?.issueStateRequired)   knMeta.push({ key: 'issueState',   label: 'Issue state / province', type: 'text' });
+    if (keyNumber?.issueCountryRequired) knMeta.push({ key: 'issueCountry', label: 'Issue country',          type: 'text' });
+
+    const renderEntry = (entry: Record<string, unknown>, i: number, opts?: { historical?: boolean; pos?: number }) => {
+        const number = typeof entry.number === 'string' ? entry.number : '';
+        const docVal: FormDocumentUploadValue = ('files' in entry) ? (entry as unknown as FormDocumentUploadValue) : emptyDocumentUploadValue();
+        const historical = !!opts?.historical;
+        // Historical entries always capture their own single set + own dates.
+        const single = historical || !repeatDocOnly;
+        const showHeader = historical || (repeatItem && opts?.pos !== undefined);
+        return (
+            <div key={i} className={cn('flex flex-col gap-3 rounded-lg border p-3', historical ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white')}>
+                {showHeader && (
+                    <div className="flex items-center justify-between">
+                        <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide', historical ? 'text-amber-700' : 'text-slate-500')}>
+                            {historical && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">Previous</span>}
+                            {keyNumber?.name || field.label} #{(opts?.pos ?? i) + 1}
+                        </span>
+                        {(historical || list.length > 1) && <button type="button" onClick={() => removeEntry(i)} className="text-rose-500 hover:text-rose-700" title="Remove"><X size={13} /></button>}
+                    </div>
+                )}
+                {keyNumber?.numberRequired !== false && (
+                    <div>
+                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{keyNumber?.name || field.label} number</p>
+                        <input value={number} onChange={(e) => updateEntry(i, { number: e.target.value })} className={INPUT_CLS} placeholder="Enter number…" />
+                    </div>
+                )}
+                {docType ? (
+                    <DocumentUploadControl docType={docType} forceSingle={single} metaOnce={!historical && repeatDocOnly} value={docVal} onChange={(u) => updateEntry(i, u as unknown as Record<string, unknown>)} metaPosition="below" />
+                ) : knMeta.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {knMeta.map(m => (
+                            <div key={m.key}>
+                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{m.label}</p>
+                                <input type={m.type} value={typeof entry[m.key] === 'string' ? (entry[m.key] as string) : ''} onChange={(e) => updateEntry(i, { [m.key]: e.target.value })} className={INPUT_CLS}
+                                    placeholder={m.type === 'date' ? 'mm / dd / yyyy' : m.key === 'issueCountry' ? 'Country' : 'State / Province'} />
+                            </div>
+                        ))}
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
+            {currentItems.map((x, pos) => renderEntry(x.e, x.i, { pos }))}
+            {repeatItem && (
+                <button type="button" onClick={addEntry} className="inline-flex items-center justify-center gap-1.5 self-start rounded-md border border-dashed border-blue-300 bg-blue-50/40 px-3 py-1.5 text-[12px] font-semibold text-blue-600 hover:bg-blue-50">
+                    <Plus size={13} /> Add another {keyNumber?.name || field.label}
+                </button>
+            )}
+
+            {/* Historical / previous copies of this document. */}
+            {allowHistorical && (
+                <div className="mt-1 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/30 p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Previous / historical documents</p>
+                    {historicalItems.length === 0 && (
+                        <p className="text-[12px] text-slate-500">Add past or expired copies of this document — each keeps its own number and dates.</p>
+                    )}
+                    {historicalItems.map((x, pos) => renderEntry(x.e, x.i, { historical: true, pos }))}
+                    <button type="button" onClick={addHistorical} className="inline-flex items-center justify-center gap-1.5 self-start rounded-md border border-dashed border-amber-300 bg-amber-50/60 px-3 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-50">
+                        <Plus size={13} /> Add historical document
+                    </button>
+                </div>
             )}
         </div>
     );
@@ -1617,6 +1836,14 @@ function FieldControl({ field, value, onChange }: {
 }) {
     const str = typeof value === 'string' ? value : '';
     const list = Array.isArray(value) ? value : [];
+
+    // List fields are backed by an editable subform: their "add more" popup
+    // renders the linked subform's fields (managed in the builder) instead of a
+    // hardcoded modal. Falls through to the legacy *ListControl when unlinked.
+    if (LIST_FIELD_TYPES.has(field.type) && field.subformId
+        && loadApplicationForms().some(f => f.id === field.subformId && f.isSubform)) {
+        return <SubformButtonField field={field} value={value} onChange={onChange} />;
+    }
 
     switch (field.type) {
         case 'textarea':
@@ -1641,9 +1868,11 @@ function FieldControl({ field, value, onChange }: {
             );
         case 'toggle':
             return <Toggle checked={value === true} onCheckedChange={(v) => onChange(v)} />;
-        case 'radio':
+        case 'radio': {
+            // Short options pack into 2 columns; long sentence options stay one per row.
+            const compact = field.options.length > 1 && field.options.every((o) => o.length <= 28);
             return (
-                <div className="space-y-2">
+                <div className={cn("grid gap-2", compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
                     {field.options.map((o) => {
                         const on = str === o;
                         return (
@@ -1652,26 +1881,28 @@ function FieldControl({ field, value, onChange }: {
                                 type="button"
                                 onClick={() => onChange(o)}
                                 className={cn(
-                                    "flex w-full items-center gap-2.5 rounded-md border px-3 py-2.5 text-left",
-                                    on ? "border-blue-500 bg-blue-50/50" : "border-slate-200 hover:bg-slate-50",
+                                    "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                                    on ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500/30" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
                                 )}
                             >
                                 <span className={cn(
-                                    "flex h-4 w-4 items-center justify-center rounded-full border",
+                                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
                                     on ? "border-blue-600" : "border-slate-300",
                                 )}>
                                     {on && <span className="h-2 w-2 rounded-full bg-blue-600" />}
                                 </span>
-                                <span className="text-sm font-medium text-slate-700">{o}</span>
+                                <span className="text-[13px] font-medium text-slate-700">{o}</span>
                             </button>
                         );
                     })}
                 </div>
             );
+        }
         case 'checklist': {
             const strList = list.filter((x): x is string => typeof x === 'string');
+            const compact = field.options.length > 1 && field.options.every((o) => o.length <= 28);
             return (
-                <div className="space-y-2">
+                <div className={cn("grid gap-2", compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
                     {field.options.map((o) => {
                         const on = strList.includes(o);
                         return (
@@ -1680,25 +1911,27 @@ function FieldControl({ field, value, onChange }: {
                                 type="button"
                                 onClick={() => onChange(on ? strList.filter((x) => x !== o) : [...strList, o])}
                                 className={cn(
-                                    "flex w-full items-center gap-2.5 rounded-md border px-3 py-2.5 text-left",
-                                    on ? "border-blue-500 bg-blue-50/50" : "border-slate-200 hover:bg-slate-50",
+                                    "flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                                    on ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500/30" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
                                 )}
                             >
                                 <span className={cn(
-                                    "flex h-4 w-4 items-center justify-center rounded border",
+                                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
                                     on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300",
                                 )}>
-                                    {on && <span className="text-[10px] font-bold">✓</span>}
+                                    {on && <span className="text-[10px] font-bold leading-none">✓</span>}
                                 </span>
-                                <span className="text-sm font-medium text-slate-700">{o}</span>
+                                <span className="text-[13px] font-medium leading-snug text-slate-700">{o}</span>
                             </button>
                         );
                     })}
                 </div>
             );
         }
+        case 'compliance':
+            return <ComplianceField field={field} value={value} onChange={onChange} />;
         case 'document': {
-            const docType = getDocumentType(field.documentTypeId);
+            const docType = resolveFormDocType(field.documentTypeId);
             // Coerce value to FormDocumentUploadValue shape (handles legacy string values gracefully).
             const upload: FormDocumentUploadValue =
                 value && typeof value === 'object' && 'files' in (value as object)
@@ -1841,59 +2074,61 @@ function FieldBlock({ field, value, onChange }: {
     }
     const inline = INLINE_LABEL_TYPES.includes(field.type);
     if (inline) {
+        // Yes/No + inline controls render as a bordered card row — label & helper
+        // on the left, the control on the right (professional, scannable).
         return (
-            <div>
-                <div className="flex items-center justify-between gap-3">
-                    <label className="text-sm font-semibold text-slate-700">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-slate-300">
+                <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-slate-700">
                         {field.label}
                         {field.required && <span className="text-rose-500"> *</span>}
-                    </label>
+                    </p>
+                    {field.instruction && (
+                        <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{field.instruction}</p>
+                    )}
+                </div>
+                <div className="shrink-0">
                     <FieldControl field={field} value={value} onChange={onChange} />
                 </div>
-                {field.instruction && (
-                    <p className="mt-1 text-xs text-slate-400">{field.instruction}</p>
-                )}
             </div>
         );
     }
     return (
         <div>
-            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">
                 {field.label}
                 {field.required && <span className="text-rose-500"> *</span>}
             </label>
             <FieldControl field={field} value={value} onChange={onChange} />
             {field.instruction && (
-                <p className="mt-1 text-xs text-slate-400">{field.instruction}</p>
+                <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{field.instruction}</p>
             )}
         </div>
     );
 }
 
-/** Renders the field list. Conditional fields nest visually under their controller toggle. */
-export function FormBody({ fields, values, setValue }: {
+/** Renders the field list. Conditional fields nest visually under their controller toggle.
+ *  `sectioned` groups fields into bordered section cards split on `heading` fields
+ *  (proper visual division — used by the template preview). */
+export function FormBody({ fields, values, setValue, sectioned = false }: {
     fields: FormField[];
     values: Record<string, FieldValue>;
     setValue: (id: string, v: FieldValue) => void;
+    sectioned?: boolean;
 }) {
     const defaultFor = (f: FormField): FieldValue => {
         if (f.type === 'toggle') return false;
         if (f.type === 'checklist') return [];
         if (f.type === 'license-list' || f.type === 'address-list' || f.type === 'disqualification-list' || f.type === 'accident-list' || f.type === 'violation-list' || f.type === 'driving-experience-list' || f.type === 'employment-list' || f.type === 'education-list') return [];
         if (f.type === 'document') return emptyDocumentUploadValue();
+        if (f.type === 'compliance') return { number: '', files: [] } as unknown as FieldValue;
         return '';
     };
 
     /** Hide fields whose `showWhen` controller isn't satisfied — so consumers
      *  that pass raw fields (e.g. the test runner) still get correct
      *  conditional reveal. */
-    const isVisible = (f: FormField): boolean => {
-        if (!f.showWhen) return true;
-        const current = values[f.showWhen.fieldId];
-        const expected = f.showWhen.equals;
-        if (typeof expected === 'boolean') return (current === true) === expected;
-        return current === expected;
-    };
+    const isVisible = (f: FormField): boolean => showWhenSatisfied(f.showWhen, values);
     const visible = fields.filter(isVisible);
 
     const dependentsByController = new Map<string, FormField[]>();
@@ -1906,39 +2141,82 @@ export function FormBody({ fields, values, setValue }: {
 
     const topLevel = visible.filter((f) => !f.showWhen);
     const rows = chunkFieldRows(topLevel, (f) => (dependentsByController.get(f.id)?.length ?? 0) > 0);
-    return (
-        <div className="space-y-5">
-            {rows.map((row) => {
-                // Side-by-side pair: two half-width fields, neither has dependents.
-                if (row.length === 2) {
-                    return (
-                        <div key={row[0].id} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                            {row.map((f) => (
-                                <FieldBlock key={f.id} field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
+
+    const renderRow = (row: FormField[]) => {
+        // Side-by-side pair: two half-width fields, neither has dependents.
+        if (row.length === 2) {
+            return (
+                <div key={row[0].id} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    {row.map((f) => (
+                        <FieldBlock key={f.id} field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
+                    ))}
+                </div>
+            );
+        }
+        const f = row[0];
+        const deps = dependentsByController.get(f.id) ?? [];
+        return (
+            <div key={f.id}>
+                <FieldBlock field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
+                {deps.length > 0 && (
+                    <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+                        <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-blue-600">
+                            <CornerDownRight size={13} /> Please provide the details
+                        </p>
+                        <div className="space-y-4">
+                            {deps.map((dep) => (
+                                <FieldBlock
+                                    key={dep.id}
+                                    field={dep}
+                                    value={values[dep.id] ?? defaultFor(dep)}
+                                    onChange={(v) => setValue(dep.id, v)}
+                                />
                             ))}
                         </div>
-                    );
-                }
-                const f = row[0];
-                const deps = dependentsByController.get(f.id) ?? [];
-                return (
-                    <div key={f.id}>
-                        <FieldBlock field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
-                        {deps.length > 0 && (
-                            <div className="mt-3 space-y-4 border-l-2 border-blue-100 pl-4">
-                                {deps.map((dep) => (
-                                    <FieldBlock
-                                        key={dep.id}
-                                        field={dep}
-                                        value={values[dep.id] ?? defaultFor(dep)}
-                                        onChange={(v) => setValue(dep.id, v)}
-                                    />
-                                ))}
-                            </div>
-                        )}
                     </div>
-                );
-            })}
+                )}
+            </div>
+        );
+    };
+
+    if (!sectioned) {
+        return <div className="space-y-5">{rows.map(renderRow)}</div>;
+    }
+
+    // Group rows into bordered section cards, split on heading rows.
+    type Sec = { heading?: FormField; rows: FormField[][] };
+    const sections: Sec[] = [];
+    let cur: Sec = { rows: [] };
+    for (const row of rows) {
+        if (row.length === 1 && row[0].type === 'heading') {
+            if (cur.heading || cur.rows.length) sections.push(cur);
+            cur = { heading: row[0], rows: [] };
+        } else {
+            cur.rows.push(row);
+        }
+    }
+    if (cur.heading || cur.rows.length) sections.push(cur);
+
+    return (
+        <div className="space-y-5">
+            {sections.map((sec, i) => (
+                <section key={sec.heading?.id ?? `sec-${i}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {sec.heading && (
+                        <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
+                            <span className="mt-0.5 h-5 w-1.5 shrink-0 rounded-full bg-blue-500" />
+                            <div className="min-w-0">
+                                <h3 className="text-[15px] font-bold tracking-tight text-slate-900">{sec.heading.label || 'Section'}</h3>
+                                {sec.heading.instruction && (
+                                    <p className="mt-0.5 whitespace-pre-line text-[12px] leading-relaxed text-slate-500">{sec.heading.instruction}</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    <div className="space-y-5 p-5 lg:p-6">
+                        {sec.rows.length ? sec.rows.map(renderRow) : <p className="py-4 text-center text-sm text-slate-400">No fields in this section.</p>}
+                    </div>
+                </section>
+            ))}
         </div>
     );
 }
@@ -1949,19 +2227,15 @@ export function CustomFormWizard({ appForm, onClose }: {
 }) {
     const [values, setValues] = useState<Record<string, FieldValue>>({});
     const [branding] = useCompanyBranding();
+    const [downloading, setDownloading] = useState(false);
+    const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
     const setValue = (id: string, v: FieldValue) => setValues((s) => ({ ...s, [id]: v }));
 
     const accent = branding.accentColor;
     const sectionTitle = appForm.displayTitle || appForm.name;
 
     /** Hide fields whose `showWhen` controller isn't satisfied yet. */
-    const fields = appForm.fields.filter((f) => {
-        if (!f.showWhen) return true;
-        const current = values[f.showWhen.fieldId];
-        const expected = f.showWhen.equals;
-        if (typeof expected === 'boolean') return (current === true) === expected;
-        return current === expected;
-    });
+    const fields = appForm.fields.filter((f) => showWhenSatisfied(f.showWhen, values));
 
     return (
         <div className="fixed inset-0 z-[60] flex flex-col bg-slate-50">
@@ -1999,6 +2273,29 @@ export function CustomFormWizard({ appForm, onClose }: {
                         >
                             Cancel
                         </button>
+                        <div className="relative">
+                            <button
+                                type="button"
+                                disabled={downloading}
+                                onClick={() => setPdfMenuOpen(o => !o)}
+                                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                            >
+                                <Download size={15} /> {downloading ? 'Preparing…' : 'Download PDF'}
+                            </button>
+                            {pdfMenuOpen && (
+                                <div className="absolute right-0 z-[70] mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                                    <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">PDF template</p>
+                                    {PDF_TEMPLATES.map(t => (
+                                        <button key={t.id} type="button"
+                                            onClick={async () => { setPdfMenuOpen(false); setDownloading(true); try { await generateApplicationFormPdf({ form: appForm, branding, values, variant: t.id }); } finally { setDownloading(false); } }}
+                                            className="block w-full px-3 py-2 text-left hover:bg-slate-50">
+                                            <span className="block text-[13px] font-semibold text-slate-800">{t.label}</span>
+                                            <span className="block text-[11px] text-slate-500">{t.description}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <button
                             type="button"
                             onClick={() => { window.alert("Form submitted."); onClose(); }}
@@ -2011,43 +2308,28 @@ export function CustomFormWizard({ appForm, onClose }: {
                 </div>
             </div>
 
-            {/* ── Body: section card ─────────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto px-8 py-6">
+            {/* ── Body: divided section cards (professional, app-like) ─── */}
+            <div className="flex-1 overflow-y-auto px-6 py-8">
                 <div className="mx-auto max-w-3xl">
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                        {/* Section header */}
-                        <div className="flex items-start gap-3 border-b border-slate-100 px-6 py-4">
-                            <div
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
-                                style={{ backgroundColor: accent }}
-                            >
-                                <FileText size={16} />
-                            </div>
-                            <div className="min-w-0">
-                                <h2 className="text-base font-bold text-slate-900">{sectionTitle}</h2>
-                                {appForm.introText && (
-                                    <p className="mt-0.5 whitespace-pre-line text-xs text-slate-500">
-                                        {appForm.introText}
-                                    </p>
-                                )}
-                            </div>
+                    {/* Optional intro copy (the title already lives in the top bar). */}
+                    {appForm.introText && (
+                        <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50/50 px-5 py-3.5">
+                            <p className="whitespace-pre-line text-[13px] leading-relaxed text-slate-600">{appForm.introText}</p>
                         </div>
+                    )}
 
-                        {/* Fields — single-column flow with conditional fields nested under their controller toggle. */}
-                        <div className="p-6">
-                            {fields.length === 0 ? (
-                                <p className="py-8 text-center text-sm text-slate-400">
-                                    This form has no fields yet.
-                                </p>
-                            ) : (
-                                <FormBody
-                                    fields={fields}
-                                    values={values}
-                                    setValue={setValue}
-                                />
-                            )}
+                    {fields.length === 0 ? (
+                        <div className="rounded-xl border border-slate-200 bg-white py-8 text-center text-sm text-slate-400 shadow-sm">
+                            This form has no fields yet.
                         </div>
-                    </div>
+                    ) : (
+                        <FormBody
+                            sectioned
+                            fields={fields}
+                            values={values}
+                            setValue={setValue}
+                        />
+                    )}
                 </div>
             </div>
         </div>

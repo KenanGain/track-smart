@@ -4,7 +4,7 @@ import {
     Check, Calendar, Building2, X as XIcon, AlertCircle,
     ListChecks, UserPlus, FileText, Mail, Send, Copy, Link2,
     LayoutTemplate, MessageSquarePlus, MoreVertical, Ban, Trash2, MessageSquare, Phone,
-    Hash, PenTool, Paperclip,
+    Hash, PenTool, Paperclip, ShieldCheck, ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +21,7 @@ import { CONSENT_BY_ID, type ConsentCategory } from "./consent-forms.data";
 import {
     loadApplicants, getApplication, ensureApplication, upsertApplication,
     inviteDriver, addAsDriver, addRequest, cancelApplication, deleteApplication,
+    createApplicant, sendReminder, elapsedLabel,
     APP_STATUS_META, type HiringApplication, type AppStepStatus, type StepState, type AppStatus,
     type ApplicationRequest,
 } from "./hiring-application.data";
@@ -77,7 +78,10 @@ function templateAskItems(steps: TemplateStep[], formById: Map<string, Applicati
 // is stable across renders and filterable. Swap to a real applicant.accountId
 // once the backend is wired.
 function carrierForApplicant(index: number): AccountRecord {
-    return ACCOUNTS_DB[index % ACCOUNTS_DB.length];
+    // Spread applicants across the first ~8 carriers so each carrier has several —
+    // makes the carrier filter meaningful (change carrier → see that carrier's applicants).
+    const span = Math.min(8, ACCOUNTS_DB.length);
+    return ACCOUNTS_DB[index % span];
 }
 
 // Resolve a template step's display label by looking up the linked form or
@@ -228,19 +232,26 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
     // left unassigned to demo the "needs a template" CTA.
     const [overrides, setOverrides] = useState<Record<string, string>>(() => ({
         'app-001': 'tpl-quick-hire',         // Billy Bob — fast CDL onboarding
-        'app-002': 'tpl-default-application',// Tiger      — full application
-        'app-003': 'tpl-local-regional',     // Dale       — short-haul
+        'app-002': 'tpl-complete-hiring',    // Tiger      — full pipeline
+        'app-003': 'tpl-all-forms',          // Dale       — application forms only
         'app-004': 'tpl-cdl-a-otr',          // Patrick    — CDL-A OTR
-        // 'app-005' left unassigned (Clint Eastwood)
+        // 'app-005' left unassigned (Clint Eastwood) — demos the "needs a template" CTA
         'app-006': 'tpl-cross-border',       // Maria      — cross-border
         'app-007': 'tpl-cdl-a-otr',          // LeBron     — CDL-A OTR
-        'app-008': 'tpl-hazmat-tanker',      // Serena     — hazmat
+        'app-008': 'tpl-complete-hiring',    // Serena     — full pipeline
+        'app-009': 'tpl-quick-hire',         // (varied coverage for testing)
         // 'app-010' left unassigned
     }));
 
     // Re-read applications after a mutation (invite / add-as-driver) to refresh status.
     const [appRefresh, setAppRefresh] = useState(0);
     const bumpApps = () => setAppRefresh(n => n + 1);
+
+    // Pagination for the assignments list.
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+    // Invite-a-new-external-applicant modal.
+    const [inviteNewOpen, setInviteNewOpen] = useState(false);
 
     const applicants = useMemo(() => loadApplicants(), [appRefresh]);
 
@@ -264,7 +275,10 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
             const existing = getApplication(applicant.id);
             // Empty stub left by ensureApplication (opened but never invited) — reseed it.
             const isStub = !!existing && existing.status === 'draft' && !existing.invite && existing.events.length === 0;
-            if (existing && !isStub) return;
+            // Stored app points at a retired/changed template (its steps are keyed by the
+            // old template's step ids) — reseed so the detail page can resolve the template.
+            const staleTemplate = !!existing && existing.templateId !== templateId;
+            if (existing && !isStub && !staleTemplate) return;
             upsertApplication(buildSeededApplication(applicant, tpl, carrierForApplicant(i), formById));
             changed = true;
         });
@@ -318,6 +332,15 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
         () => filtered.filter(r => templateById.has(r.templateId)),
         [filtered, templateById],
     );
+
+    const pageCount = Math.max(1, Math.ceil(assignedRows.length / pageSize));
+    const safePage = Math.min(page, pageCount);
+    const pagedRows = useMemo(
+        () => assignedRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+        [assignedRows, safePage, pageSize],
+    );
+    // Snap back to a valid page when filters / page-size shrink the list.
+    useEffect(() => { if (page > pageCount) setPage(1); }, [page, pageCount]);
 
     const counts = useMemo(() => {
         const out: Record<Stage, number> = { applications_received: 0, in_progress: 0, hired: 0, not_hired: 0 };
@@ -517,7 +540,7 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                             )}
                         </div>
                         <div className="divide-y divide-slate-100">
-                            {assignedRows.map(r => (
+                            {pagedRows.map(r => (
                                 <AssignmentRow
                                     key={r.applicant.id}
                                     row={r}
@@ -525,13 +548,22 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                                     formById={formById}
                                     application={applications.get(r.applicant.id)}
                                     onOpen={() => {
-                                        ensureApplication(r.applicant.id, r.templateId);
+                                        // Guarantee a valid, template-matching application before opening
+                                        // the detail page (fixes "Application not found" for stale data).
+                                        const tpl = templateById.get(r.templateId);
+                                        const existing = getApplication(r.applicant.id);
+                                        if (tpl && (!existing || existing.templateId !== r.templateId)) {
+                                            upsertApplication(buildSeededApplication(r.applicant, tpl, r.carrier, formById));
+                                        } else {
+                                            ensureApplication(r.applicant.id, r.templateId);
+                                        }
                                         bumpApps();
                                         onNavigate?.(`/ats/application/${r.applicant.id}`);
                                     }}
                                     onInvite={(email) => { inviteDriver(r.applicant.id, email); bumpApps(); }}
                                     onAddDriver={() => { addAsDriver(r.applicant.id, r.carrier.id); bumpApps(); }}
                                     onRequest={(req) => { addRequest(r.applicant.id, req); bumpApps(); }}
+                                    onRemind={() => { sendReminder(r.applicant.id); bumpApps(); }}
                                     onCancel={() => { cancelApplication(r.applicant.id); bumpApps(); }}
                                     onDelete={() => { deleteApplication(r.applicant.id); bumpApps(); }}
                                 />
@@ -551,12 +583,62 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                                 </div>
                             )}
                         </div>
+                        {assignedRows.length > 0 && (
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                                <div className="flex items-center gap-2 text-[12px] text-slate-500">
+                                    <span>Showing</span>
+                                    <span className="font-semibold text-slate-700 tabular-nums">
+                                        {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, assignedRows.length)}
+                                    </span>
+                                    <span>of</span>
+                                    <span className="font-semibold text-slate-700 tabular-nums">{assignedRows.length}</span>
+                                    <span className="ml-2">·</span>
+                                    <label className="ml-1 inline-flex items-center gap-1.5">
+                                        <span>Per page</span>
+                                        <select
+                                            value={pageSize}
+                                            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                                            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-[12px] font-semibold text-slate-700 focus:border-blue-500 focus:outline-none"
+                                        >
+                                            {[5, 10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+                                        </select>
+                                    </label>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}
+                                        className={cn('inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[12px] font-semibold',
+                                            safePage <= 1 ? 'cursor-not-allowed border-slate-200 text-slate-300' : 'border-slate-300 text-slate-700 hover:bg-white')}>
+                                        Prev
+                                    </button>
+                                    <span className="px-2 text-[12px] font-semibold text-slate-600 tabular-nums">Page {safePage} / {pageCount}</span>
+                                    <button type="button" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}
+                                        className={cn('inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-[12px] font-semibold',
+                                            safePage >= pageCount ? 'cursor-not-allowed border-slate-200 text-slate-300' : 'border-slate-300 text-slate-700 hover:bg-white')}>
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {activeTab === 'assign' && (
-                    <AssignTab
-                        rows={filtered}
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/40 px-5 py-3.5">
+                            <div className="flex items-start gap-2.5">
+                                <UserPlus size={16} className="mt-0.5 shrink-0 text-blue-600" />
+                                <div>
+                                    <p className="text-[13px] font-bold text-slate-800">Invite a new applicant</p>
+                                    <p className="text-[11px] text-slate-500">Inviting someone from outside the system — enter their details, pick a template, and send the application link.</p>
+                                </div>
+                            </div>
+                            <button type="button" onClick={() => setInviteNewOpen(true)}
+                                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-[13px] font-bold text-white shadow-sm hover:bg-blue-700">
+                                <UserPlus size={14} /> Invite new applicant
+                            </button>
+                        </div>
+                        <AssignTab
+                            rows={filtered}
                         templates={templates}
                         templateById={templateById}
                         bulkTemplateId={bulkTemplateId}
@@ -577,8 +659,97 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                             setBulkBanner(`Assigned "${tplName}" to ${n} driver${n === 1 ? "" : "s"}.`);
                             setBulkSelected(new Set());
                         }}
-                    />
+                        />
+                    </div>
                 )}
+            </div>
+
+            {inviteNewOpen && (
+                <InviteApplicantModal
+                    templates={templates}
+                    onDone={() => { setInviteNewOpen(false); bumpApps(); setActiveTab('view'); }}
+                    onClose={() => setInviteNewOpen(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+// ── Invite a new external applicant ──────────────────────────────────────
+
+const INVITE_INPUT = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200";
+function InviteField({ label, children }: { label: string; children: React.ReactNode }) {
+    return <div><label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</label>{children}</div>;
+}
+
+function InviteApplicantModal({ templates, onDone, onClose }: {
+    templates: DriverHiringTemplate[];
+    onDone: () => void;
+    onClose: () => void;
+}) {
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [licenseType, setLicenseType] = useState<LicenseType>('CDL-A');
+    const [carrierId, setCarrierId] = useState<string>(ACCOUNTS_DB[0]?.id ?? '');
+    const [templateId, setTemplateId] = useState<string>(templates.find(t => t.isDefault)?.id ?? templates[0]?.id ?? '');
+    const canSend = !!(firstName.trim() && lastName.trim() && email.trim() && templateId);
+
+    const send = () => {
+        if (!canSend) return;
+        const a = createApplicant({
+            firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(),
+            phone: phone.trim() || undefined, licenseType, templateId, carrierId: carrierId || undefined,
+        });
+        inviteDriver(a.id, email.trim());
+        onDone();
+    };
+
+    return (
+        <div role="dialog" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-6" onClick={onClose}>
+            <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+                    <div>
+                        <h3 className="text-base font-bold text-slate-900">Invite new applicant</h3>
+                        <p className="mt-0.5 text-[12px] text-slate-500">Creates the applicant and emails them the application link.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100"><XIcon size={16} /></button>
+                </div>
+                <div className="space-y-3 px-6 py-5">
+                    <div className="grid grid-cols-2 gap-3">
+                        <InviteField label="First name *"><input autoFocus value={firstName} onChange={e => setFirstName(e.target.value)} className={INVITE_INPUT} /></InviteField>
+                        <InviteField label="Last name *"><input value={lastName} onChange={e => setLastName(e.target.value)} className={INVITE_INPUT} /></InviteField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <InviteField label="Email *"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={INVITE_INPUT} /></InviteField>
+                        <InviteField label="Phone"><input value={phone} onChange={e => setPhone(e.target.value)} className={INVITE_INPUT} /></InviteField>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <InviteField label="License type">
+                            <select value={licenseType} onChange={e => setLicenseType(e.target.value as LicenseType)} className={INVITE_INPUT}>
+                                {(['CDL-A', 'CDL-B', 'CDL', 'Non-CDL'] as LicenseType[]).map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                        </InviteField>
+                        <InviteField label="Carrier">
+                            <select value={carrierId} onChange={e => setCarrierId(e.target.value)} className={INVITE_INPUT}>
+                                {ACCOUNTS_DB.map(c => <option key={c.id} value={c.id}>{c.dbaName || c.legalName}</option>)}
+                            </select>
+                        </InviteField>
+                    </div>
+                    <InviteField label="Hiring template *">
+                        <select value={templateId} onChange={e => setTemplateId(e.target.value)} className={INVITE_INPUT}>
+                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.isDefault ? ' (Default)' : ''} · {t.steps.length} steps</option>)}
+                        </select>
+                    </InviteField>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
+                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button type="button" disabled={!canSend} onClick={send}
+                        className={cn("inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold text-white shadow-sm", canSend ? "bg-blue-600 hover:bg-blue-700" : "cursor-not-allowed bg-slate-300")}>
+                        <Send size={14} /> Send invite
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -941,8 +1112,59 @@ function Th({ children }: { children: React.ReactNode }) {
 
 // ── Row ──────────────────────────────────────────────────────────────────
 
+/** Back-office compliance review forms — counted separately from applicant forms. */
+const REVIEW_FORM_IDS = new Set([
+    'form-psp-review', 'form-mvr-review', 'form-criminal-background',
+    'form-substance-testing', 'form-clearinghouse-query', 'form-employment-verification',
+]);
+
+/** A clean segmented progress strip — one thin segment per step, coloured by status.
+ *  Scales to any number of steps (unlike numbered bubbles). */
+function StepStrip({ statuses, isStuck, onStepClick }: {
+    statuses: TStatus[]; isStuck: boolean; onStepClick?: (i: number) => void;
+}) {
+    return (
+        <div className="flex gap-0.5">
+            {statuses.map((s, i) => {
+                const cls =
+                    s === 'completed' ? 'bg-emerald-500'
+                        : s === 'in_progress' ? (isStuck ? 'bg-rose-500' : 'bg-blue-500')
+                            : s === 'failed' ? 'bg-rose-400'
+                                : 'bg-slate-200';
+                return (
+                    <button
+                        key={i}
+                        type="button"
+                        onClick={() => onStepClick?.(i)}
+                        title={`Step ${i + 1} — ${s.replace('_', ' ')}`}
+                        className={cn('h-2.5 flex-1 rounded-sm transition-colors hover:opacity-80', cls)}
+                    />
+                );
+            })}
+        </div>
+    );
+}
+
+type ChipTone = 'slate' | 'blue' | 'emerald' | 'amber' | 'violet';
+function SummaryChip({ label, tone = 'slate', icon: Icon }: {
+    label: string; tone?: ChipTone; icon?: React.ComponentType<{ size?: number; className?: string }>;
+}) {
+    const tones: Record<ChipTone, string> = {
+        slate: 'border-slate-200 bg-slate-50 text-slate-600',
+        blue: 'border-blue-200 bg-blue-50 text-blue-700',
+        emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        amber: 'border-amber-200 bg-amber-50 text-amber-700',
+        violet: 'border-violet-200 bg-violet-50 text-violet-700',
+    };
+    return (
+        <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', tones[tone])}>
+            {Icon && <Icon size={10} />} {label}
+        </span>
+    );
+}
+
 function AssignmentRow({
-    row, templateById, formById, application, onOpen, onInvite, onAddDriver, onRequest, onCancel, onDelete,
+    row, templateById, formById, application, onOpen, onInvite, onAddDriver, onRequest, onRemind, onCancel, onDelete,
 }: {
     row: Row;
     templateById: Map<string, DriverHiringTemplate>;
@@ -952,6 +1174,7 @@ function AssignmentRow({
     onInvite?: (email: string) => void;
     onAddDriver?: () => void;
     onRequest?: (req: RequestInput) => void;
+    onRemind?: () => void;
     onCancel?: () => void;
     onDelete?: () => void;
 }) {
@@ -978,6 +1201,23 @@ function AssignmentRow({
     const pct = templateSteps.length > 0
         ? Math.round((completedCount / templateSteps.length) * 100)
         : 0;
+    const submittedCount = useMemo(
+        () => application ? templateSteps.filter(s => { const st = application.steps[s.id]?.status; return st === 'submitted' || st === 'approved'; }).length : completedCount,
+        [application, templateSteps, completedCount],
+    );
+
+    // Step breakdown — forms vs consents vs back-office reviews, and total document/key-number fields.
+    const breakdown = useMemo(() => {
+        let forms = 0, consents = 0, reviews = 0, docs = 0;
+        for (const s of templateSteps) {
+            if ((s.kind ?? 'form') === 'consent') { consents++; continue; }
+            if (REVIEW_FORM_IDS.has(s.formId)) reviews++; else forms++;
+            for (const fld of formById.get(s.formId)?.fields ?? []) {
+                if (fld.type === 'document' || fld.type === 'compliance') docs++;
+            }
+        }
+        return { forms, consents, reviews, docs };
+    }, [templateSteps, formById]);
 
     const initials = `${applicant.firstName[0] ?? ""}${applicant.lastName[0] ?? ""}`.toUpperCase();
 
@@ -1032,7 +1272,12 @@ function AssignmentRow({
                             {stageMeta.label}
                         </span>
                     )}
-                    <span className="text-[11px] text-slate-500 tabular-nums">{applicant.daysInPipeline}d</span>
+                    <span
+                        className="inline-flex items-center gap-1 text-[11px] text-slate-500 tabular-nums"
+                        title={application?.invite ? `Invited ${elapsedLabel(application.invite.sentAt)} ago` : 'Time in pipeline'}
+                    >
+                        <Clock size={10} /> {application?.invite ? elapsedLabel(application.invite.sentAt) : `${applicant.daysInPipeline}d`}
+                    </span>
                 </div>
             </div>
 
@@ -1095,13 +1340,14 @@ function AssignmentRow({
                                     {completedCount} / {templateSteps.length} · {pct}%
                                 </span>
                             </div>
-                            <ProgressBar
-                                statuses={statuses}
-                                steps={templateSteps}
-                                formById={formById}
-                                isStuck={isStuck}
-                                onStepClick={setOpenStep}
-                            />
+                            <StepStrip statuses={statuses} isStuck={isStuck} onStepClick={setOpenStep} />
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <SummaryChip tone="emerald" label={`${submittedCount}/${templateSteps.length} submitted`} />
+                                {breakdown.forms > 0 && <SummaryChip tone="slate" icon={FileText} label={`${breakdown.forms} forms`} />}
+                                {breakdown.consents > 0 && <SummaryChip tone="violet" icon={ShieldCheck} label={`${breakdown.consents} consents`} />}
+                                {breakdown.reviews > 0 && <SummaryChip tone="blue" icon={ClipboardCheck} label={`${breakdown.reviews} reviews`} />}
+                                {breakdown.docs > 0 && <SummaryChip tone="amber" icon={Paperclip} label={`${breakdown.docs} documents`} />}
+                            </div>
                         </>
                     )}
                 </div>
@@ -1148,6 +1394,7 @@ function AssignmentRow({
                         invited={invited}
                         cancelled={cancelled}
                         onResend={() => setInviteOpen(true)}
+                        onRemind={onRemind}
                         onCancel={onCancel}
                         onDelete={onDelete}
                     />
@@ -1466,81 +1713,15 @@ function AddDriverModal({ applicant, carrier, onConfirm, onClose }: {
     );
 }
 
-// ── Numbered-bubble progress tracker ─────────────────────────────────────
-// Each step is a small numbered circle connected by a line. Scales cleanly
-// from 5 to 25+ steps. Hover a bubble for its full step name.
-
-function ProgressBar({
-    statuses, steps, formById, isStuck, onStepClick,
-}: {
-    statuses: TStatus[];
-    steps: TemplateStep[];
-    formById: Map<string, ApplicationFormDef>;
-    isStuck: boolean;
-    onStepClick?: (index: number) => void;
-}) {
-    const bubbleFor = (s: TStatus) => {
-        if (s === 'completed')   return 'bg-emerald-500 border-emerald-500 text-white';
-        if (s === 'in_progress') return isStuck
-            ? 'bg-rose-500 border-rose-500 text-white ring-2 ring-rose-200'
-            : 'bg-blue-500 border-blue-500 text-white ring-2 ring-blue-200 animate-pulse';
-        if (s === 'failed')      return 'bg-rose-500 border-rose-500 text-white';
-        return 'bg-white border-slate-300 text-slate-400';
-    };
-    const connectorFor = (left: TStatus, right: TStatus) => {
-        if (left === 'completed' && (right === 'completed' || right === 'in_progress' || right === 'failed')) {
-            return right === 'failed' ? 'bg-rose-300' : 'bg-emerald-400';
-        }
-        if (left === 'completed') return 'bg-emerald-300';
-        if (left === 'failed' || right === 'failed') return 'bg-rose-200';
-        return 'bg-slate-200';
-    };
-    const iconFor = (s: TStatus, i: number) => {
-        if (s === 'completed')   return <Check size={10} strokeWidth={3} />;
-        if (s === 'failed')      return <XIcon size={10} strokeWidth={3} />;
-        if (s === 'in_progress') return <span className="block h-1 w-1 rounded-full bg-white" />;
-        return <span className="text-[9px] font-bold tabular-nums leading-none">{i + 1}</span>;
-    };
-
-    return (
-        <div className="flex items-center w-full">
-            {steps.map((step, i) => {
-                const isLast = i === steps.length - 1;
-                const status = statuses[i] ?? 'not_started';
-                const nextStatus = statuses[i + 1] ?? 'not_started';
-                const label = labelForTemplateStep(step, formById);
-                return (
-                    <div key={step.id} className="flex items-center flex-1 last:flex-none min-w-0">
-                        <button
-                            type="button"
-                            onClick={onStepClick ? () => onStepClick(i) : undefined}
-                            className={cn(
-                                'h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-                                bubbleFor(status),
-                                onStepClick && 'cursor-pointer hover:scale-125 hover:ring-2 hover:ring-blue-300',
-                            )}
-                            title={`${i + 1}. ${label} · ${status.replace('_', ' ')} — click to view form`}
-                        >
-                            {iconFor(status, i)}
-                        </button>
-                        {!isLast && (
-                            <div className={cn('flex-1 h-0.5 mx-0.5', connectorFor(status, nextStatus))} />
-                        )}
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
 // ── Row overflow menu (resend invite · cancel · delete) ──────────────────
 
 function RowMenu({
-    invited, cancelled, onResend, onCancel, onDelete,
+    invited, cancelled, onResend, onRemind, onCancel, onDelete,
 }: {
     invited: boolean;
     cancelled: boolean;
     onResend?: () => void;
+    onRemind?: () => void;
     onCancel?: () => void;
     onDelete?: () => void;
 }) {
@@ -1570,6 +1751,7 @@ function RowMenu({
             {open && (
                 <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                     {!cancelled && <Item Icon={Mail} label={invited ? 'Resend invite' : 'Send invite'} onClick={onResend} />}
+                    {!cancelled && invited && <Item Icon={Send} label="Send reminder" onClick={onRemind} />}
                     {!cancelled && <Item Icon={Ban} label="Cancel application" onClick={onCancel} />}
                     <Item Icon={Trash2} label="Delete application" onClick={onDelete} danger />
                 </div>

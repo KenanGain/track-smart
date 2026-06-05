@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { FormBody, type FieldValue } from './CustomFormWizard';
 import { SignaturePad } from './SignaturePad';
 import { loadApplicationForms, type ApplicationFormDef } from './application-forms.data';
+import { prefillByDataKey, type CanonicalPart } from './form-data-keys';
 import { CONSENT_BY_ID, type ConsentCategory } from './consent-forms.data';
 import { loadTemplates, type DriverHiringTemplate, type TemplateStep } from '@/pages/settings/driver-hiring-templates.data';
 import {
@@ -45,11 +46,16 @@ export function ApplicantPortalPage({ applicantId, onNavigate }: { applicantId: 
 
     // Per-step working values + signatures, seeded from any persisted submission
     // (so a returned step re-opens with the driver's previous answers).
+    // Canonical "capture once" parts — each step's form fields, used to auto-fill
+    // shared facts (license number, DOB…) across the pipeline.
+    const canonicalParts = (vals: Record<string, Record<string, FieldValue>>): CanonicalPart[] =>
+        steps.map(s => ({ id: s.id, fields: formById.get(s.formId)?.fields ?? [], values: (vals[s.id] ?? {}) as Record<string, unknown> }));
+
     const [valuesByStep, setValuesByStep] = useState<Record<string, Record<string, FieldValue>>>(() => {
         const seed: Record<string, Record<string, FieldValue>> = {};
         const a = getApplication(applicantId);
         for (const s of steps) if (a?.steps[s.id]?.values) seed[s.id] = a.steps[s.id]!.values as Record<string, FieldValue>;
-        return seed;
+        return prefillByDataKey(canonicalParts(seed), seed as Record<string, Record<string, unknown>>) as Record<string, Record<string, FieldValue>>;
     });
     const [sigByStep, setSigByStep] = useState<Record<string, string | null>>(() => {
         const seed: Record<string, string | null> = {};
@@ -76,6 +82,8 @@ export function ApplicantPortalPage({ applicantId, onNavigate }: { applicantId: 
 
     const openStep = (idx: number) => {
         setActiveIdx(idx);
+        // Auto-fill shared facts entered on earlier steps into this one (never overwrites).
+        setValuesByStep(prev => prefillByDataKey(canonicalParts(prev), prev as Record<string, Record<string, unknown>>) as Record<string, Record<string, FieldValue>>);
         const s = steps[idx];
         if (s) { markStepInProgress(applicantId, s.id); refresh(); }
     };

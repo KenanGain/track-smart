@@ -1,9 +1,7 @@
 import { Upload, Search, Link2, FileText } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import {
-    loadDocumentTypes,
-} from '@/pages/ats/document-types.data';
+import { allFormDocTypes } from '@/pages/ats/form-doc-resolver';
 
 /**
  * Reusable Document Type picker for `document` field types.
@@ -20,7 +18,7 @@ export function DocumentTypeConfig({ documentTypeId, currentLabel, onPick }: {
     onPick: (next: { documentTypeId: string; label: string }) => void;
 }) {
     const [query, setQuery] = useState('');
-    const types = useMemo(() => loadDocumentTypes().filter(t => t.status === 'Active'), []);
+    const types = useMemo(() => allFormDocTypes(), []);
     const linked = types.find(t => t.id === documentTypeId);
     const q = query.trim().toLowerCase();
     const filtered = q

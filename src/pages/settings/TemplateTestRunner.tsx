@@ -9,6 +9,7 @@ import {
 } from "@/pages/ats/application-forms.data";
 import { CONSENT_FORMS, type ConsentForm } from "@/pages/ats/consent-forms.data";
 import { FormBody } from "@/pages/ats/CustomFormWizard";
+import { prefillByDataKey, type CanonicalPart } from "@/pages/ats/form-data-keys";
 import type { DriverHiringTemplate, StepKind } from "./driver-hiring-templates.data";
 
 /**
@@ -94,7 +95,13 @@ export function TemplateTestRunner({ template, onClose }: {
     const current = linkedSteps[stepIdx];
     const stepLabel = (s: LinkedStep) =>
         s.step.label?.trim() || s.consent?.title || s.form?.name || 'Step';
-    const currentValues = current.form ? (valuesByForm[current.form.id] ?? {}) : {};
+    // Canonical "capture once": auto-fill shared facts (license number, DOB…) that
+    // were entered on an earlier form in this template into the current one.
+    const formParts: CanonicalPart[] = linkedSteps
+        .filter(ls => ls.form)
+        .map(ls => ({ id: ls.form!.id, fields: ls.form!.fields, values: valuesByForm[ls.form!.id] ?? {} }));
+    const prefilledByForm = prefillByDataKey(formParts, valuesByForm);
+    const currentValues = current.form ? (prefilledByForm[current.form.id] ?? {}) : {};
     const headerTitle = stepLabel(current);
     const currentConsentSig = current.consent ? consentSignatures[current.consent.id] : undefined;
 
@@ -249,23 +256,24 @@ export function TemplateTestRunner({ template, onClose }: {
                             )}
                         </div>
 
-                        {/* Body card — either Form fields or Consent text + signature */}
-                        <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm print:border-0 print:p-0 print:shadow-none lg:p-10">
-                            {current.kind === 'form' && current.form && (
-                                current.form.fields.length === 0 ? (
-                                    <p className="py-8 text-center text-sm text-slate-400">
-                                        This form has no fields yet.
-                                    </p>
-                                ) : (
-                                    <FormBody
-                                        fields={current.form.fields}
-                                        values={currentValues as Parameters<typeof FormBody>[0]['values']}
-                                        setValue={setValueForCurrent(current.form.id) as Parameters<typeof FormBody>[0]['setValue']}
-                                    />
-                                )
-                            )}
+                        {/* Body — Form fields render as divided section cards; Consent as a single card */}
+                        {current.kind === 'form' && current.form && (
+                            current.form.fields.length === 0 ? (
+                                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 shadow-sm">
+                                    This form has no fields yet.
+                                </div>
+                            ) : (
+                                <FormBody
+                                    sectioned
+                                    fields={current.form.fields}
+                                    values={currentValues as Parameters<typeof FormBody>[0]['values']}
+                                    setValue={setValueForCurrent(current.form.id) as Parameters<typeof FormBody>[0]['setValue']}
+                                />
+                            )
+                        )}
 
-                            {current.kind === 'consent' && current.consent && (
+                        {current.kind === 'consent' && current.consent && (
+                            <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm print:border-0 print:p-0 print:shadow-none lg:p-10">
                                 <div className="space-y-6">
                                     {/* Consent body */}
                                     <div className="space-y-3 text-sm leading-relaxed text-slate-700">
@@ -308,8 +316,8 @@ export function TemplateTestRunner({ template, onClose }: {
                                         )}
                                     </div>
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>

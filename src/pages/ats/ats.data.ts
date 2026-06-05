@@ -501,8 +501,52 @@ const _Tom: Applicant = (() => {
     };
 })();
 
+// ── Generated applicants — fills out every carrier / stage / template so the
+//    Assignments list, carrier filter, and detail tabs have rich test data. ──
+const GEN_TEMPLATE_IDS = ['tpl-complete-hiring', 'tpl-all-forms', 'tpl-quick-hire', 'tpl-cdl-a-otr', 'tpl-cross-border'];
+const GEN_FIRST = ['Aaron', 'Blake', 'Cody', 'Derek', 'Evan', 'Felix', 'Grant', 'Hank', 'Ivan', 'Jamal', 'Kyle', 'Liam', 'Mason', 'Nate', 'Owen', 'Pete'];
+const GEN_LAST = ['Carter', 'Diaz', 'Ellis', 'Foster', 'Greer', 'Hayes', 'Irwin', 'Jensen', 'Knox', 'Lowe', 'Mills', 'Nash', 'Owens', 'Park', 'Reyes', 'Stone'];
+const GEN_LICENSE: LicenseType[] = ['CDL-A', 'CDL-B', 'CDL', 'Non-CDL'];
+const GEN_STAGE: Stage[] = ['applications_received', 'in_progress', 'in_progress', 'hired', 'not_hired'];
+
+function genApplicant(i: number): Applicant {
+    const stage = GEN_STAGE[i % GEN_STAGE.length];
+    const stepStates = (
+        stage === 'hired' ? Array(7).fill('completed')
+            : stage === 'applications_received' ? Array(7).fill('not_started')
+                : stage === 'not_hired' ? ['completed', 'completed', 'failed', 'not_started', 'not_started', 'not_started', 'not_started']
+                    : ['completed', 'completed', 'in_progress', 'not_started', 'not_started', 'not_started', 'not_started']
+    ) as StepStatus[];
+    const steps = buildSteps(stepStates);
+    const fn = GEN_FIRST[i % GEN_FIRST.length];
+    const ln = GEN_LAST[(i + 3) % GEN_LAST.length];
+    const day = 1 + (i % 27);
+    return {
+        id: `app-g${String(i + 1).padStart(2, '0')}`,
+        firstName: fn, lastName: ln,
+        dateOfBirth: '1986-07-12', ssnMasked: '•••-••-••••',
+        email: `${fn.toLowerCase()}.${ln.toLowerCase()}@example.com`,
+        phone: `(555) 02${String(10 + i).slice(-2)}-${String(1000 + i).slice(-4)}`,
+        streetAddress: `${120 + i} Maple Ave`, city: 'Springfield', state: 'Illinois', postalCode: `627${String(10 + i).slice(-2)}`, country: 'USA',
+        licenseType: GEN_LICENSE[i % GEN_LICENSE.length], applicantType: 'Driver',
+        positionApplied: 'Company Driver',
+        appliedDate: `2026-04-${String(day).padStart(2, '0')}`,
+        daysInPipeline: 30 - (i % 27),
+        stage,
+        decisionStatus: stage === 'hired' ? 'hired' : stage === 'not_hired' ? 'not_hired' : 'pending',
+        assignedTemplateId: GEN_TEMPLATE_IDS[i % GEN_TEMPLATE_IDS.length],
+        steps, activeStepId: findActive(steps),
+        companyQuestions: { legallyEligibleUS: true, currentlyEmployed: false, speaksEnglish: true, workedHereBefore: false, twicCard: false },
+        drivingExperience: [],
+        substanceTest: { donorName: `${fn} ${ln}`, employer: '', orderStatus: 'draft' },
+        screeningOrders: [], documents: [], notes: [], alerts: [],
+        eventLog: [baseEvent(`ev-g${i}`, 'created', 'Application created', 30 - (i % 27), 'Self-service')],
+    };
+}
+
 export const MOCK_APPLICANTS: Applicant[] = [
     _Robert, _Tiger, _Dale, _Patrick, _Clint, _Maria, _LeBron, _Serena, _Tom,
+    ...Array.from({ length: 16 }, (_, i) => genApplicant(i)),
 ];
 
 // ── Display metadata for stages / step statuses ──────────────────────────

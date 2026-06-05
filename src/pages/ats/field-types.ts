@@ -13,7 +13,7 @@ import {
     Type, AlignLeft, Calendar, Hash, ChevronDown, ToggleRight, Circle, CheckSquare,
     Upload, Heading2, AlignJustify, List, AlertTriangle, PenLine,
     MapPin, IdCard, FileWarning, Ambulance, Gavel, Truck, Briefcase, GraduationCap,
-    GitBranch,
+    GitBranch, ShieldCheck,
     type LucideIcon,
 } from "lucide-react";
 import type { FormFieldType } from "./application-forms.data";
@@ -100,6 +100,11 @@ export const FIELD_TYPE_REGISTRY: FieldTypeDef[] = [
         category: 'input', icon: Upload, valueKind: 'document',
         usesOptions: false, usesDocumentType: true, usesSubform: false, supportsShowWhen: true,
     },
+    {
+        type: 'compliance', label: 'Compliance item', description: 'A Key Number + its linked Document from Settings — number entry, Front/Back upload and dates captured together as one.',
+        category: 'input', icon: ShieldCheck, valueKind: 'document',
+        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+    },
 
     /* ── Choice ──────────────────────────────────────────────────────── */
     {
@@ -127,42 +132,42 @@ export const FIELD_TYPE_REGISTRY: FieldTypeDef[] = [
     {
         type: 'address-list', label: 'Address list', description: 'Add multiple addresses via a popup — captures street, city, state, country, dates.',
         category: 'list', icon: MapPin, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'license-list', label: 'License list', description: 'Add prior licenses via a popup — captures number, class, country, state, expiry.',
         category: 'list', icon: IdCard, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'disqualification-list', label: 'Disqualification list', description: 'Add license disqualifications via a popup — offence types, date, duration.',
         category: 'list', icon: FileWarning, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'accident-list', label: 'Accident list', description: 'Add commercial-vehicle accidents — date, nature, location, fatalities, injuries.',
         category: 'list', icon: Ambulance, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'violation-list', label: 'Traffic-violation list', description: 'Add traffic violations — charge, agency, date, location, penalty.',
         category: 'list', icon: Gavel, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'driving-experience-list', label: 'Driving-experience list', description: 'Add driving-experience records — equipment class, freight types, regions.',
         category: 'list', icon: Truck, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'employment-list', label: 'Employment-history list', description: 'Add employment records — employer name, dates, contact, address, gaps.',
         category: 'list', icon: Briefcase, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
     {
         type: 'education-list', label: 'Education list', description: 'Add education records — highest level, school, year completed.',
         category: 'list', icon: GraduationCap, valueKind: 'entries',
-        usesOptions: false, usesDocumentType: false, usesSubform: false, supportsShowWhen: true,
+        usesOptions: false, usesDocumentType: false, usesSubform: true, supportsShowWhen: true,
     },
 
     /* ── Wiring ──────────────────────────────────────────────────────── */
