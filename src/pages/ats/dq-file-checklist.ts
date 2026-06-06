@@ -11,7 +11,8 @@ import type { ApplicationFormDef } from "./application-forms.data";
 import type { TemplateStep } from "@/pages/settings/driver-hiring-templates.data";
 import { CONSENT_BY_ID } from "./consent-forms.data";
 
-export type DqStatus = 'present' | 'missing' | 'na';
+/** 'skipped' = manager explicitly excluded item (excluded from required count, like na). */
+export type DqStatus = 'present' | 'missing' | 'na' | 'skipped';
 
 export interface DqChecklistItem {
     /** Stable id (used by the checklist builder). */
@@ -81,13 +82,14 @@ export function dqItemStatus(item: DqChecklistItem, evidence: string[]): DqStatu
     return item.conditional ? 'na' : 'missing';
 }
 
-/** Roll up a section / the whole file: present + missing counts (n/a excluded from "required"). */
+/** Roll up: present + missing counts. 'na' and 'skipped' are excluded from "required". */
 export function dqSummary(sections: { items: { status: DqStatus }[] }[]): { present: number; missing: number; required: number } {
     let present = 0, missing = 0;
     for (const s of sections) {
         for (const it of s.items) {
             if (it.status === 'present') present++;
             else if (it.status === 'missing') missing++;
+            // 'na' and 'skipped' excluded
         }
     }
     return { present, missing, required: present + missing };
@@ -129,18 +131,27 @@ function gatherEvidence(
 }
 
 /** Resolve the full DQ file for a driver against a checklist profile (defaults to the
- *  standard checklist). The single source of truth for the tab AND the roster. */
+ *  standard checklist). The single source of truth for the tab AND the roster.
+ *  itemOverrides keys are `${sectionTitle}::${itemLabel}` — override wins over evidence. */
 export function computeDqFile(
     applicant: Applicant,
     app: HiringApplication | undefined,
     steps: TemplateStep[],
     formById: Map<string, ApplicationFormDef>,
     checklist: DqChecklistSection[] = DQ_FILE_CHECKLIST,
+    itemOverrides?: Record<string, { status: 'present' | 'skipped' }>,
 ): DqFileResult {
     const evidence = gatherEvidence(applicant, app, steps, formById);
     const sections: DqResolvedSection[] = checklist.map(s => ({
         title: s.title,
-        items: s.items.map(it => ({ item: it, status: dqItemStatus(it, evidence) })),
+        items: s.items.map(it => {
+            const overrideKey = `${s.title}::${it.label}`;
+            const ov = itemOverrides?.[overrideKey];
+            const status: DqStatus = ov
+                ? (ov.status === 'skipped' ? 'skipped' : 'present')
+                : dqItemStatus(it, evidence);
+            return { item: it, status };
+        }),
     }));
     const rollup = dqSummary(sections);
     const pct = rollup.required ? Math.round((rollup.present / rollup.required) * 100) : 0;

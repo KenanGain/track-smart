@@ -175,6 +175,46 @@ export function pickDqProfile(type: DqDriverType, profiles: DqProfile[]): DqProf
     return profiles.find(p => p.appliesTo.includes(type)) ?? profiles.find(p => p.isDefault) ?? profiles[0];
 }
 
+// ── Per-driver per-item overrides ────────────────────────────────────────────
+// Key: `${driverId}::${sectionTitle}::${itemLabel}`
+
+const ITEM_OVERRIDE_KEY = 'ats:dq-item-overrides-v1';
+
+export interface DqItemOverride {
+    status: 'present' | 'skipped';
+    reason?: string;
+    note?: string;
+    updatedAt: string;
+}
+
+export function loadDqItemOverrides(): Record<string, DqItemOverride> {
+    try { return JSON.parse(localStorage.getItem(ITEM_OVERRIDE_KEY) ?? '{}'); } catch { return {}; }
+}
+
+export function setDqItemOverride(
+    driverId: string, sectionTitle: string, itemLabel: string, override: DqItemOverride,
+): void {
+    const m = loadDqItemOverrides();
+    m[`${driverId}::${sectionTitle}::${itemLabel}`] = override;
+    try { localStorage.setItem(ITEM_OVERRIDE_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+}
+
+export function clearDqItemOverride(driverId: string, sectionTitle: string, itemLabel: string): void {
+    const m = loadDqItemOverrides();
+    delete m[`${driverId}::${sectionTitle}::${itemLabel}`];
+    try { localStorage.setItem(ITEM_OVERRIDE_KEY, JSON.stringify(m)); } catch { /* ignore */ }
+}
+
+/** Extract the section+item keyed overrides for a single driver (strips the driverId prefix). */
+export function driverItemOverrides(allOverrides: Record<string, DqItemOverride>, driverId: string): Record<string, { status: 'present' | 'skipped' }> {
+    const prefix = driverId + '::';
+    const out: Record<string, { status: 'present' | 'skipped' }> = {};
+    for (const [k, v] of Object.entries(allOverrides)) {
+        if (k.startsWith(prefix)) out[k.slice(prefix.length)] = { status: v.status };
+    }
+    return out;
+}
+
 /** Resolve which profile applies to a driver — manual override wins, else auto by type. */
 export function resolveDqProfile(
     applicant: Applicant,

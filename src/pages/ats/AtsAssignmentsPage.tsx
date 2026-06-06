@@ -11,6 +11,7 @@ import {
     STAGE_META, TONE_CLS,
     type Applicant, type Stage, type LicenseType,
 } from "./ats.data";
+import { detectDqDriverType, DQ_DRIVER_TYPES } from "./dq-profiles.data";
 import { ACCOUNTS_DB, type AccountRecord } from "@/pages/accounts/accounts.data";
 import {
     loadTemplates, TEMPLATE_FORM_TYPES,
@@ -1182,6 +1183,8 @@ function AssignmentRow({
     const stageMeta = STAGE_META[applicant.stage];
     const stageTone = TONE_CLS[stageMeta.tone];
     const tpl = templateById.get(templateId);
+    const dqDriverType = detectDqDriverType(applicant);
+    const dqTypeLabel = DQ_DRIVER_TYPES.find(t => t.id === dqDriverType)?.label ?? dqDriverType;
 
     const templateSteps = tpl?.steps ?? [];
     // Prefer the real application's per-step status; fall back to the mock
@@ -1246,6 +1249,9 @@ function AssignmentRow({
                         </button>
                         <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
                             <span className="font-semibold text-slate-600">{applicant.licenseType}</span>
+                            <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">
+                                {dqTypeLabel}
+                            </span>
                             <span className="text-slate-300">·</span>
                             <span className="inline-flex items-center gap-1">
                                 <Calendar size={11} /> {applicant.appliedDate}

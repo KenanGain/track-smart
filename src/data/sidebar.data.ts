@@ -91,7 +91,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         children: [
             { key: "ats-main", label: "Application Tracking", icon: Briefcase, path: "/ats-main" },
             { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },
-            { key: "dq-files", label: "DQ Files", icon: ListChecks, path: "/dq-files" },
+            { key: "dq-files", label: "Driver Qualification Files", icon: ListChecks, path: "/dq-files" },
         ],
     },
     {

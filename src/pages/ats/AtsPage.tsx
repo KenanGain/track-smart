@@ -28,16 +28,14 @@ import { getApplication, applicationProgress, elapsedLabel, APP_STATUS_META, add
 import { loadTemplates, type TemplateStep as DriverTemplateStep } from "@/pages/settings/driver-hiring-templates.data";
 import { AskOrderModal } from "./AtsAssignmentsPage";
 import {
-    computeDqFile,
     type DqStatus, type DqChecklistItem,
 } from "./dq-file-checklist";
 import {
-    loadDqProfiles, loadDqOverrides, setDqOverride, resolveDqProfile,
     DQ_DRIVER_TYPES, type DqProfile,
 } from "./dq-profiles.data";
 import { buildRequirements, type Requirement } from "./hiring-requirements";
 import { RequirementList } from "./RequirementList";
-import { FileDown, Send, MessageSquarePlus, ListChecks, Copy, ExternalLink, Mail, Phone, Hourglass } from "lucide-react";
+import { FileDown, Send, MessageSquarePlus, Copy, ExternalLink, Mail, Phone, Hourglass, FileCheck } from "lucide-react";
 
 /**
  * Application Tracking System (ATS).
@@ -50,7 +48,7 @@ import { FileDown, Send, MessageSquarePlus, ListChecks, Copy, ExternalLink, Mail
  *     · Decision · generic Screening Order) based on the active workflow step.
  */
 
-export function AtsPage() {
+export function AtsPage(_props: { onNavigate?: (path: string) => void } = {}) {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const selected = useMemo(
         () => selectedId ? MOCK_APPLICANTS.find(a => a.id === selectedId) ?? null : null,
@@ -461,7 +459,7 @@ function ApplicationFormPicker({ onPick, onClose }: {
 // Detail view
 // ─────────────────────────────────────────────────────────────────────────
 
-type DetailTabId = 'details' | 'documents' | 'forms' | 'consent_forms' | 'dq_file' | 'notes' | 'alerts' | 'event_log';
+type DetailTabId = 'details' | 'documents' | 'forms' | 'consent_forms' | 'notes' | 'alerts' | 'event_log';
 
 function ApplicantDetailView({ applicant, onBack }: { applicant: Applicant; onBack: () => void }) {
     const [activeTab, setActiveTab] = useState<DetailTabId>('details');
@@ -512,26 +510,15 @@ function ApplicantDetailView({ applicant, onBack }: { applicant: Applicant; onBa
     );
     const reqUpload = (r: Requirement) => { uploadRequirement(applicant.id, r.id, r.label); setAppBump(n => n + 1); };
     const reqVerify = (r: Requirement) => { setRequirementState(applicant.id, r.id, { status: 'verified' }); setAppBump(n => n + 1); };
+    const reqSkip   = (r: Requirement, _reason: string) => { setRequirementState(applicant.id, r.id, { status: _reason ? 'skipped' as any : 'missing' }); setAppBump(n => n + 1); };
+    const reqDelete  = (r: Requirement) => { setRequirementState(applicant.id, r.id, { status: 'missing', files: [] }); setAppBump(n => n + 1); };
     const reqMissing = requirements.filter(r => r.status === 'missing').length;
-
-    // DQ file checklist — the right profile (by driver type / override) resolved live.
-    const [dqRefresh, setDqRefresh] = useState(0);
-    const dqProfiles = useMemo(() => loadDqProfiles(), [dqRefresh]);
-    const dqResolved = useMemo(
-        () => resolveDqProfile(applicant, hiringTpl?.name, dqProfiles, loadDqOverrides()),
-        [applicant, hiringTpl, dqProfiles, dqRefresh],
-    );
-    const dqFile = useMemo(
-        () => computeDqFile(applicant, hiringApp, hiringTpl?.steps ?? [], formByIdHiring, dqResolved.profile?.sections),
-        [applicant, hiringApp, hiringTpl, formByIdHiring, dqResolved],
-    );
 
     const tabs: { id: DetailTabId; label: string; Icon: React.ElementType; count?: number }[] = [
         { id: 'details',       label: 'Details',       Icon: User },
         { id: 'forms',         label: 'Forms',         Icon: ClipboardList, count: formSteps.length },
         { id: 'consent_forms', label: 'Consent Forms', Icon: BadgeCheck,   count: consentSteps.length },
         { id: 'documents',     label: 'Documents & Compliance', Icon: FileText, count: reqMissing },
-        { id: 'dq_file',       label: 'DQ File',       Icon: ListChecks,   count: dqFile.rollup.missing },
         { id: 'notes',         label: 'Notes',         Icon: StickyNote,   count: applicant.notes.length },
         { id: 'alerts',        label: 'Alerts',        Icon: Bell,         count: openAlerts },
         { id: 'event_log',     label: 'Event Log',     Icon: History,      count: applicant.eventLog.length },
@@ -660,16 +647,9 @@ function ApplicantDetailView({ applicant, onBack }: { applicant: Applicant; onBa
             <div className={cn('px-8 py-6', hiringApp && 'grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]')}>
                 <div className="min-w-0">
                     {activeTab === 'details'       && <DetailsTab applicant={applicant} activeStep={activeStep} onSetStepStatus={(s) => setStepStatusFor(activeStep.id, s)} />}
-                    {activeTab === 'documents'     && <RequirementList requirements={requirements} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)} />}
+                    {activeTab === 'documents'     && <RequirementList requirements={requirements} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)} onSkip={reqSkip} onDelete={reqDelete} />}
                     {activeTab === 'forms'         && <FormsTab app={hiringApp} steps={formSteps} formById={formByIdHiring} onOrder={() => setAskOpen(true)} onSetFormStatus={(stepId, s) => { setStepStatus(applicant.id, stepId, s); setAppBump(n => n + 1); }} />}
                     {activeTab === 'consent_forms' && <ConsentFormsTab app={hiringApp} steps={consentSteps} onOrder={() => setAskOpen(true)} />}
-                    {activeTab === 'dq_file'       && (
-                        <DqFileTab
-                            sections={dqFile.sections} rollup={dqFile.rollup} onOrder={() => setAskOpen(true)}
-                            profiles={dqProfiles} appliedProfile={dqResolved.profile} auto={dqResolved.auto} driverType={dqResolved.type}
-                            onSetProfile={(pid) => { setDqOverride(applicant.id, pid); setDqRefresh(n => n + 1); }}
-                        />
-                    )}
                     {activeTab === 'notes'         && <NotesTab applicant={applicant} />}
                     {activeTab === 'alerts'        && <AlertsTab applicant={applicant} />}
                     {activeTab === 'event_log'     && <EventLogTab applicant={applicant} />}
@@ -1520,7 +1500,7 @@ function DqStatusBadge({ status }: { status: DqStatus }) {
     return <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold', cls)}>{label}</span>;
 }
 
-export function DqFileTab({ sections, rollup, onOrder, profiles, appliedProfile, auto, driverType, onSetProfile }: {
+export function DqFileTab({ sections, rollup, onOrder, profiles, appliedProfile, auto, driverType, onSetProfile, applicantId, onNavigate }: {
     sections: { title: string; items: { item: DqChecklistItem; status: DqStatus }[] }[];
     rollup: { present: number; missing: number; required: number };
     onOrder?: () => void;
@@ -1529,6 +1509,8 @@ export function DqFileTab({ sections, rollup, onOrder, profiles, appliedProfile,
     auto: boolean;
     driverType: string;
     onSetProfile: (profileId: string | null) => void;
+    applicantId?: string;
+    onNavigate?: (path: string) => void;
 }) {
     const pct = rollup.required ? Math.round((rollup.present / rollup.required) * 100) : 0;
     const complete = rollup.missing === 0;
@@ -1540,9 +1522,18 @@ export function DqFileTab({ sections, rollup, onOrder, profiles, appliedProfile,
                         <h3 className="text-sm font-bold text-slate-900">Driver Qualification (DQ) File</h3>
                         <p className="text-[11px] text-slate-500">Live check of every required DQ record against the driver's application data and uploaded documents.</p>
                     </div>
-                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold', complete ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>
-                        {complete ? <><Check size={13} /> DQ file complete</> : <><AlertCircle size={13} /> {rollup.missing} missing</>}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold', complete ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>
+                            {complete ? <><Check size={13} /> DQ file complete</> : <><AlertCircle size={13} /> {rollup.missing} missing</>}
+                        </span>
+                        {onNavigate && applicantId && (
+                            <button type="button"
+                                onClick={() => { sessionStorage.setItem('dq:generator-preselect', applicantId); onNavigate('/dq-files/generator'); }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100">
+                                <FileCheck size={13} /> Generate DQ File
+                            </button>
+                        )}
+                    </div>
                 </div>
                 {/* Applied checklist profile + override */}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
@@ -1581,17 +1572,32 @@ export function DqFileTab({ sections, rollup, onOrder, profiles, appliedProfile,
                             : <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Complete</span>}>
                         <ul className="divide-y divide-slate-100">
                             {sec.items.map((row, i) => (
-                                <li key={i} className="flex items-center gap-3 px-5 py-2.5">
+                                <li key={i} className={cn('flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-slate-50/50', row.status === 'missing' && 'bg-rose-50/20')}>
                                     <DqStatusIcon status={row.status} />
-                                    <span className={cn('min-w-0 flex-1 truncate text-[13px]', row.status === 'missing' ? 'font-semibold text-slate-800' : 'text-slate-600')}>
-                                        {row.item.label}
-                                        {row.item.conditional && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">if applicable</span>}
-                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <span className={cn('truncate text-[13px]', row.status === 'missing' ? 'font-semibold text-slate-800' : 'text-slate-600')}>
+                                            {row.item.label}
+                                            {row.item.conditional && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">if applicable</span>}
+                                        </span>
+                                        {row.status === 'present' && (
+                                            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                                                <span className="inline-flex items-center gap-0.5"><BadgeCheck size={9} className="text-emerald-500" /> Verified</span>
+                                                <span>·</span>
+                                                <span>On file since {new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <DqStatusBadge status={row.status} />
                                     {row.status === 'missing' && (
-                                        <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
-                                            <ActBtn Icon={Upload} label="Upload" />
-                                            <ActBtn Icon={MessageSquarePlus} label="Order" onClick={onOrder} />
+                                        <div className="flex shrink-0 items-center gap-1.5">
+                                            <ActBtn Icon={Upload} label="Upload" tone="primary" />
+                                            <ActBtn Icon={MessageSquarePlus} label="Request" onClick={onOrder} />
+                                        </div>
+                                    )}
+                                    {row.status === 'present' && (
+                                        <div className="flex shrink-0 items-center gap-1.5">
+                                            <ActBtn Icon={Eye} label="View" />
+                                            <ActBtn Icon={FileDown} label="PDF" />
                                         </div>
                                     )}
                                 </li>
@@ -1603,6 +1609,7 @@ export function DqFileTab({ sections, rollup, onOrder, profiles, appliedProfile,
         </div>
     );
 }
+
 
 // ── Documents / Notes / Alerts / Event Log tabs ──────────────────────────
 

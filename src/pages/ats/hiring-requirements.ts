@@ -12,7 +12,7 @@ import type { ApplicationFormDef } from "./application-forms.data";
 import type { TemplateStep } from "@/pages/settings/driver-hiring-templates.data";
 
 export type RequirementKind = 'document' | 'compliance';
-export type RequirementStatus = 'missing' | 'uploaded' | 'verified' | 'ordered';
+export type RequirementStatus = 'missing' | 'uploaded' | 'verified' | 'ordered' | 'skipped';
 
 export interface RequirementMeta {
     number?: string;
@@ -127,8 +127,9 @@ export function buildRequirements(
 
 export interface RequirementSummary { total: number; fulfilled: number; missing: number; pct: number }
 export function requirementSummary(reqs: Requirement[]): RequirementSummary {
-    const total = reqs.length;
-    const fulfilled = reqs.filter(r => r.status === 'uploaded' || r.status === 'verified').length;
-    const missing = reqs.filter(r => r.status === 'missing' || r.status === 'ordered').length;
+    const active = reqs.filter(r => r.status !== 'skipped');
+    const total = active.length;
+    const fulfilled = active.filter(r => r.status === 'uploaded' || r.status === 'verified').length;
+    const missing = active.filter(r => r.status === 'missing' || r.status === 'ordered').length;
     return { total, fulfilled, missing, pct: total ? Math.round((fulfilled / total) * 100) : 0 };
 }

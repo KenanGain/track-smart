@@ -47,6 +47,7 @@ import { PaystubsPage } from '@/pages/finance/PaystubsPage'
 import { AtsPage } from '@/pages/ats/AtsPage'
 import { AtsAssignmentsPage } from '@/pages/ats/AtsAssignmentsPage'
 import { DqFilesPage } from '@/pages/ats/DqFilesPage'
+import { DqFileTemplateGenerator } from '@/pages/ats/DqFileTemplateGenerator'
 import { IssueHiringPage } from '@/pages/ats/IssueHiringPage'
 import { ApplicantPortalPage } from '@/pages/ats/ApplicantPortalPage'
 import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
@@ -461,13 +462,16 @@ function App() {
             return <PaystubsPage accountId={account?.id} />
         }
         if (path === "/ats") {
-            return <AtsPage />
+            return <AtsPage onNavigate={handleNavigate} />
         }
         if (path === "/ats-main") {
             return <AtsAssignmentsPage onNavigate={handleNavigate} />
         }
         if (path === "/dq-files") {
             return <DqFilesPage onNavigate={handleNavigate} />
+        }
+        if (path === "/dq-files/generator") {
+            return <DqFileTemplateGenerator onNavigate={handleNavigate} />
         }
         if (path === "/ats/issue-hiring") {
             return <IssueHiringPage onNavigate={handleNavigate} />

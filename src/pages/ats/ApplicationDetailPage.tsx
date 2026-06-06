@@ -2,15 +2,15 @@ import { useMemo, useState } from 'react';
 import {
     ArrowLeft, Check, Undo2, FileText, ShieldCheck, Send, UserPlus,
     Clock, Inbox, AlertCircle, ChevronDown, Mail, Phone, MessageSquarePlus,
-    Link2, Copy, ExternalLink, Calendar, Hourglass, ListChecks, UploadCloud, KeyRound, Database, XCircle,
-    ClipboardList,
+    Link2, Copy, ExternalLink, Calendar, Hourglass, ListChecks, UploadCloud, KeyRound, XCircle,
+    ClipboardList, Shield, PenTool, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import type { Applicant } from './ats.data';
 import { AskOrderModal, RequestLine } from './AtsAssignmentsPage';
 import { loadApplicationForms, type ApplicationFormDef, type FormField } from './application-forms.data';
-import { collectCanonical, DRIVER_DATA_KEYS } from './form-data-keys';
+import { DRIVER_DATA_KEYS } from './form-data-keys';
 import { complianceFieldConfig, resolveFormDocType } from './form-doc-resolver';
 import { CONSENT_BY_ID, type ConsentCategory } from './consent-forms.data';
 import { loadTemplates, type DriverHiringTemplate, type TemplateStep } from '@/pages/settings/driver-hiring-templates.data';
@@ -20,12 +20,14 @@ import {
     APP_STATUS_META, STEP_STATUS_META,
     type HiringApplication,
 } from './hiring-application.data';
-import { buildRequirements, type Requirement } from './hiring-requirements';
+import { buildRequirements, requirementSummary, type Requirement } from './hiring-requirements';
+import { detectDqDriverType, loadDqProfiles, resolveDqProfile, loadDqOverrides, DQ_DRIVER_TYPES } from './dq-profiles.data';
+import { computeDqFile, type DqFileResult } from './dq-file-checklist';
 import { RequirementList } from './RequirementList';
 import { FormsTab, ConsentFormsTab } from './AtsPage';
 import { History } from 'lucide-react';
 
-type DetailTabId = 'overview' | 'steps' | 'forms' | 'consents' | 'data' | 'documents' | 'keys' | 'requests' | 'events';
+type DetailTabId = 'overview' | 'workflow' | 'forms' | 'documents' | 'compliance' | 'signature' | 'requests' | 'events';
 
 /**
  * Internal Application detail — the recruiter's view of a hiring application.
@@ -62,6 +64,23 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
     );
     const reqUpload = (r: Requirement) => { if (applicant) { uploadRequirement(applicant.id, r.id, r.label); refresh(); } };
     const reqVerify = (r: Requirement) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: 'verified' }); refresh(); } };
+    const reqSkip   = (r: Requirement, reason: string) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: reason ? ('skipped' as any) : 'missing' }); refresh(); } };
+    const reqDelete  = (r: Requirement) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: 'missing', files: [] }); refresh(); } };
+
+    const reqSummary = requirementSummary(requirements);
+    const docReqs    = requirements.filter(r => r.kind === 'document');
+    const compReqs   = requirements.filter(r => r.kind === 'compliance');
+
+    // DQ profile + completion for header badge and overview
+    const dqProfiles = useMemo(() => loadDqProfiles(), []);
+    const dqResolved = useMemo(
+        () => applicant && template ? resolveDqProfile(applicant, template.name, dqProfiles, loadDqOverrides()) : { profile: undefined, auto: true, type: 'local' as const },
+        [applicant, template, dqProfiles],
+    );
+    const dqFile = useMemo(
+        () => applicant && app && template ? computeDqFile(applicant, app, template.steps, formById, dqResolved.profile?.sections) : null,
+        [applicant, app, template, formById, dqResolved],
+    );
 
     if (!applicant || !app || !template) {
         return (
@@ -90,30 +109,6 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
 
     // Flatten every form field + its submitted value across all steps — powers the
     // Data / Documents / Key-Number tabs (the application-level data view).
-    const fieldRows = useMemo<FieldRow[]>(() => {
-        const out: FieldRow[] = [];
-        for (const s of steps) {
-            if ((s.kind ?? 'form') !== 'form') continue;
-            const form = formById.get(s.formId);
-            if (!form) continue;
-            const values = (app.steps[s.id]?.values ?? {}) as Record<string, unknown>;
-            const submitted = !!app.steps[s.id]?.submittedAt;
-            for (const f of form.fields) {
-                out.push({ stepId: s.id, stepLabel: labelFor(s), formName: form.displayTitle || form.name, submitted, field: f, value: values[f.id] });
-            }
-        }
-        return out;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [steps, app, formById]);
-
-    const canonical = useMemo(() => {
-        const parts = steps
-            .filter(s => (s.kind ?? 'form') === 'form')
-            .map(s => ({ fields: formById.get(s.formId)?.fields ?? [], values: (app.steps[s.id]?.values ?? {}) as Record<string, unknown> }));
-        return collectCanonical(parts);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [steps, app, formById]);
-
     const approve = (stepId: string) => { setStepStatus(applicantId, stepId, 'approved'); refresh(); };
     const toggleSkip = (stepId: string, skipped: boolean) => {
         if (skipped && !window.confirm('Remove this step for this driver? It will be excluded from their progress.')) return;
@@ -141,6 +136,16 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                             <p className="text-xs text-slate-500 mt-0.5">
                                 {applicant.positionApplied} · {applicant.licenseType}{carrier ? ` · ${carrier.dbaName || carrier.legalName}` : ''} · {template.name}
                             </p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[10px] font-bold text-violet-700">
+                                    {DQ_DRIVER_TYPES.find(t => t.id === detectDqDriverType(applicant))?.label ?? 'Standard'} Driver
+                                </span>
+                                {dqFile && (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold text-blue-700">
+                                        DQ: {dqFile.pct}% · {dqFile.rollup.missing} missing
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -173,25 +178,40 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                 </div>
             </div>
 
+            {/* ── KPI strip ───────────────────────────────────────────────── */}
+            <div className="border-b border-slate-200 bg-white">
+                <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4">
+                    {([
+                        { label: 'Present',    value: reqSummary.fulfilled, tone: 'text-emerald-700', bg: 'bg-emerald-50/60', dot: 'bg-emerald-500' },
+                        { label: 'Missing',    value: reqSummary.missing,   tone: 'text-rose-700',    bg: 'bg-rose-50/60',    dot: 'bg-rose-500' },
+                        { label: 'Skipped',    value: requirements.filter(r => r.status === 'skipped').length, tone: 'text-slate-500', bg: 'bg-white', dot: 'bg-slate-300' },
+                        { label: 'Completion', value: `${reqSummary.pct}%`, tone: 'text-blue-700',    bg: 'bg-blue-50/60',    dot: 'bg-blue-500' },
+                    ] as const).map(item => (
+                        <div key={item.label} className={cn('p-3.5', item.bg)}>
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', item.dot)} />
+                                {item.label}
+                            </div>
+                            <div className={cn('mt-1.5 text-xl font-black tabular-nums leading-none', item.tone)}>{item.value}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ── Tab strip ───────────────────────────────────────────────── */}
             <div className="border-b border-slate-200 bg-white px-8">
-                {/* Tabbed application view: Steps · Data Fields · Documents · Key Numbers */}
-                <div>
-                    <DetailTabs
-                        tab={tab}
-                        setTab={setTab}
+                <DetailTabs tab={tab} setTab={setTab}
                     counts={{
-                        overview: progress.completed,
-                        steps: steps.length,
-                        forms: formSteps.length,
-                        consents: consentSteps.length,
-                        data: fieldRows.filter(r => isDataField(r.field) && !isEmptyVal(r.value)).length,
-                        documents: requirements.filter(r => r.status === 'missing').length,
-                        keys: fieldRows.filter(r => r.field.type === 'compliance').length,
-                        requests: app.requests.filter(r => r.status === 'open').length,
-                        events: app.events.length,
+                        overview:    progress.completed,
+                        workflow:    steps.length,
+                        forms:       formSteps.length,
+                        documents:   docReqs.filter(r => r.status === 'missing').length,
+                        compliance:  compReqs.filter(r => r.status === 'missing').length,
+                        signature:   consentSteps.length,
+                        requests:    app.requests.filter(r => r.status === 'open').length,
+                        events:      app.events.length,
                     }}
                 />
-                </div>
             </div>
 
             <div className="px-8 py-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -205,12 +225,12 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                             progress={progress}
                             formCount={formSteps.length}
                             consentCount={consentSteps.length}
-                            missingDocuments={requirements.filter(r => r.status === 'missing').length}
-                            capturedFields={fieldRows.filter(r => isDataField(r.field) && !isEmptyVal(r.value)).length}
-                            keyNumbers={fieldRows.filter(r => r.field.type === 'compliance').length}
+                            missingDocuments={reqSummary.missing}
+                            keyNumbers={compReqs.length}
+                            dqFile={dqFile}
                         />
                     )}
-                    {tab === 'steps' && (
+                    {tab === 'workflow' && (
                     <div className="space-y-3">
                     {steps.map((s, i) => {
                         const state = app.steps[s.id];
@@ -294,15 +314,15 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                     )}
 
                     {tab === 'forms' && <FormsTab app={app} steps={formSteps} formById={formById} onOrder={() => setAskOpen(true)} onSetFormStatus={(stepId, s) => { setStepStatus(applicantId, stepId, s); refresh(); }} />}
-                    {tab === 'consents' && <ConsentFormsTab app={app} steps={consentSteps} onOrder={() => setAskOpen(true)} />}
-                    {tab === 'data' && <DataFieldsView fieldRows={fieldRows} canonical={canonical} />}
+                    {tab === 'signature' && <ConsentFormsTab app={app} steps={consentSteps} onOrder={() => setAskOpen(true)} />}
                     {tab === 'documents' && (
-                        <div className="space-y-5">
-                            <RequirementList requirements={requirements} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)} />
-                            <DocumentsView fieldRows={fieldRows} />
-                        </div>
+                        <RequirementList requirements={docReqs} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)}
+                            onSkip={reqSkip} onDelete={reqDelete} title="Documents" />
                     )}
-                    {tab === 'keys' && <KeyNumbersView fieldRows={fieldRows} />}
+                    {tab === 'compliance' && (
+                        <RequirementList requirements={compReqs} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)}
+                            onSkip={reqSkip} onDelete={reqDelete} title="Key Numbers & Compliance" />
+                    )}
                     {tab === 'requests' && <RequestsView requests={app.requests} onNew={() => setAskOpen(true)} />}
                     {tab === 'events' && <EventLogView app={app} />}
                 </div>
@@ -411,15 +431,14 @@ function DetailTabs({ tab, setTab, counts }: {
     tab: DetailTabId; setTab: (t: DetailTabId) => void; counts: Partial<Record<DetailTabId, number>>;
 }) {
     const tabs: { id: DetailTabId; label: string; icon: IconCmp }[] = [
-        { id: 'overview', label: 'Overview', icon: ListChecks },
-        { id: 'steps', label: 'Workflow', icon: ClipboardList },
-        { id: 'forms', label: 'Forms', icon: ClipboardList },
-        { id: 'consents', label: 'Signed Forms', icon: ShieldCheck },
-        { id: 'data', label: 'Data Fields', icon: Database },
-        { id: 'documents', label: 'Documents', icon: UploadCloud },
-        { id: 'keys', label: 'Key Numbers', icon: KeyRound },
-        { id: 'requests', label: 'Requests', icon: MessageSquarePlus },
-        { id: 'events', label: 'Event Log', icon: History },
+        { id: 'overview',   label: 'Overview',    icon: ListChecks },
+        { id: 'workflow',   label: 'Workflow',    icon: ClipboardList },
+        { id: 'forms',      label: 'Forms',       icon: ClipboardList },
+        { id: 'documents',  label: 'Documents',   icon: UploadCloud },
+        { id: 'compliance', label: 'Compliance',  icon: Shield },
+        { id: 'signature',  label: 'Signature',   icon: PenTool },
+        { id: 'requests',   label: 'Requests',    icon: MessageSquarePlus },
+        { id: 'events',     label: 'Event Log',   icon: History },
     ];
     return (
         <div className="flex items-center gap-1 overflow-x-auto -mb-px">
@@ -453,7 +472,7 @@ function EmptyTab({ icon: Icon, text }: { icon: IconCmp; text: string }) {
     );
 }
 
-function ApplicationOverviewView({ applicant, app, template, carrierName, progress, formCount, consentCount, missingDocuments, capturedFields, keyNumbers }: {
+function ApplicationOverviewView({ applicant, app, template, carrierName, progress, formCount, consentCount, missingDocuments, keyNumbers, dqFile }: {
     applicant: Applicant;
     app: HiringApplication;
     template: DriverHiringTemplate;
@@ -462,18 +481,18 @@ function ApplicationOverviewView({ applicant, app, template, carrierName, progre
     formCount: number;
     consentCount: number;
     missingDocuments: number;
-    capturedFields: number;
     keyNumbers: number;
+    dqFile?: DqFileResult | null;
 }) {
     const openRequests = app.requests.filter(r => r.status === 'open').length;
     const latestEvent = app.events[0];
     const summary = [
         { label: 'Workflow', value: `${progress.completed}/${progress.total}`, note: `${progress.pct}% submitted`, Icon: ListChecks },
-        { label: 'Forms', value: String(formCount), note: `${consentCount} signed forms`, Icon: ClipboardList },
-        { label: 'Data Fields', value: String(capturedFields), note: 'captured from application', Icon: Database },
-        { label: 'Documents', value: String(missingDocuments), note: missingDocuments === 1 ? 'missing item' : 'missing items', Icon: UploadCloud },
-        { label: 'Key Numbers', value: String(keyNumbers), note: 'application fields', Icon: KeyRound },
+        { label: 'Forms', value: String(formCount), note: `${consentCount} signatures`, Icon: ClipboardList },
+        { label: 'Documents', value: String(missingDocuments), note: missingDocuments === 1 ? 'item missing' : 'items missing', Icon: UploadCloud },
+        { label: 'Compliance', value: String(keyNumbers), note: 'key number fields', Icon: KeyRound },
         { label: 'Requests', value: String(openRequests), note: openRequests === 1 ? 'open request' : 'open requests', Icon: MessageSquarePlus },
+        ...(dqFile ? [{ label: 'DQ File', value: `${dqFile.pct}%`, note: `${dqFile.rollup.missing} item${dqFile.rollup.missing === 1 ? '' : 's'} missing`, Icon: ListChecks }] : []),
     ];
 
     return (
@@ -592,7 +611,7 @@ function UploadSetRow({ s, idx, numberLabel }: { s: UploadSet; idx?: number; num
     );
 }
 
-function DataFieldsView({ fieldRows, canonical }: { fieldRows: FieldRow[]; canonical: Record<string, unknown> }) {
+export function DataFieldsView({ fieldRows, canonical }: { fieldRows: FieldRow[]; canonical: Record<string, unknown> }) {
     const dataRows = fieldRows.filter(r => isDataField(r.field) && !isEmptyVal(r.value));
     const byForm = new Map<string, FieldRow[]>();
     for (const r of dataRows) { const a = byForm.get(r.formName) ?? []; a.push(r); byForm.set(r.formName, a); }
@@ -632,7 +651,7 @@ function DataFieldsView({ fieldRows, canonical }: { fieldRows: FieldRow[]; canon
     );
 }
 
-function DocumentsView({ fieldRows }: { fieldRows: FieldRow[] }) {
+export function DocumentsView({ fieldRows }: { fieldRows: FieldRow[] }) {
     const rows = fieldRows.filter(r => isDocField(r.field));
     if (rows.length === 0) return <EmptyTab icon={UploadCloud} text="This application has no document fields." />;
     return (
@@ -661,7 +680,7 @@ function DocumentsView({ fieldRows }: { fieldRows: FieldRow[] }) {
     );
 }
 
-function KeyNumbersView({ fieldRows }: { fieldRows: FieldRow[] }) {
+export function KeyNumbersView({ fieldRows }: { fieldRows: FieldRow[] }) {
     const rows = fieldRows.filter(r => r.field.type === 'compliance');
     if (rows.length === 0) return <EmptyTab icon={KeyRound} text="This application has no key-number / compliance fields." />;
     return (
