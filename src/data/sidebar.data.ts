@@ -33,6 +33,7 @@ import {
     Gauge,
     Bell,
     Truck,
+    Layers,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -89,7 +90,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Hiring",
         icon: Briefcase,
         children: [
-            { key: "ats-main", label: "Application Tracking", icon: Briefcase, path: "/ats-main" },
+            { key: "ats-main", label: "Applications", icon: Briefcase, path: "/ats-main" },
             { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },
             { key: "dq-files", label: "Driver Qualification Files", icon: ListChecks, path: "/dq-files" },
         ],
@@ -199,6 +200,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             // ── Form & pipeline authoring (built on top of the catalog) ──
             { key: "super-admin-docu-form", label: "Docu/Form Generator", icon: FileSignature, path: "/admin/docu-form" },
             { key: "super-admin-templates", label: "Hiring Templates (ATS)", icon: LayoutTemplate, path: "/admin/templates" },
+            { key: "super-admin-hiring-forms", label: "Hiring Forms", icon: ClipboardCheck, path: "/hiring-forms", badge: "New" },
+            { key: "super-admin-hiring-form-templates", label: "Hiring Form Templates", icon: Layers, path: "/admin/hiring-form-templates", badge: "New" },
             // ── Hierarchy configuration (Super Admin defines, then cascades down) ──
             { key: "super-admin-service-profile-compliance", label: "Service Profile Configuration", icon: Building2, path: "/admin/service-profile-compliance" },
             { key: "super-admin-carrier-profile-config", label: "Carrier Profile Configuration", icon: Truck, path: "/admin/carrier-profile-configuration" },

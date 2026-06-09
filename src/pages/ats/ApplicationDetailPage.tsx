@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
     ArrowLeft, Check, Undo2, FileText, ShieldCheck, Send, UserPlus,
-    Clock, Inbox, AlertCircle, ChevronDown, Mail, Phone, MessageSquarePlus,
+    Clock, AlertCircle, ChevronDown, Mail, Phone, MessageSquarePlus,
     Link2, Copy, ExternalLink, Calendar, Hourglass, ListChecks, UploadCloud, KeyRound, XCircle,
-    ClipboardList, Shield, PenTool, Database,
+    ClipboardList, Shield, PenTool, Database, Move,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
@@ -15,19 +15,19 @@ import { complianceFieldConfig, resolveFormDocType } from './form-doc-resolver';
 import { CONSENT_BY_ID, type ConsentCategory } from './consent-forms.data';
 import { loadTemplates, type DriverHiringTemplate, type TemplateStep } from '@/pages/settings/driver-hiring-templates.data';
 import {
-    getApplicant, getApplication, setStepStatus, setStepSkipped, addRequest, addAsDriver, inviteDriver, applicationProgress,
-    uploadRequirement, setRequirementState,
+    getApplicant, getApplication, setStepSkipped, addRequest, addAsDriver, inviteDriver, applicationProgress,
+    uploadRequirement, setRequirementState, setApplicationStatus, logRequirementAction,
+    attachSignature, detachSignature, setSignatureVerified, setSignatureOnFile,
     APP_STATUS_META, STEP_STATUS_META,
-    type HiringApplication,
+    type HiringApplication, type AppStatus,
 } from './hiring-application.data';
 import { buildRequirements, requirementSummary, type Requirement } from './hiring-requirements';
 import { detectDqDriverType, loadDqProfiles, resolveDqProfile, loadDqOverrides, DQ_DRIVER_TYPES } from './dq-profiles.data';
 import { computeDqFile, type DqFileResult } from './dq-file-checklist';
 import { RequirementList } from './RequirementList';
-import { FormsTab, ConsentFormsTab } from './AtsPage';
 import { History } from 'lucide-react';
 
-type DetailTabId = 'overview' | 'workflow' | 'forms' | 'documents' | 'compliance' | 'signature' | 'requests' | 'events';
+type DetailTabId = 'overview' | 'workflow' | 'documents' | 'compliance' | 'signature' | 'requests' | 'events';
 
 /**
  * Internal Application detail — the recruiter's view of a hiring application.
@@ -49,8 +49,6 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
     }, []);
 
     const [openStepId, setOpenStepId] = useState<string | null>(null);
-    const [returnNoteFor, setReturnNoteFor] = useState<string | null>(null);
-    const [returnNote, setReturnNote] = useState('');
     const [askOpen, setAskOpen] = useState(false);
     const [tab, setTab] = useState<DetailTabId>('overview');
 
@@ -64,8 +62,16 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
     );
     const reqUpload = (r: Requirement) => { if (applicant) { uploadRequirement(applicant.id, r.id, r.label); refresh(); } };
     const reqVerify = (r: Requirement) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: 'verified' }); refresh(); } };
-    const reqSkip   = (r: Requirement, reason: string) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: reason ? ('skipped' as any) : 'missing' }); refresh(); } };
-    const reqDelete  = (r: Requirement) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: 'missing', files: [] }); refresh(); } };
+    const reqUnverify = (r: Requirement) => { if (applicant) { setRequirementState(applicant.id, r.id, { status: 'uploaded' }); refresh(); } };
+    const reqSend   = (r: Requirement) => { if (applicant) { logRequirementAction(applicant.id, r.label, 'Sent document'); refresh(); } };
+    const reqAskVerify = (_r: Requirement) => { setAskOpen(true); };
+
+    // E-signature setup handlers
+    const sigAttach   = (stepId: string, label: string) => { if (applicant) { attachSignature(applicant.id, stepId, label); refresh(); } };
+    const sigDetach   = (stepId: string, label: string) => { if (applicant) { detachSignature(applicant.id, stepId, label); refresh(); } };
+    const sigVerify   = (stepId: string, label: string, v: boolean) => { if (applicant) { setSignatureVerified(applicant.id, stepId, v, label); refresh(); } };
+    const sigSetOnFile = (sig: string | undefined) => { if (applicant) { setSignatureOnFile(applicant.id, sig); refresh(); } };
+    const sigAttachAll = (items: { stepId: string; label: string }[]) => { if (applicant) { items.forEach(it => attachSignature(applicant.id, it.stepId, it.label)); refresh(); } };
 
     const reqSummary = requirementSummary(requirements);
     const docReqs    = requirements.filter(r => r.kind === 'document');
@@ -107,16 +113,10 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
         return f?.displayTitle || f?.name || 'Form';
     };
 
-    // Flatten every form field + its submitted value across all steps — powers the
-    // Data / Documents / Key-Number tabs (the application-level data view).
-    const approve = (stepId: string) => { setStepStatus(applicantId, stepId, 'approved'); refresh(); };
+    // Per-driver step removal (the only step-level control kept on the Workflow tab).
     const toggleSkip = (stepId: string, skipped: boolean) => {
         if (skipped && !window.confirm('Remove this step for this driver? It will be excluded from their progress.')) return;
         setStepSkipped(applicantId, stepId, skipped); refresh();
-    };
-    const doReturn = (stepId: string) => {
-        setStepStatus(applicantId, stepId, 'returned', returnNote.trim() || 'Please review and resubmit.');
-        setReturnNoteFor(null); setReturnNote(''); refresh();
     };
 
     return (
@@ -149,7 +149,20 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold', statusMeta.cls)}>{statusMeta.label}</span>
+                        {/* Single status control — sets the entire application status. */}
+                        <div className={cn('relative inline-flex items-center rounded-lg border', statusMeta.cls)}>
+                            <span className="pointer-events-none pl-3 text-[10px] font-bold uppercase tracking-wider opacity-70">Status</span>
+                            <select
+                                value={app.status}
+                                onChange={(e) => { setApplicationStatus(applicantId, e.target.value as AppStatus); refresh(); }}
+                                className="cursor-pointer appearance-none bg-transparent py-2 pl-2 pr-8 text-xs font-bold focus:outline-none"
+                            >
+                                {(Object.keys(APP_STATUS_META) as AppStatus[]).map(s => (
+                                    <option key={s} value={s} className="bg-white text-slate-700">{APP_STATUS_META[s].label}</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 opacity-60" />
+                        </div>
                         <button type="button" onClick={() => setAskOpen(true)}
                             className="inline-flex h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 shadow-sm hover:bg-blue-100">
                             <MessageSquarePlus size={15} /> Ask / Order
@@ -204,7 +217,6 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                     counts={{
                         overview:    progress.completed,
                         workflow:    steps.length,
-                        forms:       formSteps.length,
                         documents:   docReqs.filter(r => r.status === 'missing').length,
                         compliance:  compReqs.filter(r => r.status === 'missing').length,
                         signature:   consentSteps.length,
@@ -214,21 +226,30 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                 />
             </div>
 
-            <div className="px-8 py-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="px-8 py-6">
                 <div className="min-w-0">
                     {tab === 'overview' && (
-                        <ApplicationOverviewView
-                            applicant={applicant}
-                            app={app}
-                            template={template}
-                            carrierName={carrier?.dbaName || carrier?.legalName}
-                            progress={progress}
-                            formCount={formSteps.length}
-                            consentCount={consentSteps.length}
-                            missingDocuments={reqSummary.missing}
-                            keyNumbers={compReqs.length}
-                            dqFile={dqFile}
-                        />
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                            <ApplicationOverviewView
+                                applicant={applicant}
+                                app={app}
+                                template={template}
+                                carrierName={carrier?.dbaName || carrier?.legalName}
+                                progress={progress}
+                                formCount={formSteps.length}
+                                consentCount={consentSteps.length}
+                                missingDocuments={reqSummary.missing}
+                                keyNumbers={compReqs.length}
+                                dqFile={dqFile}
+                            />
+                            <div className="space-y-4">
+                                <InvitePanel app={app} firstName={applicant.firstName}
+                                    defaultEmail={applicant.email}
+                                    onInvite={(email) => { inviteDriver(applicantId, email); refresh(); }}
+                                    onOpenPortal={() => onNavigate?.(`/apply/${applicantId}`)} />
+                                <ApplicantCard applicant={applicant} />
+                            </div>
+                        </div>
                     )}
                     {tab === 'workflow' && (
                     <div className="space-y-3">
@@ -284,25 +305,6 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                                                 {st === 'returned' && state?.returnNote && (
                                                     <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-[12px] text-rose-700"><span className="font-bold">Returned:</span> {state.returnNote}</p>
                                                 )}
-                                                {st !== 'approved' && (
-                                                    <div className="mt-4">
-                                                        {returnNoteFor === s.id ? (
-                                                            <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50/40 p-3">
-                                                                <textarea value={returnNote} onChange={e => setReturnNote(e.target.value)} rows={2} placeholder="What should the driver fix?"
-                                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
-                                                                <div className="flex justify-end gap-2">
-                                                                    <button type="button" onClick={() => { setReturnNoteFor(null); setReturnNote(''); }} className="rounded-md px-3 py-1.5 text-[12px] font-semibold text-slate-500 hover:text-slate-800">Cancel</button>
-                                                                    <button type="button" onClick={() => doReturn(s.id)} className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-[12px] font-bold text-white hover:bg-rose-700"><Undo2 size={13} /> Return to driver</button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-2">
-                                                                <button type="button" onClick={() => approve(s.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700"><Check size={14} /> Approve</button>
-                                                                <button type="button" onClick={() => { setReturnNoteFor(s.id); setReturnNote(''); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[12px] font-bold text-slate-700 hover:bg-slate-50"><Undo2 size={14} /> Return for changes</button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
                                             </>
                                         )}
                                     </div>
@@ -313,30 +315,23 @@ export function ApplicationDetailPage({ applicantId, onNavigate }: { applicantId
                     </div>
                     )}
 
-                    {tab === 'forms' && <FormsTab app={app} steps={formSteps} formById={formById} onOrder={() => setAskOpen(true)} onSetFormStatus={(stepId, s) => { setStepStatus(applicantId, stepId, s); refresh(); }} />}
-                    {tab === 'signature' && <ConsentFormsTab app={app} steps={consentSteps} onOrder={() => setAskOpen(true)} />}
+                    {tab === 'signature' && (
+                        <SignaturesView app={app} steps={steps} formById={formById}
+                            driverName={`${applicant.firstName} ${applicant.lastName}`}
+                            onAttach={sigAttach} onDetach={sigDetach} onVerify={sigVerify}
+                            onSetOnFile={sigSetOnFile} onAttachAll={sigAttachAll} onAsk={() => setAskOpen(true)} />
+                    )}
                     {tab === 'documents' && (
-                        <RequirementList requirements={docReqs} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)}
-                            onSkip={reqSkip} onDelete={reqDelete} title="Documents" />
+                        <RequirementList requirements={docReqs} onUpload={reqUpload} onVerify={reqVerify} onUnverify={reqUnverify} onOrder={() => setAskOpen(true)}
+                            onAskVerify={reqAskVerify} onSend={reqSend} title="Documents" />
                     )}
                     {tab === 'compliance' && (
-                        <RequirementList requirements={compReqs} onUpload={reqUpload} onVerify={reqVerify} onOrder={() => setAskOpen(true)}
-                            onSkip={reqSkip} onDelete={reqDelete} title="Key Numbers & Compliance" />
+                        <RequirementList requirements={compReqs} onUpload={reqUpload} onVerify={reqVerify} onUnverify={reqUnverify} onOrder={() => setAskOpen(true)}
+                            onAskVerify={reqAskVerify} onSend={reqSend} title="Key Numbers & Compliance" />
                     )}
                     {tab === 'requests' && <RequestsView requests={app.requests} onNew={() => setAskOpen(true)} />}
                     {tab === 'events' && <EventLogView app={app} />}
                 </div>
-
-                {/* Side rail: invite + applicant + request + activity */}
-                <aside className="space-y-4 lg:sticky lg:top-4 lg:h-fit">
-                    <InvitePanel app={app} firstName={applicant.firstName}
-                        defaultEmail={applicant.email}
-                        onInvite={(email) => { inviteDriver(applicantId, email); refresh(); }}
-                        onOpenPortal={() => onNavigate?.(`/apply/${applicantId}`)} />
-                    <ApplicantCard applicant={applicant} />
-                    <RequestsCard requests={app.requests} onNew={() => setAskOpen(true)} />
-                    <ActivityLog app={app} />
-                </aside>
             </div>
 
             {askOpen && (
@@ -398,6 +393,229 @@ function ConsentReview({ signature }: { signature?: string }) {
     );
 }
 
+// ── Signature tab — e-signature setup. One signature "on file" (the copy), then
+//    a list of forms the hiring manager attaches / moves that signature to. ─────
+interface SignatureRow {
+    key: string;
+    stepId: string;
+    formName: string;
+    detail?: string;
+    signature?: string;     // currently attached signature, if any
+    verified?: boolean;
+    date?: string;
+    attachable: boolean;    // consent steps can have the on-file signature attached
+}
+
+function collectSignatures(app: HiringApplication, steps: TemplateStep[], formById: Map<string, ApplicationFormDef>): SignatureRow[] {
+    const rows: SignatureRow[] = [];
+    for (const s of steps) {
+        const st = app.steps[s.id];
+        if (st?.skipped) continue;
+        if (s.kind === 'consent') {
+            const consent = CONSENT_BY_ID[s.formId as ConsentCategory];
+            rows.push({
+                key: s.id, stepId: s.id,
+                formName: consent?.title ?? s.label ?? 'Consent form',
+                detail: consent?.citation,
+                signature: st?.signature, verified: st?.signatureVerified, date: st?.submittedAt,
+                attachable: true,
+            });
+        } else {
+            const form = formById.get(s.formId);
+            for (const f of form?.fields ?? []) {
+                if (f.type !== 'signature') continue;
+                const val = st?.values?.[f.id];
+                rows.push({
+                    key: `${s.id}:${f.id}`, stepId: s.id,
+                    formName: form?.displayTitle || form?.name || s.label || 'Form',
+                    detail: f.label,
+                    signature: typeof val === 'string' && val.startsWith('data:') ? val : undefined,
+                    date: st?.submittedAt,
+                    attachable: false,
+                });
+            }
+        }
+    }
+    return rows;
+}
+
+interface SignatureHandlers {
+    onAttach: (stepId: string, label: string) => void;
+    onDetach: (stepId: string, label: string) => void;
+    onVerify: (stepId: string, label: string, verified: boolean) => void;
+    onAsk: () => void;
+}
+
+function SignatureFormRow({ row, onFile, h }: { row: SignatureRow; onFile?: string; h: SignatureHandlers }) {
+    const attached = !!row.signature;
+    const [label, status, cls] = row.verified
+        ? ['Verified', 'Verified', 'border-emerald-200 bg-emerald-50 text-emerald-700']
+        : attached
+            ? ['Attached', 'Attached', 'border-blue-200 bg-blue-50 text-blue-700']
+            : ['Pending', 'Pending', 'border-amber-200 bg-amber-50 text-amber-700'];
+    void label;
+
+    return (
+        <li className="flex flex-wrap items-center gap-3 px-5 py-3.5 hover:bg-slate-50/40 transition-colors">
+            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                row.verified ? 'bg-emerald-50 text-emerald-600' : attached ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400')}>
+                <PenTool size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-bold text-slate-800">{row.formName}</div>
+                {row.detail && <div className="truncate text-[11px] text-slate-500">{row.detail}</div>}
+            </div>
+
+            {/* Signature preview thumbnail */}
+            {attached
+                ? <img src={row.signature} alt="signature" className="h-9 w-28 shrink-0 rounded-md border border-slate-200 bg-white object-contain p-0.5" />
+                : <div className="flex h-9 w-28 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50/60 text-[10px] italic text-slate-300">no signature</div>}
+
+            <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', cls)}>
+                {row.verified && <Check size={10} />}{status}
+            </span>
+
+            {/* Actions */}
+            <div className="flex shrink-0 items-center gap-1.5">
+                {row.attachable ? (
+                    attached ? (
+                        <>
+                            {row.verified
+                                ? <SigBtn Icon={Undo2} label="Unverify" tone="warn" onClick={() => h.onVerify(row.stepId, row.formName, false)} />
+                                : <SigBtn Icon={ShieldCheck} label="Verify" tone="good" onClick={() => h.onVerify(row.stepId, row.formName, true)} />}
+                            <SigBtn Icon={Move} label="Move" onClick={() => h.onDetach(row.stepId, row.formName)} />
+                            <SigBtn Icon={MessageSquarePlus} label="Ask" onClick={h.onAsk} />
+                        </>
+                    ) : (
+                        <>
+                            <SigBtn Icon={Link2} label="Attach" tone="primary" disabled={!onFile} onClick={() => h.onAttach(row.stepId, row.formName)} />
+                            <SigBtn Icon={MessageSquarePlus} label="Ask" onClick={h.onAsk} />
+                        </>
+                    )
+                ) : (
+                    attached
+                        ? <span className="text-[11px] font-semibold text-slate-400">Signed by driver</span>
+                        : <SigBtn Icon={MessageSquarePlus} label="Ask" onClick={h.onAsk} />
+                )}
+            </div>
+        </li>
+    );
+}
+
+function SigBtn({ Icon, label, onClick, tone = 'ghost', disabled }: {
+    Icon: React.ElementType; label: string; onClick?: () => void; tone?: 'ghost' | 'primary' | 'good' | 'warn'; disabled?: boolean;
+}) {
+    return (
+        <button type="button" onClick={onClick} disabled={disabled}
+            className={cn('inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                tone === 'primary' ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                    : tone === 'good' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : tone === 'warn' ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700')}>
+            <Icon size={11} /> {label}
+        </button>
+    );
+}
+
+function SignaturesView({ app, steps, formById, driverName, onAttach, onDetach, onVerify, onSetOnFile, onAttachAll, onAsk }: {
+    app: HiringApplication;
+    steps: TemplateStep[];
+    formById: Map<string, ApplicationFormDef>;
+    driverName: string;
+    onAttach: (stepId: string, label: string) => void;
+    onDetach: (stepId: string, label: string) => void;
+    onVerify: (stepId: string, label: string, verified: boolean) => void;
+    onSetOnFile: (sig: string | undefined) => void;
+    onAttachAll: (items: { stepId: string; label: string }[]) => void;
+    onAsk: () => void;
+}) {
+    const rows = collectSignatures(app, steps, formById);
+    const onFile = app.signatureOnFile;
+    const attachable = rows.filter(r => r.attachable);
+    const attachedCount = attachable.filter(r => r.signature).length;
+    const verifiedCount = attachable.filter(r => r.verified).length;
+    const pendingItems = attachable.filter(r => !r.signature).map(r => ({ stepId: r.stepId, label: r.formName }));
+    const h: SignatureHandlers = { onAttach, onDetach, onVerify, onAsk };
+
+    if (rows.length === 0) {
+        return <EmptyTab icon={PenTool} text="This application has no consent forms or signature fields." />;
+    }
+
+    return (
+        <div className="space-y-4">
+            {/* ── Signature on file (the master copy) ─────────────────────── */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-900">E-signature on file</h3>
+                        <p className="text-[11px] text-slate-500">The driver's signature — attach or move it to the forms below.</p>
+                    </div>
+                    {onFile && pendingItems.length > 0 && (
+                        <button type="button" onClick={() => onAttachAll(pendingItems)}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[12px] font-bold text-white hover:bg-blue-700">
+                            <Link2 size={13} /> Attach to all ({pendingItems.length})
+                        </button>
+                    )}
+                </div>
+                <div className="flex flex-wrap items-center gap-4 px-5 py-4">
+                    {onFile ? (
+                        <>
+                            <div className="rounded-lg border border-slate-200 bg-gradient-to-b from-white to-slate-50/60 px-4 pt-2 pb-1">
+                                <img src={onFile} alt="signature on file" className="h-16 w-52 object-contain" />
+                                <div className="mt-0.5 border-t border-dashed border-slate-300 pt-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400">{driverName}</div>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <span className="inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                    <Check size={10} /> On file
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                    <SigBtn Icon={Copy} label="Recapture" onClick={() => onSetOnFile(makeSignature(driverName))} />
+                                    <SigBtn Icon={XCircle} label="Remove" tone="warn" onClick={() => onSetOnFile(undefined)} />
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-1 flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 text-[12px] text-slate-500">
+                                <span className="flex h-12 w-40 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50/60 text-[11px] italic text-slate-300">No signature yet</span>
+                                Capture the driver's signature to start attaching it to forms.
+                            </div>
+                            <button type="button" onClick={() => onSetOnFile(makeSignature(driverName))}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-[13px] font-bold text-white hover:bg-blue-700">
+                                <PenTool size={14} /> Capture signature
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── Forms requiring signature ───────────────────────────────── */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+                    <h3 className="text-sm font-bold text-slate-900">Forms requiring signature</h3>
+                    <div className="flex items-center gap-2 text-[11px] font-semibold">
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700">{attachedCount} attached</span>
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">{verifiedCount} verified</span>
+                    </div>
+                </div>
+                <ul className="divide-y divide-slate-100">
+                    {rows.map(row => <SignatureFormRow key={row.key} row={row} onFile={onFile} h={h} />)}
+                </ul>
+            </div>
+        </div>
+    );
+}
+
+/** A lightweight cursive "signature" rendered as an inline SVG data URL. */
+function makeSignature(name: string): string {
+    const svg =
+        `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='72'>` +
+        `<text x='14' y='48' font-family='Segoe Script, Brush Script MT, cursive' font-size='34' font-style='italic' fill='#1e293b'>${name}</text>` +
+        `<path d='M10 56 q60 10 120 0 t110 -2' stroke='#94a3b8' stroke-width='1' fill='none' opacity='0.4'/>` +
+        `</svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 // ── Application data tabs (Data Fields · Documents · Key Numbers) ─────────────
 
 type FieldRow = { stepId: string; stepLabel: string; formName: string; submitted: boolean; field: FormField; value: unknown };
@@ -433,7 +651,6 @@ function DetailTabs({ tab, setTab, counts }: {
     const tabs: { id: DetailTabId; label: string; icon: IconCmp }[] = [
         { id: 'overview',   label: 'Overview',    icon: ListChecks },
         { id: 'workflow',   label: 'Workflow',    icon: ClipboardList },
-        { id: 'forms',      label: 'Forms',       icon: ClipboardList },
         { id: 'documents',  label: 'Documents',   icon: UploadCloud },
         { id: 'compliance', label: 'Compliance',  icon: Shield },
         { id: 'signature',  label: 'Signature',   icon: PenTool },
@@ -798,32 +1015,7 @@ function ApplicantCard({ applicant }: { applicant: Applicant }) {
     );
 }
 
-// ── Requests card (opens the shared Ask/Order composer) ──────────────────────
-
-function RequestsCard({ requests, onNew }: { requests: HiringApplication['requests']; onNew: () => void }) {
-    const open = requests.filter(r => r.status === 'open').length;
-    return (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <h3 className="text-sm font-bold text-slate-900">Requests {open > 0 && <span className="ml-1 text-[11px] font-bold text-amber-600">· {open} open</span>}</h3>
-                <button type="button" onClick={onNew} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700">
-                    <MessageSquarePlus size={13} /> Ask / Order
-                </button>
-            </div>
-            <div className="p-4">
-                {requests.length === 0 ? (
-                    <p className="flex items-center gap-2 text-[12px] text-slate-400"><Inbox size={14} /> No requests yet. Ask the driver for a step, document, key number, or e-signature.</p>
-                ) : (
-                    <ul className="space-y-2.5">
-                        {requests.map(r => <RequestLine key={r.id} r={r} />)}
-                    </ul>
-                )}
-            </div>
-        </div>
-    );
-}
-
-// ── Activity log ─────────────────────────────────────────────────────────────
+// ── Requests view ────────────────────────────────────────────────────────────
 
 function RequestsView({ requests, onNew }: { requests: HiringApplication['requests']; onNew: () => void }) {
     const open = requests.filter(r => r.status === 'open').length;
@@ -852,31 +1044,6 @@ function RequestsView({ requests, onNew }: { requests: HiringApplication['reques
                     ))}
                 </ul>
             )}
-        </div>
-    );
-}
-
-function ActivityLog({ app }: { app: HiringApplication }) {
-    return (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-4 py-3"><h3 className="text-sm font-bold text-slate-900">Activity</h3></div>
-            <div className="p-4">
-                {app.events.length === 0 ? (
-                    <p className="flex items-center gap-2 text-[12px] text-slate-400"><Inbox size={14} /> No activity yet.</p>
-                ) : (
-                    <ul className="space-y-3">
-                        {app.events.map(ev => (
-                            <li key={ev.id} className="flex items-start gap-2.5">
-                                <Clock size={13} className="mt-0.5 shrink-0 text-slate-300" />
-                                <div className="min-w-0">
-                                    <p className="text-[12px] text-slate-700">{ev.detail || ev.type.replace(/_/g, ' ')}</p>
-                                    <p className="text-[10px] text-slate-400">{ev.by} · {new Date(ev.at).toLocaleString()}</p>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
         </div>
     );
 }

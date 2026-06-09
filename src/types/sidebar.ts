@@ -6,6 +6,7 @@ export type SidebarItem = {
     icon?: LucideIcon;
     path?: string; // leaf nodes use path
     disabled?: boolean; // shown greyed-out and non-clickable
+    badge?: string; // small red "New"-style tag shown after the label
 };
 
 export type SidebarGroup = {

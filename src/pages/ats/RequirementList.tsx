@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
-    Eye, Download, UploadCloud, BadgeCheck, AlertCircle, Clock,
+    Eye, UploadCloud, BadgeCheck, AlertCircle, Clock,
     MessageSquarePlus, KeyRound, FileText, CheckCircle2,
-    ChevronUp, Calendar, MapPin, Globe, Hash,
-    Paperclip, X as XIcon, Save, Shield, Copy, Layers,
-    Trash2, SkipForward, Printer,
+    Calendar, MapPin, Globe, Hash,
+    Paperclip, X as XIcon, Save, Shield, Layers,
+    Send, Copy, MoreHorizontal, ShieldCheck, Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { requirementSummary, type Requirement, type RequirementStatus } from "./hiring-requirements";
@@ -386,18 +386,66 @@ function ComplianceInputForm({ label, docType, values, onChange, onSave, onCance
     );
 }
 
+// ── Read-only field shown in the View panel ──────────────────────────────
+function ViewField({ label, value, mono, expiry }: { label: string; value?: string; mono?: boolean; expiry?: boolean }) {
+    const expired = expiry && value ? new Date(value) < new Date('2026-06-08') : false;
+    return (
+        <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+            <div className={cn('truncate text-[13px] font-semibold', mono && 'font-mono',
+                expired ? 'text-rose-600' : value ? 'text-slate-800' : 'text-slate-400')}>
+                {value || '—'}{expired && <span className="ml-1.5 text-[9px] font-bold uppercase">Expired</span>}
+            </div>
+        </div>
+    );
+}
+
+// ── Overflow "⋯" menu for secondary row actions ──────────────────────────
+interface ReqMenuItem { Icon: React.ElementType; label: string; onClick?: () => void; danger?: boolean }
+function ReqMenu({ items }: { items: ReqMenuItem[] }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+    if (items.length === 0) return null;
+    return (
+        <div className="relative" ref={ref}>
+            <button type="button" onClick={() => setOpen(o => !o)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-700"
+                title="More actions">
+                <MoreHorizontal size={14} />
+            </button>
+            {open && (
+                <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {items.map((it, i) => (
+                        <button key={i} type="button" onClick={() => { setOpen(false); it.onClick?.(); }}
+                            className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] font-semibold transition-colors',
+                                it.danger ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50')}>
+                            <it.Icon size={13} className={it.danger ? 'text-rose-500' : 'text-slate-400'} /> {it.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Main requirement row ─────────────────────────────────────────────────
-function RequirementRow({ r, onUpload, onOrder, onVerify, onSkip, onDelete }: {
+function RequirementRow({ r, onUpload, onOrder, onVerify, onUnverify, onAskVerify, onSend }: {
     r: Requirement;
     onUpload: (r: Requirement) => void;
     onOrder?: (r: Requirement) => void;
     onVerify?: (r: Requirement) => void;
-    onSkip?: (r: Requirement, reason: string) => void;
-    onDelete?: (r: Requirement) => void;
+    onUnverify?: (r: Requirement) => void;
+    onAskVerify?: (r: Requirement) => void;
+    onSend?: (r: Requirement) => void;
 }) {
     const [expanded, setExpanded] = useState(false);
-    const [skipMode, setSkipMode] = useState(false);
-    const [skipReason, setSkipReason] = useState('');
+    const [viewing, setViewing] = useState(false);
     const [formValues, setFormValues] = useState<DocFormValues>({
         number: r.meta.number ?? '',
         issueDate: r.meta.issue ?? '',
@@ -426,13 +474,15 @@ function RequirementRow({ r, onUpload, onOrder, onVerify, onSkip, onDelete }: {
     const has = r.files.length > 0 || r.status === 'uploaded' || r.status === 'verified';
     const isSkipped = r.status === 'skipped';
 
+    // Which captured fields to show is driven by the document type's Settings
+    // config (the same flags the upload form respects). With no resolved type,
+    // fall back to showing whatever value was actually captured.
+    const showIssue   = docType ? docType.issueDateRequired    !== false : !!r.meta.issue;
+    const showExpiry  = docType ? docType.expiryRequired       !== false : !!r.meta.expiry;
+    const showState   = docType ? docType.issueStateRequired   !== false : !!r.meta.state;
+    const showCountry = docType ? docType.issueCountryRequired !== false : !!r.meta.country;
+
     const handleSave = () => { onUpload(r); setExpanded(false); };
-    const handleConfirmSkip = () => {
-        if (!skipReason) return;
-        onSkip?.(r, skipReason);
-        setSkipMode(false);
-        setSkipReason('');
-    };
 
     return (
         <li className={cn('transition-all', expanded && 'bg-slate-50/30', isSkipped && 'opacity-60')}>
@@ -446,13 +496,7 @@ function RequirementRow({ r, onUpload, onOrder, onVerify, onSkip, onDelete }: {
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className={cn('text-[13px] font-bold text-slate-800', isSkipped && 'line-through text-slate-400')}>{r.label}</span>
-                        {r.required && !isSkipped && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-600">Required · 49 CFR 391.51</span>}
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{r.kind === 'compliance' ? 'Key number' : 'Document'}</span>
-                        {docType && !isSkipped && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
-                                <Shield size={8} /> {docType.category}
-                            </span>
-                        )}
+                        {r.required && !isSkipped && <span className="rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-600">Required</span>}
                     </div>
                     <p className="text-[11px] text-slate-500">
                         {isSkipped ? <span className="text-amber-600">Skipped by hiring manager</span>
@@ -463,54 +507,93 @@ function RequirementRow({ r, onUpload, onOrder, onVerify, onSkip, onDelete }: {
                 <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', sm.cls)}>
                     <sm.Icon size={11} /> {sm.label}
                 </span>
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                    {isSkipped ? (
-                        <>
-                            <ReqBtn Icon={UploadCloud} label="Upload instead" tone="primary" onClick={() => setExpanded(!expanded)} />
-                            <ReqBtn Icon={XIcon} label="Undo skip" onClick={() => onSkip?.(r, '')} />
-                        </>
-                    ) : (
-                        <>
-                            {has && <ReqBtn Icon={Eye} label="View" />}
-                            {has && <ReqBtn Icon={Download} label="Download" />}
-                            {has && <ReqBtn Icon={Printer} label="Print" />}
-                            <ReqBtn
-                                Icon={expanded ? ChevronUp : (has ? Copy : UploadCloud)}
-                                label={expanded ? 'Close' : has ? 'Replace' : 'Add'}
-                                onClick={() => { setExpanded(!expanded); setSkipMode(false); }}
-                                tone={has ? 'ghost' : 'primary'}
-                            />
-                            {has && r.status !== 'verified' && onVerify && <ReqBtn Icon={BadgeCheck} label="Verify" onClick={() => onVerify(r)} tone="good" />}
-                            {has && onDelete && <ReqBtn Icon={Trash2} label="Delete" onClick={() => onDelete(r)} tone="danger" />}
-                            {onOrder && <ReqBtn Icon={MessageSquarePlus} label="Order" onClick={() => onOrder(r)} />}
-                            {onSkip && <ReqBtn Icon={SkipForward} label="Skip" onClick={() => { setSkipMode(!skipMode); setExpanded(false); }} />}
-                        </>
-                    )}
-                </div>
+                {!isSkipped && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {r.status === 'verified' ? (
+                            <>
+                                <ReqBtn Icon={Eye} label="View" onClick={() => setViewing(v => !v)} />
+                                {onUnverify && <ReqBtn Icon={Undo2} label="Unverify" tone="warn" onClick={() => onUnverify(r)} />}
+                                {onSend && <ReqBtn Icon={Send} label="Send" onClick={() => onSend(r)} />}
+                                <ReqMenu items={[
+                                    { Icon: Copy, label: 'Replace', onClick: () => setExpanded(true) },
+                                    ...(onAskVerify ? [{ Icon: ShieldCheck, label: 'Ask for verification', onClick: () => onAskVerify(r) }] : []),
+                                    ...(onOrder ? [{ Icon: MessageSquarePlus, label: 'Ask / Order', onClick: () => onOrder(r) }] : []),
+                                ]} />
+                            </>
+                        ) : has ? (
+                            <>
+                                <ReqBtn Icon={Eye} label="View" onClick={() => setViewing(v => !v)} />
+                                {onVerify && <ReqBtn Icon={BadgeCheck} label="Verify" tone="good" onClick={() => onVerify(r)} />}
+                                <ReqMenu items={[
+                                    { Icon: Copy, label: 'Replace', onClick: () => setExpanded(true) },
+                                    ...(onSend ? [{ Icon: Send, label: 'Send', onClick: () => onSend(r) }] : []),
+                                    ...(onAskVerify ? [{ Icon: ShieldCheck, label: 'Ask for verification', onClick: () => onAskVerify(r) }] : []),
+                                    ...(onOrder ? [{ Icon: MessageSquarePlus, label: 'Ask / Order', onClick: () => onOrder(r) }] : []),
+                                ]} />
+                            </>
+                        ) : (
+                            <>
+                                <ReqBtn Icon={UploadCloud} label="Upload" tone="primary" onClick={() => setExpanded(!expanded)} />
+                                {onOrder && <ReqBtn Icon={MessageSquarePlus} label="Ask / Order" onClick={() => onOrder(r)} />}
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
 
-            {/* Skip confirm */}
-            {skipMode && !isSkipped && (
-                <div className="mx-5 mb-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3 space-y-2">
-                    <div className="text-[11px] font-bold text-amber-700 flex items-center gap-1.5"><SkipForward size={12} /> Skip "{r.label}" — select a reason:</div>
-                    <div className="flex items-center gap-2">
-                        <select value={skipReason} onChange={e => setSkipReason(e.target.value)}
-                            className="h-8 flex-1 rounded-md border border-amber-200 bg-white px-2 text-[12px] text-slate-700 focus:border-amber-400 focus:outline-none">
-                            <option value="">Choose reason…</option>
-                            <option value="not_applicable">Not applicable to this driver</option>
-                            <option value="driver_type">Not required for driver type</option>
-                            <option value="waiver">Approved waiver on file</option>
-                            <option value="pending">Pending — to be provided later</option>
-                            <option value="other">Other</option>
-                        </select>
-                        <button type="button" disabled={!skipReason} onClick={handleConfirmSkip}
-                            className="h-8 rounded-md bg-amber-600 px-3 text-[11px] font-bold text-white hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400">
-                            Confirm skip
-                        </button>
-                        <button type="button" onClick={() => setSkipMode(false)}
-                            className="h-8 rounded-md border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
-                            Cancel
-                        </button>
+            {/* Read-only View panel — the captured document/key-number data */}
+            {viewing && has && !expanded && (
+                <div className="px-5 pb-4">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                        <div className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                            <Eye size={13} className="text-blue-500" /> {r.kind === 'compliance' ? 'Key number details' : 'Document details'}
+                            <span className={cn('ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold normal-case', sm.cls)}>
+                                <sm.Icon size={10} /> {sm.label}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 sm:grid-cols-4">
+                            {r.kind === 'compliance' && <ViewField label="Number" value={r.meta.number} mono />}
+                            {showIssue && <ViewField label="Issue date" value={r.meta.issue} mono />}
+                            {showExpiry && <ViewField label="Expiry date" value={r.meta.expiry} mono expiry />}
+                            {showState && <ViewField label="Issuing state" value={r.meta.state} />}
+                            {showCountry && <ViewField label="Issuing country" value={r.meta.country} />}
+                        </div>
+                        {docType && (
+                            <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+                                <Shield size={9} /> Fields defined by the “{docType.name}” document type in Settings.
+                            </p>
+                        )}
+                        {/* Files */}
+                        <div className="mt-3 border-t border-slate-200 pt-3">
+                            <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                Files {r.files.length > 0 && `· ${r.files.length}`}
+                            </div>
+                            {r.files.length === 0 ? (
+                                <p className="text-[12px] text-slate-400">No file uploaded — only data captured.</p>
+                            ) : (
+                                <ul className="space-y-1.5">
+                                    {r.files.map((f, i) => (
+                                        <li key={i} className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5">
+                                            <FileText size={13} className="shrink-0 text-blue-500" />
+                                            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-700">{f.name}</span>
+                                            {f.uploadedAt && <span className="shrink-0 text-[10px] text-slate-400">{f.uploadedAt}</span>}
+                                            <div className="flex shrink-0 items-center gap-1">
+                                                <ReqBtn Icon={Eye} label="Open" small />
+                                                <ReqBtn Icon={Save} label="Download" small />
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                        <div className="mt-3 flex items-center justify-end gap-2">
+                            <button type="button" onClick={() => { setViewing(false); setExpanded(true); }}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">
+                                <Copy size={12} /> Replace
+                            </button>
+                            <button type="button" onClick={() => setViewing(false)}
+                                className="h-8 rounded-md border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">Close</button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -548,11 +631,18 @@ function RequirementRow({ r, onUpload, onOrder, onVerify, onSkip, onDelete }: {
  * Upload / View / Download / Order / Verify actions, plus an expandable inline
  * form that renders the document type's Settings-defined fields.
  */
-export function RequirementList({ requirements, onUpload, onOrder, onVerify, onSkip, onDelete, title = 'Documents & Compliance' }: {
+export function RequirementList({ requirements, onUpload, onOrder, onVerify, onUnverify, onAskVerify, onSend, title = 'Documents & Compliance' }: {
     requirements: Requirement[];
     onUpload: (r: Requirement) => void;
     onOrder?: (r: Requirement) => void;
     onVerify?: (r: Requirement) => void;
+    /** Revert a verified item back to uploaded. */
+    onUnverify?: (r: Requirement) => void;
+    /** Request verification of an already-uploaded item (e.g. from the employer). */
+    onAskVerify?: (r: Requirement) => void;
+    /** Send / share the document. */
+    onSend?: (r: Requirement) => void;
+    /** Accepted for backwards-compat with existing callers; no longer rendered. */
     onSkip?: (r: Requirement, reason: string) => void;
     onDelete?: (r: Requirement) => void;
     title?: string;
@@ -625,8 +715,9 @@ export function RequirementList({ requirements, onUpload, onOrder, onVerify, onS
                             onUpload={onUpload}
                             onOrder={onOrder}
                             onVerify={onVerify}
-                            onSkip={onSkip}
-                            onDelete={onDelete}
+                            onUnverify={onUnverify}
+                            onAskVerify={onAskVerify}
+                            onSend={onSend}
                         />
                     ))}
                 </ul>

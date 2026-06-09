@@ -97,8 +97,16 @@ export function buildRequirements(
                 const id = `kn:${f.id}`;
                 if (seen.has(id)) continue;
                 seen.add(id);
-                const v = values[f.id] as { entries?: Array<Record<string, unknown>> } | Record<string, unknown> | undefined;
-                const entry = (v && 'entries' in v && Array.isArray(v.entries) ? v.entries[0] : v) as Record<string, unknown> | undefined;
+                const v = values[f.id];
+                // The value may be a plain string (e.g. seeded "Provided"), an object
+                // with an `entries` array, or a flat object — guard before using `in`.
+                const entry = (
+                    v && typeof v === 'object'
+                        ? ('entries' in v && Array.isArray((v as { entries?: unknown[] }).entries)
+                            ? (v as { entries: Array<Record<string, unknown>> }).entries[0]
+                            : (v as Record<string, unknown>))
+                        : undefined
+                ) as Record<string, unknown> | undefined;
                 const meta: RequirementMeta = {
                     number: entry?.number != null && entry.number !== '' ? String(entry.number) : undefined,
                     issue: entry?.issue ? String(entry.issue) : undefined,

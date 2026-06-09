@@ -62,9 +62,9 @@ function variantTheme(variant: PdfVariant, accent: string) {
         };
     }
     return {
-        sectionStyle: { marginBottom: 16, border: `1px solid ${C.cardLine}`, borderRadius: 8, overflow: 'hidden' as const, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' },
-        headerStyle: { background: C.labelBg, padding: '8px 12px', fontSize: 12, fontWeight: 700 as const, color: C.ink, borderBottom: `1px solid ${C.cardLine}` },
-        bodyPad: 12, rowGap: 10, capacity: 900,
+        sectionStyle: { marginBottom: 15, border: `1px solid ${C.cardLine}`, borderRadius: 8, overflow: 'hidden' as const, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' },
+        headerStyle: { background: '#f8fafc', padding: '9px 14px', fontSize: 13, fontWeight: 800 as const, color: C.ink, borderBottom: `2px solid ${accent}`, letterSpacing: 0.2 },
+        bodyPad: 0, rowGap: 10, capacity: 885,
     };
 }
 
@@ -117,45 +117,54 @@ function buildSections(form: ApplicationFormDef, values: Record<string, FieldVal
 
 // ── Height estimation (for pagination — generous to avoid clipping) ─────────
 
+/** Height of a label/value row, accounting for text wrapping in each column
+ *  (label ≈ 52 chars/line, value ≈ 58 chars/line at 10.5px). */
+function scalarRowHeight(label: string, value: string): number {
+    const labelLines = Math.max(1, Math.ceil(label.length / 52));
+    const valueLines = Math.max(1, Math.ceil((value || '—').length / 58));
+    return 14 + Math.max(labelLines, valueLines) * 15;
+}
 function fieldHeight(f: FormField, values: Record<string, FieldValue>): number {
     switch (f.type) {
-        case 'paragraph': return 18 + Math.ceil((f.instruction?.length ?? 0) / 90) * 15;
-        case 'bullet-list': return 28 + (f.options?.length ?? 0) * 16;
-        case 'alert': return 48;
-        case 'textarea': return 78;
-        case 'signature': return 130;
-        case 'radio':
-        case 'checklist': return 34 + Math.ceil((f.options?.length ?? 1) / 3) * 26;
+        case 'paragraph': return 6 + Math.max(1, Math.ceil((f.instruction?.length ?? 0) / 95)) * 15;
+        case 'bullet-list': return 24 + (f.options?.length ?? 0) * 16;
+        case 'alert': return 14 + Math.max(1, Math.ceil((f.label?.length ?? 0) / 80)) * 15;
+        case 'signature': return 96;
         case 'document': {
             const dt = resolveFormDocType(f.documentTypeId);
             const meta = [dt?.expiryRequired, dt?.issueDateRequired, dt?.issueStateRequired, dt?.issueCountryRequired].filter(Boolean).length;
-            const slots = dt?.numberOfSlots && dt.numberOfSlots >= 2 ? 92 : 56;
-            return 40 + slots + Math.ceil(meta / 2) * 48;
+            const slots = dt?.numberOfSlots && dt.numberOfSlots >= 2 ? 92 : 50;
+            return 34 + slots + Math.ceil(meta / 2) * 40;
         }
         case 'compliance': {
             const { docType } = complianceFieldConfig(f.complianceKeyNumberId);
             const meta = [docType?.expiryRequired, docType?.issueDateRequired, docType?.issueStateRequired, docType?.issueCountryRequired].filter(Boolean).length;
-            const slots = docType?.numberOfSlots && docType.numberOfSlots >= 2 ? 92 : 56;
-            return 90 + (docType ? slots : 0) + Math.ceil(meta / 2) * 48;
+            const slots = docType?.numberOfSlots && docType.numberOfSlots >= 2 ? 92 : 50;
+            return 60 + (docType ? slots : 0) + Math.ceil(meta / 2) * 40;
         }
         case 'license-list': case 'address-list': case 'disqualification-list':
         case 'accident-list': case 'violation-list': case 'driving-experience-list':
         case 'employment-list': case 'education-list': case 'subform-button': {
             const v = values[f.id];
             const n = Array.isArray(v) ? v.length : 0;
-            return 38 + Math.max(n, 1) * 60;
+            return 34 + Math.max(n, 1) * 58;
         }
-        default: return 50;
+        // text / number / date / select / radio / checklist / toggle / textarea all
+        // render as a single label/value row showing the entered/selected value.
+        default: return scalarRowHeight(f.label ?? '', asText(values[f.id]));
     }
 }
-function rowHeight(row: Row, values: Record<string, FieldValue>): number {
-    const base = Math.max(...row.fields.map(f => fieldHeight(f, values)));
-    const deps = row.deps.reduce((s, d) => s + fieldHeight(d, values) + 8, 0);
-    return base + deps + 14;
+/** Row height. `stack` (Standard variant) renders each field as its own full-width
+ *  row, so a 2-field row stacks (sum); other variants keep them side by side (max). */
+function rowHeight(row: Row, values: Record<string, FieldValue>, stack: boolean): number {
+    const fieldHs = row.fields.map(f => fieldHeight(f, values));
+    const base = stack ? fieldHs.reduce((a, b) => a + b, 0) : Math.max(...fieldHs);
+    const deps = row.deps.reduce((s, d) => s + fieldHeight(d, values) + (stack ? 0 : 6), 0);
+    return base + deps + (stack ? 2 : 8);
 }
 
 /** Paginate sections into pages, splitting a tall section's rows across pages. */
-function paginate(sections: Section[], values: Record<string, FieldValue>, capacity: number = CONTENT_CAPACITY): Section[][] {
+function paginate(sections: Section[], values: Record<string, FieldValue>, capacity: number = CONTENT_CAPACITY, stack = false): Section[][] {
     const CONTENT_CAP = capacity;
     const pages: Section[][] = [];
     let page: Section[] = [];
@@ -181,7 +190,7 @@ function paginate(sections: Section[], values: Record<string, FieldValue>, capac
         partUsed = 0;
 
         for (const row of section.rows) {
-            const h = rowHeight(row, values);
+            const h = rowHeight(row, values, stack);
             if (used + partUsed + h > CONTENT_CAP && (partRows.length || page.length)) {
                 flushPart(true);
                 pushPage();
@@ -191,6 +200,7 @@ function paginate(sections: Section[], values: Record<string, FieldValue>, capac
             partUsed += h;
         }
         flushPart(false);
+        used += 16; // section card border + marginBottom
     }
     pushPage();
     return pages.length ? pages : [[]];
@@ -205,12 +215,40 @@ function asText(v: FieldValue | undefined): string {
     return String(v);
 }
 
-function LabelRow({ label, value }: { label: string; value: string }) {
+function LabelRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
     return (
-        <div style={{ display: 'flex', borderBottom: `1px solid ${C.line}` }}>
-            <div style={{ width: '46%', background: C.labelBg, padding: '7px 10px', fontSize: 10.5, fontWeight: 600, color: C.sub }}>{label}</div>
-            <div style={{ flex: 1, padding: '7px 10px', fontSize: 10.5, color: value ? C.ink : C.faint }}>{value || '—'}</div>
+        <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: last ? 'none' : `1px dotted ${C.cardLine}` }}>
+            <div style={{ flex: '0 0 48%', background: C.labelBg, padding: '7px 12px', fontSize: 10.5, fontWeight: 700, color: C.sub }}>{label}</div>
+            <div style={{ flex: 1, padding: '7px 12px', fontSize: 10.5, fontWeight: 600, color: value ? C.ink : C.faint }}>{value || '—'}</div>
         </div>
+    );
+}
+
+/** Render a section's rows as a clean document: consecutive scalar fields collapse
+ *  into one bordered label/value table (dotted separators); document / signature /
+ *  list / compliance blocks render as their own padded blocks, preserving order. */
+const SCALAR_PRINT_TYPES = new Set<FormField['type']>(['text', 'number', 'date', 'select', 'radio', 'checklist', 'toggle', 'textarea']);
+function SectionBody({ rows, values }: { rows: Row[]; values: Record<string, FieldValue> }) {
+    const seq: FormField[] = [];
+    for (const row of rows) { for (const f of row.fields) seq.push(f); for (const d of row.deps) seq.push(d); }
+
+    // Scalar fields render as flush label/value rows (dotted separators) directly
+    // inside the section card; document / signature / list blocks get their own pad.
+    return (
+        <>
+            {seq.map((f, i) => {
+                const isScalar = SCALAR_PRINT_TYPES.has(f.type);
+                const nextIsBlockOrEnd = i === seq.length - 1 || !SCALAR_PRINT_TYPES.has(seq[i + 1].type);
+                if (isScalar) {
+                    return <LabelRow key={f.id} label={f.label} value={asText(values[f.id])} last={nextIsBlockOrEnd} />;
+                }
+                return (
+                    <div key={f.id} style={{ padding: '10px 14px', borderTop: i > 0 ? `1px solid ${C.line}` : 'none' }}>
+                        <PrintField field={f} values={values} />
+                    </div>
+                );
+            })}
+        </>
     );
 }
 
@@ -449,18 +487,33 @@ function RowView({ row, values, gap = 10 }: { row: Row; values: Record<string, F
 // ── Page chrome ─────────────────────────────────────────────────────────────
 
 function PageHeader({ branding, title }: { branding: CompanyBranding; title: string }) {
+    const accent = branding.accentColor;
     return (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, marginBottom: 16, borderBottom: `2px solid ${branding.accentColor}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {branding.logoDataUrl
-                    ? <img src={branding.logoDataUrl} alt="" style={{ height: 30, maxWidth: 120, objectFit: 'contain' }} />
-                    : <div style={{ width: 30, height: 30, borderRadius: 6, background: branding.accentColor }} />}
-                <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{branding.name}</div>
-                    {branding.tagline && <div style={{ fontSize: 8.5, color: C.muted }}>{branding.tagline}</div>}
+        <div style={{ marginBottom: 18 }}>
+            {/* Letterhead: logo + company (left), contact block (right) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {branding.logoDataUrl
+                        ? <img src={branding.logoDataUrl} alt="" style={{ height: 40, maxWidth: 160, objectFit: 'contain' }} />
+                        : <div style={{ width: 40, height: 40, borderRadius: 8, background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 18 }}>{(branding.name || 'C').slice(0, 1).toUpperCase()}</div>}
+                    <div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: 0.2 }}>{branding.name}</div>
+                        {branding.tagline && <div style={{ fontSize: 9, color: C.muted, marginTop: 1, fontStyle: 'italic' }}>{branding.tagline}</div>}
+                    </div>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 8.5, color: C.muted, lineHeight: 1.6 }}>
+                    {branding.address && <div>{branding.address}</div>}
+                    {branding.phone && <div>{branding.phone}</div>}
+                    {branding.email && <div>{branding.email}</div>}
                 </div>
             </div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.6 }}>{title}</div>
+            {/* Accent rule */}
+            <div style={{ height: 3, background: accent, borderRadius: 2 }} />
+            {/* Document title band */}
+            <div style={{ marginTop: 11, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, letterSpacing: 0.2 }}>{title}</div>
+                <div style={{ fontSize: 8, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.8 }}>Driver Qualification File</div>
+            </div>
         </div>
     );
 }
@@ -478,7 +531,7 @@ function PageFooter({ branding, page, total, reviewer, reviewedDate }: {
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, color: C.faint }}>
                 <span>{branding.address || branding.name}</span>
-                <span>{branding.name} · Driver Application</span>
+                <span>{[branding.phone, branding.email].filter(Boolean).join('  ·  ') || branding.name}</span>
                 <span>Page {page} of {total}</span>
             </div>
         </div>
@@ -490,12 +543,12 @@ function PageFooter({ branding, page, total, reviewer, reviewedDate }: {
 export function ApplicationFormPrint({ form, branding, values = {}, reviewer, reviewedDate, variant = 'standard' }: ApplicationFormPrintProps) {
     const theme = variantTheme(variant, branding.accentColor);
     const sections = buildSections(form, values);
-    const pages = paginate(sections, values, theme.capacity);
+    const pages = paginate(sections, values, theme.capacity, variant === 'standard');
     const total = pages.length;
     const title = form.displayTitle || form.name || 'Driver Application';
 
     return (
-        <div style={{ fontFamily: FONT }}>
+        <div style={{ fontFamily: FONT, fontSize: 10.5, lineHeight: 1.4, color: C.ink, WebkitFontSmoothing: 'antialiased', textRendering: 'geometricPrecision' as const }}>
             {pages.map((pageSections, pi) => (
                 <div
                     key={pi}
@@ -507,12 +560,11 @@ export function ApplicationFormPrint({ form, branding, values = {}, reviewer, re
                         pageBreakAfter: 'always', breakAfter: 'page',
                     }}
                 >
-                    <PageHeader branding={branding} title={`${title}${total > 1 ? ` · Pg. ${pi + 1}` : ''}`} />
+                    <PageHeader branding={branding} title={title} />
 
-                    {pi === 0 && (
-                        <div style={{ marginBottom: 14 }}>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: C.ink }}>{title}</div>
-                            {form.introText && <div style={{ fontSize: 10, color: C.muted, marginTop: 2, whiteSpace: 'pre-line' }}>{form.introText}</div>}
+                    {pi === 0 && form.introText && (
+                        <div style={{ marginBottom: 14, marginTop: -6 }}>
+                            <div style={{ fontSize: 10, color: C.muted, whiteSpace: 'pre-line' }}>{form.introText}</div>
                         </div>
                     )}
 
@@ -521,8 +573,12 @@ export function ApplicationFormPrint({ form, branding, values = {}, reviewer, re
                             <div key={si} style={theme.sectionStyle}>
                                 {section.title && <div style={theme.headerStyle}>{section.title}</div>}
                                 <div style={{ padding: theme.bodyPad }}>
-                                    {section.intro && <p style={{ fontSize: 10, color: C.muted, margin: '0 0 8px', whiteSpace: 'pre-line' }}>{section.intro}</p>}
-                                    {section.rows.map((row, ri) => <RowView key={ri} row={row} values={values} gap={theme.rowGap} />)}
+                                    {section.intro && (
+                                        <p style={{ fontSize: 10, color: C.muted, margin: 0, padding: variant === 'standard' ? '9px 14px 4px' : '0 0 8px', whiteSpace: 'pre-line', lineHeight: 1.5 }}>{section.intro}</p>
+                                    )}
+                                    {variant === 'standard'
+                                        ? <SectionBody rows={section.rows} values={values} />
+                                        : section.rows.map((row, ri) => <RowView key={ri} row={row} values={values} gap={theme.rowGap} />)}
                                 </div>
                             </div>
                         ))}

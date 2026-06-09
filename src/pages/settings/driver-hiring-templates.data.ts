@@ -26,12 +26,13 @@ export interface TemplateStep {
     helperText?: string;
 }
 
-/** Currently the only supported form type — placeholder for future workflows
- *  (e.g. mechanic hiring, vendor onboarding). */
-export type TemplateFormType = 'hiring-driver';
+/** Supported template lines of work. `hiring-driver` = the applicant-facing
+ *  Driver Application forms; `hiring-ats` = the post-application ATS pipeline. */
+export type TemplateFormType = 'hiring-driver' | 'hiring-ats';
 
 export const TEMPLATE_FORM_TYPES: { id: TemplateFormType; label: string }[] = [
-    { id: 'hiring-driver', label: 'Hiring Driver' },
+    { id: 'hiring-driver', label: 'Driver Application' },
+    { id: 'hiring-ats', label: 'Hiring ATS' },
 ];
 
 export interface DriverHiringTemplate {
@@ -107,11 +108,14 @@ const REVIEW_FORMS = [
 /** All built-in template ids (current + retired) — used to re-seed built-ins on load
  *  while preserving the user's own custom templates. */
 const BUILTIN_TEMPLATE_IDS = new Set([
-    // current
+    // current — Driver Application line of work
     'tpl-complete-hiring', 'tpl-all-forms', 'tpl-quick-hire', 'tpl-cdl-a-otr', 'tpl-cross-border',
+    'tpl-owner-operator', 'tpl-local-regional', 'tpl-hazmat-tanker', 'tpl-non-cdl', 'tpl-rehire', 'tpl-seasonal',
+    // current — Hiring ATS line of work
+    'tpl-ats-us', 'tpl-ats-local', 'tpl-ats-canada', 'tpl-ats-cross-border',
+    'tpl-ats-screening', 'tpl-ats-onboarding', 'tpl-ats-complete',
     // retired (pruned on load)
-    'tpl-default-consents', 'tpl-default-application', 'tpl-owner-operator',
-    'tpl-local-regional', 'tpl-hazmat-tanker', 'tpl-rehire',
+    'tpl-default-consents', 'tpl-default-application',
 ]);
 
 function seedTemplates(): DriverHiringTemplate[] {
@@ -124,7 +128,25 @@ function seedTemplates(): DriverHiringTemplate[] {
 
     const tpl = (
         id: string, name: string, description: string, isDefault: boolean, steps: TemplateStep[],
-    ): DriverHiringTemplate => ({ id, name, description, formType: 'hiring-driver', isDefault, steps, updatedAt: today() });
+        formType: TemplateFormType = 'hiring-driver',
+    ): DriverHiringTemplate => ({ id, name, description, formType, isDefault, steps, updatedAt: today() });
+
+    // Post-application ATS pipeline forms (Hiring ATS line of work). The driver
+    // application itself is the first step (invite → submit) handled by the
+    // Driver Application flow, so the ATS pipeline starts at screening.
+    // Post-application ATS forms after the Hiring-ATS consolidation (merged forms).
+    const ATS_RECORD = 'form-ats-abstract';                 // Driver Record Review (Abstract / CVOR / MVR / Annual Review)
+    const ATS_LICENSE = 'form-ats-license-compliance';       // License Compliance Certification
+    const ATS_EMP = 'form-ats-employment-verification';      // Previous Employer & Safety History
+    const ATS_DRUG_CONSENT = 'form-ats-drug-alcohol-consent';
+    const ATS_DRUG = 'form-ats-drug-alcohol';               // Drug Testing Form
+    const ATS_MEDICAL = 'form-ats-medical-declaration';
+    const ATS_ONBOARDING = [
+        'form-ats-road-test', 'form-ats-hiring-approval',
+        'form-ats-orientation-quiz', 'form-ats-driver-daily-log',
+        'form-ats-tdg-cert', 'form-ats-training-certificates', 'form-ats-training-ack',
+        'form-ats-contracts',
+    ];
 
     return [
         // ── DEFAULT (main, test this) — the complete driver hiring data set ──
@@ -165,6 +187,120 @@ function seedTemplates(): DriverHiringTemplate[] {
                 ...forms(['form-psp-review', 'form-mvr-review', 'form-criminal-background'], false),
                 ack(),
             ]),
+
+        // ── Owner-operator leasing on ──
+        tpl('tpl-owner-operator', 'Owner-Operator',
+            "Owner-operators leasing on — identity, address, license, driving history, employment, and declarations, plus FCRA, MVR, background, and pre-employment drug consents and the PSP / MVR reviews.",
+            false,
+            [
+                ...forms(['form-applicant-information', 'form-address-details', 'form-license-details',
+                    'form-driving-experience', 'form-employment-details', 'form-additional-details']),
+                ...signs(['fcra_disclosure', 'mvr_release', 'background_check', 'pre_employment_drug']),
+                ...forms(['form-psp-review', 'form-mvr-review'], false),
+                ack(),
+            ]),
+
+        // ── Local / regional day-cab driver ──
+        tpl('tpl-local-regional', 'Local / Regional Driver',
+            "Day-cab local & regional drivers — identity, address, license, driving experience, and medical, with the core consents (FCRA, MVR release, background, drug) and an MVR review.",
+            false,
+            [
+                ...forms(['form-applicant-information', 'form-address-details', 'form-license-details',
+                    'form-driving-experience', 'form-medical-details']),
+                ...signs(['fcra_disclosure', 'mvr_release', 'background_check', 'pre_employment_drug']),
+                ...forms(['form-mvr-review'], false),
+                ack(),
+            ]),
+
+        // ── Hazmat / tanker endorsement (background-heavy) ──
+        tpl('tpl-hazmat-tanker', 'Hazmat / Tanker Endorsement',
+            "Endorsement-heavy onboarding — the complete application plus every consent and the full PSP, MVR, background, and clearinghouse reviews required for hazmat & tanker operations.",
+            false,
+            [
+                ...forms(APPLICATION_FORMS),
+                ...signs(CONSENTS),
+                ...forms(['form-psp-review', 'form-mvr-review', 'form-criminal-background', 'form-clearinghouse-query'], false),
+                ack(),
+            ]),
+
+        // ── Non-CDL light-vehicle delivery driver ──
+        tpl('tpl-non-cdl', 'Non-CDL Delivery Driver',
+            "Light-vehicle / non-CDL delivery drivers — identity, address, license, driving experience, and medical, with FCRA, MVR release, and background consents and an MVR review.",
+            false,
+            [
+                ...forms(['form-applicant-information', 'form-address-details', 'form-license-details',
+                    'form-driving-experience', 'form-medical-details']),
+                ...signs(['fcra_disclosure', 'mvr_release', 'background_check']),
+                ...forms(['form-mvr-review'], false),
+                ack(),
+            ]),
+
+        // ── Rehire / returning driver (short refresh) ──
+        tpl('tpl-rehire', 'Rehire / Returning Driver',
+            "Returning drivers we've employed before — a short refresh: identity, license, and medical, with driver certification, MVR release, and background consents plus an MVR review.",
+            false,
+            [
+                ...forms(['form-applicant-information', 'form-license-details', 'form-medical-details']),
+                ...signs(['driver_certification', 'mvr_release', 'background_check']),
+                ...forms(['form-mvr-review'], false),
+                ack(),
+            ]),
+
+        // ── Seasonal / temporary driver (minimal) ──
+        tpl('tpl-seasonal', 'Seasonal / Temporary Driver',
+            "Short-term seasonal drivers — identity, address, license, and medical, with FCRA and MVR-release consents and a quick MVR review.",
+            false,
+            [
+                ...forms(['form-applicant-information', 'form-address-details', 'form-license-details', 'form-medical-details']),
+                ...signs(['fcra_disclosure', 'mvr_release']),
+                ...forms(['form-mvr-review'], false),
+                ack(),
+            ]),
+
+        // ══ Hiring ATS pipelines (post-application) — per driver type ════════════
+        // Review application first, then screening, then onboarding.
+        tpl('tpl-ats-us', 'US Driver — Hiring ATS',
+            'Post-application ATS pipeline for US drivers — driver record review, license compliance, previous-employer & safety history, drug/alcohol consent & testing, then onboarding (road test, hiring approval, HOS/DVIR knowledge, daily log, training & policy acknowledgements, contracts).',
+            true,
+            forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG, ...ATS_ONBOARDING]),
+            'hiring-ats'),
+
+        tpl('tpl-ats-local', 'Local / Domestic — Hiring ATS',
+            'Post-application ATS pipeline for local / domestic drivers — driver record review, previous-employer & safety history, drug/alcohol screening, then onboarding.',
+            false,
+            forms([ATS_RECORD, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG, ...ATS_ONBOARDING]),
+            'hiring-ats'),
+
+        tpl('tpl-ats-canada', 'Canada Driver — Hiring ATS',
+            'Post-application ATS pipeline for Canada-based drivers — driver record review (CVOR / MVR), previous-employer & safety history, drug/alcohol screening, medical declaration, then onboarding.',
+            false,
+            forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG, ATS_MEDICAL, ...ATS_ONBOARDING]),
+            'hiring-ats'),
+
+        tpl('tpl-ats-cross-border', 'Cross-Border — Hiring ATS',
+            'Post-application ATS pipeline for cross-border (US ↔ Canada) drivers — full screening, medical declaration, and onboarding.',
+            false,
+            forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG, ATS_MEDICAL, ...ATS_ONBOARDING]),
+            'hiring-ats'),
+
+        // ── Stage packages (mix & match) ──
+        tpl('tpl-ats-screening', 'Screening Package — Hiring ATS',
+            'Screening stage only — driver record review (abstract / CVOR / MVR + annual review), license compliance, previous employer & safety history, and drug/alcohol consent + testing.',
+            false,
+            forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG]),
+            'hiring-ats'),
+
+        tpl('tpl-ats-onboarding', 'Onboarding Package — Hiring ATS',
+            'Onboarding stage only — road test, hiring approval, HOS/ELD/DVIR knowledge, daily log & HOS declaration, training & policy acknowledgements, TDG certificate, module certificates, and contracts.',
+            false,
+            forms([...ATS_ONBOARDING]),
+            'hiring-ats'),
+
+        tpl('tpl-ats-complete', 'Complete Hiring ATS',
+            'The entire post-application pipeline — every consolidated hiring form from driver record review through screening, medical, onboarding, and policy acknowledgements.',
+            false,
+            forms([ATS_RECORD, ATS_LICENSE, ATS_EMP, ATS_DRUG_CONSENT, ATS_DRUG, ATS_MEDICAL, ...ATS_ONBOARDING]),
+            'hiring-ats'),
     ];
 }
 

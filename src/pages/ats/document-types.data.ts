@@ -322,6 +322,13 @@ function seedDocumentTypes(): DocumentType[] {
         { id: 'dt-sphr-request', name: 'Safety Performance History Records Request', category: 'Other', required: true,  allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
         { id: 'dt-emp-response', name: 'Employer Response', category: 'Other', required: false, allowMultiple: true,  expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
         { id: 'dt-goodfaith-log', name: 'Good-Faith Attempt Log', category: 'Other', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        // Hiring ATS (post-application) — screening + onboarding documents
+        { id: 'dt-da-result', name: 'Drug & Alcohol Test Result (MRO)', category: 'Medical', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-road-test', name: 'Road Test Certificate', category: 'Other', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-dvir', name: 'DVIR Record / Competency', category: 'Other', required: false, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-training-cert', name: 'Training Completion Certificate', category: 'Other', required: false, allowMultiple: true, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-signed-contract', name: 'Signed Employment Contract', category: 'Other', required: true, allowMultiple: false, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
+        { id: 'dt-policy-ack', name: 'Policy Documents & Acknowledgements', category: 'Other', required: false, allowMultiple: true, expiryRequired: false, issueDateRequired: true, issueStateRequired: false, issueCountryRequired: false, status: 'Active', addedDate: d },
     ] as Partial<DocumentType>[]).map(normalize);
 }
 

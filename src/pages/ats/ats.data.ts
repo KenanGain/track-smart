@@ -146,6 +146,9 @@ export interface Applicant {
     // Application meta
     licenseType: LicenseType;
     applicantType: ApplicantType;
+    /** Geographic driver type captured at invite — drives the DQ profile and
+     *  reflects through to the Hiring ATS / DQ Files after the application is submitted. */
+    dqDriverType?: 'local' | 'us' | 'canada' | 'cross_border';
     positionApplied: string;
     appliedDate: string;
     daysInPipeline: number;
@@ -503,7 +506,10 @@ const _Tom: Applicant = (() => {
 
 // ── Generated applicants — fills out every carrier / stage / template so the
 //    Assignments list, carrier filter, and detail tabs have rich test data. ──
-const GEN_TEMPLATE_IDS = ['tpl-complete-hiring', 'tpl-all-forms', 'tpl-quick-hire', 'tpl-cdl-a-otr', 'tpl-cross-border'];
+const GEN_TEMPLATE_IDS = [
+    'tpl-complete-hiring', 'tpl-all-forms', 'tpl-quick-hire', 'tpl-cdl-a-otr', 'tpl-cross-border',
+    'tpl-owner-operator', 'tpl-local-regional', 'tpl-hazmat-tanker', 'tpl-non-cdl', 'tpl-rehire', 'tpl-seasonal',
+];
 const GEN_FIRST = ['Aaron', 'Blake', 'Cody', 'Derek', 'Evan', 'Felix', 'Grant', 'Hank', 'Ivan', 'Jamal', 'Kyle', 'Liam', 'Mason', 'Nate', 'Owen', 'Pete'];
 const GEN_LAST = ['Carter', 'Diaz', 'Ellis', 'Foster', 'Greer', 'Hayes', 'Irwin', 'Jensen', 'Knox', 'Lowe', 'Mills', 'Nash', 'Owens', 'Park', 'Reyes', 'Stone'];
 const GEN_LICENSE: LicenseType[] = ['CDL-A', 'CDL-B', 'CDL', 'Non-CDL'];
@@ -546,7 +552,7 @@ function genApplicant(i: number): Applicant {
 
 export const MOCK_APPLICANTS: Applicant[] = [
     _Robert, _Tiger, _Dale, _Patrick, _Clint, _Maria, _LeBron, _Serena, _Tom,
-    ...Array.from({ length: 16 }, (_, i) => genApplicant(i)),
+    ...Array.from({ length: 28 }, (_, i) => genApplicant(i)),
 ];
 
 // ── Display metadata for stages / step statuses ──────────────────────────

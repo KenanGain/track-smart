@@ -263,6 +263,7 @@ function SidebarNodeView(props: {
                                         onClick={() => child.path && onNavigate(child.path)}
                                         isSubItem
                                         disabled={child.disabled}
+                                        badge={child.badge}
                                     />
                                 </div>
                             ))}
@@ -314,6 +315,11 @@ function SidebarNodeView(props: {
                                     >
                                         {child.icon && <child.icon size={14} className={cn("opacity-70", !child.disabled && isActive(currentPath, child.path || '') && "text-blue-600 opacity-100")} />}
                                         {child.label}
+                                        {child.badge && (
+                                            <span className="ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white">
+                                                {child.badge}
+                                            </span>
+                                        )}
                                     </button>
                                 ))}
                             </div>
@@ -325,7 +331,7 @@ function SidebarNodeView(props: {
     );
 }
 
-function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabled }: { label: string; Icon?: React.ElementType; active: boolean; onClick: () => void; isSubItem?: boolean; isCollapsed?: boolean; disabled?: boolean }) {
+function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabled, badge }: { label: string; Icon?: React.ElementType; active: boolean; onClick: () => void; isSubItem?: boolean; isCollapsed?: boolean; disabled?: boolean; badge?: string }) {
     return (
         <button
             type="button"
@@ -357,10 +363,17 @@ function LeafItem({ label, Icon, active, onClick, isSubItem, isCollapsed, disabl
             )}
             <span className={cn(
                 "text-sm whitespace-nowrap overflow-hidden transition-all ease-in-out",
-                isCollapsed ? "w-0 opacity-0 duration-300 hidden" : "w-auto opacity-100 duration-500 delay-75"
+                isCollapsed ? "w-0 opacity-0 duration-300 hidden" : "opacity-100 duration-500 delay-75",
+                // With a badge, let the label shrink/truncate so the tag stays visible.
+                !isCollapsed && (badge ? "min-w-0 flex-1 text-ellipsis" : "w-auto")
             )}>
                 {label}
             </span>
+            {badge && !isCollapsed && (
+                <span className="ml-1 shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white shadow-sm">
+                    {badge}
+                </span>
+            )}
         </button>
     );
 }
@@ -430,5 +443,16 @@ function SidebarTooltip({
 // check active path helpers
 function isActive(current: string, path: string) {
     if (path === '/') return current === '/';
+
+    // The application detail (`/ats/application/:id`) and issue-hiring flow live
+    // under `/ats/...` but belong to the "Applications" nav item (`/ats-main`),
+    // not "Hiring (ATS)" (`/ats`). Route them explicitly so the right item lights up.
+    const applicationsOwned = current.startsWith('/ats/application') || current === '/ats/issue-hiring';
+    if (path === '/ats-main') return current === '/ats-main' || applicationsOwned;
+    if (path === '/ats') {
+        if (applicationsOwned) return false;
+        return current === '/ats' || current.startsWith('/ats/');
+    }
+
     return current.startsWith(path);
 }

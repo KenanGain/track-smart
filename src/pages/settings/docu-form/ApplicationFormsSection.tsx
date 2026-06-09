@@ -19,11 +19,13 @@ import { EmptyState } from './EmptyState';
  * to open the full builder inline (details + steps/fields + documents).
  */
 
-export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
+export function ApplicationFormsSection({ forms, onCommit, mode = 'main', formType = 'hiring-driver' }: {
     forms: ApplicationFormDef[];
     onCommit: (forms: ApplicationFormDef[]) => void;
     /** Whether to show only main forms or only subforms — driven by the top-level tab. */
     mode?: 'main' | 'subform';
+    /** Line of work selected in the "Form type" dropdown — scopes the form list. */
+    formType?: string;
 }) {
     const [branding] = useCompanyBranding();
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -39,7 +41,8 @@ export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
         onCommit(forms.map(f => f.id === next.id ? next : f));
 
     const addForm = () => {
-        const f = { ...newApplicationForm(), isSubform: mode === 'subform' };
+        // Tag the new form with the active line of work so it stays in this form type.
+        const f = { ...newApplicationForm(), isSubform: mode === 'subform', formType };
         // Prepend so the new form shows at the top of the list, expanded for immediate editing.
         onCommit([f, ...forms]);
         setExpandedId(f.id);
@@ -67,8 +70,11 @@ export function ApplicationFormsSection({ forms, onCommit, mode = 'main' }: {
     };
 
     const visibleForms = useMemo(
-        () => forms.filter(f => mode === 'subform' ? f.isSubform : !f.isSubform),
-        [forms, mode],
+        () => forms.filter(f =>
+            (mode === 'subform' ? f.isSubform : !f.isSubform) &&
+            (f.formType ?? 'hiring-driver') === formType,
+        ),
+        [forms, mode, formType],
     );
 
     const defaultCount = visibleForms.filter(f => f.isDefault).length;

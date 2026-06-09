@@ -24,7 +24,8 @@ import { ComplianceTab } from './docu-form/ComplianceTab';
  */
 
 const FORM_TYPES = [
-    { id: 'hiring-driver', label: 'Hiring Driver' },
+    { id: 'hiring-driver', label: 'Driver Application' },
+    { id: 'hiring-ats', label: 'Hiring ATS' },
 ];
 
 type Tab = 'branding' | 'consents' | 'forms' | 'subforms' | 'documents' | 'compliance';
@@ -95,8 +96,8 @@ export const DocuFormGeneratorPage = () => {
             <div className="px-8 py-6">
                 {tab === 'branding'   && <BrandingTab />}
                 {tab === 'consents'   && <ConsentFormsSection />}
-                {tab === 'forms'      && <ApplicationFormsSection forms={forms} onCommit={commit} mode="main" />}
-                {tab === 'subforms'   && <ApplicationFormsSection forms={forms} onCommit={commit} mode="subform" />}
+                {tab === 'forms'      && <ApplicationFormsSection forms={forms} onCommit={commit} mode="main" formType={formType} />}
+                {tab === 'subforms'   && <ApplicationFormsSection forms={forms} onCommit={commit} mode="subform" formType={formType} />}
                 {tab === 'documents'  && <DocumentsTab />}
                 {tab === 'compliance' && <ComplianceTab />}
             </div>

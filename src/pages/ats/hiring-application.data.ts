@@ -29,11 +29,16 @@ export interface StepState {
     values?: Record<string, unknown>;
     docs?: Record<string, FormDocumentUploadValue>;
     signature?: string;
+    /** The attached signature has been verified by the hiring manager. */
+    signatureVerified?: boolean;
     returnNote?: string;
     /** Admin marked this step optional/removed for THIS driver — excluded from progress. */
     skipped?: boolean;
     skippedReason?: string;
 }
+
+/** Who an Ask/Order request is directed to. */
+export type RequestRecipient = 'driver' | 'hiring_manager' | 'employer';
 
 export interface ApplicationRequest {
     id: string;
@@ -43,6 +48,8 @@ export interface ApplicationRequest {
     itemKind?: 'keynumber' | 'document' | 'step' | 'signature';
     itemId?: string;
     itemName?: string;
+    /** Who the request goes to (defaults to the driver). */
+    recipient?: RequestRecipient;
     message: string;
     channel: RequestChannel;
     sentAt: string;
@@ -76,6 +83,8 @@ export interface HiringApplication {
         files?: { name: string; uploadedAt: string }[];
         meta?: { number?: string; issue?: string; expiry?: string; state?: string; country?: string };
     }>;
+    /** The driver's master e-signature on file — the hiring manager attaches this to forms. */
+    signatureOnFile?: string;
 }
 
 // ── ids / time ──────────────────────────────────────────────────────────────
@@ -112,17 +121,28 @@ export function getApplicant(id: string): Applicant | undefined {
 }
 
 /** Initial details captured on the Issue-Hiring page. */
+export type IssueDriverType = 'local' | 'us' | 'canada' | 'cross_border';
+
 export interface IssueHiringInput {
     firstName: string;
     lastName: string;
     email: string;
     phone?: string;
-    licenseType: LicenseType;
+    licenseType?: LicenseType;
     applicantType?: ApplicantType;
     positionApplied?: string;
     templateId: string;
     carrierId?: string;
+    /** Geographic driver type — captured at invite, stored on the applicant, and
+     *  reflected in the Hiring ATS / DQ Files. Also seeds the country. */
+    driverType?: IssueDriverType;
+    /** Drives the DQ driver-type auto-detection (e.g. 'United States' → US Driver). */
+    country?: string;
 }
+
+const DRIVER_TYPE_COUNTRY: Record<IssueDriverType, string> = {
+    local: 'United States', us: 'United States', canada: 'Canada', cross_border: 'United States',
+};
 
 /** Build a valid, mostly-empty Applicant from the issue-hiring details. */
 export function createApplicant(input: IssueHiringInput): Applicant {
@@ -135,9 +155,11 @@ export function createApplicant(input: IssueHiringInput): Applicant {
         ssnMasked: '•••-••-••••',
         email: input.email,
         phone: input.phone,
-        streetAddress: '', city: '', state: '', postalCode: '', country: 'United States',
-        licenseType: input.licenseType,
+        streetAddress: '', city: '', state: '', postalCode: '',
+        country: input.country || (input.driverType ? DRIVER_TYPE_COUNTRY[input.driverType] : 'United States'),
+        licenseType: input.licenseType ?? 'CDL-A',
         applicantType: input.applicantType ?? 'Driver',
+        dqDriverType: input.driverType,
         positionApplied: input.positionApplied || 'Driver',
         appliedDate: now().slice(0, 10),
         daysInPipeline: 0,
@@ -281,6 +303,17 @@ export function setStepStatus(applicantId: string, stepId: string, status: AppSt
     upsertApplication(app);
 }
 
+/** Manually set the whole application's status (recruiter override — bypasses
+ *  the per-step recompute). Used by the single status selector in the detail header. */
+export function setApplicationStatus(applicantId: string, status: AppStatus): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    app.status = status;
+    logEvent(app, status === 'approved' ? 'step_approved' : status === 'rejected' ? 'cancelled' : 'step_submitted',
+        `Status set to ${APP_STATUS_META[status].label}`);
+    upsertApplication(app);
+}
+
 /** Ask the driver for a document or detail (mock email/in-app). */
 export function addRequest(applicantId: string, req: Omit<ApplicationRequest, 'id' | 'sentAt' | 'status'>): void {
     const app = getApplication(applicantId);
@@ -357,6 +390,69 @@ export function uploadRequirement(applicantId: string, reqId: string, label: str
     cur[reqId] = { ...existing, files, status: 'uploaded' };
     app.requirements_v2 = cur;
     logEvent(app, 'requested', `Uploaded ${label}`);
+    upsertApplication(app);
+}
+
+/** Set a driver's geographic driver type (and matching country) on the applicant. */
+export function setApplicantDriverType(applicantId: string, driverType: IssueDriverType): void {
+    const list = loadApplicants();
+    let changed = false;
+    const next = list.map(a => {
+        if (a.id !== applicantId) return a;
+        changed = true;
+        return { ...a, dqDriverType: driverType, country: DRIVER_TYPE_COUNTRY[driverType] };
+    });
+    if (changed) saveApplicants(next);
+}
+
+/** Record a lightweight requirement action (e.g. "Sent") in the activity log. */
+export function logRequirementAction(applicantId: string, label: string, action: string): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    logEvent(app, 'requested', `${action} — ${label}`);
+    upsertApplication(app);
+}
+
+// ── E-signature setup (attach the driver's on-file signature to forms) ────────
+
+/** Set / replace the driver's master signature on file. */
+export function setSignatureOnFile(applicantId: string, signature: string | undefined): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    app.signatureOnFile = signature;
+    logEvent(app, 'requested', signature ? 'Signature captured on file' : 'Signature removed from file');
+    upsertApplication(app);
+}
+
+/** Attach the on-file signature to a specific consent/signature step. */
+export function attachSignature(applicantId: string, stepId: string, label: string): void {
+    const app = getApplication(applicantId);
+    if (!app || !app.signatureOnFile) return;
+    const cur = app.steps[stepId] ?? { status: 'not_started' as AppStepStatus };
+    app.steps[stepId] = { ...cur, signature: app.signatureOnFile, signatureVerified: false, submittedAt: cur.submittedAt ?? now() };
+    logEvent(app, 'requested', `Signature attached to ${label}`);
+    upsertApplication(app);
+}
+
+/** Remove the attached signature from a step. */
+export function detachSignature(applicantId: string, stepId: string, label: string): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    const cur = app.steps[stepId];
+    if (!cur) return;
+    app.steps[stepId] = { ...cur, signature: undefined, signatureVerified: false };
+    logEvent(app, 'requested', `Signature removed from ${label}`);
+    upsertApplication(app);
+}
+
+/** Mark / unmark an attached signature as verified. */
+export function setSignatureVerified(applicantId: string, stepId: string, verified: boolean, label: string): void {
+    const app = getApplication(applicantId);
+    if (!app) return;
+    const cur = app.steps[stepId];
+    if (!cur) return;
+    app.steps[stepId] = { ...cur, signatureVerified: verified };
+    logEvent(app, 'requested', `${verified ? 'Verified' : 'Unverified'} signature on ${label}`);
     upsertApplication(app);
 }
 

@@ -49,6 +49,7 @@ import { AtsAssignmentsPage } from '@/pages/ats/AtsAssignmentsPage'
 import { DqFilesPage } from '@/pages/ats/DqFilesPage'
 import { DqFileTemplateGenerator } from '@/pages/ats/DqFileTemplateGenerator'
 import { IssueHiringPage } from '@/pages/ats/IssueHiringPage'
+import { HiringFormsPage } from '@/pages/ats/HiringFormsPage'
 import { ApplicantPortalPage } from '@/pages/ats/ApplicantPortalPage'
 import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
@@ -465,7 +466,10 @@ function App() {
             return <AtsPage onNavigate={handleNavigate} />
         }
         if (path === "/ats-main") {
-            return <AtsAssignmentsPage onNavigate={handleNavigate} />
+            return <AtsAssignmentsPage onNavigate={handleNavigate} accountId={selectedAccount?.id} />
+        }
+        if (path === "/hiring-forms") {
+            return <HiringFormsPage />
         }
         if (path === "/dq-files") {
             return <DqFilesPage onNavigate={handleNavigate} />
@@ -487,6 +491,9 @@ function App() {
         }
         if (path === "/admin/templates" || path === "/settings/templates") {
             return <TemplatesPage />
+        }
+        if (path === "/admin/hiring-form-templates") {
+            return <TemplatesPage lockedFormType="hiring-ats" />
         }
         if (path === "/tickets") {
             const account = selectedAccount

@@ -3,8 +3,9 @@ import { ArrowLeft, Briefcase, Mail, Send, Check, Copy, Link2, ExternalLink, Use
 import { cn } from '@/lib/utils';
 import { ACCOUNTS_DB } from '@/pages/accounts/accounts.data';
 import { loadTemplates } from '@/pages/settings/driver-hiring-templates.data';
-import type { LicenseType, ApplicantType } from './ats.data';
-import { createApplicant, inviteDriver } from './hiring-application.data';
+import type { ApplicantType } from './ats.data';
+import { createApplicant, inviteDriver, type IssueDriverType } from './hiring-application.data';
+import { DQ_DRIVER_TYPES } from './dq-profiles.data';
 
 /**
  * Issue Hiring — capture a driver's initial details, pick a hiring template,
@@ -19,7 +20,7 @@ export function IssueHiringPage({ onNavigate }: { onNavigate?: (path: string) =>
     const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
-    const [licenseType, setLicenseType] = useState<LicenseType>('CDL-A');
+    const [driverType, setDriverType] = useState<IssueDriverType>('us');
     const [applicantType, setApplicantType] = useState<ApplicantType>('Driver');
     const [position, setPosition] = useState('Company Driver');
     const [carrierId, setCarrierId] = useState(carriers[0]?.id ?? '');
@@ -37,7 +38,7 @@ export function IssueHiringPage({ onNavigate }: { onNavigate?: (path: string) =>
         if (!templateId) { setError('Pick a hiring template.'); return; }
         const applicant = createApplicant({
             firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), phone: phone.trim() || undefined,
-            licenseType, applicantType, positionApplied: position.trim() || 'Driver', templateId, carrierId,
+            driverType, applicantType, positionApplied: position.trim() || 'Driver', templateId, carrierId,
         });
         const app = inviteDriver(applicant.id, email.trim());
         setIssued({ id: applicant.id, link: app.invite?.link ?? `https://apply.tracksmart.app/${applicant.id}` });
@@ -110,9 +111,9 @@ export function IssueHiringPage({ onNavigate }: { onNavigate?: (path: string) =>
                                     </div>
                                 </Field>
                                 <Field label="Phone"><input value={phone} onChange={e => setPhone(e.target.value)} className={INPUT} placeholder="(555) 123-4567" /></Field>
-                                <Field label="License type">
-                                    <select value={licenseType} onChange={e => setLicenseType(e.target.value as LicenseType)} className={INPUT}>
-                                        {(['CDL-A', 'CDL-B', 'CDL', 'Non-CDL'] as LicenseType[]).map(l => <option key={l} value={l}>{l}</option>)}
+                                <Field label="Driver type">
+                                    <select value={driverType} onChange={e => setDriverType(e.target.value as IssueDriverType)} className={INPUT}>
+                                        {DQ_DRIVER_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                                     </select>
                                 </Field>
                                 <Field label="Applicant type">

@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Save, FileText, UploadCloud, Plus, X, Check, Download, Pencil, CornerDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     newLicenseEntry, newAddressEntry, newDisqualificationEntry, newAccidentEntry,
     newViolationEntry, newDrivingExperienceEntry, newEmploymentEntry, newEducationEntry,
-    emptyDocumentUploadValue, loadApplicationForms, chunkFieldRows, showWhenSatisfied,
+    emptyDocumentUploadValue, loadApplicationForms, chunkFieldRows, showWhenSatisfied, computeFieldValue,
     DISQUALIFICATION_OFFENCE_OPTIONS, ACCIDENT_NATURE_OPTIONS, VIOLATION_PENALTY_OPTIONS,
     EQUIPMENT_CLASS_OPTIONS, FREIGHT_TYPE_OPTIONS, DRIVING_REGION_OPTIONS,
     POSITION_HELD_OPTIONS, HIGHEST_EDUCATION_OPTIONS,
@@ -19,7 +19,7 @@ import { generateApplicationFormPdf } from "./generateApplicationFormPdf";
 import { PDF_TEMPLATES } from "./ApplicationFormPrint";
 import { SignaturePad } from "./SignaturePad";
 import { Toggle } from "@/components/ui/toggle";
-import { useCompanyBranding } from "./company-branding.data";
+import { useCompanyBranding, applyBrandTokens } from "./company-branding.data";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -1858,6 +1858,10 @@ function FieldControl({ field, value, onChange }: {
         case 'date':
             return <input type="date" value={str} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS} />;
         case 'number':
+            if (field.computed) {
+                // Auto-populated (read-only) — value is supplied by the caller via computeFieldValue.
+                return <input type="number" value={str} readOnly tabIndex={-1} className={cn(INPUT_CLS, "cursor-not-allowed bg-slate-50 font-bold text-slate-900")} />;
+            }
             return <input type="number" value={str} onChange={(e) => onChange(e.target.value)} className={INPUT_CLS} />;
         case 'select':
             return (
@@ -2023,12 +2027,14 @@ function FieldBlock({ field, value, onChange }: {
     value: FieldValue;
     onChange: (v: FieldValue) => void;
 }) {
+    const [branding] = useCompanyBranding();
+    const t = (s: string | undefined) => applyBrandTokens(s, branding);
     if (field.type === 'heading') {
         return (
             <div className={field.label ? "mt-2 border-b border-blue-300 pb-1.5" : "mt-1"}>
                 {field.label && (
                     <h3 className="text-center text-base font-bold uppercase tracking-wide text-blue-600">
-                        {field.label}
+                        {t(field.label)}
                     </h3>
                 )}
                 {field.instruction && (
@@ -2036,7 +2042,7 @@ function FieldBlock({ field, value, onChange }: {
                         "whitespace-pre-line text-sm leading-relaxed text-slate-600",
                         field.label && "mt-2",
                     )}>
-                        {field.instruction}
+                        {t(field.instruction)}
                     </p>
                 )}
             </div>
@@ -2045,7 +2051,7 @@ function FieldBlock({ field, value, onChange }: {
     if (field.type === 'paragraph') {
         return (
             <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
-                {field.instruction}
+                {t(field.instruction)}
             </p>
         );
     }
@@ -2053,10 +2059,10 @@ function FieldBlock({ field, value, onChange }: {
         return (
             <div className="space-y-2">
                 {field.label && (
-                    <p className="text-sm font-semibold text-slate-800">{field.label}</p>
+                    <p className="text-sm font-semibold text-slate-800">{t(field.label)}</p>
                 )}
                 <ul className="list-disc space-y-1.5 pl-6 text-sm leading-relaxed text-slate-700 marker:text-slate-400">
-                    {field.options.map((o, i) => <li key={i}>{o}</li>)}
+                    {field.options.map((o, i) => <li key={i}>{t(o)}</li>)}
                 </ul>
             </div>
         );
@@ -2064,7 +2070,7 @@ function FieldBlock({ field, value, onChange }: {
     if (field.type === 'alert') {
         return (
             <div className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-4 py-3 text-sm font-medium leading-relaxed text-amber-800">
-                {field.label}
+                {t(field.label)}
             </div>
         );
     }
@@ -2080,11 +2086,11 @@ function FieldBlock({ field, value, onChange }: {
             <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-slate-300">
                 <div className="min-w-0">
                     <p className="text-[13px] font-semibold text-slate-700">
-                        {field.label}
+                        {t(field.label)}
                         {field.required && <span className="text-rose-500"> *</span>}
                     </p>
                     {field.instruction && (
-                        <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{field.instruction}</p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{t(field.instruction)}</p>
                     )}
                 </div>
                 <div className="shrink-0">
@@ -2096,12 +2102,12 @@ function FieldBlock({ field, value, onChange }: {
     return (
         <div>
             <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">
-                {field.label}
+                {t(field.label)}
                 {field.required && <span className="text-rose-500"> *</span>}
             </label>
             <FieldControl field={field} value={value} onChange={onChange} />
             {field.instruction && (
-                <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{field.instruction}</p>
+                <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{t(field.instruction)}</p>
             )}
         </div>
     );
@@ -2125,6 +2131,29 @@ export function FormBody({ fields, values, setValue, sectioned = false }: {
         return '';
     };
 
+    // Auto-populated fields (e.g. road-test section scores) derive their value from
+    // other fields. Compute live for display, and persist so submit / PDF capture it.
+    // Layer checklist-scores first, then sums, so a sum reflects the same-render
+    // section scores (no one-render lag) the moment a checklist item is toggled.
+    const fieldById = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields]);
+    const liveValues = useMemo(() => {
+        const out: Record<string, FieldValue> = { ...values };
+        for (const f of fields) if (f.computed?.kind === 'checklist-score') out[f.id] = computeFieldValue(f, out, fieldById) ?? '';
+        for (const f of fields) if (f.computed?.kind === 'sum') out[f.id] = computeFieldValue(f, out, fieldById) ?? '';
+        return out;
+    }, [values, fields, fieldById]);
+    const valueFor = (f: FormField): FieldValue =>
+        f.computed ? (liveValues[f.id] ?? '') : (values[f.id] ?? defaultFor(f));
+
+    useEffect(() => {
+        for (const f of fields) {
+            if (!f.computed) continue;
+            const next = liveValues[f.id] ?? '';
+            if (String(values[f.id] ?? '') !== next) setValue(f.id, next);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [liveValues]);
+
     /** Hide fields whose `showWhen` controller isn't satisfied — so consumers
      *  that pass raw fields (e.g. the test runner) still get correct
      *  conditional reveal. */
@@ -2139,16 +2168,25 @@ export function FormBody({ fields, values, setValue, sectioned = false }: {
         dependentsByController.set(f.showWhen.fieldId, list);
     }
 
+    const hasDeps = (f: FormField): boolean => (dependentsByController.get(f.id)?.length ?? 0) > 0;
     const topLevel = visible.filter((f) => !f.showWhen);
-    const rows = chunkFieldRows(topLevel, (f) => (dependentsByController.get(f.id)?.length ?? 0) > 0);
+    const rows = chunkFieldRows(topLevel, hasDeps);
 
-    const renderRow = (row: FormField[]) => {
+    // Render a sibling list: pair half-width leaves side by side, and nest each
+    // field's revealed dependents in a callout. Mutually recursive with renderRow
+    // so a revealed toggle can in turn reveal its own dependents (any depth), and
+    // half-width dependents still pair within the callout.
+    function renderList(list: FormField[]) {
+        return chunkFieldRows(list, hasDeps).map(renderRow);
+    }
+
+    function renderRow(row: FormField[]) {
         // Side-by-side pair: two half-width fields, neither has dependents.
         if (row.length === 2) {
             return (
                 <div key={row[0].id} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     {row.map((f) => (
-                        <FieldBlock key={f.id} field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
+                        <FieldBlock key={f.id} field={f} value={valueFor(f)} onChange={(v) => setValue(f.id, v)} />
                     ))}
                 </div>
             );
@@ -2157,27 +2195,18 @@ export function FormBody({ fields, values, setValue, sectioned = false }: {
         const deps = dependentsByController.get(f.id) ?? [];
         return (
             <div key={f.id}>
-                <FieldBlock field={f} value={values[f.id] ?? defaultFor(f)} onChange={(v) => setValue(f.id, v)} />
+                <FieldBlock field={f} value={valueFor(f)} onChange={(v) => setValue(f.id, v)} />
                 {deps.length > 0 && (
                     <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
                         <p className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-blue-600">
                             <CornerDownRight size={13} /> Please provide the details
                         </p>
-                        <div className="space-y-4">
-                            {deps.map((dep) => (
-                                <FieldBlock
-                                    key={dep.id}
-                                    field={dep}
-                                    value={values[dep.id] ?? defaultFor(dep)}
-                                    onChange={(v) => setValue(dep.id, v)}
-                                />
-                            ))}
-                        </div>
+                        <div className="space-y-4">{renderList(deps)}</div>
                     </div>
                 )}
             </div>
         );
-    };
+    }
 
     if (!sectioned) {
         return <div className="space-y-5">{rows.map(renderRow)}</div>;
@@ -2217,6 +2246,90 @@ export function FormBody({ fields, values, setValue, sectioned = false }: {
                     </div>
                 </section>
             ))}
+        </div>
+    );
+}
+
+/** Live score banner shown at the top of any form that has computed score fields
+ *  (e.g. the Road Test Evaluation). Recomputes from the current values on each render. */
+function ScoreSummary({ fields, values }: { fields: FormField[]; values: Record<string, FieldValue> }) {
+    const byId = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields]);
+    const sections = fields.filter((f) => f.computed?.kind === 'checklist-score');
+    const totalField = fields.find((f) => f.computed?.kind === 'sum');
+    // Only show the "Final Score" banner for graded forms — checklist-score sections,
+    // or a sum total with an explicit pass mark. A plain auto-sum (e.g. Statement of
+    // Hours of Service "Total Hours Worked") renders inline as a read-only field instead.
+    const graded = sections.length > 0 || totalField?.computed?.passMark != null;
+    if (!graded) return null;
+
+    // Layer the live-computed section scores into a values snapshot so the total
+    // reflects checklist changes in the same render (no persistence lag).
+    const live: Record<string, FieldValue> = { ...values };
+    for (const f of sections) live[f.id] = computeFieldValue(f, live, byId) ?? '';
+
+    const shortLabel = (l: string) => l.replace(/\s*score\s*\(.*?\)\s*$/i, '').trim() || l;
+    const sectionData = sections.map((f) => ({
+        id: f.id,
+        label: shortLabel(f.label),
+        score: Number(live[f.id] ?? 0),
+        max: f.computed?.max ?? 5,
+    }));
+
+    const totalMax = totalField
+        ? (totalField.computed?.sources ?? []).reduce((s, sid) => s + (byId.get(sid)?.computed?.max ?? 0), 0)
+        : sectionData.reduce((s, d) => s + d.max, 0);
+    const total = totalField
+        ? Number(computeFieldValue(totalField, live, byId) ?? 0)
+        : sectionData.reduce((s, d) => s + d.score, 0);
+
+    const passMark = totalField?.computed?.passMark;
+    const passed = passMark != null ? total >= passMark : undefined;
+    const pct = totalMax > 0 ? Math.round((total / totalMax) * 100) : 0;
+
+    const tone = passed === undefined
+        ? { ring: 'border-slate-200', big: 'text-slate-900', bar: 'bg-blue-500', badge: '' }
+        : passed
+            ? { ring: 'border-emerald-300', big: 'text-emerald-600', bar: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+            : { ring: 'border-amber-300', big: 'text-amber-600', bar: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200' };
+
+    return (
+        <div className="border-b border-slate-200 bg-white px-6 py-3">
+            <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-6 gap-y-3">
+                {/* Final score */}
+                <div className={cn('flex items-center gap-3 rounded-xl border bg-slate-50/60 px-4 py-2', tone.ring)}>
+                    <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Final Score</p>
+                        <p className={cn('text-2xl font-bold leading-none tabular-nums', tone.big)}>
+                            {total}<span className="text-base font-semibold text-slate-400"> / {totalMax}</span>
+                        </p>
+                    </div>
+                    {passed !== undefined && (
+                        <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold', tone.badge)}>
+                            {passed ? <Check size={12} /> : null}
+                            {passed ? 'Pass' : `Needs ${passMark}+`}
+                        </span>
+                    )}
+                </div>
+
+                {/* Section breakdown */}
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                    {sectionData.map((s) => (
+                        <div key={s.id} className="flex min-w-[120px] flex-1 flex-col gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] font-semibold text-slate-600">{s.label}</span>
+                                <span className="shrink-0 text-[12px] font-bold tabular-nums text-slate-900">{s.score}/{s.max}</span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                <div className={cn('h-full rounded-full transition-all', tone.bar)} style={{ width: `${s.max > 0 ? (s.score / s.max) * 100 : 0}%` }} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {passMark != null && (
+                    <p className="text-[11px] font-medium text-slate-400">{pct}% · pass mark {passMark}/{totalMax}</p>
+                )}
+            </div>
         </div>
     );
 }
@@ -2307,6 +2420,9 @@ export function CustomFormWizard({ appForm, onClose }: {
                     </div>
                 </div>
             </div>
+
+            {/* ── Live score banner (forms with computed scores, e.g. Road Test) ── */}
+            <ScoreSummary fields={fields} values={values} />
 
             {/* ── Body: divided section cards (professional, app-like) ─── */}
             <div className="flex-1 overflow-y-auto px-6 py-8">

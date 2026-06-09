@@ -80,3 +80,17 @@ export function useCompanyBranding(): [CompanyBranding, (next: Partial<CompanyBr
 export function readCompanyBranding(): CompanyBranding {
     return readFromStorage();
 }
+
+/**
+ * Replace branding tokens in form copy with the live company branding so policy
+ * letters read with the carrier's own name instead of a hardcoded company.
+ * Supported tokens (case-insensitive): {{company}}, {{address}}, {{phone}}, {{email}}.
+ */
+export function applyBrandTokens(text: string | undefined, b: CompanyBranding): string {
+    if (!text) return '';
+    return text
+        .replace(/\{\{\s*company\s*\}\}/gi, b.name || 'the Company')
+        .replace(/\{\{\s*address\s*\}\}/gi, b.address || '')
+        .replace(/\{\{\s*phone\s*\}\}/gi, b.phone || '')
+        .replace(/\{\{\s*email\s*\}\}/gi, b.email || '');
+}

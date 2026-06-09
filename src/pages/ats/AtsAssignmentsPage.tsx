@@ -5,6 +5,7 @@ import {
     ListChecks, UserPlus, FileText, Mail, Send, Copy, Link2,
     LayoutTemplate, MessageSquarePlus, MoreVertical, Ban, Trash2, MessageSquare, Phone,
     Hash, PenTool, Paperclip, ShieldCheck, ClipboardCheck,
+    MapPin, Globe, ArrowLeftRight, User as UserIcon, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -24,8 +25,9 @@ import {
     inviteDriver, addAsDriver, addRequest, cancelApplication, deleteApplication,
     createApplicant, sendReminder, elapsedLabel,
     APP_STATUS_META, type HiringApplication, type AppStepStatus, type StepState, type AppStatus,
-    type ApplicationRequest,
+    type ApplicationRequest, type RequestRecipient, type IssueDriverType,
 } from "./hiring-application.data";
+import { buildRequirements } from "./hiring-requirements";
 
 type RequestInput = Omit<ApplicationRequest, 'id' | 'sentAt' | 'status'>;
 
@@ -83,6 +85,22 @@ function carrierForApplicant(index: number): AccountRecord {
     // makes the carrier filter meaningful (change carrier → see that carrier's applicants).
     const span = Math.min(8, ACCOUNTS_DB.length);
     return ACCOUNTS_DB[index % span];
+}
+
+// Two-letter initials + a stable gradient per carrier id — matches the top-bar
+// carrier switcher so the scope chip reads consistently.
+function carrierInitials(name: string): string {
+    return name.replace(/[^a-zA-Z0-9\s]/g, "").split(/\s+/).filter(Boolean)
+        .slice(0, 2).map(p => p[0]!.toUpperCase()).join("") || "??";
+}
+const CARRIER_GRADIENTS = [
+    "from-blue-500 to-indigo-600", "from-emerald-500 to-teal-600", "from-violet-500 to-fuchsia-600",
+    "from-amber-500 to-orange-600", "from-rose-500 to-pink-600", "from-sky-500 to-cyan-600", "from-slate-500 to-slate-700",
+];
+function carrierGradient(id: string): string {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return CARRIER_GRADIENTS[h % CARRIER_GRADIENTS.length]!;
 }
 
 // Resolve a template step's display label by looking up the linked form or
@@ -154,6 +172,85 @@ function realStatuses(app: HiringApplication, steps: TemplateStep[]): TStatus[] 
 // detail page stay consistent (and look alive). Step states are derived from the
 // applicant's pipeline stage; completed steps get plausible mock values so the
 // "view submission" panel reads like a filled form.
+/**
+ * Seed a realistic spread of fulfilment states (verified / uploaded / ordered /
+ * missing) onto an application's requirements so the Documents & Compliance tabs
+ * have variety to test against. Only runs for started applications (not freshly
+ * invited) and only when no fulfilment state exists yet (never clobbers real uploads).
+ * Returns true if anything was seeded.
+ */
+function seedRequirementVariety(
+    app: HiringApplication, applicant: Applicant,
+    steps: TemplateStep[], formById: Map<string, ApplicationFormDef>,
+): boolean {
+    // Never clobber real uploads — only seed when there's no fulfilment state yet.
+    if (app.requirements_v2 && Object.keys(app.requirements_v2).length > 0) return false;
+    const reqs = buildRequirements(applicant, app, steps, formById);
+    if (reqs.length === 0) return false;
+    // Deterministic expiry spread (some soon-to-expire, one already expired) so
+    // expiry handling is visible in the View panel.
+    const EXPIRIES = ['2028-11-30', '2027-04-15', '2026-09-01', '2025-12-31'];
+    const v2: NonNullable<HiringApplication['requirements_v2']> = {};
+    reqs.forEach((rq, i) => {
+        const file = { name: `${rq.label.replace(/\s+/g, '-').toLowerCase()}.pdf`, uploadedAt: applicant.appliedDate };
+        const isCompliance = rq.kind === 'compliance';
+        // Seed all four meta fields; the View panel only surfaces the ones the
+        // document type is configured to capture in Settings.
+        const baseMeta = {
+            ...(isCompliance ? { number: `${rq.label.split(' ').map(w => w[0]).join('').toUpperCase()}-${10000 + i}` } : {}),
+            issue: applicant.appliedDate,
+            expiry: EXPIRIES[i % EXPIRIES.length],
+            state: 'CA',
+            country: 'United States',
+        };
+        switch (i % 4) {
+            case 0: // verified — full meta + file
+                v2[rq.id] = { status: 'verified', files: [file], meta: baseMeta };
+                break;
+            case 1: // uploaded — awaiting verification (has dates/number + file)
+                v2[rq.id] = { status: 'uploaded', files: [file], meta: baseMeta };
+                break;
+            case 2: // ordered — requested, not yet returned
+                v2[rq.id] = { status: 'ordered' };
+                break;
+            // case 3 → leave missing
+        }
+    });
+    app.requirements_v2 = v2;
+    return true;
+}
+
+/** A lightweight cursive "signature" rendered as an inline SVG data URL. */
+function fakeSignatureDataUrl(name: string): string {
+    const svg =
+        `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='72'>` +
+        `<text x='14' y='48' font-family='Segoe Script, Brush Script MT, cursive' font-size='34' font-style='italic' fill='#1e293b'>${name}</text>` +
+        `<path d='M10 56 q60 10 120 0 t110 -2' stroke='#94a3b8' stroke-width='1' fill='none' opacity='0.4'/>` +
+        `</svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Seed e-signatures onto a subset of the application's consent steps so the
+ * Signature tab shows a realistic signed/pending mix. Skips if any signature
+ * already exists (never clobbers real ones). Returns true if anything changed.
+ */
+function seedSignatureVariety(app: HiringApplication, applicant: Applicant, steps: TemplateStep[]): boolean {
+    const consentSteps = steps.filter(s => s.kind === 'consent');
+    if (consentSteps.length === 0) return false;
+    if (app.signatureOnFile || consentSteps.some(s => app.steps[s.id]?.signature)) return false;
+    const sig = fakeSignatureDataUrl(`${applicant.firstName} ${applicant.lastName}`);
+    // Always put a master signature on file, then attach to ~2/3 of the forms
+    // (verifying ~1/3) and leave ~1/3 pending — a realistic attach/verify mix.
+    app.signatureOnFile = sig;
+    consentSteps.forEach((s, i) => {
+        if (i % 3 === 2) return; // leave ~1/3 pending (not attached)
+        const cur = app.steps[s.id] ?? { status: 'not_started' as AppStepStatus };
+        app.steps[s.id] = { ...cur, signature: sig, signatureVerified: i % 3 === 0, submittedAt: cur.submittedAt ?? applicant.appliedDate };
+    });
+    return true;
+}
+
 function buildSeededApplication(
     applicant: Applicant,
     tpl: DriverHiringTemplate,
@@ -195,7 +292,7 @@ function buildSeededApplication(
                     : anyStarted ? 'in_progress'
                         : 'invited';
 
-    return {
+    const app: HiringApplication = {
         applicantId: applicant.id,
         templateId: tpl.id,
         carrierId: carrier.id,
@@ -205,6 +302,9 @@ function buildSeededApplication(
         requests: [],
         events: [{ id: `ev-seed-${applicant.id}`, at: applicant.appliedDate, by: 'You', type: 'invited', detail: `Invite emailed to ${applicant.email}` }],
     };
+    seedRequirementVariety(app, applicant, tpl.steps, formById);
+    seedSignatureVariety(app, applicant, tpl.steps);
+    return app;
 }
 
 interface Row {
@@ -213,7 +313,7 @@ interface Row {
     templateId: string;
 }
 
-export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string) => void } = {}) {
+export function AtsAssignmentsPage({ onNavigate, accountId }: { onNavigate?: (path: string) => void; accountId?: string } = {}) {
     const templates = useMemo<DriverHiringTemplate[]>(() => loadTemplates(), []);
     const templateById = useMemo(() => {
         const map = new Map<string, DriverHiringTemplate>();
@@ -264,6 +364,17 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
         }));
     }, [applicants, overrides]);
 
+    // The page is scoped to the carrier selected in the top navbar — only that
+    // carrier's drivers are shown. (No accountId → unscoped, e.g. admins.)
+    const scopedCarrier = useMemo(
+        () => accountId ? ACCOUNTS_DB.find(a => a.id === accountId) : undefined,
+        [accountId],
+    );
+    const scopedRows = useMemo(
+        () => accountId ? rows.filter(r => r.carrier.id === accountId) : rows,
+        [rows, accountId],
+    );
+
     // On first load, back every assigned legacy applicant with a real application
     // (seeded from their pipeline stage) so the list badges/progress and the
     // detail page are one consistent source of truth.
@@ -279,7 +390,16 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
             // Stored app points at a retired/changed template (its steps are keyed by the
             // old template's step ids) — reseed so the detail page can resolve the template.
             const staleTemplate = !!existing && existing.templateId !== templateId;
-            if (existing && !isStub && !staleTemplate) return;
+            if (existing && !isStub && !staleTemplate) {
+                // Valid app already stored — backfill requirement + signature variety
+                // once (for demo apps seeded before this existed) without clobbering
+                // anything the user actually filled in.
+                let seeded = false;
+                if (seedRequirementVariety(existing, applicant, tpl.steps, formById)) seeded = true;
+                if (seedSignatureVariety(existing, applicant, tpl.steps)) seeded = true;
+                if (seeded) { upsertApplication(existing); changed = true; }
+                return;
+            }
             upsertApplication(buildSeededApplication(applicant, tpl, carrierForApplicant(i), formById));
             changed = true;
         });
@@ -295,23 +415,15 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [applicants, appRefresh]);
 
-    const [activeTab, setActiveTab] = useState<'view' | 'assign'>('view');
     const [search, setSearch] = useState("");
-    const [carrierFilter, setCarrierFilter] = useState<string>("all");
     const [stageFilter, setStageFilter] = useState<Stage | "all">("all");
     const [licenseFilter, setLicenseFilter] = useState<LicenseType | "all">("all");
     const [templateFilter, setTemplateFilter] = useState<string>("all");
     const [formTypeFilter, setFormTypeFilter] = useState<TemplateFormType | "all">("all");
 
-    // Bulk-assign tab state
-    const [bulkTemplateId, setBulkTemplateId] = useState<string>("");
-    const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
-    const [bulkBanner, setBulkBanner] = useState<string | null>(null);
-
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return rows.filter(r => {
-            if (carrierFilter !== "all" && r.carrier.id !== carrierFilter) return false;
+        return scopedRows.filter(r => {
             if (stageFilter !== "all" && r.applicant.stage !== stageFilter) return false;
             if (licenseFilter !== "all" && r.applicant.licenseType !== licenseFilter) return false;
             if (templateFilter !== "all" && r.templateId !== templateFilter) return false;
@@ -325,7 +437,7 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
             }
             return true;
         });
-    }, [rows, search, carrierFilter, stageFilter, licenseFilter, templateFilter, formTypeFilter, templateById]);
+    }, [scopedRows, search, stageFilter, licenseFilter, templateFilter, formTypeFilter, templateById]);
 
     // Assignments tab — only drivers who actually have a hiring template
     // assigned (and whose template id resolves to a known template).
@@ -345,16 +457,11 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
 
     const counts = useMemo(() => {
         const out: Record<Stage, number> = { applications_received: 0, in_progress: 0, hired: 0, not_hired: 0 };
-        for (const r of rows) out[r.applicant.stage] += 1;
+        for (const r of scopedRows) out[r.applicant.stage] += 1;
         return out;
-    }, [rows]);
+    }, [scopedRows]);
 
-    const carrierOptions = useMemo(() => {
-        const ids = new Set(rows.map(r => r.carrier.id));
-        return ACCOUNTS_DB.filter(a => ids.has(a.id));
-    }, [rows]);
-
-    const total = rows.length;
+    const total = scopedRows.length;
     const stageIconFor = (s: Stage) => s === 'applications_received' ? Inbox
         : s === 'in_progress' ? Clock
             : s === 'hired' ? UserCheck : UserX;
@@ -369,51 +476,34 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                             <Briefcase size={20} />
                         </div>
                         <div className="min-w-0">
-                            <h1 className="text-xl font-semibold text-slate-900">Driver Hiring Assignments</h1>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h1 className="text-xl font-semibold text-slate-900">Driver Hiring Assignments</h1>
+                                {scopedCarrier && (
+                                    <span className="inline-flex items-center gap-1.5 h-6 pl-1 pr-2.5 rounded-full border border-blue-200 bg-blue-50 text-[11px] font-bold text-blue-700">
+                                        <span className={cn(
+                                            "h-4 w-4 rounded-full bg-gradient-to-br flex items-center justify-center text-[8px] font-bold text-white",
+                                            carrierGradient(scopedCarrier.id),
+                                        )}>
+                                            {carrierInitials(scopedCarrier.legalName)}
+                                        </span>
+                                        {scopedCarrier.dbaName || scopedCarrier.legalName}
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-xs text-slate-500 mt-0.5">
-                                Assign a hiring template to each carrier's driver and track where they are in the pipeline.
+                                {scopedCarrier
+                                    ? <>Hiring pipeline for <span className="font-semibold text-slate-600">{scopedCarrier.dbaName || scopedCarrier.legalName}</span> — assign templates and track each driver's progress.</>
+                                    : "Assign a hiring template to each carrier's driver and track where they are in the pipeline."}
                             </p>
                         </div>
                     </div>
                     <button
                         type="button"
-                        onClick={() => onNavigate?.('/ats/issue-hiring')}
+                        onClick={() => setInviteNewOpen(true)}
                         className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-blue-600 text-sm font-bold text-white shadow-sm hover:bg-blue-700"
                     >
-                        <UserPlus size={16} /> Issue Hiring
+                        <UserPlus size={16} /> Invite new applicant
                     </button>
-                </div>
-
-                {/* Tab strip — matches the AtsPage tab pattern */}
-                <div className="flex items-center gap-1 -mb-px">
-                    {([
-                        { id: 'view',   label: 'Assignments',  Icon: ListChecks, count: assignedRows.length },
-                        { id: 'assign', label: 'Assign',       Icon: UserPlus,   count: bulkSelected.size || undefined },
-                    ] as const).map(tab => {
-                        const active = activeTab === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={cn(
-                                    'inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
-                                    active
-                                        ? 'text-blue-600 border-blue-600'
-                                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300',
-                                )}
-                            >
-                                <tab.Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                                <span>{tab.label}</span>
-                                {typeof tab.count === 'number' && tab.count > 0 && (
-                                    <span className={cn(
-                                        'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold',
-                                        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
-                                    )}>{tab.count}</span>
-                                )}
-                            </button>
-                        );
-                    })}
                 </div>
             </div>
 
@@ -459,16 +549,6 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                         />
                     </div>
                     <select
-                        value={carrierFilter}
-                        onChange={(e) => setCarrierFilter(e.target.value)}
-                        className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-                    >
-                        <option value="all">All carriers</option>
-                        {carrierOptions.map(a => (
-                            <option key={a.id} value={a.id}>{a.dbaName || a.legalName}</option>
-                        ))}
-                    </select>
-                    <select
                         value={licenseFilter}
                         onChange={(e) => setLicenseFilter(e.target.value as LicenseType | "all")}
                         className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
@@ -498,12 +578,11 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                             <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
                     </select>
-                    {(carrierFilter !== "all" || licenseFilter !== "all" || templateFilter !== "all" || formTypeFilter !== "all" || stageFilter !== "all" || search) && (
+                    {(licenseFilter !== "all" || templateFilter !== "all" || formTypeFilter !== "all" || stageFilter !== "all" || search) && (
                         <button
                             type="button"
                             onClick={() => {
                                 setSearch("");
-                                setCarrierFilter("all");
                                 setStageFilter("all");
                                 setLicenseFilter("all");
                                 setTemplateFilter("all");
@@ -519,8 +598,7 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                     </span>
                 </div>
 
-                {/* ── Tab content ─────────────────────────────────────── */}
-                {activeTab === 'view' && (
+                {/* ── Driver assignments list ─────────────────────────── */}
                     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                         <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-3">
                             <div>
@@ -530,13 +608,9 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                                 </p>
                             </div>
                             {filtered.length > assignedRows.length && (
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('assign')}
-                                    className="shrink-0 text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
-                                >
-                                    <UserPlus size={12} />
-                                    {filtered.length - assignedRows.length} driver{filtered.length - assignedRows.length === 1 ? "" : "s"} need a template
+                                <button type="button" onClick={() => setInviteNewOpen(true)}
+                                    className="shrink-0 text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1">
+                                    <UserPlus size={12} /> Invite new applicant
                                 </button>
                             )}
                         </div>
@@ -561,7 +635,17 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                                         bumpApps();
                                         onNavigate?.(`/ats/application/${r.applicant.id}`);
                                     }}
-                                    onInvite={(email) => { inviteDriver(r.applicant.id, email); bumpApps(); }}
+                                    onInvite={(email, templateId) => {
+                                        // Switching template on (re)send — re-point the assignment and
+                                        // rebuild the application on the new workflow, then send the invite.
+                                        if (templateId && templateId !== r.templateId) {
+                                            setOverrides(o => ({ ...o, [r.applicant.id]: templateId }));
+                                            const newTpl = templateById.get(templateId);
+                                            if (newTpl) upsertApplication(buildSeededApplication(r.applicant, newTpl, r.carrier, formById));
+                                        }
+                                        inviteDriver(r.applicant.id, email);
+                                        bumpApps();
+                                    }}
                                     onAddDriver={() => { addAsDriver(r.applicant.id, r.carrier.id); bumpApps(); }}
                                     onRequest={(req) => { addRequest(r.applicant.id, req); bumpApps(); }}
                                     onRemind={() => { sendReminder(r.applicant.id); bumpApps(); }}
@@ -571,15 +655,23 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                             ))}
                             {assignedRows.length === 0 && (
                                 <div className="px-6 py-12 text-center">
-                                    <div className="text-sm text-slate-500 mb-2">
-                                        No drivers have a hiring template assigned yet.
+                                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-300">
+                                        <UserPlus size={22} />
+                                    </div>
+                                    <div className="text-sm font-semibold text-slate-600 mb-1">
+                                        {scopedCarrier
+                                            ? `No drivers with a template at ${scopedCarrier.dbaName || scopedCarrier.legalName}`
+                                            : 'No drivers have a hiring template assigned yet'}
+                                    </div>
+                                    <div className="text-[12px] text-slate-400 mb-3">
+                                        Assign a hiring template to start tracking driver onboarding.
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => setActiveTab('assign')}
+                                        onClick={() => setInviteNewOpen(true)}
                                         className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shadow-sm"
                                     >
-                                        <UserPlus size={14} /> Assign templates
+                                        <UserPlus size={14} /> Invite new applicant
                                     </button>
                                 </div>
                             )}
@@ -621,54 +713,13 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
                             </div>
                         )}
                     </div>
-                )}
-
-                {activeTab === 'assign' && (
-                    <div className="space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/40 px-5 py-3.5">
-                            <div className="flex items-start gap-2.5">
-                                <UserPlus size={16} className="mt-0.5 shrink-0 text-blue-600" />
-                                <div>
-                                    <p className="text-[13px] font-bold text-slate-800">Invite a new applicant</p>
-                                    <p className="text-[11px] text-slate-500">Inviting someone from outside the system — enter their details, pick a template, and send the application link.</p>
-                                </div>
-                            </div>
-                            <button type="button" onClick={() => setInviteNewOpen(true)}
-                                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-[13px] font-bold text-white shadow-sm hover:bg-blue-700">
-                                <UserPlus size={14} /> Invite new applicant
-                            </button>
-                        </div>
-                        <AssignTab
-                            rows={filtered}
-                        templates={templates}
-                        templateById={templateById}
-                        bulkTemplateId={bulkTemplateId}
-                        setBulkTemplateId={setBulkTemplateId}
-                        selected={bulkSelected}
-                        setSelected={setBulkSelected}
-                        banner={bulkBanner}
-                        clearBanner={() => setBulkBanner(null)}
-                        onApply={() => {
-                            if (!bulkTemplateId || bulkSelected.size === 0) return;
-                            setOverrides(o => {
-                                const next = { ...o };
-                                for (const id of bulkSelected) next[id] = bulkTemplateId;
-                                return next;
-                            });
-                            const tplName = templateById.get(bulkTemplateId)?.name ?? "template";
-                            const n = bulkSelected.size;
-                            setBulkBanner(`Assigned "${tplName}" to ${n} driver${n === 1 ? "" : "s"}.`);
-                            setBulkSelected(new Set());
-                        }}
-                        />
-                    </div>
-                )}
             </div>
 
             {inviteNewOpen && (
                 <InviteApplicantModal
                     templates={templates}
-                    onDone={() => { setInviteNewOpen(false); bumpApps(); setActiveTab('view'); }}
+                    defaultCarrierId={accountId}
+                    onDone={() => { setInviteNewOpen(false); bumpApps(); }}
                     onClose={() => setInviteNewOpen(false)}
                 />
             )}
@@ -678,438 +729,290 @@ export function AtsAssignmentsPage({ onNavigate }: { onNavigate?: (path: string)
 
 // ── Invite a new external applicant ──────────────────────────────────────
 
-const INVITE_INPUT = "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200";
-function InviteField({ label, children }: { label: string; children: React.ReactNode }) {
-    return <div><label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</label>{children}</div>;
+const INVITE_INPUT = "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
+function InviteField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <label className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <span>{label}</span>
+                {hint && <span className="font-medium normal-case tracking-normal text-slate-400">{hint}</span>}
+            </label>
+            {children}
+        </div>
+    );
 }
 
-function InviteApplicantModal({ templates, onDone, onClose }: {
+/** Numbered section block — gives the form its top-down "step" feel. */
+function InviteSection({ n, title, desc, children }: { n: number; title: string; desc: string; children: React.ReactNode }) {
+    return (
+        <section className="flex gap-4">
+            <div className="flex shrink-0 flex-col items-center">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[12px] font-bold text-white shadow-sm">{n}</span>
+                <span className="mt-1 w-px flex-1 bg-slate-200 last:hidden" />
+            </div>
+            <div className="min-w-0 flex-1 pb-6">
+                <h4 className="text-[13px] font-bold text-slate-900">{title}</h4>
+                <p className="mb-3 text-[11px] text-slate-500">{desc}</p>
+                {children}
+            </div>
+        </section>
+    );
+}
+
+const DRIVER_TYPE_ICON: Record<string, React.ElementType> = {
+    local: Building2, us: MapPin, canada: Globe, cross_border: ArrowLeftRight,
+};
+const DRIVER_TYPE_DESC: Record<string, string> = {
+    local: 'Domestic, single-jurisdiction routes',
+    us: 'US-based interstate operation',
+    canada: 'Canada-based operation',
+    cross_border: 'Operates across the US ↔ Canada border',
+};
+
+function InviteApplicantModal({ templates, defaultCarrierId, onDone, onClose }: {
     templates: DriverHiringTemplate[];
+    defaultCarrierId?: string;
     onDone: () => void;
     onClose: () => void;
 }) {
+    const [driverType, setDriverType] = useState<string>('us');
+    const [templateId, setTemplateId] = useState<string>(templates.find(t => t.isDefault)?.id ?? templates[0]?.id ?? '');
+    const [carrierId, setCarrierId] = useState<string>(defaultCarrierId ?? ACCOUNTS_DB[0]?.id ?? '');
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
-    const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
-    const [licenseType, setLicenseType] = useState<LicenseType>('CDL-A');
-    const [carrierId, setCarrierId] = useState<string>(ACCOUNTS_DB[0]?.id ?? '');
-    const [templateId, setTemplateId] = useState<string>(templates.find(t => t.isDefault)?.id ?? templates[0]?.id ?? '');
-    const canSend = !!(firstName.trim() && lastName.trim() && email.trim() && templateId);
+    const [emails, setEmails] = useState<string[]>([]);
+    const [draft, setDraft] = useState('');
+    const [position, setPosition] = useState('Driver');
+    const [channel, setChannel] = useState<'email' | 'sms'>('email');
+    const [dueDate, setDueDate] = useState('');
+    const [message, setMessage] = useState('');
+
+    const isEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+    const draftInvalid = !!draft.trim() && !isEmail(draft);
+    // Commit any whitespace/comma-separated emails in the draft into chips.
+    const addDraft = (raw: string) => {
+        const parts = raw.split(/[\s,;]+/).map(p => p.trim().toLowerCase()).filter(Boolean);
+        const valid = parts.filter(isEmail);
+        if (valid.length) setEmails(prev => Array.from(new Set([...prev, ...valid])));
+        // keep any trailing invalid fragment in the draft
+        const leftover = parts.filter(p => !isEmail(p)).join(' ');
+        setDraft(leftover);
+    };
+    const removeEmail = (e: string) => setEmails(prev => prev.filter(x => x !== e));
+
+    const canSend = !!(emails.length > 0 && templateId && carrierId && driverType);
+
+    const tpl = templates.find(t => t.id === templateId);
+    const tplForms = tpl?.steps.filter(s => (s.kind ?? 'form') === 'form').length ?? 0;
+    const tplConsents = tpl?.steps.filter(s => s.kind === 'consent').length ?? 0;
+    const carrier = ACCOUNTS_DB.find(c => c.id === carrierId);
+
+    // Driver fills in their real name via the portal; seed one from the email.
+    const nameFromEmail = (email: string): { first: string; last: string } => {
+        const local = (email.split('@')[0] ?? '').replace(/\d+/g, '');
+        const parts = local.split(/[._-]+/).filter(Boolean);
+        const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+        return { first: cap(parts[0] ?? local) || 'New', last: cap(parts[1] ?? '') || 'Applicant' };
+    };
 
     const send = () => {
-        if (!canSend) return;
-        const a = createApplicant({
-            firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(),
-            phone: phone.trim() || undefined, licenseType, templateId, carrierId: carrierId || undefined,
-        });
-        inviteDriver(a.id, email.trim());
+        // Fold any pending draft email in first.
+        const all = Array.from(new Set([...emails, ...(isEmail(draft) ? [draft.trim().toLowerCase()] : [])]));
+        if (all.length === 0 || !templateId || !carrierId || !driverType) return;
+        const single = all.length === 1;
+        for (const email of all) {
+            const derived = nameFromEmail(email);
+            const a = createApplicant({
+                // For a single invite, use the typed name/phone; for a batch, seed from the email.
+                firstName: single && firstName.trim() ? firstName.trim() : derived.first,
+                lastName: single && lastName.trim() ? lastName.trim() : derived.last,
+                phone: single ? (phone.trim() || undefined) : undefined,
+                email,
+                positionApplied: position.trim() || 'Driver',
+                templateId, carrierId: carrierId || undefined, driverType: driverType as IssueDriverType,
+            });
+            inviteDriver(a.id, email);
+            if (dueDate || message.trim()) {
+                addRequest(a.id, {
+                    kind: 'detail', itemKind: 'step', itemName: tpl?.name, recipient: 'driver',
+                    message: message.trim() || `Please complete the ${tpl?.name ?? 'hiring'} application.`,
+                    channel, sentBy: 'You', deadline: dueDate || undefined,
+                });
+            }
+        }
         onDone();
     };
 
     return (
-        <div role="dialog" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 p-6" onClick={onClose}>
-            <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" onClick={e => e.stopPropagation()}>
-                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
-                    <div>
-                        <h3 className="text-base font-bold text-slate-900">Invite new applicant</h3>
-                        <p className="mt-0.5 text-[12px] text-slate-500">Creates the applicant and emails them the application link.</p>
+        <div role="dialog" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/50 p-4 sm:p-6" onClick={onClose}>
+            <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-sky-50 to-blue-50/40 px-7 py-5">
+                    <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-sm">
+                            <UserPlus size={20} />
+                        </span>
+                        <div>
+                            <h3 className="text-base font-bold text-slate-900">Invite new applicant</h3>
+                            <p className="mt-0.5 text-[12px] text-slate-500">Set up the hiring file, then email the driver their application link.</p>
+                        </div>
                     </div>
-                    <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100"><XIcon size={16} /></button>
+                    <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/70 hover:text-slate-700"><XIcon size={16} /></button>
                 </div>
-                <div className="space-y-3 px-6 py-5">
-                    <div className="grid grid-cols-2 gap-3">
-                        <InviteField label="First name *"><input autoFocus value={firstName} onChange={e => setFirstName(e.target.value)} className={INVITE_INPUT} /></InviteField>
-                        <InviteField label="Last name *"><input value={lastName} onChange={e => setLastName(e.target.value)} className={INVITE_INPUT} /></InviteField>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <InviteField label="Email *"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={INVITE_INPUT} /></InviteField>
-                        <InviteField label="Phone"><input value={phone} onChange={e => setPhone(e.target.value)} className={INVITE_INPUT} /></InviteField>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <InviteField label="License type">
-                            <select value={licenseType} onChange={e => setLicenseType(e.target.value as LicenseType)} className={INVITE_INPUT}>
-                                {(['CDL-A', 'CDL-B', 'CDL', 'Non-CDL'] as LicenseType[]).map(l => <option key={l} value={l}>{l}</option>)}
-                            </select>
-                        </InviteField>
-                        <InviteField label="Carrier">
+
+                {/* Body (scrollable, numbered sections) */}
+                <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+                    {/* 1 — Driver type */}
+                    <InviteSection n={1} title="Driver type" desc="Determines the DQ profile and which documents are required.">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {DQ_DRIVER_TYPES.map(dt => {
+                                const Icon = DRIVER_TYPE_ICON[dt.id] ?? Globe;
+                                const on = driverType === dt.id;
+                                return (
+                                    <button key={dt.id} type="button" onClick={() => setDriverType(dt.id)}
+                                        title={DRIVER_TYPE_DESC[dt.id]}
+                                        className={cn('flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all',
+                                            on ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/20' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50')}>
+                                        <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg', on ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500')}>
+                                            <Icon size={16} />
+                                        </span>
+                                        <span className={cn('text-[12px] font-bold leading-tight', on ? 'text-blue-700' : 'text-slate-700')}>{dt.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="mt-2 text-[11px] text-slate-400">{DRIVER_TYPE_DESC[driverType]}</p>
+                    </InviteSection>
+
+                    {/* 2 — Hiring template */}
+                    <InviteSection n={2} title="Hiring template" desc="The application workflow the driver will complete.">
+                        <select value={templateId} onChange={e => setTemplateId(e.target.value)} className={INVITE_INPUT}>
+                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.isDefault ? ' (Default)' : ''}</option>)}
+                        </select>
+                        {tpl && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-[11px] font-semibold text-slate-600">
+                                <span className="inline-flex items-center gap-1"><ListChecks size={12} className="text-blue-500" /> {tpl.steps.length} steps</span>
+                                <span className="text-slate-300">·</span>
+                                <span className="inline-flex items-center gap-1"><FileText size={12} className="text-blue-500" /> {tplForms} forms</span>
+                                <span className="text-slate-300">·</span>
+                                <span className="inline-flex items-center gap-1"><ShieldCheck size={12} className="text-blue-500" /> {tplConsents} consents</span>
+                            </div>
+                        )}
+                    </InviteSection>
+
+                    {/* 3 — Carrier */}
+                    <InviteSection n={3} title="Carrier" desc="The carrier this driver is being hired for.">
+                        <div className="flex items-center gap-3">
+                            {carrier && (
+                                <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-[12px] font-bold text-white', carrierGradient(carrier.id))}>
+                                    {carrierInitials(carrier.legalName)}
+                                </span>
+                            )}
                             <select value={carrierId} onChange={e => setCarrierId(e.target.value)} className={INVITE_INPUT}>
                                 {ACCOUNTS_DB.map(c => <option key={c.id} value={c.id}>{c.dbaName || c.legalName}</option>)}
                             </select>
+                        </div>
+                    </InviteSection>
+
+                    {/* 4 — Driver emails (one or many) */}
+                    <InviteSection n={4} title="Driver emails" desc="Invite one or many — each email gets its own application link.">
+                        <InviteField label={`Emails${emails.length ? ` · ${emails.length}` : ''}`} hint={draftInvalid ? 'Invalid email' : 'Press Enter or comma to add'}>
+                            <div className={cn('flex flex-wrap items-center gap-1.5 rounded-lg border bg-white p-2 focus-within:ring-1',
+                                draftInvalid ? 'border-rose-300 focus-within:border-rose-400 focus-within:ring-rose-400/20' : 'border-slate-300 focus-within:border-blue-500 focus-within:ring-blue-500/20')}>
+                                {emails.map(e => (
+                                    <span key={e} className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[12px] font-semibold text-blue-700">
+                                        <Mail size={11} /> {e}
+                                        <button type="button" onClick={() => removeEmail(e)} className="text-blue-400 hover:text-rose-500"><XIcon size={12} /></button>
+                                    </span>
+                                ))}
+                                <input autoFocus value={draft}
+                                    onChange={e => setDraft(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ',' || e.key === ' ') { e.preventDefault(); addDraft(draft); } else if (e.key === 'Backspace' && !draft && emails.length) { setEmails(prev => prev.slice(0, -1)); } }}
+                                    onBlur={() => { if (isEmail(draft)) addDraft(draft); }}
+                                    onPaste={e => { e.preventDefault(); addDraft(e.clipboardData.getData('text')); }}
+                                    placeholder={emails.length ? 'Add another…' : 'jane@example.com'}
+                                    className="min-w-[180px] flex-1 border-0 bg-transparent p-1 text-sm focus:outline-none focus:ring-0" />
+                            </div>
                         </InviteField>
-                    </div>
-                    <InviteField label="Hiring template *">
-                        <select value={templateId} onChange={e => setTemplateId(e.target.value)} className={INVITE_INPUT}>
-                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.isDefault ? ' (Default)' : ''} · {t.steps.length} steps</option>)}
-                        </select>
-                    </InviteField>
-                </div>
-                <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50/50 px-6 py-3">
-                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
-                    <button type="button" disabled={!canSend} onClick={send}
-                        className={cn("inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold text-white shadow-sm", canSend ? "bg-blue-600 hover:bg-blue-700" : "cursor-not-allowed bg-slate-300")}>
-                        <Send size={14} /> Send invite
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
+                    </InviteSection>
 
-// ── Assign tab (bulk-assign workflow) ────────────────────────────────────
-
-function AssignTab({
-    rows, templates, templateById,
-    bulkTemplateId, setBulkTemplateId,
-    selected, setSelected,
-    banner, clearBanner,
-    onApply,
-}: {
-    rows: Row[];
-    templates: DriverHiringTemplate[];
-    templateById: Map<string, DriverHiringTemplate>;
-    bulkTemplateId: string;
-    setBulkTemplateId: (id: string) => void;
-    selected: Set<string>;
-    setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
-    banner: string | null;
-    clearBanner: () => void;
-    onApply: () => void;
-}) {
-    const tpl = templateById.get(bulkTemplateId);
-    const allSelected = rows.length > 0 && rows.every(r => selected.has(r.applicant.id));
-    const someSelected = !allSelected && rows.some(r => selected.has(r.applicant.id));
-
-    const toggleAll = () => {
-        setSelected(prev => {
-            const next = new Set(prev);
-            if (allSelected) {
-                for (const r of rows) next.delete(r.applicant.id);
-            } else {
-                for (const r of rows) next.add(r.applicant.id);
-            }
-            return next;
-        });
-    };
-    const toggleOne = (id: string) => {
-        setSelected(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
-    const selectUnassigned = () => {
-        setSelected(prev => {
-            const next = new Set(prev);
-            for (const r of rows) {
-                if (!templateById.has(r.templateId)) next.add(r.applicant.id);
-            }
-            return next;
-        });
-    };
-    const selectNeedingChange = () => {
-        if (!bulkTemplateId) return;
-        setSelected(prev => {
-            const next = new Set(prev);
-            for (const r of rows) {
-                if (r.templateId !== bulkTemplateId) next.add(r.applicant.id);
-            }
-            return next;
-        });
-    };
-    const clearSelection = () => setSelected(new Set());
-
-    // Break the selection into "new" vs "re-assigning" so the apply bar can
-    // surface the difference to the user before they commit.
-    const selectedRows = rows.filter(r => selected.has(r.applicant.id));
-    const newAssignCount = selectedRows.filter(r => !templateById.has(r.templateId)).length;
-    const reAssignCount = selectedRows.filter(r => templateById.has(r.templateId) && r.templateId !== bulkTemplateId).length;
-    const noopCount = selectedRows.length - newAssignCount - reAssignCount;
-
-    const canApply = !!bulkTemplateId && selected.size > 0;
-
-    return (
-        <div className="space-y-4">
-            {banner && (
-                <div className="flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm">
-                        <Check size={16} className="text-emerald-600 shrink-0" />
-                        <span>{banner}</span>
-                    </div>
-                    <button type="button" onClick={clearBanner} className="text-emerald-700 hover:text-emerald-900">
-                        <XIcon size={14} />
-                    </button>
-                </div>
-            )}
-
-            {/* Step 1 — pick template */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center gap-2">
-                    <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">1</span>
-                    <h3 className="text-sm font-bold text-slate-900">Pick a hiring template</h3>
-                    {tpl && (
-                        <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                            <Check size={11} strokeWidth={3} /> {tpl.name}
-                        </span>
-                    )}
-                </div>
-                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
-                    {templates.map(t => {
-                        const isPicked = bulkTemplateId === t.id;
-                        return (
-                            <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => setBulkTemplateId(t.id)}
-                                className={cn(
-                                    "text-left rounded-lg border-2 p-3 transition-all relative",
-                                    isPicked
-                                        ? "border-blue-500 bg-blue-50/60 shadow-sm"
-                                        : "border-slate-200 hover:border-blue-300 hover:bg-slate-50",
-                                )}
-                            >
-                                {isPicked && (
-                                    <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-600 text-white shadow-sm">
-                                        <Check size={12} strokeWidth={3} />
-                                    </span>
-                                )}
-                                <div className="flex items-center gap-1.5 min-w-0 mb-1">
-                                    <FileText size={13} className={isPicked ? "text-blue-600 shrink-0" : "text-slate-400 shrink-0"} />
-                                    <span className="text-[13px] font-bold text-slate-900 truncate">{t.name}</span>
+                    {/* 5 — Applicant details */}
+                    <InviteSection n={5} title="Applicant details" desc="Optional — for a single invite. Leave blank when inviting several; the driver fills these in.">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <InviteField label="First name">
+                                <div className="relative">
+                                    <UserIcon size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Jane" className={cn(INVITE_INPUT, 'pl-9')} />
                                 </div>
-                                <div className="flex items-center gap-1.5 text-[10px] mb-1">
-                                    <span className="font-bold text-slate-600 tabular-nums">{t.steps.length} steps</span>
-                                    {t.isDefault && (
-                                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold uppercase tracking-wider text-[9px]">
-                                            Default
-                                        </span>
-                                    )}
+                            </InviteField>
+                            <InviteField label="Last name">
+                                <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Doe" className={INVITE_INPUT} />
+                            </InviteField>
+                            <InviteField label="Phone">
+                                <div className="relative">
+                                    <Phone size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" className={cn(INVITE_INPUT, 'pl-9')} />
                                 </div>
-                                {t.description && (
-                                    <p className="text-[11px] text-slate-500 line-clamp-2 leading-snug">
-                                        {t.description}
-                                    </p>
-                                )}
-                            </button>
-                        );
-                    })}
-                    {templates.length === 0 && (
-                        <div className="col-span-full text-center text-sm text-slate-500 py-6">
-                            No templates available. Create one in Super Admin → Hiring Templates.
+                            </InviteField>
+                            <InviteField label="Position">
+                                <div className="relative">
+                                    <Briefcase size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input value={position} onChange={e => setPosition(e.target.value)} placeholder="Driver" className={cn(INVITE_INPUT, 'pl-9')} />
+                                </div>
+                            </InviteField>
                         </div>
-                    )}
-                </div>
-            </div>
+                    </InviteSection>
 
-            {/* Step 2 — select drivers */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex items-center gap-3 flex-wrap">
+                    {/* 6 — Invite options */}
+                    <InviteSection n={6} title="Invite options" desc="How and when to reach the driver.">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <InviteField label="Send via">
+                                <div className="flex gap-2">
+                                    {([['email', 'Email', Mail], ['sms', 'SMS', Phone]] as const).map(([id, label, Icon]) => (
+                                        <button key={id} type="button" onClick={() => setChannel(id)}
+                                            className={cn('flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition-colors',
+                                                channel === id ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50')}>
+                                            <Icon size={14} /> {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </InviteField>
+                            <InviteField label="Due date">
+                                <div className="relative">
+                                    <Calendar size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={cn(INVITE_INPUT, 'pl-9')} />
+                                </div>
+                            </InviteField>
+                            <div className="sm:col-span-2">
+                                <InviteField label="Message / note" hint="Included in the invite">
+                                    <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3}
+                                        placeholder={`Hi — please complete your ${tpl?.name ?? 'hiring'} application using the link below.`}
+                                        className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                </InviteField>
+                            </div>
+                        </div>
+                    </InviteSection>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/60 px-6 py-3.5">
+                    <span className="hidden text-[11px] text-slate-500 sm:flex items-center gap-1.5">
+                        <Mail size={12} className="text-slate-400" /> {emails.length > 1 ? `${emails.length} application links will be emailed.` : 'An application link will be emailed on send.'}
+                    </span>
                     <div className="flex items-center gap-2">
-                        <span className="h-5 w-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">2</span>
-                        <h3 className="text-sm font-bold text-slate-900">Select drivers</h3>
-                    </div>
-                    <div className="flex items-center gap-1 ml-auto">
-                        <button
-                            type="button"
-                            onClick={selectUnassigned}
-                            className="h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700"
-                        >
-                            Select unassigned
+                        <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                        <button type="button" disabled={!canSend} onClick={send}
+                            className={cn("inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold text-white shadow-sm", canSend ? "bg-blue-600 hover:bg-blue-700" : "cursor-not-allowed bg-slate-300")}>
+                            <Send size={14} /> Send {emails.length > 1 ? `${emails.length} invites` : 'invite'}
                         </button>
-                        {bulkTemplateId && (
-                            <button
-                                type="button"
-                                onClick={selectNeedingChange}
-                                className="h-7 px-2.5 text-[11px] font-semibold rounded-md border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700"
-                            >
-                                Select drivers without this template
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={clearSelection}
-                            disabled={selected.size === 0}
-                            className="h-7 px-2.5 text-[11px] font-semibold rounded-md text-slate-500 hover:text-slate-800 disabled:text-slate-300 disabled:cursor-not-allowed"
-                        >
-                            Clear
-                        </button>
-                        <span className="text-[11px] text-slate-500 tabular-nums pl-2 border-l border-slate-200">
-                            <span className="font-bold text-slate-700">{selected.size}</span> / {rows.length} selected
-                        </span>
                     </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                        <thead className="bg-slate-50/40 border-b border-slate-100">
-                            <tr className="text-left">
-                                <th className="px-4 py-2.5 w-10">
-                                    <input
-                                        type="checkbox"
-                                        checked={allSelected}
-                                        ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                                        onChange={toggleAll}
-                                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                </th>
-                                <Th>Driver</Th>
-                                <Th>Carrier</Th>
-                                <Th>Current template</Th>
-                                <Th>Stage</Th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rows.map(r => {
-                                const isChecked = selected.has(r.applicant.id);
-                                const current = templateById.get(r.templateId);
-                                const isUnassigned = !current;
-                                const willChange = !!current && r.templateId !== bulkTemplateId && !!bulkTemplateId;
-                                const stageMeta = STAGE_META[r.applicant.stage];
-                                const stageTone = TONE_CLS[stageMeta.tone];
-                                const initials = `${r.applicant.firstName[0] ?? ""}${r.applicant.lastName[0] ?? ""}`.toUpperCase();
-                                return (
-                                    <tr
-                                        key={r.applicant.id}
-                                        className={cn(
-                                            "border-b border-slate-100 last:border-b-0 transition-colors cursor-pointer",
-                                            isChecked
-                                                ? "bg-blue-50/70 hover:bg-blue-50"
-                                                : "hover:bg-slate-50/60",
-                                        )}
-                                        onClick={() => toggleOne(r.applicant.id)}
-                                    >
-                                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                                type="checkbox"
-                                                checked={isChecked}
-                                                onChange={() => toggleOne(r.applicant.id)}
-                                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-slate-700 text-[11px] font-bold flex items-center justify-center shrink-0">
-                                                    {initials || "?"}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="text-sm font-semibold text-slate-900 truncate">
-                                                        {r.applicant.firstName} {r.applicant.lastName}
-                                                    </div>
-                                                    <div className="text-[11px] text-slate-500">
-                                                        {r.applicant.licenseType} · {r.applicant.applicantType}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-slate-700">
-                                            <div className="inline-flex items-center gap-1.5">
-                                                <Building2 size={11} className="text-slate-400" />
-                                                {r.carrier.dbaName || r.carrier.legalName}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm">
-                                            {isUnassigned ? (
-                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                                                    <AlertCircle size={10} /> NOT ASSIGNED
-                                                </span>
-                                            ) : willChange && isChecked ? (
-                                                <div className="text-[11px]">
-                                                    <span className="text-slate-500 line-through">{current!.name}</span>
-                                                    <span className="text-blue-700 font-semibold ml-1">→ {tpl?.name}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-700">{current!.name}</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className={cn(
-                                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border",
-                                                stageTone.chip, stageTone.border,
-                                            )}>
-                                                <span className={cn("h-1.5 w-1.5 rounded-full", stageTone.dot)} />
-                                                {stageMeta.label}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                            {rows.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">
-                                        No drivers match the current filters.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Step 3 — sticky apply bar */}
-            <div className="sticky bottom-3 bg-white border-2 border-slate-200 rounded-xl shadow-lg p-4 flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3 min-w-0 flex-wrap">
-                    <span className="h-7 w-7 rounded-full bg-blue-600 text-white text-[12px] font-bold flex items-center justify-center shrink-0">3</span>
-                    {!canApply ? (
-                        <div className="text-sm text-slate-500">
-                            {!bulkTemplateId
-                                ? "Pick a hiring template above to enable assignment."
-                                : "Select at least one driver to assign."}
-                        </div>
-                    ) : (
-                        <div className="text-sm text-slate-700 flex items-center gap-2 flex-wrap">
-                            <span>
-                                Assigning <span className="font-bold text-slate-900">"{tpl!.name}"</span>
-                                {" "}<span className="text-slate-500">({tpl!.steps.length} steps)</span> to{" "}
-                                <span className="font-bold text-slate-900">{selected.size}</span> driver{selected.size === 1 ? "" : "s"}
-                            </span>
-                            <span className="flex items-center gap-1.5 text-[11px]">
-                                {newAssignCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold">
-                                        +{newAssignCount} new
-                                    </span>
-                                )}
-                                {reAssignCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 font-bold">
-                                        ↻ {reAssignCount} re-assigned
-                                    </span>
-                                )}
-                                {noopCount > 0 && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-500 font-bold">
-                                        {noopCount} unchanged
-                                    </span>
-                                )}
-                            </span>
-                        </div>
-                    )}
-                </div>
-                <button
-                    type="button"
-                    onClick={onApply}
-                    disabled={!canApply}
-                    className={cn(
-                        "h-9 px-4 rounded-lg text-sm font-semibold inline-flex items-center gap-1.5 shadow-sm transition-colors shrink-0",
-                        canApply
-                            ? "bg-blue-600 text-white hover:bg-blue-700"
-                            : "bg-slate-100 text-slate-400 cursor-not-allowed",
-                    )}
-                >
-                    <Check size={14} /> Assign to {selected.size} driver{selected.size === 1 ? "" : "s"}
-                </button>
             </div>
         </div>
     );
 }
 
-// ── Tiny helpers ─────────────────────────────────────────────────────────
-
-function Th({ children }: { children: React.ReactNode }) {
-    return (
-        <th className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {children}
-        </th>
-    );
-}
 
 // ── Row ──────────────────────────────────────────────────────────────────
 
@@ -1172,7 +1075,7 @@ function AssignmentRow({
     formById: Map<string, ApplicationFormDef>;
     application?: HiringApplication;
     onOpen?: () => void;
-    onInvite?: (email: string) => void;
+    onInvite?: (email: string, templateId: string) => void;
     onAddDriver?: () => void;
     onRequest?: (req: RequestInput) => void;
     onRemind?: () => void;
@@ -1412,11 +1315,12 @@ function AssignmentRow({
                     applicant={applicant}
                     carrier={carrier}
                     template={tpl}
+                    templates={Array.from(templateById.values())}
                     steps={templateSteps}
                     statuses={statuses}
                     formById={formById}
                     alreadySent={invited}
-                    onSend={(email) => { onInvite?.(email); setInviteOpen(false); }}
+                    onSend={(email, templateId) => { onInvite?.(email, templateId); setInviteOpen(false); }}
                     onClose={() => setInviteOpen(false)}
                 />
             )}
@@ -1583,32 +1487,41 @@ function mockFieldValue(f: { type: string; label: string; options: string[] }, a
 // ── Send application via email ────────────────────────────────────────────
 
 function SendApplicationModal({
-    applicant, carrier, template, steps, statuses, formById, alreadySent, onSend, onClose,
+    applicant, carrier, template, templates, steps, statuses, formById, alreadySent, onSend, onClose,
 }: {
     applicant: Applicant;
     carrier: AccountRecord;
     template: DriverHiringTemplate;
+    templates: DriverHiringTemplate[];
     steps: TemplateStep[];
     statuses: TStatus[];
     formById: Map<string, ApplicationFormDef>;
     alreadySent: boolean;
-    onSend: (email: string) => void;
+    onSend: (email: string, templateId: string) => void;
     onClose: () => void;
 }) {
     const [email, setEmail] = useState(
         applicant.email || `${applicant.firstName}.${applicant.lastName}@example.com`.toLowerCase().replace(/\s+/g, ''),
     );
+    const [selectedTemplateId, setSelectedTemplateId] = useState(template.id);
     const link = `https://apply.tracksmart.app/${applicant.id}`;
     const [copied, setCopied] = useState(false);
+
+    // When the manager picks a different template, preview its steps fresh
+    // (progress resets) — otherwise show the live progress for the current one.
+    const templateChanged = selectedTemplateId !== template.id;
+    const selectedTemplate = templates.find(t => t.id === selectedTemplateId) ?? template;
+    const effSteps = templateChanged ? selectedTemplate.steps : steps;
+    const effStatuses: TStatus[] = templateChanged ? effSteps.map(() => 'not_started') : statuses;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6" onClick={onClose}>
             <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
                     <div className="min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Send application</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{alreadySent ? 'Resend application' : 'Send application'}</p>
                         <h3 className="mt-0.5 text-base font-bold text-slate-900">{applicant.firstName} {applicant.lastName}</h3>
-                        <p className="mt-0.5 text-[12px] text-slate-500">{carrier.dbaName || carrier.legalName} · {template.name}</p>
+                        <p className="mt-0.5 text-[12px] text-slate-500">{carrier.dbaName || carrier.legalName} · {selectedTemplate.name}</p>
                     </div>
                     <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"><XIcon size={16} /></button>
                 </div>
@@ -1624,6 +1537,26 @@ function SendApplicationModal({
                                 className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
+                    </div>
+
+                    {/* Hiring template — keep current or switch on (re)send */}
+                    <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hiring template</label>
+                        <div className="relative">
+                            <LayoutTemplate size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <select value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                className="h-10 w-full appearance-none rounded-md border border-slate-300 bg-white pl-9 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}{t.id === template.id ? ' (current)' : ''} · {t.steps.length} steps</option>
+                                ))}
+                            </select>
+                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                        {templateChanged && (
+                            <p className="mt-1.5 flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700">
+                                <AlertCircle size={12} /> Switching template — the driver's application restarts on the new workflow.
+                            </p>
+                        )}
                     </div>
 
                     {/* Application link */}
@@ -1642,11 +1575,11 @@ function SendApplicationModal({
                     {/* Step breakdown */}
                     <div className="rounded-xl border border-slate-200 bg-white p-4">
                         <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                            What the driver fills out · {steps.length} steps
+                            What the driver fills out · {effSteps.length} steps
                         </p>
                         <ol className="space-y-1">
-                            {steps.map((s, i) => {
-                                const st = statuses[i] ?? 'not_started';
+                            {effSteps.map((s, i) => {
+                                const st = effStatuses[i] ?? 'not_started';
                                 return (
                                     <li key={s.id} className="flex items-center gap-2.5 text-[13px]">
                                         <span className={cn(
@@ -1675,8 +1608,8 @@ function SendApplicationModal({
 
                 <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-3">
                     <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
-                    <button type="button" onClick={() => onSend(email)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700">
-                        <Send className="h-4 w-4" /> {alreadySent ? 'Resend' : 'Send application'}
+                    <button type="button" onClick={() => onSend(email, selectedTemplateId)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700">
+                        <Send className="h-4 w-4" /> {templateChanged ? 'Resend with new template' : alreadySent ? 'Resend' : 'Send application'}
                     </button>
                 </div>
             </div>
@@ -1774,6 +1707,15 @@ const ASK_CHANNELS: { id: 'email' | 'in_app' | 'sms'; label: string; Icon: typeo
     { id: 'sms', label: 'SMS', Icon: Phone },
 ];
 
+const ASK_RECIPIENTS: { id: RequestRecipient; label: string; Icon: typeof Mail }[] = [
+    { id: 'driver', label: 'Driver', Icon: UserIcon },
+    { id: 'hiring_manager', label: 'Hiring manager', Icon: UserCheck },
+    { id: 'employer', label: 'Employment company', Icon: Building2 },
+];
+const RECIPIENT_LABEL: Record<RequestRecipient, string> = {
+    driver: 'driver', hiring_manager: 'hiring manager', employer: 'employment company',
+};
+
 type AskTarget = 'step' | 'document' | 'keynumber' | 'signature';
 const ASK_TARGETS: { id: AskTarget; label: string; Icon: typeof Mail }[] = [
     { id: 'step', label: 'Form / Step', Icon: FileText },
@@ -1788,7 +1730,12 @@ export const ITEM_KIND_META: Record<NonNullable<ApplicationRequest['itemKind']>,
     signature: { label: 'E-Signature', Icon: PenTool, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
 };
 
-function defaultAskMessage(target: AskTarget, name: string): string {
+function defaultAskMessage(target: AskTarget, name: string, recipient: RequestRecipient = 'driver'): string {
+    if (recipient !== 'driver') {
+        const who = recipient === 'hiring_manager' ? 'the hiring manager' : 'the employment company';
+        const thing = name || ITEM_KIND_META[target].label.toLowerCase();
+        return `Requesting ${who} to provide / order the ${thing} for this driver.`;
+    }
     switch (target) {
         case 'step': return name ? `Please complete and resubmit the "${name}" step.` : 'Please complete the requested step.';
         case 'document': return name ? `Please upload your ${name}.` : 'Please upload the requested document.';
@@ -1813,6 +1760,7 @@ export function AskOrderModal({
     const [docId, setDocId] = useState('');
     const [knId, setKnId] = useState('');
     const [sigId, setSigId] = useState('');
+    const [recipient, setRecipient] = useState<RequestRecipient>('driver');
     const [channel, setChannel] = useState<'email' | 'in_app' | 'sms'>('email');
     const [message, setMessage] = useState('');
     const [touched, setTouched] = useState(false);
@@ -1839,9 +1787,10 @@ export function AskOrderModal({
     })();
 
     // Keep the message in sync with the selection until the user edits it.
-    const effectiveMessage = touched ? message : defaultAskMessage(target, resolved.name);
+    const effectiveMessage = touched ? message : defaultAskMessage(target, resolved.name, recipient);
 
     const pickTarget = (t: AskTarget) => { setTarget(t); setTouched(false); };
+    const pickRecipient = (r: RequestRecipient) => { setRecipient(r); setTouched(false); };
 
     const canSend = resolved.ready && effectiveMessage.trim().length > 0;
     const send = () => {
@@ -1852,6 +1801,7 @@ export function AskOrderModal({
             itemId: resolved.id,
             itemName: resolved.name || ITEM_KIND_META[target].label,
             targetStepId: resolved.targetStepId,
+            recipient,
             message: effectiveMessage.trim(),
             channel,
             sentBy: 'You',
@@ -1866,7 +1816,7 @@ export function AskOrderModal({
             <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
                     <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Ask / Order from driver</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Ask / Order · to {RECIPIENT_LABEL[recipient]}</p>
                         <h3 className="mt-0.5 text-base font-bold text-slate-900">{applicant.firstName} {applicant.lastName}</h3>
                         <p className="mt-0.5 text-[12px] text-slate-500">Request a specific step, document, key number, or e-signature.</p>
                     </div>
@@ -1874,6 +1824,23 @@ export function AskOrderModal({
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/40 px-6 py-5">
+                    {/* Who to ask */}
+                    <div>
+                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Send request to</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {ASK_RECIPIENTS.map(rc => {
+                                const active = recipient === rc.id;
+                                return (
+                                    <button key={rc.id} type="button" onClick={() => pickRecipient(rc.id)}
+                                        className={cn('flex flex-col items-center gap-1 rounded-lg border-2 px-2 py-2.5 text-[11px] font-bold transition-all text-center',
+                                            active ? 'border-blue-500 bg-blue-50/60 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300')}>
+                                        <rc.Icon size={16} /> {rc.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     {/* What to request */}
                     <div>
                         <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">What do you need?</label>
@@ -1934,7 +1901,7 @@ export function AskOrderModal({
 
                     {/* Message */}
                     <div>
-                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Message to driver</label>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Message to {RECIPIENT_LABEL[recipient]}</label>
                         <textarea value={effectiveMessage} onChange={e => { setMessage(e.target.value); setTouched(true); }} rows={3}
                             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>

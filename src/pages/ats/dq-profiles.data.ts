@@ -163,6 +163,8 @@ export function setDqOverride(applicantId: string, profileId: string | null): vo
 
 // ── Auto driver-type detection + profile selection ───────────────────────────
 export function detectDqDriverType(applicant: Applicant, templateName?: string): DqDriverType {
+    // An explicit driver type chosen at invite always wins.
+    if (applicant.dqDriverType) return applicant.dqDriverType;
     const t = (templateName ?? '').toLowerCase();
     if (t.includes('cross')) return 'cross_border';
     const country = (applicant.country ?? '').toLowerCase();
