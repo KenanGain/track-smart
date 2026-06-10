@@ -26,8 +26,8 @@ const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i)
 const pad = (n: number) => String(n).padStart(2, "0");
 
 const SUFFIXES = ["Jr.", "Sr.", "II", "III", "IV", "V"];
-const COUNTRIES = ["United States", "Canada"];
-const US_STATES = [
+export const COUNTRIES = ["United States", "Canada"];
+export const US_STATES = [
     "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
     "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
     "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan",
@@ -37,16 +37,16 @@ const US_STATES = [
     "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia",
     "Wisconsin", "Wyoming",
 ];
-const CA_PROVINCES = [
+export const CA_PROVINCES = [
     "Alberta", "British Columbia", "Manitoba", "New Brunswick", "Newfoundland and Labrador",
     "Northwest Territories", "Nova Scotia", "Nunavut", "Ontario", "Prince Edward Island",
     "Quebec", "Saskatchewan", "Yukon",
 ];
-const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
+export const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
 const POSITIONS = ["Company Driver", "Owner Operator", "Lease Operator", "Driver Trainee", "Other"];
 const CONTACT_METHODS = ["Primary Phone", "Cell Phone", "Email Address"];
 const CONTACT_TIMES = ["Any", "Morning", "Afternoon", "Evening"];
-const LICENSE_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class A", "Class B", "Class C"];
+export const LICENSE_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class A", "Class B", "Class C"];
 const ENDORSEMENTS = ["None", "Other", "Tanker", "Doubles / Triples", "X Endorsement", "HazMat"];
 const BRANCHES = ["Army", "Navy", "Air Force", "Marine Corps", "Coast Guard", "Space Force", "National Guard", "Reserves"];
 const MONTHS = range(1, 12).map(pad);

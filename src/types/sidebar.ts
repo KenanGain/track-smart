@@ -14,6 +14,7 @@ export type SidebarGroup = {
     label: string;
     icon?: LucideIcon;
     defaultOpen?: boolean;
+    disabled?: boolean; // shown greyed-out and non-expandable
     badge?: string; // small red "New"-style tag shown after the label
     children: SidebarNode[]; // may contain leaves OR nested groups (one extra level of dropdown)
 };

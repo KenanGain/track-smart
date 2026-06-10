@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { APPLICATION_FORMS } from "./ApplicationSettingsPage";
+import { useHiringTemplates, totalForms, stepGroup, type HiringTemplate } from "./hiring-templates.data";
 import { useApplicants, STATUS_META, STATUS_ORDER, STATUS_VERB, relativeTime, formName, formRegion, type AppStatus, type Applicant } from "./applicants.data";
 
 /**
@@ -26,11 +27,10 @@ const HP_PATH = "/hiring-process/applications";
 const DRIVER_TYPE_IDS = ["local", "us", "canada", "cross-border"];
 
 const CARRIERS = ["Acme Logistics", "Northwind Transport", "Blue Ridge Freight"];
-const TEMPLATES = [
-    { id: "complete", name: "Complete Driver Hiring (Default)", steps: 27, forms: 19, consents: 8 },
-    { id: "fast", name: "Fast-Track Hiring", steps: 12, forms: 8, consents: 3 },
-    { id: "oo", name: "Owner-Operator Hiring", steps: 20, forms: 14, consents: 6 },
-];
+
+// Count consents (policy/signature forms) vs data forms inside a template.
+const consentCount = (t: HiringTemplate) => t.steps.reduce((n, s) => n + s.formIds.filter((f) => stepGroup(f) === "Policy").length, 0);
+const formCount = (t: HiringTemplate) => totalForms(t) - consentCount(t);
 
 const initials = (a: Applicant) => `${a.firstName[0] ?? ""}${a.lastName[0] ?? ""}`.toUpperCase();
 
@@ -282,8 +282,9 @@ function StepRow({ n, title, desc, children }: { n: number; title: string; desc:
 }
 
 function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (created: Applicant[]) => void }) {
+    const { templates } = useHiringTemplates();
     const [formId, setFormId] = useState("us");
-    const [templateName, setTemplateName] = useState(TEMPLATES[0].name);
+    const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
     const [carrier, setCarrier] = useState(CARRIERS[0]);
     const [emails, setEmails] = useState<string[]>([]);
     const [emailInput, setEmailInput] = useState("");
@@ -295,7 +296,8 @@ function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (cr
     const [dueDate, setDueDate] = useState("");
     const [message, setMessage] = useState("Hi — please complete your driver hiring application using the link below.");
 
-    const template = TEMPLATES.find((t) => t.name === templateName) ?? TEMPLATES[0];
+    const template = templates.find((t) => t.id === templateId) ?? templates[0];
+    const templateName = template?.name ?? "";
 
     const addEmail = (raw: string) => {
         const e = raw.trim().replace(/,$/, "");
@@ -319,7 +321,7 @@ function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (cr
             lastName: single && lastName ? lastName : "",
             email,
             formId, carrier, template: templateName,
-            status: "waiting", stepsDone: 0, stepsTotal: 12, invitedAt: today, updatedAt: Date.now(),
+            status: "waiting", stepsDone: 0, stepsTotal: template ? template.steps.length : 0, invitedAt: today, updatedAt: Date.now(),
             phone: single ? phone : undefined,
             position: single ? position : undefined,
             remarks: [],
@@ -356,16 +358,18 @@ function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (cr
                         </div>
                     </StepRow>
 
-                    <StepRow n={2} title="Hiring template" desc="The application workflow the driver will complete.">
-                        <Select value={templateName} onValueChange={setTemplateName}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>{TEMPLATES.map((t) => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}</SelectContent>
+                    <StepRow n={2} title="Hiring template" desc="The driver hiring workflow the applicant will complete.">
+                        <Select value={templateId} onValueChange={setTemplateId}>
+                            <SelectTrigger><SelectValue placeholder="Select a template" /></SelectTrigger>
+                            <SelectContent>{templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                         </Select>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                            <span>{template.steps} steps</span><span className="text-slate-300">·</span>
-                            <span>{template.forms} forms</span><span className="text-slate-300">·</span>
-                            <span>{template.consents} consents</span>
-                        </div>
+                        {template && (
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                                <span>{template.steps.length} steps</span><span className="text-slate-300">·</span>
+                                <span>{formCount(template)} forms</span><span className="text-slate-300">·</span>
+                                <span>{consentCount(template)} consents</span>
+                            </div>
+                        )}
                     </StepRow>
 
                     <StepRow n={3} title="Carrier" desc="The carrier this driver is being hired for.">

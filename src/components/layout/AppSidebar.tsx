@@ -213,7 +213,9 @@ function SidebarNodeView(props: {
                     <Button
                         type="button"
                         variant="ghost"
+                        disabled={node.disabled}
                         onClick={() => {
+                            if (node.disabled) return; // Disabled group — not selectable
                             if (isCollapsed) return; // Do nothing in collapsed mode (tooltip handles it)
                             if (onToggle) onToggle();
                         }}
@@ -221,7 +223,8 @@ function SidebarNodeView(props: {
                             "w-full justify-between rounded-lg px-3 py-2 h-auto hover:bg-slate-100 group/btn cursor-pointer outline-none focus:ring-2 focus:ring-blue-100",
                             isChildActive && !open ? "text-blue-700 bg-blue-50 font-semibold" : "text-slate-700 font-medium",
                             isChildActive && open && "text-blue-900 font-semibold",
-                            isCollapsed && "justify-center px-2"
+                            isCollapsed && "justify-center px-2",
+                            node.disabled && "opacity-40 cursor-not-allowed hover:bg-transparent"
                         )}
                     >
                          {/* Active Indicator for Group Parent (Collapsed or Closed) */}

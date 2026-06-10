@@ -87,10 +87,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         icon: DollarSign,
         path: "/paystubs",
     },
+    // Old "Hiring" dropdown — kept visible but disabled (superseded by "Hiring Process").
     {
         key: "hiring",
         label: "Hiring",
         icon: Briefcase,
+        disabled: true,
         children: [
             { key: "ats-main", label: "Applications", icon: Briefcase, path: "/ats-main" },
             { key: "ats", label: "Hiring (ATS)", icon: Users, path: "/ats" },

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft, Save, Download, Check, X, UploadCloud, FileText, ClipboardCheck,
-    ListChecks, Award, Eye, ChevronDown,
+    ListChecks, Award, Eye, ChevronLeft, Printer, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCompanyBranding } from './company-branding.data';
@@ -37,7 +37,10 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
     const [branding] = useCompanyBranding();
     const [values, setValues] = useState<Record<string, unknown>>({});
     const [downloading, setDownloading] = useState(false);
-    const [pdfMenu, setPdfMenu] = useState(false);
+    const [preview, setPreview] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [pdfVariant, setPdfVariant] = useState<string>(PDF_TEMPLATES[0]?.id ?? 'standard');
+    const iframeRef = useRef<HTMLIFrameElement>(null);
     const accent = branding.accentColor;
 
     const set = (id: string, v: unknown) => setValues((s) => ({ ...s, [id]: v }));
@@ -107,11 +110,52 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
     const pct = maxScore > 0 ? Math.round((finalScore / maxScore) * 100) : 0;
 
     const makePdf = async (variant: string, mode: 'download' | 'view') => {
-        setPdfMenu(false);
         if (downloading) return;
         setDownloading(true);
         try { await generateApplicationFormPdf({ form: appForm, branding, values: values as Record<string, FieldValue>, variant: variant as never, mode }); }
         finally { setDownloading(false); }
+    };
+
+    // Inline themed PDF preview (matches the other hiring-process forms).
+    const openPreview = async (variant: string) => {
+        if (downloading) return;
+        setDownloading(true);
+        try {
+            const url = await generateApplicationFormPdf({ form: appForm, branding, values: values as Record<string, FieldValue>, variant: variant as never, mode: 'blob' });
+            if (typeof url === 'string') { setPreviewUrl(url); setPdfVariant(variant); setPreview(true); }
+        } finally { setDownloading(false); }
+    };
+
+    const fillSample = () => {
+        const sampleText = (label: string) => {
+            const l = label.toLowerCase();
+            if (l.includes('name')) return 'Kenan Gain';
+            if (l.includes('address')) return '18 Maple Ridge Rd, Springfield, IL 62704';
+            if (l.includes('social') || l.includes('ssn')) return '***-**-4471';
+            if (l.includes('license')) return 'D1234-5678-90';
+            if (l.includes('class')) return 'Class A';
+            if (l.includes('state') || l.includes('province')) return 'Illinois';
+            if (l.includes('tractor') || l.includes('truck')) return 'Freightliner Cascadia';
+            if (l.includes('trailer')) return "53' Dry Van";
+            if (l.includes('length')) return '90 minutes';
+            if (l.includes('weather')) return 'Clear, dry';
+            if (l.includes('miles to')) return 'Springfield Yard';
+            if (l.includes('miles')) return 'Terminal A';
+            if (l.includes('finish time')) return '10:30';
+            if (l.includes('time')) return '09:00';
+            if (l.includes('title')) return 'Examiner';
+            return 'Sample';
+        };
+        const next: Record<string, unknown> = {};
+        for (const f of appForm.fields) {
+            if (/^f-ats-rt-ev\d-score$/.test(f.id)) next[f.id] = 4;
+            else if (f.type === 'checklist') next[f.id] = [...(f.options ?? [])];
+            else if (f.type === 'select' || f.type === 'radio') next[f.id] = f.options?.[0] ?? '';
+            else if (f.type === 'date') next[f.id] = '2026-06-09';
+            else if (f.type === 'number') next[f.id] = '4';
+            else if (f.type === 'text' || f.type === 'textarea') next[f.id] = sampleText(f.label || '');
+        }
+        setValues(next);
     };
 
     // Record-of-Road-Test Parts (pure-checklist, non-scored) go in a bento masonry
@@ -259,37 +303,14 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
                     </div>
                     <div className="flex items-center gap-2">
                         <button type="button" onClick={onClose} className="hidden h-9 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 sm:block">Cancel</button>
-                        <button type="button" disabled={downloading} onClick={() => makePdf('standard', 'view')}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60" title="Open a PDF preview in a new tab">
-                            <Eye size={14} /> {downloading ? 'Preparing…' : 'View PDF'}
+                        <button type="button" onClick={fillSample}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
+                            <Sparkles size={14} /> Fill sample data
                         </button>
-                        <div className="relative">
-                            <button type="button" disabled={downloading} onClick={() => setPdfMenu(o => !o)}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-                                <Download size={14} /> {downloading ? 'Preparing…' : 'PDF'} <ChevronDown size={13} className="text-slate-400" />
-                            </button>
-                            {pdfMenu && (
-                                <div className="absolute right-0 z-30 mt-1 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                                    <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">PDF template</p>
-                                    {PDF_TEMPLATES.map(t => (
-                                        <div key={t.id} className="px-3 py-2 hover:bg-slate-50">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="min-w-0">
-                                                    <span className="block text-[13px] font-semibold text-slate-800">{t.label}</span>
-                                                    <span className="block text-[11px] text-slate-500">{t.description}</span>
-                                                </div>
-                                                <div className="flex shrink-0 items-center gap-1">
-                                                    <button type="button" onClick={() => makePdf(t.id, 'view')} title="View in new tab"
-                                                        className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-white hover:text-blue-700"><Eye size={14} /></button>
-                                                    <button type="button" onClick={() => makePdf(t.id, 'download')} title="Download"
-                                                        className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-white hover:text-blue-700"><Download size={14} /></button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        <button type="button" disabled={downloading} onClick={() => openPreview(pdfVariant)}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                            <Eye size={14} /> {downloading ? 'Preparing…' : 'PDF Preview'}
+                        </button>
                         <button type="button" onClick={() => { window.alert('Road test record saved.'); onClose(); }}
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-bold text-white shadow-sm" style={{ backgroundColor: accent }}>
                             <Save size={14} /> Submit
@@ -365,6 +386,28 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
                     {blocks.map((blk, bi) => blk.bento ? <BentoGrid key={`bento-${bi}`} secs={blk.secs} render={renderBentoCard} /> : renderFull(blk.secs[0]))}
                 </div>
             </div>
+
+            {/* ── Inline themed PDF preview ─────────────────────────────── */}
+            {preview && previewUrl && (
+                <div className="absolute inset-0 z-40 flex flex-col bg-slate-100">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
+                        <button type="button" onClick={() => setPreview(false)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900">
+                            <ChevronLeft className="h-4 w-4" /> Edit
+                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                                {PDF_TEMPLATES.map((t) => (
+                                    <button key={t.id} type="button" disabled={downloading} onClick={() => openPreview(t.id)}
+                                        className={cn('rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60', pdfVariant === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white')}>{t.label}</button>
+                                ))}
+                            </div>
+                            <button type="button" onClick={() => iframeRef.current?.contentWindow?.print()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50"><Printer size={14} /> Print</button>
+                            <button type="button" disabled={downloading} onClick={() => makePdf(pdfVariant, 'download')} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-bold text-white shadow-sm disabled:opacity-60" style={{ backgroundColor: accent }}><Download size={14} /> {downloading ? 'Generating…' : 'Download PDF'}</button>
+                        </div>
+                    </div>
+                    <iframe ref={iframeRef} src={previewUrl} title="Road Test PDF preview" className="flex-1 w-full bg-slate-200" />
+                </div>
+            )}
         </div>
     );
 }

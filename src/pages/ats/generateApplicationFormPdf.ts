@@ -26,8 +26,8 @@ function resolveFormTokens(form: ApplicationFormDef, b: CompanyBranding): Applic
 
 export interface GenerateApplicationFormPdfOptions extends ApplicationFormPrintProps {
     fileName?: string;
-    /** 'download' (default) saves the file; 'view' opens it in a new browser tab. */
-    mode?: 'download' | 'view';
+    /** 'download' (default) saves; 'view' opens a new tab; 'blob' returns a blob URL for inline preview. */
+    mode?: 'download' | 'view' | 'blob';
 }
 
 const waitForPaint = () =>
@@ -35,7 +35,7 @@ const waitForPaint = () =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     );
 
-export async function generateApplicationFormPdf(options: GenerateApplicationFormPdfOptions): Promise<void> {
+export async function generateApplicationFormPdf(options: GenerateApplicationFormPdfOptions): Promise<void | string> {
     const { fileName, mode = 'download', ...printProps } = options;
 
     const host = document.createElement('div');
@@ -96,7 +96,10 @@ export async function generateApplicationFormPdf(options: GenerateApplicationFor
         }
 
         const base = (fileName || defaultFileName(printProps)).replace(/[\\/:*?"<>|]/g, '-');
-        if (mode === 'view') {
+        if (mode === 'blob') {
+            // Return a blob URL so callers can preview it inline (e.g. in an iframe).
+            return pdf.output('bloburl') as unknown as string;
+        } else if (mode === 'view') {
             // Open the rendered PDF in a new tab for previewing (no download).
             const url = pdf.output('bloburl');
             const win = window.open(url as unknown as string, '_blank');

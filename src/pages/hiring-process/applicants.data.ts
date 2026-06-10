@@ -56,6 +56,42 @@ export type SubField = { label: string; value: string };
 export type SubGroup = { label?: string; fields: SubField[] };   // one entry within a section
 export type SubSection = { title: string; groups: SubGroup[] };  // a section may hold several entries
 
+// Per-document state inside the hiring file (keyed by the step's form id).
+export type DocStatus = "pending" | "requested" | "received" | "verified" | "skipped";
+export const DOC_STATUS_META: Record<DocStatus, { label: string; badge: string; dot: string }> = {
+    pending: { label: "Pending", badge: "bg-slate-100 text-slate-500", dot: "bg-slate-300" },
+    requested: { label: "Requested", badge: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
+    received: { label: "Received", badge: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+    verified: { label: "Verified", badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+    skipped: { label: "Skipped", badge: "bg-slate-100 text-slate-400", dot: "bg-slate-300" },
+};
+
+// A request the hiring manager raises — to the driver, an employer, HR, etc.
+export type RequestAction = "Request" | "Order" | "Review" | "Alert";
+export type RequestRecipient = "Driver" | "Hiring Manager" | "Previous Employer" | "Provider / Agency" | "Other";
+export type RequestChannel = "Email" | "In-app";
+export const REQUEST_ACTIONS: { id: RequestAction; label: string; hint: string }[] = [
+    { id: "Request", label: "Request document", hint: "Ask someone to complete or upload a document" },
+    { id: "Order", label: "Order report", hint: "Order a report from a provider / agency" },
+    { id: "Review", label: "Assign review", hint: "Assign a review task to HR / a hiring manager" },
+    { id: "Alert", label: "Alert / Notify", hint: "Send a reminder or notification" },
+];
+export type AppRequest = {
+    id: string; fid?: string; subject: string; action?: RequestAction;
+    recipient: RequestRecipient; to?: string;
+    channel: RequestChannel; message: string; dueDate?: string;
+    status: "open" | "resolved"; at: number; by: string;
+};
+
+// Per previous-employer verification tracking (gov allows 3 attempts; we allow 5).
+export type EmpStatus = "pending" | "sent" | "responded" | "verified";
+export type EmpAttempt = { at: number; method: string; to: string };
+export type EmpCheck = {
+    id: string; employer: string; position: string; dates: string; email: string;
+    attempts: EmpAttempt[]; status: EmpStatus; respondedAt?: number; verifiedAt?: number;
+};
+export const EMP_MAX_ATTEMPTS = 5;
+
 export type Applicant = {
     id: string;
     firstName: string; lastName: string; email: string;
@@ -63,8 +99,13 @@ export type Applicant = {
     status: AppStatus; stepsDone: number; stepsTotal: number;
     invitedAt: string; updatedAt: number; phone?: string; position?: string;
     submission?: SubSection[];   // present once the driver has filled the form
-    remarks: Remark[];
+    remarks: Remark[];           // notes & comments
     events: AppEvent[];          // activity log — newest first
+    currentStep?: number;        // index into the template's steps
+    docs?: Record<string, DocStatus>;  // hiring-file document state, keyed by form id
+    requests?: AppRequest[];     // open / resolved requests raised on the file
+    empChecks?: EmpCheck[];      // employment-verification state per previous employer
+    checklistState?: { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> }; // review checklist fill state
 };
 
 export const formName = (id: string) => APPLICATION_FORMS.find((f) => f.id === id)?.name ?? id;

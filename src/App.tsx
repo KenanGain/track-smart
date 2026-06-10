@@ -57,6 +57,9 @@ import { ApplicationSettingsPage, ApplicationFormPage } from '@/pages/hiring-pro
 import { ApplicationFormPreviewPage } from '@/pages/hiring-process/ApplicationFormPreview'
 import { ApplicationsHiringPage } from '@/pages/hiring-process/ApplicationsHiringPage'
 import { ApplicantDetailPage } from '@/pages/hiring-process/ApplicantDetailPage'
+import { HiringBuilderPage } from '@/pages/hiring-process/HiringBuilderPage'
+import { HiringMonitorPage } from '@/pages/hiring-process/HiringMonitorPage'
+import { HiringFileDashboard } from '@/pages/hiring-process/HiringFileDashboard'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -483,7 +486,10 @@ function App() {
             return <ApplicantDetailPage applicantId={path.slice("/hiring-process/applications/".length)} onNavigate={handleNavigate} />
         }
         if (path === "/hiring-process/hiring") {
-            return <HiringProcessPlaceholder title="Hiring" />
+            return <HiringMonitorPage onNavigate={handleNavigate} />
+        }
+        if (path.startsWith("/hiring-process/hiring/")) {
+            return <HiringFileDashboard applicantId={path.slice("/hiring-process/hiring/".length)} onBack={() => handleNavigate("/hiring-process/hiring")} />
         }
         if (path === "/hiring-process/onboarding") {
             return <HiringProcessPlaceholder title="Onboarding" />
@@ -500,7 +506,7 @@ function App() {
             return <ApplicationFormPage formId={formId} onNavigate={handleNavigate} />
         }
         if (path === "/settings/hiring-process/hiring") {
-            return <HiringProcessPlaceholder title="Hiring Settings" />
+            return <HiringBuilderPage />
         }
         if (path === "/settings/hiring-process/onboarding") {
             return <HiringProcessPlaceholder title="Onboarding Settings" />
