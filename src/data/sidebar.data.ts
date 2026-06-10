@@ -34,6 +34,8 @@ import {
     Bell,
     Truck,
     Layers,
+    Workflow,
+    UserPlus,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -96,6 +98,16 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         ],
     },
     {
+        key: "hiring-process",
+        label: "Hiring Process",
+        icon: Workflow,
+        children: [
+            { key: "hiring-process-applications", label: "Applications", icon: Briefcase, path: "/hiring-process/applications", badge: "New" },
+            { key: "hiring-process-hiring", label: "Hiring", icon: Users, path: "/hiring-process/hiring", badge: "New" },
+            { key: "hiring-process-onboarding", label: "Onboarding", icon: UserPlus, path: "/hiring-process/onboarding", badge: "New" },
+        ],
+    },
+    {
         key: "hours-of-service",
         label: "Hours of Service",
         icon: Clock3,
@@ -153,6 +165,17 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "compliance-setup", label: "Compliance and Documents", icon: ShieldCheck, path: "/settings/compliance-setup" },
             { key: "settings-compliance-and-documents", label: "Compliance Setup", icon: FileText, path: "/settings/compliance-and-documents" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
+            {
+                key: "settings-hiring-process",
+                label: "Hiring Process",
+                icon: Workflow,
+                badge: "New",
+                children: [
+                    { key: "settings-hiring-process-applications", label: "Applications", icon: Briefcase, path: "/settings/hiring-process/applications", badge: "New" },
+                    { key: "settings-hiring-process-hiring", label: "Hiring", icon: Users, path: "/settings/hiring-process/hiring", badge: "New" },
+                    { key: "settings-hiring-process-onboarding", label: "Onboarding", icon: UserPlus, path: "/settings/hiring-process/onboarding", badge: "New" },
+                ],
+            },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },

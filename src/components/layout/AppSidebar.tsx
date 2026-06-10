@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_NODES } from "@/data/sidebar.data";
-import { isGroup, type SidebarNode } from "@/types/sidebar";
+import { isGroup, type SidebarNode, type SidebarGroup, type SidebarItem } from "@/types/sidebar";
 
 // shadcn/ui
 import { Button } from "@/components/ui/button";
@@ -121,8 +121,8 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
                                 key={node.key}
                                 node={node}
                                 currentPath={currentPath}
-                                open={isGroup(node) ? !!openGroups[node.key] : undefined}
-                                onToggle={isGroup(node) ? () => toggleGroup(node.key) : undefined}
+                                openGroups={openGroups}
+                                onToggleGroup={toggleGroup}
                                 onNavigate={onNavigate}
                                 isCollapsed={isCollapsed}
                             />
@@ -157,11 +157,13 @@ function SidebarNodeView(props: {
     node: SidebarNode;
     currentPath: string;
     onNavigate: (path: string) => void;
-    open?: boolean;
-    onToggle?: () => void;
+    openGroups: Record<string, boolean>;
+    onToggleGroup: (key: string) => void;
     isCollapsed: boolean;
 }) {
-    const { node, currentPath, onNavigate, open, onToggle, isCollapsed } = props;
+    const { node, currentPath, onNavigate, openGroups, onToggleGroup, isCollapsed } = props;
+    const open = isGroup(node) ? !!openGroups[node.key] : undefined;
+    const onToggle = isGroup(node) ? () => onToggleGroup(node.key) : undefined;
     const [isHovered, setIsHovered] = React.useState(false);
     const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
     const triggerRef = React.useRef<HTMLDivElement>(null);
@@ -183,7 +185,11 @@ function SidebarNodeView(props: {
     let isChildActive = false;
 
     if (isGroup(node)) {
-         isChildActive = node.children.some((c) => c.path && isActive(currentPath, c.path));
+         isChildActive = node.children.some((c) =>
+            isGroup(c)
+                ? c.children.some((gc) => !isGroup(gc) && gc.path && isActive(currentPath, gc.path))
+                : c.path && isActive(currentPath, c.path)
+         );
     } else {
          isActiveNode = node.path ? isActive(currentPath, node.path) : false;
     }
@@ -257,14 +263,24 @@ function SidebarNodeView(props: {
                             
                             {node.children.map((child) => (
                                 <div key={child.key} className="pl-9 pr-2">
-                                     <LeafItem
-                                        label={child.label}
-                                        active={child.path ? isActive(currentPath, child.path) : false}
-                                        onClick={() => child.path && onNavigate(child.path)}
-                                        isSubItem
-                                        disabled={child.disabled}
-                                        badge={child.badge}
-                                    />
+                                    {isGroup(child) ? (
+                                        <NestedGroup
+                                            node={child}
+                                            currentPath={currentPath}
+                                            open={!!openGroups[child.key]}
+                                            onToggle={() => onToggleGroup(child.key)}
+                                            onNavigate={onNavigate}
+                                        />
+                                    ) : (
+                                        <LeafItem
+                                            label={child.label}
+                                            active={child.path ? isActive(currentPath, child.path) : false}
+                                            onClick={() => child.path && onNavigate(child.path)}
+                                            isSubItem
+                                            disabled={child.disabled}
+                                            badge={child.badge}
+                                        />
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -298,36 +314,109 @@ function SidebarNodeView(props: {
                                 <div className="px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
                                     {node.label}
                                 </div>
-                                {node.children.map(child => (
-                                    <button
-                                        key={child.key}
-                                        onClick={child.disabled ? undefined : () => child.path && onNavigate(child.path)}
-                                        disabled={child.disabled}
-                                        title={child.disabled ? "Coming soon" : undefined}
-                                        className={cn(
-                                            "w-[calc(100%-8px)] mx-1 text-left px-3 py-2 text-sm flex items-center gap-2 rounded-md transition-colors",
-                                            child.disabled
-                                                ? "text-slate-300 cursor-not-allowed"
-                                                : isActive(currentPath, child.path || '')
-                                                    ? "text-blue-700 font-semibold bg-blue-50"
-                                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
-                                        )}
-                                    >
-                                        {child.icon && <child.icon size={14} className={cn("opacity-70", !child.disabled && isActive(currentPath, child.path || '') && "text-blue-600 opacity-100")} />}
-                                        {child.label}
-                                        {child.badge && (
-                                            <span className="ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white">
-                                                {child.badge}
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
+                                {node.children.flatMap(child =>
+                                    isGroup(child)
+                                        ? [
+                                            <div key={child.key} className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                {child.label}
+                                                {child.badge && (
+                                                    <span className="shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white">
+                                                        {child.badge}
+                                                    </span>
+                                                )}
+                                            </div>,
+                                            ...child.children.filter((g): g is SidebarItem => !isGroup(g)).map(sub => (
+                                                <FlyoutItem key={sub.key} child={sub} currentPath={currentPath} onNavigate={onNavigate} />
+                                            )),
+                                          ]
+                                        : [<FlyoutItem key={child.key} child={child} currentPath={currentPath} onNavigate={onNavigate} />]
+                                )}
                             </div>
                         )}
                     </SidebarTooltip>
                 )}
             </div>
         </>
+    );
+}
+
+// --- NESTED GROUP (a dropdown nested inside a top-level group, expanded mode only) ---
+function NestedGroup({ node, currentPath, open, onToggle, onNavigate }: {
+    node: SidebarGroup;
+    currentPath: string;
+    open: boolean;
+    onToggle: () => void;
+    onNavigate: (path: string) => void;
+}) {
+    const childActive = node.children.some((c) => !isGroup(c) && c.path && isActive(currentPath, c.path));
+    return (
+        <div className="space-y-0.5">
+            <button
+                type="button"
+                onClick={onToggle}
+                className={cn(
+                    "w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer",
+                    childActive ? "text-blue-700 font-semibold bg-blue-50/50" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
+                )}
+            >
+                <span className="flex min-w-0 items-center gap-2">
+                    {node.icon && (
+                        <node.icon className={cn("h-[18px] w-[18px] shrink-0", childActive ? "text-blue-600" : "text-slate-400")} />
+                    )}
+                    <span className="truncate">{node.label}</span>
+                    {node.badge && (
+                        <span className="shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white shadow-sm">
+                            {node.badge}
+                        </span>
+                    )}
+                </span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", open ? "rotate-180 text-slate-500" : "text-slate-400")} />
+            </button>
+            {open && (
+                <div className="relative space-y-0.5 pl-4">
+                    <div className="absolute left-[7px] top-0 bottom-2 w-px bg-slate-200" />
+                    {node.children.filter((c): c is SidebarItem => !isGroup(c)).map((c) => (
+                        <div key={c.key} className="pl-3">
+                            <LeafItem
+                                label={c.label}
+                                active={c.path ? isActive(currentPath, c.path) : false}
+                                onClick={() => c.path && onNavigate(c.path)}
+                                isSubItem
+                                disabled={c.disabled}
+                                badge={c.badge}
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// --- COLLAPSED-MODE FLYOUT LEAF ---
+function FlyoutItem({ child, currentPath, onNavigate }: { child: SidebarItem; currentPath: string; onNavigate: (path: string) => void }) {
+    return (
+        <button
+            onClick={child.disabled ? undefined : () => child.path && onNavigate(child.path)}
+            disabled={child.disabled}
+            title={child.disabled ? "Coming soon" : undefined}
+            className={cn(
+                "w-[calc(100%-8px)] mx-1 text-left px-3 py-2 text-sm flex items-center gap-2 rounded-md transition-colors",
+                child.disabled
+                    ? "text-slate-300 cursor-not-allowed"
+                    : isActive(currentPath, child.path || '')
+                        ? "text-blue-700 font-semibold bg-blue-50"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
+            )}
+        >
+            {child.icon && <child.icon size={14} className={cn("opacity-70", !child.disabled && isActive(currentPath, child.path || '') && "text-blue-600 opacity-100")} />}
+            {child.label}
+            {child.badge && (
+                <span className="ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-white">
+                    {child.badge}
+                </span>
+            )}
+        </button>
     );
 }
 

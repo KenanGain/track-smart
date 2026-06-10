@@ -77,7 +77,9 @@ SelectTrigger.displayName = "SelectTrigger"
 
 const SelectValue: React.FC<{ placeholder?: string }> = ({ placeholder }) => {
     const { value, labelMap } = React.useContext(SelectContext)
-    const display = labelMap[value] || placeholder || "Select..."
+    // Fall back to the raw value so the current selection shows even before the
+    // options have mounted (SelectContent only registers labels when opened).
+    const display = labelMap[value] || value || placeholder || "Select..."
 
     return (
         <span className={cn("block truncate", !value && "text-slate-500")}>

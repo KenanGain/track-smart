@@ -14,7 +14,8 @@ export type SidebarGroup = {
     label: string;
     icon?: LucideIcon;
     defaultOpen?: boolean;
-    children: SidebarItem[];
+    badge?: string; // small red "New"-style tag shown after the label
+    children: SidebarNode[]; // may contain leaves OR nested groups (one extra level of dropdown)
 };
 
 export type SidebarNode = SidebarItem | SidebarGroup;

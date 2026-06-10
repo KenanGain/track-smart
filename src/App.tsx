@@ -52,6 +52,11 @@ import { IssueHiringPage } from '@/pages/ats/IssueHiringPage'
 import { HiringFormsPage } from '@/pages/ats/HiringFormsPage'
 import { ApplicantPortalPage } from '@/pages/ats/ApplicantPortalPage'
 import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
+import { HiringProcessPlaceholder } from '@/pages/hiring-process/HiringProcessPlaceholder'
+import { ApplicationSettingsPage, ApplicationFormPage } from '@/pages/hiring-process/ApplicationSettingsPage'
+import { ApplicationFormPreviewPage } from '@/pages/hiring-process/ApplicationFormPreview'
+import { ApplicationsHiringPage } from '@/pages/hiring-process/ApplicationsHiringPage'
+import { ApplicantDetailPage } from '@/pages/hiring-process/ApplicantDetailPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -470,6 +475,35 @@ function App() {
         }
         if (path === "/hiring-forms") {
             return <HiringFormsPage />
+        }
+        if (path === "/hiring-process/applications") {
+            return <ApplicationsHiringPage onNavigate={handleNavigate} />
+        }
+        if (path.startsWith("/hiring-process/applications/")) {
+            return <ApplicantDetailPage applicantId={path.slice("/hiring-process/applications/".length)} onNavigate={handleNavigate} />
+        }
+        if (path === "/hiring-process/hiring") {
+            return <HiringProcessPlaceholder title="Hiring" />
+        }
+        if (path === "/hiring-process/onboarding") {
+            return <HiringProcessPlaceholder title="Onboarding" />
+        }
+        if (path === "/settings/hiring-process/applications") {
+            return <ApplicationSettingsPage onNavigate={handleNavigate} />
+        }
+        if (path.startsWith("/settings/hiring-process/applications/")) {
+            const rest = path.slice("/settings/hiring-process/applications/".length)
+            const [formId, sub] = rest.split("/")
+            if (sub === "preview") {
+                return <ApplicationFormPreviewPage formId={formId} onNavigate={handleNavigate} />
+            }
+            return <ApplicationFormPage formId={formId} onNavigate={handleNavigate} />
+        }
+        if (path === "/settings/hiring-process/hiring") {
+            return <HiringProcessPlaceholder title="Hiring Settings" />
+        }
+        if (path === "/settings/hiring-process/onboarding") {
+            return <HiringProcessPlaceholder title="Onboarding Settings" />
         }
         if (path === "/dq-files") {
             return <DqFilesPage onNavigate={handleNavigate} />
