@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, Send, FileSearch, BadgeCheck, SkipForward, RotateCcw,
     AlertCircle, Clock, ExternalLink, Mail,
-    MessageSquarePlus, FileText, StickyNote, PenLine, CreditCard, FileSignature, Upload,
+    MessageSquarePlus, FileText, StickyNote, PenLine, CreditCard, FileSignature, Upload, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,9 @@ import { ThemedDocumentViewer } from "./ThemedDocumentViewer";
 import { HiringPdfReview } from "./HiringPdfReview";
 import { PrefillProvider, buildPrefill, type PrefillEmployer, type ApplicantPrefill } from "./application-prefill";
 import { SignaturePad } from "./FormKit";
+import { PolicyDocument } from "./PolicyForm";
+import { POLICY_FORMS } from "./policy-forms.data";
+import { useCompanyBranding } from "../ats/company-branding.data";
 import type { DocSection } from "./FormDocument";
 
 const TEMPLATE_FOR_FORM: Record<string, string> = { us: "tpl-us", canada: "tpl-canada", "cross-border": "tpl-cross" };
@@ -536,7 +539,7 @@ function StepItemRow({ item, a, data, mode, open, onToggle, remarks, onAddRemark
                     </>
                 ) : (
                     <>
-                        <Button variant="outline" className={tiny} onClick={onForm}><PenLine className="h-3.5 w-3.5" /> {isApp ? "View" : "Form"}</Button>
+                        <Button variant="outline" className={tiny} onClick={onForm}><PenLine className="h-3.5 w-3.5" /> {isApp || isLicense ? "View" : "Form"}</Button>
                         <Button variant="outline" className={tiny} onClick={onPdf}><FileText className="h-3.5 w-3.5" /> PDF</Button>
                         {ordering && <Button className={tiny} onClick={onRequest}><FileSearch className="h-3.5 w-3.5" /> Order / Request</Button>}
                         {(ordering || uploading) && status === "pending" && <Button variant={ordering ? "outline" : "default"} className={tiny} onClick={() => onSet("received", FULFILL_VERB[ordering ? "upload" : mode])}><Upload className="h-3.5 w-3.5" /> Upload</Button>}
@@ -643,7 +646,8 @@ type UpdateFn = (id: string, patch: (prev: Applicant) => Partial<Applicant>) => 
 
 function EmploymentModule({ a, fid, employment, pf, updateOne, onPdf, stepId, stepTitle }: { a: Applicant; fid: string; employment: PrefillEmployer[]; pf: ApplicantPrefill; updateOne: UpdateFn; onPdf: () => void; stepId: string; stepTitle: string }) {
     const [mailFor, setMailFor] = useState<EmpCheck | null>(null);
-    const [openFormFor, setOpenFormFor] = useState<string | null>(null);   // employer whose verification form is expanded inline
+    const [formPopup, setFormPopup] = useState<EmpCheck | null>(null);   // our blank verification form (what we send to the employer)
+    const [viewPopup, setViewPopup] = useState<EmpCheck | null>(null);   // what the end user / employer filled in
     const [docMailFor, setDocMailFor] = useState<{ id: string; label: string } | null>(null);   // verification doc being asked of the employer
     const [verifyFor, setVerifyFor] = useState<EmpCheck | null>(null);     // employer being verified — hiring manager signs
     const [verifySig, setVerifySig] = useState("");
@@ -710,12 +714,7 @@ function EmploymentModule({ a, fid, employment, pf, updateOne, onPdf, stepId, st
                             </div>
                             <div className="flex-1 pb-4">
                                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{yearOf(c.dates) ? yearOf(c.dates) : "—"}</p>
-                                <EmployerCard c={c} formOpen={openFormFor === c.id} docs={<>{docRows}</>} docsCount={EMPLOYER_DOC_ITEMS.length} docsDone={docsDone} onSend={() => setMailFor(c)} onRespond={() => respond(c)} onVerify={() => { setVerifySig(""); setVerifyFor(c); }} onReset={() => reset(c)} onForm={() => setOpenFormFor((o) => o === c.id ? null : c.id)} onPdf={onPdf} />
-                                {openFormFor === c.id && (
-                                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                                        <PrefillProvider value={pf}><HiringFormView formId={fid} embedded onBack={() => setOpenFormFor(null)} /></PrefillProvider>
-                                    </div>
-                                )}
+                                <EmployerCard c={c} docs={<>{docRows}</>} docsCount={EMPLOYER_DOC_ITEMS.length} docsDone={docsDone} onSend={() => setMailFor(c)} onRespond={() => respond(c)} onVerify={() => { setVerifySig(""); setVerifyFor(c); }} onReset={() => reset(c)} onForm={() => setFormPopup(c)} onView={() => setViewPopup(c)} onPdf={onPdf} />
                             </div>
                         </div>
                     );
@@ -724,6 +723,31 @@ function EmploymentModule({ a, fid, employment, pf, updateOne, onPdf, stepId, st
 
             {mailFor && <RequestDialog recipients={["Previous Employer"]} lockAction prefill={{ fid, action: "Request", recipient: "Previous Employer", to: mailFor.email, subject: `Employment verification — ${mailFor.employer}`, message: `Please verify ${a.firstName} ${a.lastName}'s employment as ${mailFor.position || "driver"} (${mailFor.dates || "—"}) and complete and return the attached verification form.` }} driverEmail={a.email} onClose={() => setMailFor(null)} onSubmit={(req) => { send(mailFor, req); setMailFor(null); }} />}
             {docMailFor && <RequestDialog recipients={["Previous Employer"]} lockAction prefill={{ fid: docMailFor.id, action: "Request", recipient: "Previous Employer", subject: `Request — ${docMailFor.label}`, message: `Please provide the ${docMailFor.label} for ${a.firstName} ${a.lastName}. The applicant advised they do not have a copy.` }} driverEmail={a.email} onClose={() => setDocMailFor(null)} onSubmit={(req) => { sendDoc(req, docMailFor); setDocMailFor(null); }} />}
+
+            {/* Our blank verification form — what we send to the employer */}
+            {formPopup && (
+                <Dialog open onOpenChange={(o) => { if (!o) setFormPopup(null); }}>
+                    <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto p-0">
+                        <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><FileSignature className="h-4 w-4" /></span> Verification form — sent to {formPopup.employer}</DialogTitle>
+                            <p className="text-sm font-normal text-slate-500">This is the form we send to the employer to complete and return.</p>
+                        </DialogHeader>
+                        <div className="px-6 py-5"><HiringFormView formId={fid} embedded onBack={() => setFormPopup(null)} /></div>
+                    </DialogContent>
+                </Dialog>
+            )}
+            {/* What the end user / employer filled in */}
+            {viewPopup && (
+                <Dialog open onOpenChange={(o) => { if (!o) setViewPopup(null); }}>
+                    <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto p-0">
+                        <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-700 text-white"><FileText className="h-4 w-4" /></span> Submitted — {viewPopup.employer}</DialogTitle>
+                            <p className="text-sm font-normal text-slate-500">What the applicant / employer provided for this reference.</p>
+                        </DialogHeader>
+                        <div className="px-6 py-5"><PrefillProvider value={pf}><HiringFormView formId={fid} embedded onBack={() => setViewPopup(null)} /></PrefillProvider></div>
+                    </DialogContent>
+                </Dialog>
+            )}
 
             {/* Hiring manager verifies & signs the employer response */}
             {verifyFor && (
@@ -785,7 +809,7 @@ function DocItemRow({ label, status, source, remarks, onSource, onUpload, onAsk,
     );
 }
 
-function EmployerCard({ c, formOpen, docs, docsCount = 0, docsDone = 0, onSend, onRespond, onVerify, onReset, onForm, onPdf }: { c: EmpCheck; formOpen?: boolean; docs?: React.ReactNode; docsCount?: number; docsDone?: number; onSend: () => void; onRespond: () => void; onVerify: () => void; onReset: () => void; onForm: () => void; onPdf: () => void }) {
+function EmployerCard({ c, docs, docsCount = 0, docsDone = 0, onSend, onRespond, onVerify, onReset, onForm, onView, onPdf }: { c: EmpCheck; docs?: React.ReactNode; docsCount?: number; docsDone?: number; onSend: () => void; onRespond: () => void; onVerify: () => void; onReset: () => void; onForm: () => void; onView: () => void; onPdf: () => void }) {
     const tone: Record<string, string> = { pending: "bg-slate-100 text-slate-500", sent: "bg-amber-100 text-amber-700", responded: "bg-blue-100 text-blue-700", verified: "bg-emerald-100 text-emerald-700" };
     const label: Record<string, string> = { pending: "Not requested", sent: `Sent · ${c.attempts.length}/${EMP_MAX_ATTEMPTS}`, responded: "Responded", verified: "Verified" };
     const maxed = c.attempts.length >= EMP_MAX_ATTEMPTS;
@@ -805,8 +829,9 @@ function EmployerCard({ c, formOpen, docs, docsCount = 0, docsDone = 0, onSend, 
             {c.attempts.length >= 3 && c.status !== "verified" && <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-amber-600"><AlertCircle className="h-3.5 w-3.5" /> {c.attempts.length} attempts — good-faith effort documented.</p>}
             {maxed && c.status !== "verified" && c.status !== "responded" && <p className="mt-1 text-xs font-medium text-rose-500">Maximum {EMP_MAX_ATTEMPTS} attempts reached.</p>}
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <Button variant={formOpen ? "default" : "outline"} className={tiny} onClick={onForm}><PenLine className="h-3.5 w-3.5" /> {formOpen ? "Hide form" : "Form"}</Button>
-                <Button variant="outline" className={tiny} onClick={onPdf}><FileText className="h-3.5 w-3.5" /> PDF</Button>
+                <Button variant="outline" className={tiny} onClick={onForm}><FileSignature className="h-3.5 w-3.5" /> Form</Button>
+                <Button variant="outline" className={tiny} onClick={onView}><FileText className="h-3.5 w-3.5" /> View</Button>
+                <Button variant="outline" className={tiny} onClick={onPdf}><Download className="h-3.5 w-3.5" /> PDF</Button>
                 {c.status !== "verified" && <Button className={tiny} disabled={maxed} onClick={onSend}><Send className="h-3.5 w-3.5" /> {c.attempts.length ? `Resend (${c.attempts.length}/${EMP_MAX_ATTEMPTS})` : "Send request"}</Button>}
                 {c.status === "sent" && <Button className={tiny} onClick={onRespond}><Check className="h-3.5 w-3.5" /> Record response</Button>}
                 {c.status === "responded" && <Button className={tiny} onClick={onVerify}><BadgeCheck className="h-3.5 w-3.5" /> Verify</Button>}
@@ -911,10 +936,18 @@ function ConsentReviewView({ consents, pf, initial, statusOf, onReceived, onBack
     consents: string[]; pf: ApplicantPrefill; initial: string;
     statusOf: (fid: string) => DocStatus; onReceived: (fid: string) => void; onBack: () => void;
 }) {
+    const [branding] = useCompanyBranding();
     const [sel, setSel] = useState(Math.max(0, consents.indexOf(initial)));
+    const [view, setView] = useState<"document" | "form">("document");
     const fid = consents[sel];
     const status = fid ? statusOf(fid) : "pending";
     const done = DONE_STATES.includes(status);
+    const def = fid ? POLICY_FORMS.find((p) => p.id === fid) : undefined;
+    const values: Record<string, string> = {
+        company: branding.name, applicant: pf.fullName, printName: pf.fullName, driverName: pf.fullName,
+        ssn: pf.ssn, licenseNumber: pf.licenses[0]?.number ?? "", state: pf.licenses[0]?.authority ?? "", date: "",
+    };
+    const sigsFor = (d: NonNullable<typeof def>) => Object.fromEntries(d.signers.filter((s) => s.kind === "sign").map((s) => [s.key, ""]));
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
@@ -952,13 +985,23 @@ function ConsentReviewView({ consents, pf, initial, statusOf, onReceived, onBack
                             <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Consent &amp; Authorization</p>
                             <h1 className="text-xl font-bold text-slate-900">{fid ? stepName(fid) : "Consents"}</h1>
                         </div>
-                        {done
-                            ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> Received</span>
-                            : <Button onClick={() => fid && onReceived(fid)}><Check className="h-4 w-4" /> Mark received</Button>}
+                        <div className="flex items-center gap-2">
+                            {/* Document view (read-only) vs editable Form */}
+                            <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                                {(["document", "form"] as const).map((vw) => (
+                                    <button key={vw} type="button" onClick={() => setView(vw)} className={cn("rounded-md px-3 py-1 text-xs font-semibold capitalize transition", view === vw ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}>{vw === "document" ? "Document" : "Form"}</button>
+                                ))}
+                            </div>
+                            {done
+                                ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> Received</span>
+                                : <Button onClick={() => fid && onReceived(fid)}><Check className="h-4 w-4" /> Mark received</Button>}
+                        </div>
                     </div>
                     {fid && (
-                        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <PrefillProvider value={pf}><HiringFormView formId={fid} embedded onBack={onBack} /></PrefillProvider>
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                            {view === "document" && def
+                                ? <PolicyDocument def={def} values={values} sigs={sigsFor(def)} branding={branding} />
+                                : <PrefillProvider value={pf}><HiringFormView formId={fid} embedded onBack={onBack} /></PrefillProvider>}
                         </div>
                     )}
                 </div>
