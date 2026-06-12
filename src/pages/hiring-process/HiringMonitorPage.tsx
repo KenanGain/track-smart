@@ -24,9 +24,9 @@ const TEMPLATE_FOR_FORM: Record<string, string> = { us: "tpl-us", canada: "tpl-c
 const parseMs = (s: string) => { const t = Date.parse(s); return Number.isNaN(t) ? Date.now() : t; };
 const daysAgo = (ms: number) => Math.max(0, Math.floor((Date.now() - ms) / 86_400_000));
 
-export function HiringMonitorPage({ onNavigate }: { onNavigate: (path: string) => void }) {
+export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path: string) => void; carrierId?: string }) {
     const { applicants, updateOne } = useApplicants();
-    const { templates } = useHiringTemplates();
+    const { templates } = useHiringTemplates(carrierId);
     const [query, setQuery] = useState("");
 
     // Each applicant follows their OWN template's custom steps.
@@ -37,20 +37,22 @@ export function HiringMonitorPage({ onNavigate }: { onNavigate: (path: string) =
 
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return applicants.filter((a) => !q || `${a.firstName} ${a.lastName} ${a.email}`.toLowerCase().includes(q));
-    }, [applicants, query]);
+        return applicants
+            .filter((a) => !carrierId || a.carrierId === carrierId)
+            .filter((a) => !q || `${a.firstName} ${a.lastName} ${a.email}`.toLowerCase().includes(q));
+    }, [applicants, carrierId, query]);
 
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="border-b border-slate-200 bg-white">
-                <div className="mx-auto max-w-6xl px-6 py-5">
+                <div className="px-4 py-5 sm:px-6 lg:px-8">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Hiring Process</p>
                     <h1 className="mt-1 text-2xl font-bold text-slate-900">Hiring</h1>
                     <p className="mt-1 text-sm text-slate-500">Monitor each driver through the hiring workflow. Click a row to open the full hiring file.</p>
                 </div>
             </div>
 
-            <div className="mx-auto max-w-6xl px-6 py-6">
+            <div className="px-4 py-6 sm:px-6 lg:px-8">
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-semibold text-slate-700">Applicants <span className="ml-1 font-normal text-slate-400">{rows.length}</span></p>
@@ -141,7 +143,7 @@ function ApplicantRow({ a, steps, templateName, current, onOpen, onAction }: {
                                 </div>
                             );
                         })}
-                        {steps.length === 0 && <span className="text-xs text-slate-400">No steps in this template.</span>}
+                        {steps.length === 0 && <span className="text-xs text-slate-400">No steps in this workflow.</span>}
                     </div>
                 </div>
             </div>

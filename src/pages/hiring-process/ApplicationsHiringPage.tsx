@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { UserPlus, Search, Mail, MessageSquare, X, Eye, Send, ChevronRight, ChevronLeft, ChevronDown, Check } from "lucide-react";
+import { UserPlus, Search, Mail, MessageSquare, X, Eye, Send, ChevronRight, ChevronLeft, ChevronDown, Check, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,26 +34,32 @@ const formCount = (t: HiringTemplate) => totalForms(t) - consentCount(t);
 
 const initials = (a: Applicant) => `${a.firstName[0] ?? ""}${a.lastName[0] ?? ""}`.toUpperCase();
 
-export function ApplicationsHiringPage({ onNavigate }: { onNavigate: (path: string) => void }) {
+export function ApplicationsHiringPage({ onNavigate, carrierId, carrierName }: { onNavigate: (path: string) => void; carrierId?: string; carrierName?: string }) {
     const { applicants, addMany, updateOne } = useApplicants();
     const [filter, setFilter] = useState<AppStatus | "all">("all");
     const [query, setQuery] = useState("");
     const [inviteOpen, setInviteOpen] = useState(false);
 
+    // Everything on this page is scoped to the carrier selected in the top bar.
+    const scoped = useMemo(
+        () => (carrierId ? applicants.filter((a) => a.carrierId === carrierId) : applicants),
+        [applicants, carrierId],
+    );
+
     const counts = useMemo(() => {
-        const c: Record<string, number> = { all: applicants.length };
-        for (const s of STATUS_ORDER) c[s] = applicants.filter((a) => a.status === s).length;
+        const c: Record<string, number> = { all: scoped.length };
+        for (const s of STATUS_ORDER) c[s] = scoped.filter((a) => a.status === s).length;
         return c;
-    }, [applicants]);
+    }, [scoped]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return applicants.filter((a) => {
+        return scoped.filter((a) => {
             if (filter !== "all" && a.status !== filter) return false;
             if (!q) return true;
             return `${a.firstName} ${a.lastName} ${a.email} ${formName(a.formId)} ${a.carrier}`.toLowerCase().includes(q);
         });
-    }, [applicants, filter, query]);
+    }, [scoped, filter, query]);
 
     // Pagination
     const [page, setPage] = useState(1);
@@ -79,7 +85,7 @@ export function ApplicationsHiringPage({ onNavigate }: { onNavigate: (path: stri
         <div className="min-h-screen bg-slate-50">
             {/* Header */}
             <div className="border-b border-slate-200 bg-white">
-                <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex flex-col gap-4 px-4 py-6 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-8">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Hiring Process</p>
                         <h1 className="mt-1 text-2xl font-semibold text-slate-900">Applications</h1>
@@ -91,7 +97,7 @@ export function ApplicationsHiringPage({ onNavigate }: { onNavigate: (path: stri
                 </div>
             </div>
 
-            <div className="mx-auto max-w-6xl px-6 py-6">
+            <div className="px-4 py-6 sm:px-6 lg:px-8">
                 {/* KPI cards — also act as status filters */}
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-7">
                     {kpis.map((k) => {
@@ -210,6 +216,8 @@ export function ApplicationsHiringPage({ onNavigate }: { onNavigate: (path: stri
 
             {inviteOpen && (
                 <InviteModal
+                    carrierId={carrierId}
+                    carrierName={carrierName}
                     onClose={() => setInviteOpen(false)}
                     onCreate={(created) => { addMany(created); setInviteOpen(false); setFilter("all"); }}
                 />
@@ -281,11 +289,13 @@ function StepRow({ n, title, desc, children }: { n: number; title: string; desc:
     );
 }
 
-function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (created: Applicant[]) => void }) {
-    const { templates } = useHiringTemplates();
+function InviteModal({ carrierId, carrierName, onClose, onCreate }: { carrierId?: string; carrierName?: string; onClose: () => void; onCreate: (created: Applicant[]) => void }) {
+    const { templates } = useHiringTemplates(carrierId);
     const [formId, setFormId] = useState("us");
     const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
-    const [carrier, setCarrier] = useState(CARRIERS[0]);
+    // The carrier is inherited from the top-bar selection — you issue files for
+    // the carrier you're currently working in.
+    const carrier = carrierName ?? CARRIERS[0];
     const [emails, setEmails] = useState<string[]>([]);
     const [emailInput, setEmailInput] = useState("");
     const [firstName, setFirstName] = useState("");
@@ -320,7 +330,7 @@ function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (cr
             firstName: single && firstName ? firstName : email.split("@")[0].split(/[._]/)[0].replace(/^\w/, (c) => c.toUpperCase()),
             lastName: single && lastName ? lastName : "",
             email,
-            formId, carrier, template: templateName,
+            formId, carrier, carrierId, template: templateName,
             status: "waiting", stepsDone: 0, stepsTotal: template ? template.steps.length : 0, invitedAt: today, updatedAt: Date.now(),
             phone: single ? phone : undefined,
             position: single ? position : undefined,
@@ -358,9 +368,9 @@ function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (cr
                         </div>
                     </StepRow>
 
-                    <StepRow n={2} title="Hiring template" desc="The driver hiring workflow the applicant will complete.">
+                    <StepRow n={2} title="Hiring workflow" desc="The driver hiring workflow the applicant will complete.">
                         <Select value={templateId} onValueChange={setTemplateId}>
-                            <SelectTrigger><SelectValue placeholder="Select a template" /></SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Select a workflow" /></SelectTrigger>
                             <SelectContent>{templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                         </Select>
                         {template && (
@@ -372,11 +382,10 @@ function InviteModal({ onClose, onCreate }: { onClose: () => void; onCreate: (cr
                         )}
                     </StepRow>
 
-                    <StepRow n={3} title="Carrier" desc="The carrier this driver is being hired for.">
-                        <Select value={carrier} onValueChange={setCarrier}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>{CARRIERS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                        </Select>
+                    <StepRow n={3} title="Carrier" desc="Inherited from the carrier you're working in (top bar).">
+                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700">
+                            <Building2 className="h-4 w-4 text-slate-400" /> {carrier}
+                        </div>
                     </StepRow>
 
                     <StepRow n={4} title="Driver emails" desc="Invite one or many — each email gets its own application link.">

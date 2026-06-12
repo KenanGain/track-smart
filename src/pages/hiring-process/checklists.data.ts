@@ -19,7 +19,7 @@ export type Checklist = {
 // Per-applicant fill state for a checklist.
 export type ChecklistState = { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> };
 
-const NOTE = "All drivers must be approved by a supervisor before hitting the road on any {{company}} equipment. If a supervisor has not signed the approval for all 3 stages, do not dispatch the driver.";
+const NOTE = "All drivers must be approved by a supervisor before hitting the road on any {{company}} equipment. A supervisor must complete this hiring review and sign the approval below before the driver proceeds to onboarding.";
 const header = (p: string): ChecklistField[] => [
     { id: `${p}-name`, label: "Driver Name", type: "text" },
     { id: `${p}-phone`, label: "Driver Phone #", type: "phone" },
@@ -33,17 +33,20 @@ const mk = (id: string, name: string, description: string, stage1Review: string,
     id, name, description, note: NOTE, locked: true,
     headerFields: header(id),
     stages: [
-        stage(id, 1, "Stage 1 — Review & Screening", [
+        stage(id, 1, "Stage 1 — Hiring Review & Screening", [
             stage1Review,
-            "Started application on Truckright",
-            "Primarily had discussions on which lane the driver wants to drive",
-            ...(withCvor ? ["Confirmed CVOR / Driver Abstract pulled and reviewed"] : []),
+            "Application complete and all required consents signed",
+            "Employment history verified with previous employers (§391.23)",
+            "Background check and drug & alcohol test results reviewed — clear",
+            "Valid CDL, DOT medical card and endorsements confirmed",
+            "Driving experience and qualifications meet {{company}} requirements",
+            ...(withPsp ? ["PSP (Pre-Employment Screening Program) report reviewed"] : []),
+            ...(withCvor ? ["CVOR / Driver Abstract pulled and reviewed"] : []),
         ]),
         stage(id, 2, "Stage 2 — Interview & Road Test", [
             "Driver is interviewed in detail to make sure the driver understands the pay structures, the routes, the type of trucks and the work environment",
             "Schedule a road test with one of the approved examiners",
             "After the road test is passed — review the road test results; if passed, complete the Truckright application / CarriersEdge training / drug test, send reference checks and schedule the driver for the next orientation",
-            ...(withPsp ? ["PSP check (USA driving experience)"] : []),
         ]),
         stage(id, 3, "Stage 3 — Onboarding & CC#", [
             "After CarriersEdge training done, road test passed, Truckright profile fully completed, drug test results good, and orientation complete — Safety team will assign a CC#",

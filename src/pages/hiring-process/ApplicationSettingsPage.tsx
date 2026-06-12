@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2, Upload, Image as ImageIcon, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, Select
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ConsentPhase } from "./ApplicationConsents";
+import { consentsForType } from "./policy-forms.data";
 
 /**
  * Settings -> Hiring Process -> Applications
@@ -61,11 +63,11 @@ const emptyDate: DateVal = { m: "", d: "", y: "" };
 const emptyMY: DateMY = { m: "", y: "" };
 
 type ResidenceRow = {
-    address: string; country: string; city: string; state: string; zip: string;
+    address: string; unit: string; country: string; city: string; state: string; zip: string;
     start: DateVal; end: DateVal;
 };
 const newResidenceRow = (): ResidenceRow => ({
-    address: "", country: "United States", city: "", state: "", zip: "",
+    address: "", unit: "", country: "United States", city: "", state: "", zip: "",
     start: { ...emptyDate }, end: { ...emptyDate },
 });
 
@@ -74,11 +76,13 @@ type License = {
     exp: DateVal; medicalExp: DateVal;
     current: string; commercial: string; licenseClass: string;
     endorsements: string[];
+    frontImage: string; backImage: string;
 };
 const newLicense = (): License => ({
     number: "", country: "United States", authority: "",
     exp: { ...emptyDate }, medicalExp: { ...emptyDate },
     current: "", commercial: "", licenseClass: "", endorsements: [],
+    frontImage: "", backImage: "",
 });
 
 type Military = {
@@ -88,17 +92,31 @@ const newMilitary = (): Military => ({
     country: "", branch: "", start: { ...emptyMY }, end: { ...emptyMY }, rank: "", dd214: "",
 });
 
+// Per-employer verification documents. On the application these are just
+// checkpoints the driver confirms — we request them from the employer during
+// the hiring process (no upload here). Each flag = "ask this employer for it".
+const EMPLOYER_DOCS = [
+    { key: "performance", label: "Employer Performance Verification" },
+    { key: "experience", label: "Employer Experience Letter" },
+    { key: "insurance", label: "Insurance Experience Letter" },
+] as const;
+type EmployerDocs = Record<string, boolean>;
+const newEmployerDocs = (): EmployerDocs =>
+    Object.fromEntries(EMPLOYER_DOCS.map((d) => [d.key, true]));
+
 type Employer = {
     company: string; start: DateMY; end: DateMY;
     addr1: string; addr2: string; country: string; city: string; state: string; zip: string;
     telephone: string; position: string; reasonLeaving: string;
     terminated: string; current: string; mayContact: string; operatedCMV: string;
+    docs: EmployerDocs;
 };
 const newEmployer = (): Employer => ({
     company: "", start: { ...emptyMY }, end: { ...emptyMY },
     addr1: "", addr2: "", country: "United States", city: "", state: "", zip: "",
     telephone: "", position: "", reasonLeaving: "",
     terminated: "", current: "", mayContact: "", operatedCMV: "",
+    docs: newEmployerDocs(),
 });
 
 type Education = {
@@ -112,6 +130,18 @@ const newEducation = (): Education => ({
 
 type Unemployment = { start: DateMY; end: DateMY; comments: string };
 const newUnemployment = (): Unemployment => ({ start: { ...emptyMY }, end: { ...emptyMY }, comments: "" });
+
+// Driving experience — option lists + a repeatable experience entry.
+const EQUIPMENT_CLASSES = ["Straight", "Tractor and Semi-trailer", "Tractor-Two Trailer", "Tanker", "Double / Triples", "Bus", "Other"];
+const FREIGHT_TYPES = ["Auto", "Bulk", "Flat", "Hazmat", "Reefer", "Tank", "Van", "Other"];
+const DRIVING_REGIONS = ["Border", "Canada", "Canada-only", "USA", "USA-only", "Local"];
+type DrivingExp = {
+    equipmentClass: string; freightTypes: string[]; regions: string[];
+    from: string; to: string; miles: string; ownerOperator: string;
+};
+const newDrivingExp = (): DrivingExp => ({
+    equipmentClass: "", freightTypes: [], regions: [], from: "", to: "", miles: "", ownerOperator: "",
+});
 
 // Motor Vehicle Record - yes/no questions; "Yes" reveals Month/Year + explanation.
 const MVR_QUESTIONS = [
@@ -134,11 +164,11 @@ const CHARGE_DESCRIPTIONS = [
 const FINE_AMOUNTS = ["$0 - $100", "$100 - $250", "$250 - $500", "$500 - $1,000", "$1,000+"];
 const PENALTIES = ["Fine", "Suspension", "Revocation", "Community Service", "Other"];
 type Incident = {
-    date: DateMY; charge: string; state: string; commercial: string;
-    penalties: string[]; fineAmount: string; comments: string;
+    date: DateMY; charges: string[]; state: string; commercial: string;
+    penalties: string[]; penaltyPoints: string; fineAmount: string; comments: string;
 };
 const newIncident = (): Incident => ({
-    date: { ...emptyMY }, charge: "", state: "", commercial: "", penalties: [], fineAmount: "", comments: "",
+    date: { ...emptyMY }, charges: [], state: "", commercial: "", penalties: [], penaltyPoints: "", fineAmount: "", comments: "",
 });
 
 const ACCIDENT_TYPES = [
@@ -146,12 +176,16 @@ const ACCIDENT_TYPES = [
     "Sideswipe", "Rollover", "Pedestrian", "Animal", "Cargo / Spill", "Other",
 ];
 type Accident = {
-    date: DateMY; type: string; hazmat: string; towed: string; city: string; state: string;
-    commercial: string; atFault: string; ticketed: string; detail: string;
+    date: DateMY; type: string; hazmat: string; towed: string; chemicalSpill: string;
+    address: string; city: string; state: string;
+    commercial: string; atFault: string; ticketed: string;
+    fatalities: string; injuries: string; detail: string;
 };
 const newAccident = (): Accident => ({
-    date: { ...emptyMY }, type: "", hazmat: "", towed: "", city: "", state: "",
-    commercial: "", atFault: "", ticketed: "", detail: "",
+    date: { ...emptyMY }, type: "", hazmat: "", towed: "", chemicalSpill: "",
+    address: "", city: "", state: "",
+    commercial: "", atFault: "", ticketed: "",
+    fatalities: "", injuries: "", detail: "",
 });
 
 const toggleArr = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -173,7 +207,6 @@ const AUTHORITY_ABBR: Record<string, string> = {
     Saskatchewan: "SK", Yukon: "YT",
 };
 const abbr = (s: string) => AUTHORITY_ABBR[s] ?? s;
-const fmtDate = (d: DateVal) => (d.m && d.d && d.y ? `${Number(d.m)}-${Number(d.d)}-${d.y}` : "-");
 const fmtMY = (d: DateMY) => (d.m && d.y ? `${Number(d.m)}-${d.y}` : "-");
 
 // ----------------------------- primitives (shadcn-backed) -----------------------------
@@ -195,6 +228,53 @@ function Field({ label, required, hint, children, className }: {
 function Grid({ children }: { children: React.ReactNode }) {
     return <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">{children}</div>;
 }
+
+// Labelled group used to organise long modal forms into scannable sections.
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <section>
+            <p className="mb-3 border-b border-slate-100 pb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">{title}</p>
+            {children}
+        </section>
+    );
+}
+
+// Single labelled image/PDF upload box (prototype — stores the chosen file name).
+function ImageUpload({ label, hint, value, onChange }: { label: string; hint?: string; value: string; onChange: (name: string) => void }) {
+    const inputRef = useRef<HTMLInputElement>(null);
+    return (
+        <div>
+            {label && <Label className="text-slate-700">{label}</Label>}
+            <div className={label ? "mt-1.5" : ""}>
+                {value ? (
+                    <div className="group relative flex h-[148px] flex-col items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 text-center">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100">
+                            <ImageIcon className="h-5 w-5" />
+                        </span>
+                        <span className="max-w-full truncate px-2 text-sm font-semibold text-slate-700">{value}</span>
+                        <div className="flex items-center gap-3 text-xs font-semibold">
+                            <button type="button" onClick={() => inputRef.current?.click()} className="text-blue-600 hover:text-blue-700">Replace</button>
+                            <span className="text-slate-300">·</span>
+                            <button type="button" onClick={() => onChange("")} className="text-rose-500 hover:text-rose-600">Remove</button>
+                        </div>
+                    </div>
+                ) : (
+                    <button type="button" onClick={() => inputRef.current?.click()}
+                        className="flex h-[148px] w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/40 px-3 text-center text-slate-400 transition hover:border-blue-400 hover:bg-blue-50/40 hover:text-blue-500">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-100 transition group-hover:text-blue-500">
+                            <Upload className="h-5 w-5" />
+                        </span>
+                        <span className="text-sm font-semibold text-slate-600">Click to upload</span>
+                        <span className="text-[11px] text-slate-400">{hint ?? "PNG, JPG or PDF · max 10MB"}</span>
+                    </button>
+                )}
+                <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden"
+                    onChange={(e) => onChange(e.target.files?.[0]?.name ?? "")} />
+            </div>
+        </div>
+    );
+}
+
 
 function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     return <Input {...props} />;
@@ -233,6 +313,59 @@ function Options({ items }: { items: string[] }) {
     return <>{items.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</>;
 }
 
+// Searchable single-select (combobox) — used for long lists like country /
+// state / province where typing to filter is faster than scrolling.
+function SearchSelect({ value, onChange, items, placeholder, className }: {
+    value: string; onChange: (v: string) => void; items: string[]; placeholder?: string; className?: string;
+}) {
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState("");
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!open) return;
+        const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", onClick);
+        document.addEventListener("keydown", onKey);
+        return () => { document.removeEventListener("mousedown", onClick); document.removeEventListener("keydown", onKey); };
+    }, [open]);
+    const filtered = items.filter((it) => it.toLowerCase().includes(q.trim().toLowerCase()));
+    return (
+        <div ref={ref} className={cn("relative", className)}>
+            <button type="button" onClick={() => { setOpen((o) => !o); setQ(""); }}
+                className={cn(
+                    "flex h-10 w-full items-center justify-between gap-2 rounded-md border bg-white px-3 text-left text-sm transition",
+                    open ? "border-blue-500 ring-2 ring-blue-500/15" : "border-slate-200 hover:border-slate-300"
+                )}>
+                <span className={cn("truncate", value ? "text-slate-900" : "text-slate-400")}>{value || placeholder || "Select..."}</span>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-400 transition-transform", open && "rotate-180")} />
+            </button>
+            {open && (
+                <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                    <div className="border-b border-slate-100 p-2">
+                        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
+                            className="h-8 w-full rounded-md border border-slate-200 bg-slate-50 px-2.5 text-sm outline-none focus:border-blue-400 focus:bg-white" />
+                    </div>
+                    <div className="max-h-56 overflow-y-auto py-1">
+                        {filtered.length === 0 ? (
+                            <p className="px-3 py-4 text-center text-xs text-slate-400">No matches</p>
+                        ) : filtered.map((it) => (
+                            <button key={it} type="button" onClick={() => { onChange(it); setOpen(false); }}
+                                className={cn(
+                                    "flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-slate-50",
+                                    it === value ? "font-semibold text-blue-600" : "text-slate-700"
+                                )}>
+                                <span className="truncate">{it}</span>
+                                {it === value && <Check className="h-3.5 w-3.5 shrink-0" />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function DateTriple({ value, onChange, years }: { value: DateVal; onChange: (v: DateVal) => void; years: string[] }) {
     return (
         <div className="flex gap-2">
@@ -254,32 +387,47 @@ function DateDuo({ value, onChange, years }: { value: DateMY; onChange: (v: Date
 
 function YesNo({ value, onChange }: { value: string; onChange: (v: string) => void }) {
     return (
-        <div className="inline-flex gap-2">
-            {["Yes", "No"].map((opt) => (
-                <Button
-                    key={opt}
-                    type="button"
-                    size="sm"
-                    variant={value === opt ? "default" : "outline"}
-                    onClick={() => onChange(opt)}
-                    className="px-6"
-                >
-                    {opt}
-                </Button>
-            ))}
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            {["Yes", "No"].map((opt) => {
+                const on = value === opt;
+                return (
+                    <button
+                        key={opt}
+                        type="button"
+                        onClick={() => onChange(opt)}
+                        className={cn(
+                            "min-w-[72px] rounded-md px-4 py-1.5 text-sm font-semibold transition",
+                            on
+                                ? opt === "Yes"
+                                    ? "bg-blue-600 text-white shadow-sm"
+                                    : "bg-slate-700 text-white shadow-sm"
+                                : "text-slate-500 hover:text-slate-700"
+                        )}
+                    >
+                        {opt}
+                    </button>
+                );
+            })}
         </div>
     );
 }
 
 function CheckList({ items, selected, onToggle }: { items: string[]; selected: string[]; onToggle: (v: string) => void }) {
     return (
-        <div className="space-y-2">
-            {items.map((it) => (
-                <label key={it} className="flex cursor-pointer items-center gap-2.5">
-                    <Checkbox checked={selected.includes(it)} onCheckedChange={() => onToggle(it)} />
-                    <span className="text-sm text-slate-700">{it}</span>
-                </label>
-            ))}
+        <div className="flex flex-wrap gap-2">
+            {items.map((it) => {
+                const on = selected.includes(it);
+                return (
+                    <button key={it} type="button" onClick={() => onToggle(it)}
+                        className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition",
+                            on ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                        )}>
+                        {on && <Check className="h-3.5 w-3.5" />}
+                        {it}
+                    </button>
+                );
+            })}
         </div>
     );
 }
@@ -433,32 +581,34 @@ function ResidenceModal({ rows, onClose, onSave }: {
                         Please fill out all the information below to the best of your ability.
                     </p>
                 </DialogHeader>
-                <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+                <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 px-6 py-5">
                     {draft.map((row, i) => (
-                        <div key={i} className="rounded-lg border border-slate-200 p-4">
-                            <div className="mb-3 flex items-center justify-between">
-                                <span className="text-sm font-semibold text-slate-700">{i + 1}</span>
+                        <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                    Residence {i + 1}{i === 0 && <span className="ml-1 text-xs font-normal text-slate-400">(most recent)</span>}
+                                </span>
                                 {draft.length > 1 && (
                                     <Button type="button" variant="ghost" size="sm" onClick={() => setDraft((d) => d.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
                                         <Trash2 className="h-3.5 w-3.5" /> Delete
                                     </Button>
                                 )}
                             </div>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <Field label="Address" required><TextInput value={row.address} onChange={(e) => update(i, { address: e.target.value })} /></Field>
-                                <Field label="Country" required><Select value={row.country} onChange={(v) => update(i, { country: v })}><Options items={COUNTRIES} /></Select></Field>
+                            <Grid>
+                                <Field className="sm:col-span-2" label="Street Address" required><TextInput value={row.address} placeholder="Street number and name" onChange={(e) => update(i, { address: e.target.value })} /></Field>
+                                <Field label="Unit / Suite / Apt #"><TextInput value={row.unit} placeholder="e.g. 4B" onChange={(e) => update(i, { unit: e.target.value })} /></Field>
+                                <Field label="Country" required><SearchSelect value={row.country} items={COUNTRIES} onChange={(v) => update(i, { country: v, state: "" })} /></Field>
                                 <Field label="City" required><TextInput value={row.city} onChange={(e) => update(i, { city: e.target.value })} /></Field>
-                                <Field label="State/Province" required><Select value={row.state} placeholder="Please Choose" onChange={(v) => update(i, { state: v })}><Options items={STATES_PROVINCES} /></Select></Field>
-                                <Field label="Zip"><TextInput value={row.zip} onChange={(e) => update(i, { zip: e.target.value })} /></Field>
-                            </div>
-                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <Field label="Start Date" required><DateTriple value={row.start} years={DOB_YEARS} onChange={(v) => update(i, { start: v })} /></Field>
-                                <Field label="End Date" required><DateTriple value={row.end} years={DOB_YEARS} onChange={(v) => update(i, { end: v })} /></Field>
-                            </div>
+                                <Field label={row.country === "Canada" ? "Province" : "State"} required><SearchSelect value={row.state} placeholder="Please Choose" items={row.country === "Canada" ? CA_PROVINCES : US_STATES} onChange={(v) => update(i, { state: v })} /></Field>
+                                <Field label={row.country === "Canada" ? "Postal Code" : "Zip Code"}><TextInput value={row.zip} onChange={(e) => update(i, { zip: e.target.value })} /></Field>
+                                <Field label="Lived here from" required><DateTriple value={row.start} years={DOB_YEARS} onChange={(v) => update(i, { start: v })} /></Field>
+                                <Field label="Lived here to" required><DateTriple value={row.end} years={DOB_YEARS} onChange={(v) => update(i, { end: v })} /></Field>
+                            </Grid>
                         </div>
                     ))}
-                    <Button type="button" variant="outline" onClick={() => setDraft((d) => [...d, newResidenceRow()])} className="border-dashed">
-                        <Plus className="h-4 w-4" /> Add residence
+                    <Button type="button" variant="outline" onClick={() => setDraft((d) => [...d, newResidenceRow()])} className="w-full border-dashed">
+                        <Plus className="h-4 w-4" /> Add previous residence
                     </Button>
                 </div>
                 <DialogFooter className="mt-0 gap-3 border-t border-slate-200 px-6 py-4">
@@ -506,11 +656,12 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
     const [suffix, setSuffix] = useState("");
     const [ssn, setSsn] = useState("");
     const [dob, setDob] = useState("");
-    const [legalRight, setLegalRight] = useState(false);
-    const [twic, setTwic] = useState("");
+    const [legalRight, setLegalRight] = useState(false);       // US work eligibility
+    const [legalRightCA, setLegalRightCA] = useState(false);   // Canada work eligibility (cross-border / Canada forms)
 
     // Address
     const [addr1, setAddr1] = useState("");
+    const [unit, setUnit] = useState("");
     const [addr2, setAddr2] = useState("");
     const [country, setCountry] = useState(config.defaultCountry);
     const [city, setCity] = useState("");
@@ -529,8 +680,11 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
     const [bestTime, setBestTime] = useState("Any");
     const [position, setPosition] = useState("");
 
-    // Licenses (multiple)
-    const [licenses, setLicenses] = useState<License[]>([]);
+    // Licenses (multiple) — one blank license is present by default; "Add Another License" adds more.
+    const [licenses, setLicenses] = useState<License[]>(() => [newLicense()]);
+
+    // Driving experience (multiple) — one default entry shown inline.
+    const [drivingExp, setDrivingExp] = useState<DrivingExp[]>(() => [newDrivingExp()]);
 
     // Military (single, gated)
     const [militaryEver, setMilitaryEver] = useState("");
@@ -561,8 +715,13 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
     const [sendCopy, setSendCopy] = useState(false);
     const [copyEmail, setCopyEmail] = useState("");
 
-    // Wizard step
+    // Wizard step + phase (application data → consent forms)
     const [step, setStep] = useState(0);
+    const [phase, setPhase] = useState<"application" | "consent">("application");
+
+    // Form-variant flags drive country-specific copy (work eligibility, etc.).
+    const isCanada = config.defaultCountry === "Canada";
+    const isCross = config.id === "cross-border";
 
     // Populate the whole form with realistic dummy data so the filled view can
     // be reviewed at a glance.
@@ -570,20 +729,21 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         const st = config.defaultCountry === "Canada" ? "Ontario" : "Illinois";
         setFirstName("Kenan"); setMiddleName(""); setLastName("Gain"); setSuffix("");
         setEmail("kenan.gain@example.com"); setPrimaryPhone("(555) 218-4471");
-        setDob("1990-03-14"); setSsn("***-**-4471"); setLegalRight(true);
-        setPosition("Company Driver"); setTwic("8821940");
-        setAddr1("18 Maple Ridge Rd"); setAddr2("Unit 4"); setCountry(config.defaultCountry);
+        setDob("1990-03-14"); setSsn("***-**-4471"); setLegalRight(true); setLegalRightCA(true);
+        setPosition("Company Driver");
+        setAddr1("18 Maple Ridge Rd"); setUnit("4"); setAddr2(""); setCountry(config.defaultCountry);
         setCity("Springfield"); setState(st); setZip("62704"); setResided3yr("Yes");
         setCellPhone("(555) 218-4471"); setConfirmEmail("kenan.gain@example.com");
         setPreferredContact("Primary Phone"); setBestTime("Any");
-        setLicenses([{ number: "D1234-5678-90", country: config.defaultCountry, authority: st, exp: { m: "03", d: "04", y: "2027" }, medicalExp: { m: "06", d: "30", y: "2026" }, current: "Yes", commercial: "Yes", licenseClass: "Class A", endorsements: ["HazMat", "Tanker"] }]);
+        setLicenses([{ number: "D1234-5678-90", country: config.defaultCountry, authority: st, exp: { m: "03", d: "04", y: "2027" }, medicalExp: { m: "06", d: "30", y: "2026" }, current: "Yes", commercial: "Yes", licenseClass: "Class A", endorsements: ["HazMat", "Tanker"], frontImage: "license-front.jpg", backImage: "license-back.jpg" }]);
+        setDrivingExp([{ equipmentClass: "Tractor-trailer", freightTypes: ["Van", "Reefer"], regions: ["USA", "Border"], from: "2021-01-01", to: "2024-03-01", miles: "250000", ownerOperator: "No" }]);
         setMvr(Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "No", my: { ...emptyMY }, explain: "" }])));
         setHadAccidents("Yes");
-        setAccidents([{ date: { m: "06", y: "2023" }, type: "Rear-end collision", hazmat: "No", towed: "No", city: "Springfield", state: st, commercial: "Yes", atFault: "No", ticketed: "No", detail: "Minor rear-end at low speed; no injuries." }]);
+        setAccidents([{ date: { m: "06", y: "2023" }, type: "Rear-end collision", hazmat: "No", towed: "No", chemicalSpill: "No", address: "1420 W Industrial Pkwy, Springfield, IL 62704", city: "Springfield", state: st, commercial: "Yes", atFault: "No", ticketed: "No", fatalities: "0", injuries: "0", detail: "Minor rear-end at low speed; no injuries." }]);
         setHadViolations("Yes");
-        setIncidents([{ date: { m: "02", y: "2024" }, charge: "Speeding", state: st, commercial: "No", penalties: ["Fine"], fineAmount: "$100 - $250", comments: "" }]);
+        setIncidents([{ date: { m: "02", y: "2024" }, charges: ["Speeding"], state: st, commercial: "No", penalties: ["Fine"], penaltyPoints: "2", fineAmount: "$100 - $250", comments: "" }]);
         setEmployedRecently("Yes");
-        setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes" }]);
+        setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes", docs: { performance: true, experience: true, insurance: false } }]);
         setAttendedSchool("Yes");
         setEducation([{ school: "Lincoln Technical Institute", start: { m: "09", y: "2019" }, end: { m: "06", y: "2020" }, city: "Springfield", state: st, country: config.defaultCountry, telephone: "", study: "Diesel Mechanics", graduation: { m: "06", y: "2020" } }]);
         setMilitaryEver("No");
@@ -592,10 +752,146 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         setCopyEmail("kenan.gain@example.com");
     };
 
+    // One license's fields, rendered inline (used directly on the License step so
+    // the default license shows its form without opening a modal).
+    const licenseForm = (d: License, set: (patch: Partial<License>) => void) => (
+        <div className="space-y-6">
+            <FormSection title="License Images">
+                <Grid>
+                    <ImageUpload label="Front of license" value={d.frontImage} onChange={(v) => set({ frontImage: v })} />
+                    <ImageUpload label="Back of license" value={d.backImage} onChange={(v) => set({ backImage: v })} />
+                </Grid>
+            </FormSection>
+
+            <FormSection title="License Details">
+                <Grid>
+                    <Field label="License Number" required><TextInput value={d.number} onChange={(e) => set({ number: e.target.value })} /></Field>
+                    <Field label="Country" required><SearchSelect value={d.country} items={COUNTRIES} onChange={(v) => set({ country: v, authority: "" })} /></Field>
+                    <Field label={d.country === "Canada" ? "Issuing Province" : "Issuing State"} required><SearchSelect value={d.authority} placeholder="Please Choose" items={d.country === "Canada" ? CA_PROVINCES : US_STATES} onChange={(v) => set({ authority: v })} /></Field>
+                    <Field label="License Expiration Date" required><DateTriple value={d.exp} years={EXP_YEARS} onChange={(v) => set({ exp: v })} /></Field>
+                </Grid>
+            </FormSection>
+
+            <FormSection title="Classification">
+                <Grid>
+                    <Field label="Is this your current driver license?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
+                    <Field label="Is this a commercial driver license?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
+                    {d.commercial === "Yes" && (
+                        <Field label="License Class" required><Select value={d.licenseClass} placeholder="Please Choose" onChange={(v) => set({ licenseClass: v })}><Options items={LICENSE_CLASSES} /></Select></Field>
+                    )}
+                    <Field label="DOT Medical Card Expiration Date"><DateTriple value={d.medicalExp} years={EXP_YEARS} onChange={(v) => set({ medicalExp: v })} /></Field>
+                    <Field className="sm:col-span-2" label="Endorsements"><CheckList items={ENDORSEMENTS} selected={d.endorsements} onToggle={(v) => set({ endorsements: toggleArr(d.endorsements, v) })} /></Field>
+                </Grid>
+            </FormSection>
+        </div>
+    );
+
+    // One employer's fields, rendered inline on the Employment step.
+    const employerForm = (d: Employer, set: (patch: Partial<Employer>) => void) => {
+        const setDoc = (key: string, on: boolean) => set({ docs: { ...d.docs, [key]: on } });
+        return (
+            <div className="space-y-6">
+                <FormSection title="Employer">
+                    <Grid>
+                        <Field className="sm:col-span-2" label="Company Name" required><TextInput value={d.company} onChange={(e) => set({ company: e.target.value })} /></Field>
+                        <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
+                        <Field label="End Date" required hint={endDateHint("employed/contracted")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
+                        <Field label="Position Held"><TextInput value={d.position} onChange={(e) => set({ position: e.target.value })} /></Field>
+                        <Field label="Telephone"><TextInput type="tel" value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></Field>
+                    </Grid>
+                </FormSection>
+
+                <FormSection title="Employer Address">
+                    <Grid>
+                        <Field className="sm:col-span-2" label="Street Address"><TextInput value={d.addr1} onChange={(e) => set({ addr1: e.target.value })} /></Field>
+                        <Field label="Street Address (line 2)"><TextInput value={d.addr2} onChange={(e) => set({ addr2: e.target.value })} /></Field>
+                        <Field label="Country" required><SearchSelect value={d.country} items={COUNTRIES} onChange={(v) => set({ country: v, state: "" })} /></Field>
+                        <Field label="City" required><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
+                        <Field label={d.country === "Canada" ? "Province" : "State"} required><SearchSelect value={d.state} placeholder="Please Choose" items={d.country === "Canada" ? CA_PROVINCES : US_STATES} onChange={(v) => set({ state: v })} /></Field>
+                        <Field label={d.country === "Canada" ? "Postal Code" : "Zip Code"}><TextInput value={d.zip} onChange={(e) => set({ zip: e.target.value })} /></Field>
+                    </Grid>
+                </FormSection>
+
+                <FormSection title="Employment">
+                    <Grid>
+                        <Field className="sm:col-span-2" label="Reason for leaving?" required><TextInput value={d.reasonLeaving} onChange={(e) => set({ reasonLeaving: e.target.value })} /></Field>
+                        <Field label="Were you terminated / discharged / laid off?" required><YesNo value={d.terminated} onChange={(v) => set({ terminated: v })} /></Field>
+                        <Field label="Is this your current employer?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
+                        <Field label="May we contact this employer now?" required><YesNo value={d.mayContact} onChange={(v) => set({ mayContact: v })} /></Field>
+                        <Field label="Did you operate a commercial motor vehicle?" required><YesNo value={d.operatedCMV} onChange={(v) => set({ operatedCMV: v })} /></Field>
+                    </Grid>
+                </FormSection>
+
+                <FormSection title="Verification Documents">
+                    <p className="mb-2.5 text-xs text-slate-500">Select the documents we'll request from this employer during the hiring process.</p>
+                    <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                        {EMPLOYER_DOCS.map((doc) => {
+                            const on = d.docs[doc.key];
+                            return (
+                                <label key={doc.key} className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-slate-50">
+                                    <Checkbox checked={on} onCheckedChange={(c) => setDoc(doc.key, Boolean(c))} />
+                                    <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                                    <span className="flex-1 text-sm font-medium text-slate-700">{doc.label}</span>
+                                    {on && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">Ask at hiring</span>}
+                                </label>
+                            );
+                        })}
+                    </div>
+                </FormSection>
+            </div>
+        );
+    };
+
+    // One driving-experience entry, rendered inline on the Driving Experience step.
+    const drivingExpForm = (d: DrivingExp, set: (patch: Partial<DrivingExp>) => void) => (
+        <div className="space-y-6">
+            <FormSection title="Equipment & Freight">
+                <Grid>
+                    <Field className="sm:col-span-2" label="Equipment Class" required><Select value={d.equipmentClass} placeholder="Please Choose" onChange={(v) => set({ equipmentClass: v })}><Options items={EQUIPMENT_CLASSES} /></Select></Field>
+                    <Field className="sm:col-span-2" label="Freight Types"><CheckList items={FREIGHT_TYPES} selected={d.freightTypes} onToggle={(v) => set({ freightTypes: toggleArr(d.freightTypes, v) })} /></Field>
+                    <Field className="sm:col-span-2" label="Driving Regions"><CheckList items={DRIVING_REGIONS} selected={d.regions} onToggle={(v) => set({ regions: toggleArr(d.regions, v) })} /></Field>
+                </Grid>
+            </FormSection>
+
+            <FormSection title="Duration & Mileage">
+                <Grid>
+                    <Field label="From date" required><DateInput value={d.from} onChange={(e) => set({ from: e.target.value })} /></Field>
+                    <Field label="To date" required><DateInput value={d.to} onChange={(e) => set({ to: e.target.value })} /></Field>
+                    <Field label="Approximate miles"><TextInput type="number" min={0} placeholder="e.g. 250000" value={d.miles} onChange={(e) => set({ miles: e.target.value })} /></Field>
+                    <Field label="Owner-operator on this experience?" required><YesNo value={d.ownerOperator} onChange={(v) => set({ ownerOperator: v })} /></Field>
+                </Grid>
+            </FormSection>
+        </div>
+    );
+
+    // One traffic-violation entry, rendered inline on the Traffic Violation step.
+    const incidentForm = (d: Incident, set: (patch: Partial<Incident>) => void) => (
+        <div className="space-y-6">
+            <FormSection title="Violation">
+                <Grid>
+                    <Field label="Violation Date" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
+                    <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
+                    <Field className="sm:col-span-2" label="Charge / Description (select all that apply)" required><CheckList items={CHARGE_DESCRIPTIONS} selected={d.charges} onToggle={(v) => set({ charges: toggleArr(d.charges, v) })} /></Field>
+                </Grid>
+            </FormSection>
+
+            <FormSection title="Penalty">
+                <Grid>
+                    <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
+                    <Field label="Penalty points"><TextInput type="number" min={0} placeholder="e.g. 2" value={d.penaltyPoints} onChange={(e) => set({ penaltyPoints: e.target.value })} /></Field>
+                    <Field className="sm:col-span-2" label="Penalty / Fine (select all that apply)" required><CheckList items={PENALTIES} selected={d.penalties} onToggle={(v) => set({ penalties: toggleArr(d.penalties, v) })} /></Field>
+                    <Field label="Fine amount (if applicable)"><Select value={d.fineAmount} placeholder="Please Choose" onChange={(v) => set({ fineAmount: v })}><Options items={FINE_AMOUNTS} /></Select></Field>
+                </Grid>
+            </FormSection>
+
+            <Field label="Comments" hint='If you answered "Other" to any question, please provide additional detail.'><Textarea rows={2} value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
+        </div>
+    );
+
     // Each step renders its own panel of fields. Order here = order in the sidebar.
-    const steps: { key: string; title: string; fields: number; render: () => React.ReactNode }[] = [
+    const dataSteps: { key: string; title: string; fields: number; consent?: boolean; render: () => React.ReactNode }[] = [
         {
-            key: "applicant", title: "Applicant Information", fields: 9, render: () => (
+            key: "applicant", title: "Applicant Information", fields: isCross ? 9 : 8, render: () => (
                 <Grid>
                     <Field label="First Name" required><TextInput value={firstName} onChange={(e) => setFirstName(e.target.value)} /></Field>
                     <Field label="Last Name" required><TextInput value={lastName} onChange={(e) => setLastName(e.target.value)} /></Field>
@@ -603,27 +899,51 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                     <Field label="Phone Number" required><TextInput type="tel" value={primaryPhone} onChange={(e) => setPrimaryPhone(e.target.value)} /></Field>
                     <Field label="Date of Birth" required><DateInput value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
                     <Field className="sm:col-span-2" label={`${config.idLabel}`} required><TextInput value={ssn} onChange={(e) => setSsn(e.target.value)} /></Field>
-                    <ToggleField label={`Do you have legal right to work in ${config.defaultCountry === "Canada" ? "Canada" : "the United States"}?`} checked={legalRight} onChange={setLegalRight} />
+                    {/* Work eligibility — country-specific. Cross-border drivers must confirm both. */}
+                    {isCross ? (
+                        <>
+                            <ToggleField label="Do you have legal right to work in the United States?" checked={legalRight} onChange={setLegalRight} />
+                            <ToggleField label="Do you have legal right to work in Canada?" checked={legalRightCA} onChange={setLegalRightCA} />
+                        </>
+                    ) : (
+                        <ToggleField label={`Do you have legal right to work in ${isCanada ? "Canada" : "the United States"}?`} checked={isCanada ? legalRightCA : legalRight} onChange={isCanada ? setLegalRightCA : setLegalRight} />
+                    )}
                     <Field className="sm:col-span-2" label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
-                    <Field className="sm:col-span-2" label="TWIC Card Number"><TextInput type="number" placeholder="Enter number" value={twic} onChange={(e) => setTwic(e.target.value)} /></Field>
                 </Grid>
             ),
         },
         {
-            key: "address", title: "Address Details", fields: 9, render: () => (
-                <Grid>
-                    <Field className="sm:col-span-2" label="Current Street Address (line 1)" required><TextInput value={addr1} onChange={(e) => setAddr1(e.target.value)} /></Field>
-                    <Field className="sm:col-span-2" label="Current Street Address (line 2)"><TextInput value={addr2} onChange={(e) => setAddr2(e.target.value)} /></Field>
-                    <Field label="Country" required><Select value={country} onChange={setCountry}><Options items={COUNTRIES} /></Select></Field>
-                    <Field label="City" required><TextInput value={city} onChange={(e) => setCity(e.target.value)} /></Field>
-                    <Field label="State/Province" required><Select value={state} placeholder="Please Choose" onChange={setState}><Options items={STATES_PROVINCES} /></Select></Field>
-                    <Field label="Zip/Postal Code" required><TextInput value={zip} onChange={(e) => setZip(e.target.value)} /></Field>
-                    <Field className="sm:col-span-2" label="Residence address for 3 or more years?" required><YesNo value={resided3yr} onChange={setResided3yr} /></Field>
-                    <div className="sm:col-span-2">
-                        <button type="button" onClick={() => setShowResidence(true)} className="rounded-lg border border-blue-500 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50">Edit Residence History</button>
-                        {residenceRows.length > 0 && <p className="mt-2 text-xs text-slate-500">{residenceRows.length} residence record(s) saved.</p>}
-                    </div>
-                </Grid>
+            key: "address", title: "Address Details", fields: 8, render: () => (
+                <div className="space-y-6">
+                    <FormSection title="Current Address">
+                        <Grid>
+                            <Field className="sm:col-span-2" label="Street Address (line 1)" required><TextInput value={addr1} placeholder="Street number and name" onChange={(e) => setAddr1(e.target.value)} /></Field>
+                            <Field label="Unit / Suite / Apt #"><TextInput value={unit} placeholder="e.g. 4B" onChange={(e) => setUnit(e.target.value)} /></Field>
+                            <Field label="Street Address (line 2)"><TextInput value={addr2} placeholder="Building, floor (optional)" onChange={(e) => setAddr2(e.target.value)} /></Field>
+                            <Field label="Country" required><SearchSelect value={country} items={COUNTRIES} onChange={(v) => { setCountry(v); setState(""); }} /></Field>
+                            <Field label="City" required><TextInput value={city} onChange={(e) => setCity(e.target.value)} /></Field>
+                            <Field label={country === "Canada" ? "Province" : "State"} required><SearchSelect value={state} placeholder="Please Choose" items={country === "Canada" ? CA_PROVINCES : US_STATES} onChange={setState} /></Field>
+                            <Field label={country === "Canada" ? "Postal Code" : "Zip Code"} required><TextInput value={zip} onChange={(e) => setZip(e.target.value)} /></Field>
+                        </Grid>
+                    </FormSection>
+
+                    <FormSection title="Residence History">
+                        <div className="space-y-3">
+                            <Field label="Have you lived at this address for 3 or more years?" required><YesNo value={resided3yr} onChange={setResided3yr} /></Field>
+                            {resided3yr === "No" && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3.5">
+                                    <p className="text-sm text-amber-800">Because you've lived here for less than 3 years, please add your previous addresses to cover the last 3 years.</p>
+                                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                                        <button type="button" onClick={() => setShowResidence(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                            <MapPin className="h-4 w-4" /> {residenceRows.length > 0 ? "Edit residence history" : "Add residence history"}
+                                        </button>
+                                        {residenceRows.length > 0 && <span className="text-xs font-medium text-emerald-600">{residenceRows.length} previous address{residenceRows.length === 1 ? "" : "es"} saved</span>}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </FormSection>
+                </div>
             ),
         },
         {
@@ -641,38 +961,28 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
             key: "license", title: "License Details", fields: 7, render: () => (
                 <div className="space-y-5">
                     <InfoAlert>Please provide all licenses you have held within the last 3 years.</InfoAlert>
-                    <MultiEntry
-                        items={licenses}
-                        setItems={setLicenses}
-                        factory={newLicense}
-                        addLabel="Add Another License"
-                        modalTitle="License Details"
-                        cardTitle={(l) => l.number || "New License"}
-                        renderCard={(l) => (
-                            <>
-                                <KV k="Licensing Authority" v={l.authority ? abbr(l.authority) : "-"} />
-                                <KV k="Class" v={l.licenseClass || "-"} />
-                                <KV k="Current" v={l.current || "-"} />
-                                <KV k="CDL" v={l.commercial || "-"} />
-                                <KV k="Expiration Date" v={fmtDate(l.exp)} />
-                            </>
-                        )}
-                        renderForm={(d, set) => (
-                            <>
-                                <Field label="License Number" required><TextInput value={d.number} onChange={(e) => set({ number: e.target.value })} /></Field>
-                                <Field label="Country" required><Select value={d.country} onChange={(v) => set({ country: v })}><Options items={COUNTRIES} /></Select></Field>
-                                <Field label="Licensing Authority" required><Select value={d.authority} placeholder="Please Choose" onChange={(v) => set({ authority: v })}><Options items={STATES_PROVINCES} /></Select></Field>
-                                <Field label="License Expiration Date" required><DateTriple value={d.exp} years={EXP_YEARS} onChange={(v) => set({ exp: v })} /></Field>
-                                <Field label="DOT Medical Card Expiration Date"><DateTriple value={d.medicalExp} years={EXP_YEARS} onChange={(v) => set({ medicalExp: v })} /></Field>
-                                <Field label="Is this your current driver license?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
-                                <Field label="Is this a commercial driver license?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
-                                {d.commercial === "Yes" && (
-                                    <Field label="License Class" required><Select value={d.licenseClass} placeholder="Please Choose" onChange={(v) => set({ licenseClass: v })}><Options items={LICENSE_CLASSES} /></Select></Field>
-                                )}
-                                <Field label="Endorsements"><CheckList items={ENDORSEMENTS} selected={d.endorsements} onToggle={(v) => set({ endorsements: toggleArr(d.endorsements, v) })} /></Field>
-                            </>
-                        )}
-                    />
+                    {licenses.map((lic, i) => {
+                        const set = (patch: Partial<License>) => setLicenses((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+                        return (
+                            <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                    <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                        {lic.number || `License ${i + 1}`}{i === 0 && <span className="ml-1 text-xs font-normal text-slate-400">(primary)</span>}
+                                    </span>
+                                    {licenses.length > 1 && (
+                                        <Button type="button" variant="ghost" size="sm" onClick={() => setLicenses((ls) => ls.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
+                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                                        </Button>
+                                    )}
+                                </div>
+                                {licenseForm(lic, set)}
+                            </div>
+                        );
+                    })}
+                    <Button type="button" variant="outline" onClick={() => setLicenses((ls) => [...ls, newLicense()])} className="w-full border-dashed">
+                        <Plus className="h-4 w-4" /> Add Another License
+                    </Button>
                 </div>
             ),
         },
@@ -693,6 +1003,35 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                             </div>
                         );
                     })}
+                </div>
+            ),
+        },
+        {
+            key: "driving-experience", title: "Driving Experience", fields: 6, render: () => (
+                <div className="space-y-5">
+                    <InfoAlert>Please provide details of your driving experience, including equipment class, freight types, regions driven, dates, mileage, and owner-operator status.</InfoAlert>
+                    {drivingExp.map((exp, i) => {
+                        const set = (patch: Partial<DrivingExp>) => setDrivingExp((xs) => xs.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+                        return (
+                            <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                    <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                        {exp.equipmentClass || `Experience ${i + 1}`}
+                                    </span>
+                                    {drivingExp.length > 1 && (
+                                        <Button type="button" variant="ghost" size="sm" onClick={() => setDrivingExp((xs) => xs.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
+                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                                        </Button>
+                                    )}
+                                </div>
+                                {drivingExpForm(exp, set)}
+                            </div>
+                        );
+                    })}
+                    <Button type="button" variant="outline" onClick={() => setDrivingExp((xs) => [...xs, newDrivingExp()])} className="w-full border-dashed">
+                        <Plus className="h-4 w-4" /> Add Another Experience
+                    </Button>
                 </div>
             ),
         },
@@ -719,18 +1058,47 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                                     </>
                                 )}
                                 renderForm={(d, set) => (
-                                    <>
-                                        <Field label="Date of Accident / Incident" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
-                                        <Field label="Type of Accident / Incident" required><Select value={d.type} placeholder="Please Choose" onChange={(v) => set({ type: v })}><Options items={ACCIDENT_TYPES} /></Select></Field>
-                                        <Field label="Hazmat Accident / Incident"><YesNo value={d.hazmat} onChange={(v) => set({ hazmat: v })} /></Field>
-                                        <Field label="Was any vehicle towed away?"><YesNo value={d.towed} onChange={(v) => set({ towed: v })} /></Field>
-                                        <Field label="City"><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
-                                        <Field label="State / Prov" required><Select value={d.state} placeholder="Please Choose" onChange={(v) => set({ state: v })}><Options items={STATES_PROVINCES} /></Select></Field>
-                                        <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
-                                        <Field label="Were you at fault?" required><YesNo value={d.atFault} onChange={(v) => set({ atFault: v })} /></Field>
-                                        <Field label="Were you ticketed?" required><YesNo value={d.ticketed} onChange={(v) => set({ ticketed: v })} /></Field>
-                                        <Field label="Please enter detailed information about this accident" required><Textarea value={d.detail} onChange={(e) => set({ detail: e.target.value })} /></Field>
-                                    </>
+                                    <div className="space-y-6">
+                                        {/* When & what */}
+                                        <FormSection title="Accident / Incident">
+                                            <Grid>
+                                                <Field label="Date of Accident / Incident" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
+                                                <Field label="Type of Accident / Incident" required><Select value={d.type} placeholder="Please Choose" onChange={(v) => set({ type: v })}><Options items={ACCIDENT_TYPES} /></Select></Field>
+                                            </Grid>
+                                        </FormSection>
+
+                                        {/* Location */}
+                                        <FormSection title="Location">
+                                            <Grid>
+                                                <Field className="sm:col-span-2" label="Location for the accident (complete address)" required><Textarea rows={2} value={d.address} placeholder="Street, City, State / Prov, ZIP / Postal" onChange={(e) => set({ address: e.target.value })} /></Field>
+                                                <Field label="City"><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
+                                                <Field label="State / Prov" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
+                                            </Grid>
+                                        </FormSection>
+
+                                        {/* Circumstances — grouped Yes/No questions */}
+                                        <FormSection title="Circumstances">
+                                            <Grid>
+                                                <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
+                                                <Field label="Were you at fault?" required><YesNo value={d.atFault} onChange={(v) => set({ atFault: v })} /></Field>
+                                                <Field label="Were you ticketed?" required><YesNo value={d.ticketed} onChange={(v) => set({ ticketed: v })} /></Field>
+                                                <Field label="Was any vehicle towed away?"><YesNo value={d.towed} onChange={(v) => set({ towed: v })} /></Field>
+                                                <Field label="Hazmat accident / incident"><YesNo value={d.hazmat} onChange={(v) => set({ hazmat: v })} /></Field>
+                                                <Field label="Chemical spill?"><YesNo value={d.chemicalSpill} onChange={(v) => set({ chemicalSpill: v })} /></Field>
+                                            </Grid>
+                                        </FormSection>
+
+                                        {/* Casualties */}
+                                        <FormSection title="Casualties">
+                                            <Grid>
+                                                <Field label="Total number of fatalities"><TextInput type="number" min={0} value={d.fatalities} placeholder="0" onChange={(e) => set({ fatalities: e.target.value })} /></Field>
+                                                <Field label="Total number of injuries"><TextInput type="number" min={0} value={d.injuries} placeholder="0" onChange={(e) => set({ injuries: e.target.value })} /></Field>
+                                            </Grid>
+                                        </FormSection>
+
+                                        {/* Narrative */}
+                                        <Field label="Please enter detailed information about this accident" required><Textarea rows={3} value={d.detail} onChange={(e) => set({ detail: e.target.value })} /></Field>
+                                    </div>
                                 )}
                             />
                         </>
@@ -741,35 +1109,34 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         {
             key: "violation", title: "Traffic Violation Details", fields: 3, render: () => (
                 <div className="space-y-5">
-                    <Field label="Have you had any moving violations or traffic convictions in the past 3 Years?" required><YesNo value={hadViolations} onChange={setHadViolations} /></Field>
+                    <Field label="Have you had any moving violations or traffic convictions in the past 3 Years?" required>
+                        <YesNo value={hadViolations} onChange={(v) => { setHadViolations(v); if (v === "Yes" && incidents.length === 0) setIncidents([newIncident()]); }} />
+                    </Field>
                     {hadViolations === "Yes" && (
-                        <MultiEntry
-                            items={incidents}
-                            setItems={setIncidents}
-                            factory={newIncident}
-                            addLabel="Add Another Incident"
-                            modalTitle="Incident Details"
-                            cardTitle={(i) => i.charge || "New Incident"}
-                            renderCard={(i) => (
-                                <>
-                                    <KV k="Violation Date" v={fmtMY(i.date)} />
-                                    <KV k="State / Prov" v={i.state ? abbr(i.state) : "-"} />
-                                    <KV k="Commercial Vehicle" v={i.commercial || "-"} />
-                                    <KV k="Penalty" v={i.penalties.length ? i.penalties.join(", ") : "-"} />
-                                </>
-                            )}
-                            renderForm={(d, set) => (
-                                <>
-                                    <Field label="Violation Date" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
-                                    <Field label="Charge / Description" required><Select value={d.charge} placeholder="Please Choose" onChange={(v) => set({ charge: v })}><Options items={CHARGE_DESCRIPTIONS} /></Select></Field>
-                                    <Field label="State / Prov" required><Select value={d.state} placeholder="Please Choose" onChange={(v) => set({ state: v })}><Options items={STATES_PROVINCES} /></Select></Field>
-                                    <Field label="Were you in a Commercial Vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
-                                    <Field label="Penalty / Fine (Check all that apply)" required><CheckList items={PENALTIES} selected={d.penalties} onToggle={(v) => set({ penalties: toggleArr(d.penalties, v) })} /></Field>
-                                    <Field label="Fine Amount (if applicable)"><Select className="w-48" value={d.fineAmount} placeholder=" " onChange={(v) => set({ fineAmount: v })}><Options items={FINE_AMOUNTS} /></Select></Field>
-                                    <Field label="Comments" hint='If you answered "Other" to any question, please provide additional detail:'><Textarea value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
-                                </>
-                            )}
-                        />
+                        <>
+                            {incidents.map((inc, i) => {
+                                const set = (patch: Partial<Incident>) => setIncidents((xs) => xs.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+                                return (
+                                    <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                        <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                                {inc.charges[0] || `Violation ${i + 1}`}{inc.charges.length > 1 && <span className="text-xs font-normal text-slate-400"> +{inc.charges.length - 1}</span>}
+                                            </span>
+                                            {incidents.length > 1 && (
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setIncidents((xs) => xs.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
+                                                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                </Button>
+                                            )}
+                                        </div>
+                                        {incidentForm(inc, set)}
+                                    </div>
+                                );
+                            })}
+                            <Button type="button" variant="outline" onClick={() => setIncidents((xs) => [...xs, newIncident()])} className="w-full border-dashed">
+                                <Plus className="h-4 w-4" /> Add Another Violation
+                            </Button>
+                        </>
                     )}
                 </div>
             ),
@@ -777,44 +1144,34 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         {
             key: "employment", title: "Employment Details", fields: 5, render: () => (
                 <div className="space-y-5">
-                    <Field label="Have you been employed, contracted, or attended a company orientation in the last 3 years?" required><YesNo value={employedRecently} onChange={setEmployedRecently} /></Field>
+                    <Field label="Have you been employed, contracted, or attended a company orientation in the last 3 years?" required>
+                        <YesNo value={employedRecently} onChange={(v) => { setEmployedRecently(v); if (v === "Yes" && employers.length === 0) setEmployers([newEmployer()]); }} />
+                    </Field>
                     {employedRecently === "Yes" && (
-                        <MultiEntry
-                            items={employers}
-                            setItems={setEmployers}
-                            factory={newEmployer}
-                            addLabel="Add Another Employer"
-                            modalTitle="Employer/Contract Information"
-                            cardTitle={(e) => e.company || "New Employer"}
-                            renderCard={(e) => (
-                                <>
-                                    <KV k="Position" v={e.position || "-"} />
-                                    <KV k="Dates" v={`${fmtMY(e.start)} - ${fmtMY(e.end)}`} />
-                                    <KV k="Current" v={e.current || "-"} />
-                                    <KV k="Operated CMV" v={e.operatedCMV || "-"} />
-                                </>
-                            )}
-                            renderForm={(d, set) => (
-                                <>
-                                    <Field label="Company Name" required><TextInput value={d.company} onChange={(e) => set({ company: e.target.value })} /></Field>
-                                    <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
-                                    <Field label="End Date" required hint={endDateHint("employed/contracted")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
-                                    <Field label="Street Address"><TextInput value={d.addr1} onChange={(e) => set({ addr1: e.target.value })} /></Field>
-                                    <Field label="Street Address (line 2)"><TextInput value={d.addr2} onChange={(e) => set({ addr2: e.target.value })} /></Field>
-                                    <Field label="Country" required><Select value={d.country} onChange={(v) => set({ country: v })}><Options items={COUNTRIES} /></Select></Field>
-                                    <Field label="City" required><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
-                                    <Field label="State/Province" required><Select value={d.state} placeholder="Please Choose" onChange={(v) => set({ state: v })}><Options items={STATES_PROVINCES} /></Select></Field>
-                                    <Field label="Zip/Postal"><TextInput value={d.zip} onChange={(e) => set({ zip: e.target.value })} /></Field>
-                                    <Field label="Telephone"><TextInput value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></Field>
-                                    <Field label="Position Held"><TextInput value={d.position} onChange={(e) => set({ position: e.target.value })} /></Field>
-                                    <Field label="Reason for leaving?" required><TextInput value={d.reasonLeaving} onChange={(e) => set({ reasonLeaving: e.target.value })} /></Field>
-                                    <Field label="Were you terminated/discharged/laid off?" required><YesNo value={d.terminated} onChange={(v) => set({ terminated: v })} /></Field>
-                                    <Field label="Is this your current employer?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
-                                    <Field label="May we contact this employer at this time?" required><YesNo value={d.mayContact} onChange={(v) => set({ mayContact: v })} /></Field>
-                                    <Field label="Did you operate a commercial motor vehicle?" required><YesNo value={d.operatedCMV} onChange={(v) => set({ operatedCMV: v })} /></Field>
-                                </>
-                            )}
-                        />
+                        <>
+                            {employers.map((emp, i) => {
+                                const set = (patch: Partial<Employer>) => setEmployers((es) => es.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+                                return (
+                                    <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                                        <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                                            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                                {emp.company || `Employer ${i + 1}`}{i === 0 && <span className="ml-1 text-xs font-normal text-slate-400">(most recent)</span>}
+                                            </span>
+                                            {employers.length > 1 && (
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setEmployers((es) => es.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
+                                                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                </Button>
+                                            )}
+                                        </div>
+                                        {employerForm(emp, set)}
+                                    </div>
+                                );
+                            })}
+                            <Button type="button" variant="outline" onClick={() => setEmployers((es) => [...es, newEmployer()])} className="w-full border-dashed">
+                                <Plus className="h-4 w-4" /> Add Another Employer
+                            </Button>
+                        </>
                     )}
                 </div>
             ),
@@ -845,8 +1202,8 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                                     <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
                                     <Field label="End Date" required hint={endDateHint("in school")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
                                     <Field label="City" required><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
-                                    <Field label="State / Province" required><Select value={d.state} placeholder="Please Choose" onChange={(v) => set({ state: v })}><Options items={STATES_PROVINCES} /></Select></Field>
-                                    <Field label="Country" required><Select value={d.country} onChange={(v) => set({ country: v })}><Options items={COUNTRIES} /></Select></Field>
+                                    <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
+                                    <Field label="Country" required><SearchSelect value={d.country} items={COUNTRIES} onChange={(v) => set({ country: v })} /></Field>
                                     <Field label="Telephone"><TextInput value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></Field>
                                     <Field label="What did you study? (accounting, mechanic, etc.)" required><TextInput value={d.study} onChange={(e) => set({ study: e.target.value })} /></Field>
                                     <Field label="Graduation Date (leave blank if no graduation)"><DateDuo value={d.graduation} years={HIST_YEARS} onChange={(v) => set({ graduation: v })} /></Field>
@@ -863,7 +1220,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                     <Field label="Were you ever in the military?"><YesNo value={militaryEver} onChange={setMilitaryEver} /></Field>
                     {militaryEver === "Yes" && (
                         <Grid>
-                            <Field label="Country" required><Select value={military.country} placeholder=" " onChange={(v) => setM({ country: v })}><Options items={COUNTRIES} /></Select></Field>
+                            <Field label="Country" required><SearchSelect value={military.country} placeholder="Please Choose" items={COUNTRIES} onChange={(v) => setM({ country: v })} /></Field>
                             <Field label="Branch of Service" required><Select value={military.branch} placeholder=" " onChange={(v) => setM({ branch: v })}><Options items={BRANCHES} /></Select></Field>
                             <Field label="Start Date" required><DateDuo value={military.start} years={HIST_YEARS} onChange={(v) => setM({ start: v })} /></Field>
                             <Field label="End Date" required hint={endDateHint("in the military")}><DateDuo value={military.end} years={HIST_YEARS} onChange={(v) => setM({ end: v })} /></Field>
@@ -934,8 +1291,21 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         },
     ];
 
+    const steps = dataSteps;
     const current = steps[step];
     const isLast = step === steps.length - 1;
+
+    // After the application data, the driver moves into the consent phase.
+    if (phase === "consent") {
+        return (
+            <ConsentPhase
+                typeId={config.id}
+                typeName={config.name}
+                onBack={() => setPhase("application")}
+                onSubmit={onBack}
+            />
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -993,7 +1363,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                                         </span>
                                         <span className="min-w-0">
                                             <span className={cn("block text-sm font-semibold", active ? "text-blue-700" : "text-slate-700")}>{s.title}</span>
-                                            <span className="block text-xs text-slate-400">{s.fields} fields &middot; <span className="text-rose-400">required</span></span>
+                                            <span className="block text-xs text-slate-400">{s.consent ? <>Consent &middot; <span className="text-rose-400">signature</span></> : <>{s.fields} fields &middot; <span className="text-rose-400">required</span></>}</span>
                                         </span>
                                     </button>
                                 );
@@ -1025,12 +1395,12 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                             <ChevronLeft className="h-4 w-4" /> Back
                         </button>
                         {isLast ? (
-                            <button type="button" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
-                                Submit Application <Check className="h-4 w-4" />
+                            <button type="button" onClick={() => setPhase("consent")} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                                Save &amp; Continue to consents <ChevronRight className="h-4 w-4" />
                             </button>
                         ) : (
                             <button type="button" onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
-                                Next <ChevronRight className="h-4 w-4" />
+                                Save &amp; Continue <ChevronRight className="h-4 w-4" />
                             </button>
                         )}
                     </div>
@@ -1085,12 +1455,12 @@ export function ApplicationSettingsPage({ onNavigate }: { onNavigate: (path: str
             <div className="mx-auto max-w-5xl px-6 py-8">
                 <div className="mb-3 flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-slate-700">{APPLICATION_FORMS.length} application forms</h2>
-                    <span className="text-xs text-slate-400">Each form has 12 sections</span>
+                    <span className="text-xs text-slate-400">13 sections + driver-type consent forms</span>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     <div className="hidden items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:flex">
                         <span className="flex-1">Application Form</span>
-                        <span className="w-28 text-center">Sections</span>
+                        <span className="w-44 text-center">Includes</span>
                         <span className="w-[230px] text-right">Actions</span>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -1108,8 +1478,9 @@ export function ApplicationSettingsPage({ onNavigate }: { onNavigate: (path: str
                                         <p className="mt-0.5 truncate text-sm text-slate-500">{f.blurb}</p>
                                     </div>
                                 </div>
-                                <div className="hidden w-28 justify-center sm:flex">
-                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">12 sections</span>
+                                <div className="hidden w-44 flex-col items-center gap-1 sm:flex">
+                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">13 sections</span>
+                                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">{consentsForType(f.id).length} consent forms</span>
                                 </div>
                                 <div className="flex w-full items-center justify-end gap-2 sm:w-[230px]">
                                     <Button variant="outline" size="sm" onClick={() => preview(f)}>

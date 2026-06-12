@@ -1,12 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // ── Hiring templates ────────────────────────────────────────────────────────
 // A template is an ordered list of STEPS. Each step has a title and one OR MORE
 // forms attached. Stored in localStorage with three locked, seeded defaults.
 
-export type TemplateStep = { id: string; title: string; formIds: string[]; locked?: boolean; kind?: "app" | "review" };
+// How a form attached to a step gets fulfilled. Selectable per form in the
+// workflow builder; each form has a sensible default (see fulfillModeFor).
+export type FulfillMode = "order" | "fill" | "upload" | "upload-fill";
+export const FULFILL_META: Record<FulfillMode, { label: string; hint: string }> = {
+    order: { label: "Order / Request", hint: "Order a report from a provider or agency" },
+    fill: { label: "Fill Form", hint: "Fill in the form directly" },
+    upload: { label: "Upload Document", hint: "Attach a third-party document" },
+    "upload-fill": { label: "Upload + Fill", hint: "Attach a document and fill the form" },
+};
+const FORM_FULFILLMENT: Record<string, FulfillMode> = {
+    mvr: "order", "driver-abstract": "order", psp: "order", cvdr: "order", cda: "order",
+    "employment-verification": "order", "dot-verification": "order",
+    "criminal-background": "upload", "substance-testing": "upload-fill",
+};
+export const fulfillModeFor = (fid: string): FulfillMode => FORM_FULFILLMENT[fid] ?? "fill";
+
+export type TemplateStep = { id: string; title: string; formIds: string[]; formModes?: Record<string, FulfillMode>; locked?: boolean; kind?: "app" | "review" };
+export const stepFormMode = (s: TemplateStep, fid: string): FulfillMode => s.formModes?.[fid] ?? fulfillModeFor(fid);
 export type DriverType = "local" | "us" | "canada" | "cross-border";
-export type HiringTemplate = { id: string; name: string; description: string; locked?: boolean; driverType?: DriverType; checklistId?: string; steps: TemplateStep[] };
+export type HiringTemplate = { id: string; name: string; description: string; locked?: boolean; driverType?: DriverType; checklistId?: string; carrierId?: string; steps: TemplateStep[] };
 
 // The four driver types — each maps to the application form drivers complete in step 1.
 export const DRIVER_TYPES: { id: DriverType; name: string; region: string }[] = [
@@ -30,8 +47,11 @@ export const STEP_CATALOG: { id: string; name: string; group: "Core" | "Forms" |
     { id: "application", name: "Application", group: "Core" },
     { id: "review", name: "Review", group: "Core" },
     { id: "driver-license", name: "Driver License Submission", group: "Forms" },
-    { id: "driver-abstract", name: "Driver Abstract / MVR", group: "Forms" },
-    { id: "screening-reports", name: "PSP / CVDR / CDA", group: "Forms" },
+    { id: "mvr", name: "MVR — Motor Vehicle Record", group: "Forms" },
+    { id: "driver-abstract", name: "Driver Abstract / CVOR", group: "Forms" },
+    { id: "psp", name: "PSP — Pre-Employment Screening", group: "Forms" },
+    { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", group: "Forms" },
+    { id: "cda", name: "CDA — Commercial Driver Abstract", group: "Forms" },
     { id: "criminal-background", name: "Criminal Background Check", group: "Forms" },
     { id: "substance-testing", name: "Substance Testing", group: "Forms" },
     { id: "employment-verification", name: "Employment Verification", group: "Forms" },
@@ -60,6 +80,9 @@ export function totalForms(t: HiringTemplate): number {
 }
 
 const st = (tplId: string, n: number, title: string, formIds: string[]): TemplateStep => ({ id: `${tplId}-st${n}`, title, formIds });
+// A single-report step, titled by the report's short name (one form per step).
+const REPORT_TITLES: Record<string, string> = { psp: "PSP", mvr: "MVR", "driver-abstract": "Driver Abstract", cvdr: "CVDR", cda: "CDA" };
+const rep = (tplId: string, n: number, fid: string): TemplateStep => ({ id: `${tplId}-st${n}`, title: REPORT_TITLES[fid] ?? stepName(fid), formIds: [fid] });
 
 const DEFAULT_TEMPLATES: HiringTemplate[] = [
     {
@@ -67,9 +90,10 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         steps: [
             makeAppStep("tpl-us", ["fcra-disclosure", "mvr-release", "clearinghouse-consent", "substance-consent-release"]),
             st("tpl-us", 1, "License Details", ["driver-license"]),
-            st("tpl-us", 2, "Driving Record", ["screening-reports", "driver-abstract"]),
-            st("tpl-us", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
-            st("tpl-us", 4, "Employment Verification", ["dot-verification"]),
+            rep("tpl-us", 2, "psp"),
+            rep("tpl-us", 3, "mvr"),
+            st("tpl-us", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
+            st("tpl-us", 5, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-us"),
         ],
     },
@@ -78,7 +102,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         steps: [
             makeAppStep("tpl-canada", ["mvr-release"]),
             st("tpl-canada", 1, "License Details", ["driver-license"]),
-            st("tpl-canada", 2, "Driving Record", ["driver-abstract"]),
+            rep("tpl-canada", 2, "driver-abstract"),  // Canada Abstract / CVOR
             st("tpl-canada", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-canada", 4, "Employment Verification", ["employment-verification"]),
             makeReviewStep("tpl-canada"),
@@ -89,9 +113,11 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         steps: [
             makeAppStep("tpl-cross", ["fcra-disclosure", "mvr-release", "clearinghouse-consent"]),
             st("tpl-cross", 1, "License Details", ["driver-license"]),
-            st("tpl-cross", 2, "Driving Record", ["screening-reports", "driver-abstract"]),
-            st("tpl-cross", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
-            st("tpl-cross", 4, "Employment Verification", ["dot-verification"]),
+            rep("tpl-cross", 2, "psp"),
+            rep("tpl-cross", 3, "mvr"),
+            rep("tpl-cross", 4, "cvdr"),
+            st("tpl-cross", 5, "Background & Testing", ["criminal-background", "substance-testing"]),
+            st("tpl-cross", 6, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-cross"),
         ],
     },
@@ -100,7 +126,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         steps: [
             makeAppStep("tpl-local", ["mvr-release"]),
             st("tpl-local", 1, "License Details", ["driver-license"]),
-            st("tpl-local", 2, "Driving Record", ["driver-abstract"]),
+            rep("tpl-local", 2, "mvr"),
             st("tpl-local", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-local", 4, "Road Test", ["road-test"]),
             st("tpl-local", 5, "Employment Verification", ["employment-verification"]),
@@ -112,7 +138,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         steps: [
             makeAppStep("tpl-us-fast", ["mvr-release", "clearinghouse-consent", "substance-consent-release"]),
             st("tpl-us-fast", 1, "License Details", ["driver-license"]),
-            st("tpl-us-fast", 2, "Driving Record", ["driver-abstract"]),
+            rep("tpl-us-fast", 2, "mvr"),
             st("tpl-us-fast", 3, "Testing", ["substance-testing"]),
             st("tpl-us-fast", 4, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-us-fast"),
@@ -123,10 +149,11 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         steps: [
             makeAppStep("tpl-oo", ["fcra-disclosure", "mvr-release", "clearinghouse-consent", "substance-consent-release"]),
             st("tpl-oo", 1, "License Details", ["driver-license"]),
-            st("tpl-oo", 2, "Driving Record", ["screening-reports", "driver-abstract"]),
-            st("tpl-oo", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
-            st("tpl-oo", 4, "Employment Verification", ["dot-verification"]),
-            st("tpl-oo", 5, "Medical & Compliance", ["medical-card", "annual-review"]),
+            rep("tpl-oo", 2, "psp"),
+            rep("tpl-oo", 3, "mvr"),
+            st("tpl-oo", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
+            st("tpl-oo", 5, "Employment Verification", ["dot-verification"]),
+            st("tpl-oo", 6, "Medical & Compliance", ["medical-card", "annual-review"]),
             makeReviewStep("tpl-oo"),
         ],
     },
@@ -154,13 +181,20 @@ function persist(list: HiringTemplate[]) {
     window.dispatchEvent(new CustomEvent(EVENT));
 }
 
-export function useHiringTemplates() {
-    const [templates, setTemplates] = useState<HiringTemplate[]>(load);
+// Shared default (locked) templates show for every carrier; custom templates
+// show only for the carrier they were created under (untagged customs stay
+// visible everywhere for back-compat).
+export function useHiringTemplates(carrierId?: string) {
+    const [all, setAll] = useState<HiringTemplate[]>(load);
     useEffect(() => {
-        const h = () => setTemplates(load());
+        const h = () => setAll(load());
         window.addEventListener(EVENT, h);
         return () => window.removeEventListener(EVENT, h);
     }, []);
+    const templates = useMemo(
+        () => all.filter((t) => t.locked || !t.carrierId || !carrierId || t.carrierId === carrierId),
+        [all, carrierId],
+    );
     const save = (t: HiringTemplate) => {
         const cur = load();
         const idx = cur.findIndex((x) => x.id === t.id);

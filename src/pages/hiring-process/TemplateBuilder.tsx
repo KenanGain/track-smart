@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectBox } from "./FormKit";
-import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, DRIVER_TYPES, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType } from "./hiring-templates.data";
+import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, stepFormMode, FULFILL_META, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, DRIVER_TYPES, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType, type FulfillMode } from "./hiring-templates.data";
 import { useChecklists, checklistForDriverType } from "./checklists.data";
 
 const GROUP_TONE: Record<string, string> = { Core: "bg-blue-50 text-blue-600", Forms: "bg-emerald-50 text-emerald-600", Policy: "bg-violet-50 text-violet-600" };
@@ -36,8 +36,8 @@ function seedSteps(): TemplateStep[] {
     ]);
 }
 
-export function TemplateBuilder({ templateId, onBack }: { templateId: string; onBack: () => void }) {
-    const { templates, save } = useHiringTemplates();
+export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId: string; carrierId?: string; onBack: () => void }) {
+    const { templates, save } = useHiringTemplates(carrierId);
     const { checklists } = useChecklists();
     const existing = templateId === "new" ? undefined : templates.find((t) => t.id === templateId);
 
@@ -50,7 +50,7 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
 
     const patchStep = (id: string, patch: Partial<TemplateStep>) => setSteps((l) => l.map((s) => (s.id === id ? { ...s, ...patch } : s)));
     // Insert new steps before the final Review step.
-    const addStep = () => setSteps((l) => { const next = [...l]; next.splice(l.length - 1, 0, { id: newStepId(), title: `Step ${l.length - 1}`, formIds: [] }); return next; });
+    const addStep = () => setSteps((l) => { const next = [...l]; next.splice(l.length - 1, 0, { id: newStepId(), title: `Check Module ${l.length - 1}`, formIds: [] }); return next; });
     const removeStep = (id: string) => setSteps((l) => l.filter((s) => s.id !== id || s.locked));
     const moveStep = (i: number, dir: -1 | 1) => setSteps((l) => {
         const j = i + dir;
@@ -60,13 +60,14 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
         return next;
     });
     const addForm = (stepId: string, refId: string) => { if (refId) setSteps((l) => l.map((s) => (s.id === stepId && !s.formIds.includes(refId) ? { ...s, formIds: [...s.formIds, refId] } : s))); };
-    const removeForm = (stepId: string, refId: string) => { if (refId === "application" || refId === "review") return; setSteps((l) => l.map((s) => (s.id === stepId ? { ...s, formIds: s.formIds.filter((f) => f !== refId) } : s))); };
+    const removeForm = (stepId: string, refId: string) => { if (refId === "application" || refId === "review") return; setSteps((l) => l.map((s) => { if (s.id !== stepId) return s; const fm = { ...(s.formModes ?? {}) }; delete fm[refId]; return { ...s, formIds: s.formIds.filter((f) => f !== refId), formModes: fm }; })); };
+    const setFormMode = (stepId: string, fid: string, mode: FulfillMode) => setSteps((l) => l.map((s) => (s.id === stepId ? { ...s, formModes: { ...(s.formModes ?? {}), [fid]: mode } } : s)));
 
     const onSave = () => {
-        if (!name.trim()) { setError("Give the template a name."); return; }
+        if (!name.trim()) { setError("Give the workflow a name."); return; }
         const clean = normalize(steps).filter((s) => s.locked || s.formIds.length > 0);
-        if (clean.length < 3) { setError("Add at least one step between the application and the review."); return; }
-        const tpl: HiringTemplate = { id: existing?.id ?? `tpl-${Date.now()}`, name: name.trim(), description: description.trim(), locked: existing?.locked, driverType, checklistId: checklistId || undefined, steps: clean };
+        if (clean.length < 3) { setError("Add at least one check module between the application and the review."); return; }
+        const tpl: HiringTemplate = { id: existing?.id ?? `tpl-${Date.now()}`, name: name.trim(), description: description.trim(), locked: existing?.locked, driverType, checklistId: checklistId || undefined, carrierId: existing?.carrierId ?? carrierId, steps: clean };
         save(tpl);
         onBack();
     };
@@ -74,18 +75,18 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
-                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Templates</button>
+                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Workflows</button>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={onBack}>Cancel</Button>
-                    <Button size="sm" onClick={onSave}><Check className="h-4 w-4" /> Save template</Button>
+                    <Button size="sm" onClick={onSave}><Check className="h-4 w-4" /> Save workflow</Button>
                 </div>
             </div>
 
             <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
                 <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Hiring Process · Template</p>
-                    <h1 className="mt-1 text-2xl font-bold text-slate-900">{templateId === "new" ? "New Template" : "Edit Template"}</h1>
-                    <p className="mt-1 text-sm text-slate-500">Every template starts with the application and ends with the manager review. Add the hiring steps in between.</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Hiring Process · Workflow</p>
+                    <h1 className="mt-1 text-2xl font-bold text-slate-900">{templateId === "new" ? "New Workflow" : "Edit Workflow"}</h1>
+                    <p className="mt-1 text-sm text-slate-500">Every workflow starts with the application and ends with the manager review. Add the check modules in between — License Check, Employment Check, and more.</p>
                 </div>
 
                 {error && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>}
@@ -107,12 +108,12 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
 
                 <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div>
-                        <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Template Name</label>
+                        <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Workflow Name</label>
                         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. US Driver" />
                     </div>
                     <div>
                         <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Description</label>
-                        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short summary of when to use this template" />
+                        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short summary of when to use this workflow" />
                     </div>
                 </div>
 
@@ -132,7 +133,7 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
                                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> {isApp ? `Step 1 · ${driverTypeName(driverType)}` : "Final step"}</span>
                                         </span>
                                     ) : (
-                                        <Input value={s.title} onChange={(e) => patchStep(s.id, { title: e.target.value })} placeholder="Step title" className="h-9 flex-1 font-semibold" />
+                                        <Input value={s.title} onChange={(e) => patchStep(s.id, { title: e.target.value })} placeholder="Module name — e.g. License Check" className="h-9 flex-1 font-semibold" />
                                     )}
                                     {!isLocked && <>
                                         <button type="button" onClick={() => moveStep(i, -1)} disabled={i <= 1} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
@@ -151,18 +152,28 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
                                     </div>
                                 )}
 
-                                {/* Forms in this step */}
+                                {/* Forms in this step — each non-policy form picks how it's fulfilled. */}
                                 {s.formIds.length > 0 && (
-                                    <div className="mb-3 flex flex-wrap gap-2">
+                                    <div className="mb-3 space-y-2">
                                         {s.formIds.map((fid) => {
                                             const fixed = fid === "application" || fid === "review";
                                             const label = fid === "application" ? `${driverTypeName(driverType)} Application` : fid === "review" ? "Manager Review" : stepName(fid);
+                                            const showMode = !fixed && stepGroup(fid) !== "Policy";
                                             return (
-                                                <span key={fid} className={cn("inline-flex items-center gap-1.5 rounded-lg border py-1 pl-2.5 pr-1.5 text-[13px] font-medium", fid === "review" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : fixed ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-700")}>
-                                                    {fixed ? <FileText className="h-3.5 w-3.5" /> : <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-bold", GROUP_TONE[stepGroup(fid)])}>{stepGroup(fid)[0]}</span>}
-                                                    {label}
-                                                    {!fixed && <button type="button" onClick={() => removeForm(s.id, fid)} className="ml-0.5 flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-rose-100 hover:text-rose-500"><X className="h-3 w-3" /></button>}
-                                                </span>
+                                                <div key={fid} className={cn("flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13px] font-medium", fid === "review" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : fixed ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-700")}>
+                                                    {fixed ? <FileText className="h-3.5 w-3.5 shrink-0 text-blue-600" /> : <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold", GROUP_TONE[stepGroup(fid)])}>{stepGroup(fid)[0]}</span>}
+                                                    <span className="min-w-0 truncate">{label}</span>
+                                                    {showMode && (
+                                                        <select
+                                                            value={stepFormMode(s, fid)}
+                                                            onChange={(e) => setFormMode(s.id, fid, e.target.value as FulfillMode)}
+                                                            className="ml-auto shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-semibold text-slate-600 focus:border-blue-400 focus:outline-none"
+                                                        >
+                                                            {(Object.keys(FULFILL_META) as FulfillMode[]).map((m) => <option key={m} value={m}>{FULFILL_META[m].label}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {!fixed && <button type="button" onClick={() => removeForm(s.id, fid)} className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-rose-100 hover:text-rose-500", !showMode && "ml-auto")}><X className="h-3 w-3" /></button>}
+                                                </div>
                                             );
                                         })}
                                     </div>
@@ -170,13 +181,13 @@ export function TemplateBuilder({ templateId, onBack }: { templateId: string; on
 
                                 {/* Add a form to this step */}
                                 <div className="max-w-xs">
-                                    <SelectBox value="" placeholder={isApp ? "+ Add a consent form…" : "+ Add a form to this step…"} items={isApp ? CONSENT_NAMES : STEP_NAMES} onChange={(nm) => addForm(s.id, idForName(nm))} />
+                                    <SelectBox value="" placeholder={isApp ? "+ Add a consent form…" : "+ Add a form to this module…"} items={isApp ? CONSENT_NAMES : STEP_NAMES} onChange={(nm) => addForm(s.id, idForName(nm))} />
                                 </div>
                             </div>
                         );
                     })}
 
-                    <button type="button" onClick={addStep} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Step</button>
+                    <button type="button" onClick={addStep} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Check Module</button>
                 </div>
             </div>
         </div>

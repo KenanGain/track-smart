@@ -55,7 +55,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "In accordance with the provisions of Section 604 (b)(2)(A) of the Fair Credit Reporting Act, Public Law 91-508, as amended by the Consumer Credit Reporting Act of 1996 (Title II, Subtitle D, Chapter I, of Public Law 104-208), you are being informed that reports verifying your previous employment, previous drug and alcohol test results, and your driving record may be obtained on you for employment purposes. Your employer may obtain this information from Equifax, TransUnion, Experian or other vendors of information services." },
         ],
         signers: FULL_SIGN_BLOCK,
-        sample: { printName: "Jane Doe", ssn: "***-**-4471", date: "2026-05-22", title: "Safety Manager" },
+        sample: { printName: "Jane Doe", ssn: "***-**-4471", date: "2026-06-05", title: "Safety Manager" },
     },
     {
         id: "license-compliance",
@@ -87,7 +87,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { key: "signature", label: "Driver Signature", kind: "sign" },
             { key: "date", label: "Date", kind: "date" },
         ],
-        sample: { licenseNumber: "D1234-5678-90", state: "Illinois", expiration: "2028-05-20", date: "2026-05-22" },
+        sample: { licenseNumber: "D1234-5678-90", state: "Illinois", expiration: "2027-03-04", date: "2026-06-05" },
     },
     {
         id: "on-duty-hours",
@@ -105,7 +105,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { key: "signature", label: "Signature", kind: "sign" },
             { key: "date", label: "Date", kind: "date" },
         ],
-        sample: { driverName: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", lastTime: "18:00", lastOn: "2026-05-21", date: "2026-05-22" },
+        sample: { driverName: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", lastTime: "18:00", lastOn: "2026-05-21", date: "2026-06-05" },
     },
     {
         id: "other-compensated-work",
@@ -122,7 +122,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "I hereby certify that the information given above is true and I understand that once I become employed with this company, if I begin working for any additional employer(s) for compensation that I must inform this company immediately of such employment activity." },
         ],
         signers: SIGN_DATE,
-        sample: { q1: "No", q2: "No", date: "2026-05-22" },
+        sample: { q1: "No", q2: "No", date: "2026-06-05" },
     },
     {
         id: "mvr-release",
@@ -144,7 +144,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { key: "licenseNumber", label: "Driving License #", kind: "text" },
             { key: "state", label: "State", kind: "state" },
         ],
-        sample: { company: "Acme Trucking Inc.", applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", date: "2026-05-22" },
+        sample: { company: "Acme Logistics", applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", date: "2026-06-05" },
     },
     {
         id: "clearinghouse-consent",
@@ -165,7 +165,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { key: "licenseNumber", label: "Driving License #", kind: "text" },
             { key: "state", label: "State", kind: "state" },
         ],
-        sample: { applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", date: "2026-05-22" },
+        sample: { applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", date: "2026-06-05" },
     },
     {
         id: "substance-consent-release",
@@ -191,8 +191,28 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { note: "Failure to sign this form will prevent this employer from using you as a CMV driver." },
         ],
         signers: FULL_SIGN_BLOCK,
-        sample: { q1: "No", q2: "No", q3: "No", printName: "Jane Doe", ssn: "***-**-4471", date: "2026-05-22", title: "Safety Manager" },
+        sample: { q1: "No", q2: "No", q3: "No", printName: "Jane Doe", ssn: "***-**-4471", date: "2026-06-05", title: "Safety Manager" },
     },
 ];
 
 export const THEME_HEX: Record<PolicyTheme, string> = { teal: "#0d9488", blue: "#2563eb", orange: "#ea580c" };
+
+// ── Policy / consent sets per driver type ───────────────────────────────────
+// Only the policy forms are used. US-specific statements (FCRA, MVR release,
+// clearinghouse, substance) apply to US / cross-border drivers; the universal
+// certifications apply to everyone. Report access (PSP / Abstract / CVOR) is
+// collected via the hiring-template forms, not as consent signatures.
+const US_POLICY = ["fcra-disclosure", "mvr-release", "clearinghouse-consent", "substance-consent-release"];
+const UNIVERSAL_POLICY = ["license-compliance", "on-duty-hours", "other-compensated-work"];
+const isCanadaType = (id: string) => id === "canada" || id === "canada-owner-operator";
+
+// Ordered list of policy-form ids for a given application/driver type.
+export function consentsForType(typeId: string): string[] {
+    return isCanadaType(typeId) ? UNIVERSAL_POLICY : [...US_POLICY, ...UNIVERSAL_POLICY];
+}
+
+export function consentDefsForType(typeId: string): PolicyFormDef[] {
+    return consentsForType(typeId)
+        .map((id) => POLICY_FORMS.find((f) => f.id === id))
+        .filter((f): f is PolicyFormDef => Boolean(f));
+}

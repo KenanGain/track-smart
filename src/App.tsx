@@ -480,13 +480,13 @@ function App() {
             return <HiringFormsPage />
         }
         if (path === "/hiring-process/applications") {
-            return <ApplicationsHiringPage onNavigate={handleNavigate} />
+            return <ApplicationsHiringPage onNavigate={handleNavigate} carrierId={selectedAccount?.id} carrierName={selectedAccount?.dbaName ?? selectedAccount?.legalName} />
         }
         if (path.startsWith("/hiring-process/applications/")) {
             return <ApplicantDetailPage applicantId={path.slice("/hiring-process/applications/".length)} onNavigate={handleNavigate} />
         }
         if (path === "/hiring-process/hiring") {
-            return <HiringMonitorPage onNavigate={handleNavigate} />
+            return <HiringMonitorPage onNavigate={handleNavigate} carrierId={selectedAccount?.id} />
         }
         if (path.startsWith("/hiring-process/hiring/")) {
             return <HiringFileDashboard applicantId={path.slice("/hiring-process/hiring/".length)} onBack={() => handleNavigate("/hiring-process/hiring")} />
@@ -506,7 +506,7 @@ function App() {
             return <ApplicationFormPage formId={formId} onNavigate={handleNavigate} />
         }
         if (path === "/settings/hiring-process/hiring") {
-            return <HiringBuilderPage />
+            return <HiringBuilderPage carrierId={selectedAccount?.id} />
         }
         if (path === "/settings/hiring-process/onboarding") {
             return <HiringProcessPlaceholder title="Onboarding Settings" />

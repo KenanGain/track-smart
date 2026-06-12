@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useState } from "react";
-import { ChevronLeft, Download, Printer, RotateCcw, MessageSquarePlus, FileText, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, X } from "lucide-react";
+import { ChevronLeft, ChevronDown, Download, Printer, RotateCcw, MessageSquarePlus, FileText, FileSignature, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, Check, X, Paperclip, Image as ImageIcon } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyBranding } from "../ats/company-branding.data";
 import { useApplicants, formName, formRegion, relativeTime, ACTOR, type Applicant, type SubSection } from "./applicants.data";
+import { consentDefsForType, THEME_HEX } from "./policy-forms.data";
+import { PolicyDocument } from "./PolicyForm";
+import { buildPrefill } from "./application-prefill";
 
 const EVENT_STYLE: Record<string, { Icon: React.ElementType; cls: string }> = {
     invited: { Icon: Send, cls: "bg-blue-100 text-blue-600" },
@@ -24,7 +27,7 @@ import { StatusSelect } from "./ApplicationsHiringPage";
 
 const HP_PATH = "/hiring-process/applications";
 
-type Tab = "data" | "document" | "remarks" | "events";
+type Tab = "data" | "document" | "uploads" | "consent" | "remarks" | "events";
 
 type ThemeKey = "standard" | "compact" | "enhanced" | "bw";
 const THEMES: { key: ThemeKey; name: string }[] = [
@@ -110,7 +113,9 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
 
     const TABS: { key: Tab; label: string; Icon: React.ElementType }[] = [
         { key: "data", label: "Submitted Data", Icon: ClipboardList },
-        { key: "document", label: "Document (PDF)", Icon: FileText },
+        { key: "document", label: "Document View", Icon: FileText },
+        { key: "uploads", label: `Uploaded Documents${a.uploads?.length ? ` (${a.uploads.length})` : ""}`, Icon: Paperclip },
+        { key: "consent", label: `Consent Forms (${consentDefsForType(a.formId).length})`, Icon: FileSignature },
         { key: "events", label: `Event Log${a.events.length ? ` (${a.events.length})` : ""}`, Icon: History },
         { key: "remarks", label: `Remarks${a.remarks.length ? ` (${a.remarks.length})` : ""}`, Icon: MessageSquarePlus },
     ];
@@ -126,7 +131,7 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
 
             {/* Header */}
             <div className="no-print border-b border-slate-200 bg-white">
-                <div className="mx-auto max-w-5xl px-6 pb-0 pt-4">
+                <div className="px-4 pb-0 pt-4 sm:px-6 lg:px-8">
                     <button type="button" onClick={() => onNavigate(HP_PATH)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900">
                         <ChevronLeft className="h-4 w-4" /> Applications
                     </button>
@@ -173,11 +178,11 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                 </div>
             </div>
 
-            <div className="mx-auto max-w-5xl px-6 py-6">
+            <div className="px-4 py-6 sm:px-6 lg:px-8">
                 {/* Submitted data */}
                 {tab === "data" && (
                     hasData ? (
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                             {a.submission!.map((sec) => (
                                 <div key={sec.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                                     <div className="mb-3 flex items-center gap-2">
@@ -239,6 +244,12 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                     )
                 )}
 
+                {/* Uploaded documents */}
+                {tab === "uploads" && <UploadsTab applicant={a} />}
+
+                {/* Consent forms */}
+                {tab === "consent" && <ConsentTab applicant={a} />}
+
                 {/* Event log */}
                 {tab === "events" && (
                     <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -294,6 +305,104 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+// Files the applicant uploaded with their submission (license front/back, etc.).
+function UploadsTab({ applicant }: { applicant: Applicant }) {
+    const ups = applicant.uploads ?? [];
+    if (!ups.length) {
+        return <div className="mx-auto max-w-2xl rounded-xl border border-dashed border-slate-200 bg-white p-12 text-center text-sm text-slate-500">No documents were uploaded with this application.</div>;
+    }
+    const cats = Array.from(new Set(ups.map((u) => u.category)));
+    return (
+        <div className="mx-auto max-w-3xl space-y-6">
+            {cats.map((cat) => {
+                const rows = ups.filter((u) => u.category === cat);
+                return (
+                    <div key={cat}>
+                        <div className="mb-2.5 flex items-center gap-2">
+                            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">{cat}</h3>
+                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-500">{rows.length}</span>
+                        </div>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+                            {rows.map((u) => (
+                                <div key={u.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><ImageIcon className="h-4 w-4" /></div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-semibold text-slate-800">{u.label}</p>
+                                        <p className="truncate text-xs text-slate-400">{u.file}</p>
+                                    </div>
+                                    <button type="button" className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white hover:border-slate-300">View</button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// Read-only review of the applicant's driver-type consent forms.
+function ConsentTab({ applicant }: { applicant: Applicant }) {
+    const [branding] = useCompanyBranding();
+    const [openId, setOpenId] = useState<string | null>(null);
+    const defs = consentDefsForType(applicant.formId);
+    const pf = buildPrefill(applicant);
+    const signed = applicant.status === "submitted" || applicant.status === "under-review" || applicant.status === "approved";
+    const values: Record<string, string> = {
+        company: branding.name,
+        applicant: pf.fullName, printName: pf.fullName, driverName: pf.fullName,
+        ssn: pf.ssn, licenseNumber: pf.licenses[0]?.number ?? "", state: pf.licenses[0]?.authority ?? "",
+        date: applicant.invitedAt,
+    };
+    const sigsFor = (def: (typeof defs)[number]) =>
+        Object.fromEntries(def.signers.filter((s) => s.kind === "sign").map((s) => [s.key, ""]));
+
+    return (
+        <div className="mx-auto max-w-3xl space-y-3">
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-3.5 shadow-sm">
+                <div>
+                    <p className="text-sm font-semibold text-slate-800">Consent &amp; Authorizations</p>
+                    <p className="text-xs text-slate-400">{formName(applicant.formId)} · {defs.length} forms</p>
+                </div>
+                <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", signed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
+                    {signed ? `Signed · ${applicant.invitedAt}` : "Awaiting signature"}
+                </span>
+            </div>
+
+            {defs.map((def, i) => {
+                const isOpen = openId === def.id;
+                const hex = THEME_HEX[def.theme];
+                return (
+                    <div key={def.id} className={cn("overflow-hidden rounded-xl border bg-white shadow-sm", signed ? "border-slate-200" : "border-slate-200")}>
+                        <div className="flex items-center gap-3 px-5 py-3.5">
+                            <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold", signed ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500")}>
+                                {signed ? <Check className="h-4 w-4" /> : i + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-slate-800">{def.title} <span style={{ color: hex }}>{def.accentTitle}</span></p>
+                                <p className="truncate text-xs text-slate-400">{def.blurb}</p>
+                            </div>
+                            <span className={cn("hidden rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-block", signed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
+                                {signed ? "Signed" : "Pending"}
+                            </span>
+                            <button type="button" onClick={() => setOpenId(isOpen ? null : def.id)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                                {isOpen ? "Hide" : "View"} <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} />
+                            </button>
+                        </div>
+                        {isOpen && (
+                            <div className="border-t border-slate-100 bg-slate-50/50 px-5 py-5">
+                                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4">
+                                    <PolicyDocument def={def} values={values} sigs={sigsFor(def)} branding={branding} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }

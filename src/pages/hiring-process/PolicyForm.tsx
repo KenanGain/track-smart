@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { ChevronLeft, Eye, Printer, Download, Sparkles, Check } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -52,7 +52,7 @@ function SignLine({ field, values, sigs }: { field: PolicyField; values: Record<
 }
 
 // ── The printable policy document ───────────────────────────────────────────
-const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; values: Record<string, string>; sigs: Record<string, string>; branding: CompanyBranding }>(
+export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; values: Record<string, string>; sigs: Record<string, string>; branding: CompanyBranding }>(
     ({ def, values, sigs, branding }, ref) => {
         const hex = THEME_HEX[def.theme];
         const total = DAYS.reduce((s, d) => s + (Number(values[`day${d}_hrs`]) || 0), 0);
@@ -149,15 +149,23 @@ const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; values: 
 PolicyDocument.displayName = "PolicyDocument";
 
 // ── The form (edit + preview shell) ─────────────────────────────────────────
-export function PolicyForm({ def, onBack, embedded }: { def: PolicyFormDef; onBack: () => void; embedded?: boolean }) {
+export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValues }: { def: PolicyFormDef; onBack: () => void; embedded?: boolean; sharedSignature?: string; sharedValues?: Record<string, string> }) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
-    const [values, setValues] = useState<Record<string, string>>(() => pf ? {
-        applicant: pf.fullName, printName: pf.fullName, driverName: pf.fullName,
-        ssn: pf.ssn, dob: pf.dob, company: branding.name,
-        licenseNumber: pf.licenses[0]?.number ?? "", state: pf.licenses[0]?.authority ?? "",
-    } : ({} as Record<string, string>));
-    const [sigs, setSigs] = useState<Record<string, string>>({});
+    const signKeys = def.signers.filter((s) => s.kind === "sign").map((s) => s.key);
+    const [values, setValues] = useState<Record<string, string>>(() => ({
+        ...(pf ? {
+            applicant: pf.fullName, printName: pf.fullName, driverName: pf.fullName,
+            ssn: pf.ssn, dob: pf.dob, company: branding.name,
+            licenseNumber: pf.licenses[0]?.number ?? "", state: pf.licenses[0]?.authority ?? "",
+        } : { company: branding.name }),
+        ...sharedValues,
+    }));
+    const [sigs, setSigs] = useState<Record<string, string>>(() => sharedSignature ? Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) : {});
+    // When the parent shares a signature / values (e.g. "sign once → all forms"),
+    // merge them in without wiping anything the driver edited per-form.
+    useEffect(() => { if (sharedValues) setValues((v) => ({ ...v, ...sharedValues })); }, [sharedValues]);
+    useEffect(() => { if (sharedSignature) setSigs((s) => ({ ...s, ...Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) })); }, [sharedSignature]);
     const [preview, setPreview] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const docRef = useRef<HTMLDivElement>(null);

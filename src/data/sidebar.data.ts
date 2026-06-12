@@ -169,13 +169,13 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             {
                 key: "settings-hiring-process",
-                label: "Hiring Process",
+                label: "Hiring Setup",
                 icon: Workflow,
                 badge: "New",
                 children: [
-                    { key: "settings-hiring-process-applications", label: "Applications", icon: Briefcase, path: "/settings/hiring-process/applications", badge: "New" },
-                    { key: "settings-hiring-process-hiring", label: "Hiring", icon: Users, path: "/settings/hiring-process/hiring", badge: "New" },
-                    { key: "settings-hiring-process-onboarding", label: "Onboarding", icon: UserPlus, path: "/settings/hiring-process/onboarding", badge: "New" },
+                    { key: "settings-hiring-process-applications", label: "Application Form", icon: FileText, path: "/settings/hiring-process/applications", badge: "New" },
+                    { key: "settings-hiring-process-hiring", label: "Workflows", icon: Workflow, path: "/settings/hiring-process/hiring", badge: "New" },
+                    { key: "settings-hiring-process-onboarding", label: "Onboarding Setup", icon: UserPlus, path: "/settings/hiring-process/onboarding", badge: "New" },
                 ],
             },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },

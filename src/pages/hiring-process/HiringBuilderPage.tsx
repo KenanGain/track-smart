@@ -15,10 +15,13 @@ import { useHiringTemplates, totalForms, driverTypeName, type HiringTemplate } f
 // Forms built so far. (Form builders are wired up per form as we add them.)
 const FORMS = [
     { id: "driver-license", name: "Driver License Submission", desc: "License details with front/back upload, endorsements, restrictions, and multiple licenses.", Icon: CreditCard, accent: "bg-blue-50 text-blue-600" },
-    { id: "driver-abstract", name: "Driver Abstract / MVR", desc: "Driving record (MVR in the US, Abstract / CVOR in Canada) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-emerald-50 text-emerald-600" },
+    { id: "mvr", name: "MVR — Motor Vehicle Record", desc: "US state driving record (MVR) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-emerald-50 text-emerald-600" },
+    { id: "driver-abstract", name: "Driver Abstract / CVOR", desc: "Canadian province driving abstract (Ontario CVOR, Alberta 5-Year, …) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-rose-50 text-rose-600" },
     { id: "employment-verification", name: "Employment Verification", desc: "Consolidated previous-employer reference (§391.23 / §40.25) — rating, safety evaluation, signatures and completed-response upload.", Icon: FileSignature, accent: "bg-violet-50 text-violet-600" },
     { id: "road-test", name: "Road Test Evaluation", desc: "FMCSA §391.31 road test — driver & equipment, scored sections with checklists, and certification.", Icon: ClipboardCheck, accent: "bg-amber-50 text-amber-600" },
-    { id: "screening-reports", name: "PSP / CVDR / CDA", desc: "Driver screening reports for US-only and cross-border drivers — PSP, CVDR or CDA with report PDF, crashes and inspections.", Icon: ShieldCheck, accent: "bg-sky-50 text-sky-600" },
+    { id: "psp", name: "PSP — Pre-Employment Screening", desc: "FMCSA Pre-Employment Screening Program — 5-year crash · 3-year inspection history, with report PDF.", Icon: ShieldCheck, accent: "bg-sky-50 text-sky-600" },
+    { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", desc: "Canadian commercial vehicle driver record with report PDF, crashes and inspections.", Icon: ShieldCheck, accent: "bg-indigo-50 text-indigo-600" },
+    { id: "cda", name: "CDA — Commercial Driver Abstract", desc: "Commercial driver abstract with report PDF, crashes and inspections.", Icon: ShieldCheck, accent: "bg-teal-50 text-teal-600" },
     { id: "criminal-background", name: "Criminal Background Check", desc: "Consent, scope and results of the criminal background check, with report upload and signature.", Icon: ShieldAlert, accent: "bg-rose-50 text-rose-600" },
     { id: "substance-testing", name: "Substance Testing", desc: "DOT / non-DOT drug & alcohol test (49 CFR Part 40) — collection, lab, result, lab-report upload and consent.", Icon: FlaskConical, accent: "bg-purple-50 text-purple-600" },
     { id: "dot-verification", name: "DOT / Employment Verification", desc: "Previous DOT employer verification — §40.25 drug & alcohol history, §391.23 accidents, signature and response upload.", Icon: BadgeCheck, accent: "bg-teal-50 text-teal-600" },
@@ -41,29 +44,29 @@ const FORMS = [
 
 type Tab = "forms" | "policy" | "templates" | "checklists";
 
-export function HiringBuilderPage() {
+export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
     const [tab, setTab] = useState<Tab>("forms");
     const [flash, setFlash] = useState<string | null>(null);
     const [openForm, setOpenForm] = useState<string | null>(null);
     const [editTemplate, setEditTemplate] = useState<string | null>(null);
     const [testTemplate, setTestTemplate] = useState<HiringTemplate | null>(null);
     const [editChecklist, setEditChecklist] = useState<string | null>(null);
-    const { templates, remove: removeTemplate } = useHiringTemplates();
+    const { templates, remove: removeTemplate } = useHiringTemplates(carrierId);
     const { checklists, remove: removeChecklist } = useChecklists();
 
     if (testTemplate) return <TemplateTester template={testTemplate} onBack={() => setTestTemplate(null)} />;
-    if (editTemplate !== null) return <TemplateBuilder templateId={editTemplate} onBack={() => setEditTemplate(null)} />;
+    if (editTemplate !== null) return <TemplateBuilder templateId={editTemplate} carrierId={carrierId} onBack={() => setEditTemplate(null)} />;
     if (editChecklist !== null) return <ChecklistBuilder checklistId={editChecklist} onBack={() => setEditChecklist(null)} />;
     if (openForm !== null) return <HiringFormView formId={openForm} onBack={() => setOpenForm(null)} />;
 
     const TABS: { key: Tab; label: string; Icon: React.ElementType; count: number }[] = [
         { key: "forms", label: "Forms", Icon: FileText, count: FORMS.length },
         { key: "policy", label: "Policy", Icon: FileSignature, count: POLICY_FORMS.length },
-        { key: "templates", label: "Templates", Icon: LayoutTemplate, count: templates.length },
+        { key: "templates", label: "Workflows", Icon: LayoutTemplate, count: templates.length },
         { key: "checklists", label: "Checklists", Icon: ListChecks, count: checklists.length },
     ];
     const tabCount = tab === "forms" ? FORMS.length : tab === "policy" ? POLICY_FORMS.length : tab === "templates" ? templates.length : checklists.length;
-    const tabLabel = tab === "forms" ? "Forms" : tab === "policy" ? "Policy & Signature Forms" : tab === "templates" ? "Templates" : "Approval Checklists";
+    const tabLabel = tab === "forms" ? "Forms" : tab === "policy" ? "Policy & Signature Forms" : tab === "templates" ? "Hiring Workflows" : "Approval Checklists";
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -71,9 +74,9 @@ export function HiringBuilderPage() {
             <div className="border-b border-slate-200 bg-white">
                 <div className="mx-auto max-w-5xl px-6 py-6">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Hiring Process · Setup</p>
-                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">Forms &amp; Template Builder</h1>
+                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">Forms &amp; Workflow Builder</h1>
                     <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                        Set up the forms applicants complete, then combine them into reusable hiring templates.
+                        Set up the forms applicants complete, then sequence them into reusable hiring workflows — License Check, Employment Check, and more.
                     </p>
                 </div>
             </div>
@@ -119,7 +122,7 @@ export function HiringBuilderPage() {
                                         );
                                     }}
                                 >
-                                    <Plus className="h-4 w-4" /> {tab === "forms" ? "New Form" : tab === "policy" ? "New Policy" : tab === "templates" ? "New Template" : "New Checklist"}
+                                    <Plus className="h-4 w-4" /> {tab === "forms" ? "New Form" : tab === "policy" ? "New Policy" : tab === "templates" ? "New Workflow" : "New Checklist"}
                                 </Button>
                             </div>
                         </div>
@@ -216,7 +219,7 @@ export function HiringBuilderPage() {
                                         <div className="flex shrink-0 flex-wrap justify-end gap-2">
                                             <Button variant="outline" size="sm" onClick={() => setTestTemplate(t)}><FlaskConical className="h-4 w-4" /> Test</Button>
                                             <Button variant="outline" size="sm" onClick={() => setEditTemplate(t.id)}>Edit</Button>
-                                            {!t.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete template “${t.name}”?`)) removeTemplate(t.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
+                                            {!t.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete workflow “${t.name}”?`)) removeTemplate(t.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
                                         </div>
                                     </div>
                                 ))}
@@ -226,12 +229,12 @@ export function HiringBuilderPage() {
                                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-500">
                                     <LayoutTemplate className="h-7 w-7" />
                                 </div>
-                                <h3 className="mt-5 text-base font-semibold text-slate-700">No templates yet</h3>
+                                <h3 className="mt-5 text-base font-semibold text-slate-700">No workflows yet</h3>
                                 <p className="mt-1.5 max-w-md text-sm text-slate-500">
-                                    Templates combine your forms into a hiring workflow and define the order of steps.
+                                    A workflow sequences your forms into named check modules — License Check, Employment Check, and more — in the order the hiring file runs.
                                 </p>
                                 <Button className="mt-5" onClick={() => setEditTemplate("new")}>
-                                    <Plus className="h-4 w-4" /> New Template
+                                    <Plus className="h-4 w-4" /> New Workflow
                                 </Button>
                             </div>
                         )}
@@ -239,7 +242,7 @@ export function HiringBuilderPage() {
                 </div>
 
                 <p className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
-                    <Check className="h-3.5 w-3.5" /> Build forms first, then templates. The builders are set up in the next step.
+                    <Check className="h-3.5 w-3.5" /> Build forms first, then workflows. The builders are set up in the next step.
                 </p>
             </div>
         </div>

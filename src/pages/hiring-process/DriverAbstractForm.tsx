@@ -57,12 +57,14 @@ const regionMeta = (r: Region) => r === "Canada"
     ? { Icon: Leaf, accent: "text-rose-600 bg-rose-50", title: "Canada — Driver Abstract / CVOR" }
     : { Icon: Flag, accent: "text-blue-600 bg-blue-50", title: "United States — Motor Vehicle Record (MVR)" };
 
-export function DriverAbstractForm({ onBack, embedded }: { onBack: () => void; embedded?: boolean }) {
+export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () => void; embedded?: boolean; variant?: "mvr" | "abstract" }) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
-    const [mode, setMode] = useState(() => (pf?.country === "Canada" ? "Canada" : "United States"));
+    // When a variant is given the form is locked to a single country (MVR = US, Abstract = Canada).
+    const lockedRegion: Region | null = variant === "mvr" ? "United States" : variant === "abstract" ? "Canada" : null;
+    const [mode, setMode] = useState<string>(() => lockedRegion ?? (pf?.country === "Canada" ? "Canada" : "United States"));
     const [records, setRecords] = useState<DrivingRecord[]>(() => {
-        const country = pf?.country === "Canada" ? "Canada" : "United States";
+        const country = lockedRegion ?? (pf?.country === "Canada" ? "Canada" : "United States");
         return [{ ...newRecord(country), licenseNumber: pf?.licenses[0]?.number ?? "", authority: pf?.licenses[0]?.authority ?? "" }];
     });
 
@@ -78,8 +80,7 @@ export function DriverAbstractForm({ onBack, embedded }: { onBack: () => void; e
     const setRecord = (i: number, patch: Partial<DrivingRecord>) => setRecords((l) => l.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
     const fillSample = () => {
-        setMode("Cross-Border (US & Canada)");
-        setRecords([
+        const sample: DrivingRecord[] = [
             {
                 ...newRecord("United States"), authority: "Illinois", recordType: "Motor Vehicle Record (MVR)", licenseNumber: "D1234-5678-90", status: "Violations on record",
                 primary: { issueDate: "2026-05-20", pdf: "" }, orderNumber: "MVR-55210", searchDateTime: "2026-05-20T09:15", dateIssued: "2026-05-20", dateReceived: "2026-05-21",
@@ -93,7 +94,10 @@ export function DriverAbstractForm({ onBack, embedded }: { onBack: () => void; e
                 hasViolations: true, violations: [{ date: "2023-08-03", description: "Failure to obey traffic control device", points: "2", location: "Ontario" }],
                 hasAccidents: true, accidents: [{ date: "2023-06-18", description: "Rear-end collision, minor damage", atFault: "No" }],
             },
-        ]);
+        ];
+        if (lockedRegion) { setRecords(sample.filter((r) => r.region === lockedRegion)); return; }
+        setMode("Cross-Border (US & Canada)");
+        setRecords(sample);
     };
 
     const downloadPdf = async () => {
@@ -144,15 +148,19 @@ export function DriverAbstractForm({ onBack, embedded }: { onBack: () => void; e
         <>
             <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Info className="h-4 w-4" /></div>
-                <p className="text-sm text-slate-600">Choose the issuing province/state and the record types update to that jurisdiction’s products. A <span className="font-medium text-slate-700">cross-border</span> driver supplies <span className="font-medium text-slate-700">both</span> a US MVR and a Canadian abstract.</p>
+                <p className="text-sm text-slate-600">{lockedRegion
+                    ? <>Choose the issuing {lockedRegion === "Canada" ? "province" : "state"} and the record types update to that jurisdiction’s products.</>
+                    : <>Choose the issuing province/state and the record types update to that jurisdiction’s products. A <span className="font-medium text-slate-700">cross-border</span> driver supplies <span className="font-medium text-slate-700">both</span> a US MVR and a Canadian abstract.</>}</p>
             </div>
 
-            {/* Mode */}
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <Field label="Driver operates in" required hint="Cross-border drivers must provide a record for each country.">
-                    <SelectBox value={mode} items={MODES} onChange={onMode} />
-                </Field>
-            </div>
+            {/* Mode — hidden when the form is locked to one country via `variant`. */}
+            {!lockedRegion && (
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <Field label="Driver operates in" required hint="Cross-border drivers must provide a record for each country.">
+                        <SelectBox value={mode} items={MODES} onChange={onMode} />
+                    </Field>
+                </div>
+            )}
 
             {/* Records */}
             {records.map((r, i) => {

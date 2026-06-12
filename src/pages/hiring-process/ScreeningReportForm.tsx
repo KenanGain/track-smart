@@ -41,9 +41,11 @@ const newReport = (type = REPORT_TYPES[0]): Report => ({
     hasCrashes: false, crashes: [], hasInspections: false, inspections: [],
 });
 
-export function ScreeningReportForm({ onBack, embedded }: { onBack: () => void; embedded?: boolean }) {
+export function ScreeningReportForm({ onBack, embedded, fixedType }: { onBack: () => void; embedded?: boolean; fixedType?: string }) {
     const [branding] = useCompanyBranding();
-    const [reports, setReports] = useState<Report[]>([newReport()]);
+    // When `fixedType` is set the form is locked to a single product (PSP / CVDR / CDA).
+    const [reports, setReports] = useState<Report[]>([newReport(fixedType ?? REPORT_TYPES[0])]);
+    const shortType = (fixedType ?? "").split(" ")[0];
 
     const [preview, setPreview] = useState(false);
     const [theme, setTheme] = useState<ThemeKey>("standard");
@@ -52,21 +54,23 @@ export function ScreeningReportForm({ onBack, embedded }: { onBack: () => void; 
 
     const setReport = (i: number, patch: Partial<Report>) => setReports((l) => l.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-    const fillSample = () => setReports([
-        {
+    const fillSample = () => {
+        const pspSample: Report = {
             ...newReport("PSP — Pre-Employment Screening Program"), reportNumber: "PSP-2026-554120", issueDate: "2026-05-20",
             orderNumber: "ORD-77410", searchDateTime: "2026-05-20T09:15", dateReceived: "2026-05-21",
             crashesCount: "1", inspectionsCount: "6", violationsCount: "3", oosCount: "0",
             hasCrashes: true, crashes: [{ date: "2023-06-18", state: "Illinois", description: "Rear-end, non-preventable, no injuries", tow: "No", fatalInjury: "None" }],
             hasInspections: true, inspections: [{ date: "2024-02-11", level: "Level I — Full", state: "Indiana", oos: "No", description: "Logbook form & manner — minor" }],
-        },
-        {
-            ...newReport("CVDR — Commercial Vehicle Driver Record"), authority: "Ontario", reportNumber: "CVDR-Ontario-99214", issueDate: "2026-05-18", yearsCovered: "5 years",
+        };
+        const otherSample: Report = {
+            ...newReport(fixedType && !isPspType(fixedType) ? fixedType : "CVDR — Commercial Vehicle Driver Record"), authority: "Ontario", reportNumber: "CVDR-Ontario-99214", issueDate: "2026-05-18", yearsCovered: "5 years",
             orderNumber: "ORD-99214", searchDateTime: "2026-05-18T10:30", dateReceived: "2026-05-19",
             crashesCount: "0", inspectionsCount: "2", violationsCount: "1", oosCount: "0",
             hasInspections: true, inspections: [{ date: "2023-08-03", level: "Level II — Walk-Around", state: "Ontario", oos: "No", description: "Minor — marker lamp" }],
-        },
-    ]);
+        };
+        if (fixedType) { setReports([isPspType(fixedType) ? pspSample : otherSample]); return; }
+        setReports([pspSample, otherSample]);
+    };
 
     const downloadPdf = async () => {
         const el = docRef.current;
@@ -105,7 +109,9 @@ export function ScreeningReportForm({ onBack, embedded }: { onBack: () => void; 
         <>
             <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Info className="h-4 w-4" /></div>
-                <p className="text-sm text-slate-600">For <span className="font-medium text-slate-700">US-only</span> and <span className="font-medium text-slate-700">cross-border</span> drivers. The US <span className="font-medium text-slate-700">PSP</span> is the FMCSA Pre-Employment Screening report (5-year crash · 3-year inspection); add a <span className="font-medium text-slate-700">CVDR / CDA</span> for the Canadian side. Add a report for each.</p>
+                <p className="text-sm text-slate-600">{fixedType
+                    ? <>Capture the <span className="font-medium text-slate-700">{fixedType}</span> — its summary, the report PDF, and crash / inspection detail.</>
+                    : <>For <span className="font-medium text-slate-700">US-only</span> and <span className="font-medium text-slate-700">cross-border</span> drivers. The US <span className="font-medium text-slate-700">PSP</span> is the FMCSA Pre-Employment Screening report (5-year crash · 3-year inspection); add a <span className="font-medium text-slate-700">CVDR / CDA</span> for the Canadian side. Add a report for each.</>}</p>
             </div>
 
             {reports.map((r, i) => {
@@ -118,12 +124,12 @@ export function ScreeningReportForm({ onBack, embedded }: { onBack: () => void; 
                                 <Button variant="ghost" size="sm" className="h-7 text-rose-500 hover:text-rose-600" onClick={() => setReports((l) => l.filter((_, idx) => idx !== i))}><Trash2 className="h-3.5 w-3.5" /> Remove</Button>
                             )}
                         </div>
-                        <ReportCard value={r} onChange={(patch) => setReport(i, patch)} isPsp={isPsp} />
+                        <ReportCard value={r} onChange={(patch) => setReport(i, patch)} isPsp={isPsp} locked={!!fixedType} />
                     </div>
                 );
             })}
 
-            <button type="button" onClick={() => setReports((l) => [...l, newReport("CVDR — Commercial Vehicle Driver Record")])} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Another Report</button>
+            {!fixedType && <button type="button" onClick={() => setReports((l) => [...l, newReport("CVDR — Commercial Vehicle Driver Record")])} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Another Report</button>}
         </>
     );
 
@@ -170,7 +176,7 @@ export function ScreeningReportForm({ onBack, embedded }: { onBack: () => void; 
                 <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
                     <div>
                         <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Hiring Process · Form</p>
-                        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-slate-900"><ShieldCheck className="h-6 w-6 text-blue-600" /> PSP / CVDR / CDA</h1>
+                        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-slate-900"><ShieldCheck className="h-6 w-6 text-blue-600" /> {fixedType ? shortType : "PSP / CVDR / CDA"}</h1>
                     </div>
 
                     {editBody}
@@ -188,7 +194,7 @@ export function ScreeningReportForm({ onBack, embedded }: { onBack: () => void; 
 }
 
 // ----------------------------- one report -----------------------------
-function ReportCard({ value, onChange, isPsp }: { value: Report; onChange: (patch: Partial<Report>) => void; isPsp: boolean }) {
+function ReportCard({ value, onChange, isPsp, locked }: { value: Report; onChange: (patch: Partial<Report>) => void; isPsp: boolean; locked?: boolean }) {
     const setCrash = (i: number, patch: Partial<Crash>) => onChange({ crashes: value.crashes.map((c, idx) => (idx === i ? { ...c, ...patch } : c)) });
     const setIns = (i: number, patch: Partial<Inspection>) => onChange({ inspections: value.inspections.map((c, idx) => (idx === i ? { ...c, ...patch } : c)) });
     const onType = (t: string) => onChange({ type: t, authority: isPspType(t) ? FMCSA : "", yearsCovered: isPspType(t) ? PSP_YEARS : "3 years" });
@@ -199,7 +205,7 @@ function ReportCard({ value, onChange, isPsp }: { value: Report; onChange: (patc
             <div>
                 <h3 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">Report Details</h3>
                 <Grid>
-                    <Field label="Report Type" required><SelectBox value={value.type} items={REPORT_TYPES} onChange={onType} /></Field>
+                    {!locked && <Field label="Report Type" required><SelectBox value={value.type} items={REPORT_TYPES} onChange={onType} /></Field>}
                     <Field label="Report Number" required><Input placeholder="Enter number…" value={value.reportNumber} onChange={(e) => onChange({ reportNumber: e.target.value })} /></Field>
                     <Field label="Issuing Authority" required>
                         {isPsp ? <Input value={value.authority} disabled /> : <SelectBox value={value.authority} placeholder="State / Province" items={STATES_PROVINCES} onChange={(v) => onChange({ authority: v })} />}
