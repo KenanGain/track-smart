@@ -33,20 +33,20 @@ function StepPlaceholder({ title, desc, onBack }: { title: string; desc: string;
 
 /** Renders the right form component for any catalog id. Always returns an element.
  *  `embedded` strips the admin chrome so the form renders inline as the applicant sees it. */
-export function HiringFormView({ formId, onBack, embedded }: { formId: string; onBack: () => void; embedded?: boolean }) {
-    if (formId === "driver-license") return <DriverLicenseForm onBack={onBack} embedded={embedded} />;
-    if (formId === "mvr") return <DriverAbstractForm variant="mvr" onBack={onBack} embedded={embedded} />;
-    if (formId === "driver-abstract") return <DriverAbstractForm variant="abstract" onBack={onBack} embedded={embedded} />;
+export function HiringFormView({ formId, onBack, embedded, startPreview, onSignOff }: { formId: string; onBack: () => void; embedded?: boolean; startPreview?: boolean; onSignOff?: () => void }) {
+    if (formId === "driver-license") return <DriverLicenseForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "mvr") return <DriverAbstractForm variant="mvr" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
+    if (formId === "driver-abstract") return <DriverAbstractForm variant="abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "employment-verification") return <EmploymentVerificationForm onBack={onBack} embedded={embedded} />;
-    if (formId === "psp") return <ScreeningReportForm fixedType="PSP — Pre-Employment Screening Program" onBack={onBack} embedded={embedded} />;
-    if (formId === "cvdr") return <ScreeningReportForm fixedType="CVDR — Commercial Vehicle Driver Record" onBack={onBack} embedded={embedded} />;
-    if (formId === "cda") return <ScreeningReportForm fixedType="CDA — Commercial Driver Abstract" onBack={onBack} embedded={embedded} />;
-    if (formId === "criminal-background") return <CriminalBackgroundForm onBack={onBack} embedded={embedded} />;
-    if (formId === "substance-testing") return <SubstanceTestingForm onBack={onBack} embedded={embedded} />;
-    if (formId === "dot-verification") return <DotVerificationForm onBack={onBack} embedded={embedded} />;
-    if (formId === "medical-card") return <MedicalCardForm onBack={onBack} embedded={embedded} />;
-    if (formId === "annual-review") return <AnnualReviewForm onBack={onBack} embedded={embedded} />;
-    if (formId === "clearinghouse-query") return <ClearinghouseQueryForm onBack={onBack} embedded={embedded} />;
+    if (formId === "psp") return <ScreeningReportForm fixedType="PSP — Pre-Employment Screening Program" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
+    if (formId === "cvdr") return <ScreeningReportForm fixedType="CVDR — Commercial Vehicle Driver Record" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
+    if (formId === "cda") return <ScreeningReportForm fixedType="CDA — Commercial Driver Abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
+    if (formId === "criminal-background") return <CriminalBackgroundForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "substance-testing") return <SubstanceTestingForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "dot-verification") return <DotVerificationForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "medical-card") return <MedicalCardForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "annual-review") return <AnnualReviewForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "clearinghouse-query") return <ClearinghouseQueryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
 
     const policyDef = POLICY_FORMS.find((p) => p.id === formId);
     if (policyDef) return <PolicyForm def={policyDef} onBack={onBack} embedded={embedded} />;

@@ -58,6 +58,19 @@ export type SubSection = { title: string; groups: SubGroup[] };  // a section ma
 
 // Per-document state inside the hiring file (keyed by the step's form id).
 export type DocStatus = "pending" | "requested" | "received" | "verified" | "skipped";
+
+// A recorded reviewer sign-off (who reviewed a form/section, when, with signature).
+export type ReviewSignoff = { by: string; role: string; date: string; sig: string; at: number };
+
+// Per-step review lifecycle: initial → waiting for review → reviewed → complete / incomplete
+export type StepStatus = "initial" | "waiting" | "reviewed" | "complete" | "incomplete";
+export const STEP_STATUS_META: Record<StepStatus, { label: string; tone: string; dot: string }> = {
+    initial:    { label: "Initial",            tone: "bg-slate-100 text-slate-600",     dot: "bg-slate-400" },
+    waiting:    { label: "Waiting for review", tone: "bg-amber-100 text-amber-700",     dot: "bg-amber-500" },
+    reviewed:   { label: "Reviewed",           tone: "bg-blue-100 text-blue-700",       dot: "bg-blue-500" },
+    complete:   { label: "Complete",           tone: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+    incomplete: { label: "Incomplete",         tone: "bg-rose-100 text-rose-700",       dot: "bg-rose-500" },
+};
 export const DOC_STATUS_META: Record<DocStatus, { label: string; badge: string; dot: string }> = {
     pending: { label: "Pending", badge: "bg-slate-100 text-slate-500", dot: "bg-slate-300" },
     requested: { label: "Requested", badge: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
@@ -105,7 +118,10 @@ export type Applicant = {
     events: AppEvent[];          // activity log — newest first
     currentStep?: number;        // index into the template's steps
     docs?: Record<string, DocStatus>;  // hiring-file item state, keyed by form id / upload id / doc id
+    stepStatus?: Record<string, StepStatus>;  // per-step review lifecycle, keyed by step id
+    reviews?: Record<string, ReviewSignoff>;   // reviewer sign-offs, keyed by target (e.g. "application", "consents")
     docSource?: Record<string, "driver" | "employer">;  // per item: driver-uploaded vs ask-from-employer
+    employerDocModes?: Record<string, "off" | "upload" | "ask">;  // per verification-doc type, from the application builder
     requests?: AppRequest[];     // open / resolved requests raised on the file
     empChecks?: EmpCheck[];      // employment-verification state per previous employer
     checklistState?: { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> }; // review checklist fill state
@@ -127,6 +143,7 @@ type Profile = {
     licenses: Lic[];
     drivingExperience?: DrivExp[];
     employment: Emp[];
+    unemployment?: { dates: string; comments: string }[];
     education: Edu[];
     record: Rec[];          // accidents + violations
     signedAt: string;
@@ -196,6 +213,13 @@ function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" 
                 ...(e.verifications ? [{ label: "Verification (ask at hiring)", value: e.verifications }] : []),
             ],
         })) : [naGroup("Employment")] },
+        { title: "Unemployment History", groups: p.unemployment?.length ? p.unemployment.map((u, i) => ({
+            label: p.unemployment!.length > 1 ? `Period ${i + 1}` : undefined,
+            fields: [
+                { label: "Dates", value: u.dates },
+                { label: "Comments", value: u.comments },
+            ],
+        })) : [{ fields: [{ label: "Unemployment", value: "None reported" }] }] },
         { title: "Education", groups: p.education.length ? p.education.map((s, i) => ({
             label: p.education.length > 1 ? `School ${i + 1}` : undefined,
             fields: [
@@ -251,7 +275,7 @@ const NOW = Date.now();
 
 const SEED: Applicant[] = [
     seedApplicant(
-        { id: "a1", firstName: "Jane", lastName: "Doe", email: "jane.doe@example.com", formId: "us", carrier: "Acme Logistics", carrierId: "acct-001", template: "Complete Driver Hiring (Default)", status: "under-review", stepsDone: 12, stepsTotal: 12, invitedAt: "Jun 2, 2026", updatedAt: NOW - 6 * H, position: "OTR Driver", phone: "(312) 555-0148" },
+        { id: "a1", firstName: "Jane", lastName: "Doe", email: "jane.doe@example.com", formId: "us", carrier: "Acme Logistics", carrierId: "acct-001", template: "Complete Driver Hiring (Default)", status: "under-review", stepsDone: 12, stepsTotal: 12, invitedAt: "Jun 2, 2026", updatedAt: NOW - 6 * H, position: "OTR Driver", phone: "(312) 555-0148", employerDocModes: { performance: "upload", experience: "upload", insurance: "ask" } },
         {
             phone: "(312) 555-0148", dob: "03/14/1988", idNumber: "***-**-4471",
             addresses: [
@@ -269,6 +293,7 @@ const SEED: Applicant[] = [
                 { employer: "Roadrunner Freight", position: "OTR Driver", dates: "01-2021 - 03-2024", reason: "Career advancement", verifications: "Performance Verification, Experience Letter" },
                 { employer: "Prairie Haul Co.", position: "Regional Driver", dates: "05-2018 - 12-2020", reason: "Relocated", verifications: "Experience Letter" },
             ],
+            unemployment: [{ dates: "01-2021 - 04-2021", comments: "Short gap between roles while relocating." }],
             education: [{ school: "Lincoln Technical Institute", study: "Diesel Mechanics", dates: "2019 - 2020" }],
             record: [
                 { label: "Accident (2023)", detail: "Minor rear-end, not at fault, no injuries" },
@@ -354,7 +379,7 @@ const SEED: Applicant[] = [
     ),
 ];
 
-const KEY = "hp_applicants_v7";
+const KEY = "hp_applicants_v9";
 
 function read(): Applicant[] {
     if (typeof window === "undefined") return SEED;

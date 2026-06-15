@@ -1,23 +1,16 @@
 import { forwardRef, useRef, useState } from "react";
-import { ChevronLeft, Plus, Trash2, UploadCloud, CornerDownRight, CreditCard, Info, Eye, Printer, Download, Sparkles } from "lucide-react";
+import { ChevronLeft, CreditCard, Info, Eye, Printer, Download, Sparkles, Check, AlertCircle, FileText } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCompanyBranding } from "../ats/company-branding.data";
-import { COUNTRIES, STATES_PROVINCES, US_STATES, CA_PROVINCES } from "./ApplicationSettingsPage";
 import { usePrefill } from "./application-prefill";
-
-// License class and licensing authority both depend on the country.
-const US_CLASSES = ["Class A", "Class B", "Class C", "Class D (Non-CDL)"];
-const CA_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"];
-const classesFor = (country: string) => (country === "Canada" ? CA_CLASSES : US_CLASSES);
-const authoritiesFor = (country: string) => (country === "Canada" ? CA_PROVINCES : US_STATES);
+import { SignaturePad } from "./FormKit";
 
 type ThemeKey = "standard" | "compact" | "enhanced" | "bw";
 const THEMES: { key: ThemeKey; name: string }[] = [
@@ -33,167 +26,116 @@ const THEMES: { key: ThemeKey; name: string }[] = [
  * restrictions) and any prior licenses held in the last 3 years.
  */
 
-const ENDORSEMENTS = [
-    "H - Placarded Hazmat",
-    "N - Tank Vehicles",
-    "P - Passengers",
-    "S - School Bus",
-    "T - Double/Triple Trailers",
-    "X - Placarded Hazmat & Tank Vehicles",
-    "AZ - Tractor-trailer with air-brake",
-];
-
-const RESTRICTIONS = [
-    "B - Corrective Lenses",
-    "C - Mechanical aid",
-    "D - Prosthetic aid",
-    "E - The driver may only operate a commercial vehicle with an automatic transmission.",
-    "F - An outside mirror is required on the commercial vehicle",
-    "G - The driver of a commercial vehicle is only allowed to operate during daylight hours",
-    "H - Hazardous-materials prohibition (U.S. only)",
-    "K - Drivers are authorized to drive a commercial vehicle within the state of issue (intrastate) only",
-    "L - Drivers are restricted from operating a commercial vehicle with air brakes",
-    "M - CDL-A holders may operate CDL-B school buses only",
-    "N - CDL-A and CDL-B holders may operate CDL-C school buses only",
-    "O - Driver limited to pintle hook trailers only",
-    "V - Medical variance required",
-    "Z - No full air-brake equipped CMV",
-];
-
-const DISQ_TYPES = ["Suspension", "Revocation", "Disqualification", "Denial"];
-
 type License = {
-    number: string; country: string; authority: string; cls: string;
+    number: string; country: string; authority: string; cls: string; cdl: string;
     issueDate: string; expDate: string; front: string; back: string;
     hasEndorsements: boolean; endorsements: string[];
     hasRestrictions: boolean; restrictions: string[];
 };
 
 type Suspension = { type: string; date: string; state: string; reason: string; reinstated: string };
-const newSuspension = (): Suspension => ({ type: "", date: "", state: "", reason: "", reinstated: "" });
 
 const newLicense = (): License => ({
-    number: "", country: "United States", authority: "", cls: "",
+    number: "", country: "United States", authority: "", cls: "", cdl: "",
     issueDate: "", expDate: "", front: "", back: "",
     hasEndorsements: false, endorsements: [],
     hasRestrictions: false, restrictions: [],
 });
 
-// ----------------------------- primitives -----------------------------
-function Field({ label, required, children, className }: { label: string; required?: boolean; children: React.ReactNode; className?: string }) {
-    return (
-        <div className={className}>
-            <Label className="text-slate-700">{label}{required && <span className="text-rose-500"> *</span>}</Label>
-            <div className="mt-1.5">{children}</div>
-        </div>
-    );
-}
+// ----------------------------- review primitives -----------------------------
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
-function Grid({ children }: { children: React.ReactNode }) {
-    return <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">{children}</div>;
-}
-
-function SelectBox({ value, onChange, items, placeholder }: { value: string; onChange: (v: string) => void; items: string[]; placeholder?: string }) {
-    return (
-        <ShadSelect value={value} onValueChange={onChange}>
-            <SelectTrigger><SelectValue placeholder={placeholder ?? "Select..."} /></SelectTrigger>
-            <SelectContent>{items.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
-        </ShadSelect>
-    );
-}
-
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (b: boolean) => void }) {
-    return (
-        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-            <span className="text-sm font-semibold text-slate-800">{label}</span>
-            <Switch checked={checked} onCheckedChange={onChange} />
-        </div>
-    );
-}
-
-function RevealPanel({ title, children }: { title?: string; children: React.ReactNode }) {
-    return (
-        <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-5">
-            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-blue-600"><CornerDownRight className="h-3.5 w-3.5" /> Please provide the details</p>
-            {title && <p className="mt-2 text-sm font-semibold text-slate-800">{title}</p>}
-            <div className="mt-3 space-y-2">{children}</div>
-        </div>
-    );
-}
-
-function CheckRows({ items, selected, onToggle }: { items: string[]; selected: string[]; onToggle: (v: string) => void }) {
-    return (
-        <>
-            {items.map((it) => (
-                <label key={it} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300">
-                    <Checkbox checked={selected.includes(it)} onCheckedChange={() => onToggle(it)} />
-                    <span>{it}</span>
-                </label>
-            ))}
-        </>
-    );
-}
-
-function UploadBox({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-    const ref = useRef<HTMLInputElement>(null);
-    const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const f = e.target.files?.[0];
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => onChange(String(reader.result));
-        reader.readAsDataURL(f);
-    };
+// A read-only field — label + boxed value.
+function RoField({ label, value }: { label: string; value: string }) {
     return (
         <div>
-            <Label className="text-slate-700">{label}</Label>
-            <div className="mt-1.5">
-                {value ? (
-                    <div className="relative overflow-hidden rounded-lg border border-slate-200">
-                        <img src={value} alt={label} className="h-40 w-full object-cover" />
-                        <button type="button" onClick={() => onChange("")} className="absolute right-2 top-2 rounded-md bg-white/90 p-1.5 text-slate-500 shadow hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                ) : (
-                    <button type="button" onClick={() => ref.current?.click()} className="flex h-40 w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-slate-400 transition hover:border-blue-300 hover:text-blue-500">
-                        <UploadCloud className="h-6 w-6" />
-                        <span className="text-sm font-medium">Upload {label.toLowerCase()}</span>
-                        <span className="text-xs">PNG or JPG</span>
-                    </button>
-                )}
-                <input ref={ref} type="file" accept="image/*" className="hidden" onChange={onFile} />
+            <label className="mb-1 block text-xs font-semibold text-slate-500">{label}</label>
+            <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm text-slate-800">{value || <span className="text-slate-300">—</span>}</div>
+        </div>
+    );
+}
+
+// An uploaded license-image tile (front / back) with a View option.
+function ReviewImageTile({ title, filename, src, onView }: { title: string; filename: string; src: string; onView: () => void }) {
+    return (
+        <div>
+            <p className="mb-1 text-xs font-semibold text-slate-500">{title}</p>
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500 shadow-sm"><FileText className="h-5 w-5" /></div>
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{src ? "Uploaded image" : filename}</p>
+                    <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3.5 w-3.5" /> Uploaded</p>
+                </div>
+                <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={onView}><Eye className="h-3.5 w-3.5" /> View</Button>
             </div>
         </div>
     );
 }
 
-function LicenseCard({ value, onChange }: { value: License; onChange: (patch: Partial<License>) => void }) {
-    const set = (patch: Partial<License>) => onChange(patch);
-    const toggle = (key: "endorsements" | "restrictions", item: string) =>
-        set({ [key]: value[key].includes(item) ? value[key].filter((x) => x !== item) : [...value[key], item] } as Partial<License>);
-
+// A single ✓/! review-checklist line.
+function CheckLine({ ok, label }: { ok: boolean; label: string }) {
     return (
-        <div className="space-y-5">
-            <Grid>
-                <Field label="License Number" required><Input value={value.number} onChange={(e) => set({ number: e.target.value })} /></Field>
-                <Field label="Country" required><SelectBox value={value.country} items={COUNTRIES} onChange={(v) => set({ country: v, cls: "", authority: "" })} /></Field>
-                <Field label={value.country === "Canada" ? "Licensing Authority (Province)" : "Licensing Authority (State)"} required><SelectBox value={value.authority} placeholder="Please choose" items={authoritiesFor(value.country)} onChange={(v) => set({ authority: v })} /></Field>
-                <Field label="License Class" required><SelectBox value={value.cls} placeholder="Select class" items={classesFor(value.country)} onChange={(v) => set({ cls: v })} /></Field>
-                <Field label="Issue Date"><Input type="date" value={value.issueDate} onChange={(e) => set({ issueDate: e.target.value })} /></Field>
-                <Field label="Expiration Date" required><Input type="date" value={value.expDate} onChange={(e) => set({ expDate: e.target.value })} /></Field>
-            </Grid>
+        <li className="flex items-center gap-2 text-sm">
+            {ok ? <Check className="h-4 w-4 shrink-0 text-emerald-500" /> : <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />}
+            <span className={ok ? "text-slate-700" : "text-amber-700"}>{label}</span>
+        </li>
+    );
+}
 
-            <Grid>
-                <UploadBox label="Front of License" value={value.front} onChange={(v) => set({ front: v })} />
-                <UploadBox label="Back of License" value={value.back} onChange={(v) => set({ back: v })} />
-            </Grid>
-
-            <ToggleRow label="Have Endorsements?" checked={value.hasEndorsements} onChange={(v) => set({ hasEndorsements: v })} />
-            {value.hasEndorsements && (
-                <RevealPanel title="Endorsements"><CheckRows items={ENDORSEMENTS} selected={value.endorsements} onToggle={(it) => toggle("endorsements", it)} /></RevealPanel>
+// Remarks & comments (local to this preview).
+function ReviewRemarks() {
+    const [draft, setDraft] = useState("");
+    const [items, setItems] = useState<{ id: number; text: string }[]>([]);
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Remarks &amp; Comments</p>
+            <div className="mt-2 flex gap-2">
+                <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="Add a remark or comment…" className="resize-none" />
+                <Button size="sm" className="self-end" disabled={!draft.trim()} onClick={() => { setItems((l) => [{ id: l.length, text: draft.trim() }, ...l]); setDraft(""); }}>Add</Button>
+            </div>
+            {items.length > 0 && (
+                <div className="mt-3 space-y-2">
+                    {items.map((r) => (
+                        <div key={r.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-[13px] text-slate-700">{r.text}</div>
+                    ))}
+                </div>
             )}
+        </div>
+    );
+}
 
-            <ToggleRow label="Have Restriction?" checked={value.hasRestrictions} onChange={(v) => set({ hasRestrictions: v })} />
-            {value.hasRestrictions && (
-                <RevealPanel title="Restrictions"><CheckRows items={RESTRICTIONS} selected={value.restrictions} onToggle={(it) => toggle("restrictions", it)} /></RevealPanel>
+// Reviewer sign-off — name / role / date / signature (local to this preview).
+function ReviewSignOff() {
+    const [name, setName] = useState("");
+    const [role, setRole] = useState("Hiring Manager");
+    const [date, setDate] = useState(todayISO());
+    const [sig, setSig] = useState("");
+    const [done, setDone] = useState(false);
+    return (
+        <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Reviewer Sign-Off</p>
+            <h3 className="mt-0.5 text-base font-semibold text-slate-900">I have reviewed the driver license(s) above.</h3>
+            <p className="mt-1 text-sm text-slate-500">Confirm you have reviewed the form above. Your name, title, date and signature are recorded on file.</p>
+            {done ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                    <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> Licenses reviewed &amp; signed</p>
+                    <div className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                        <p><span className="text-slate-500">Reviewed by:</span> <span className="font-semibold text-slate-800">{name}</span></p>
+                        <p><span className="text-slate-500">Title:</span> <span className="font-semibold text-slate-800">{role}</span></p>
+                        <p><span className="text-slate-500">Date:</span> <span className="font-semibold text-slate-800">{date}</span></p>
+                    </div>
+                    {sig && <div className="mt-3"><span className="text-sm text-slate-500">Signature:</span><img src={sig} alt="signature" className="mt-1 h-16 rounded border border-slate-200 bg-white" /></div>}
+                </div>
+            ) : (
+                <>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Reviewer name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></div>
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Title / role</Label><Input value={role} onChange={(e) => setRole(e.target.value)} /></div>
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                    </div>
+                    <div className="mt-4"><Label className="mb-1 block text-xs font-semibold text-slate-600">Signature</Label><SignaturePad onChange={setSig} /></div>
+                    <Button className="mt-4" disabled={!sig || !name.trim()} onClick={() => setDone(true)}><Check className="h-4 w-4" /> Confirm review &amp; sign</Button>
+                </>
             )}
         </div>
     );
@@ -210,6 +152,7 @@ const licRows = (l: License) => [
     { label: "Licensing Authority", value: v(l.authority) },
     { label: "Issue Date", value: v(l.issueDate) },
     { label: "Expiration Date", value: v(l.expDate) },
+    { label: "Commercial (CDL)", value: v(l.cdl) },
     { label: "Endorsements", value: endText(l) },
     { label: "Restrictions", value: resText(l) },
 ];
@@ -348,24 +291,21 @@ const LicenseDocument = forwardRef<HTMLDivElement, DocProps>(function LicenseDoc
 });
 
 // ----------------------------- form -----------------------------
-export function DriverLicenseForm({ onBack, embedded }: { onBack: () => void; embedded?: boolean }) {
+export function DriverLicenseForm({ onBack, embedded, startPreview }: { onBack: () => void; embedded?: boolean; startPreview?: boolean }) {
     const pf = usePrefill();
     const [licenses, setLicenses] = useState<License[]>(() =>
         pf?.licenses.length
-            ? pf.licenses.map((l) => ({ ...newLicense(), number: l.number, cls: l.cls, authority: l.authority, expDate: l.exp, country: pf.country || "United States" }))
+            ? pf.licenses.map((l) => ({ ...newLicense(), number: l.number, cls: l.cls, authority: l.authority, cdl: l.cdl, expDate: l.exp, country: pf.country || "United States" }))
             : [newLicense()]);
     const [hasDisq, setHasDisq] = useState(false);
     const [disqDetails, setDisqDetails] = useState("");
     const [suspensions, setSuspensions] = useState<Suspension[]>([]);
 
-    const setLic = (i: number, patch: Partial<License>) =>
-        setLicenses((list) => list.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-    const setSusp = (i: number, patch: Partial<Suspension>) =>
-        setSuspensions((list) => list.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+    const [docView, setDocView] = useState<{ label: string; src: string } | null>(null);
 
     // Preview / PDF
     const [branding] = useCompanyBranding();
-    const [preview, setPreview] = useState(false);
+    const [preview, setPreview] = useState(Boolean(startPreview));
     const [theme, setTheme] = useState<ThemeKey>("standard");
     const [downloading, setDownloading] = useState(false);
     const docRef = useRef<HTMLDivElement>(null);
@@ -400,13 +340,13 @@ export function DriverLicenseForm({ onBack, embedded }: { onBack: () => void; em
     const fillSample = () => {
         setLicenses([
             {
-                number: "D1234-5678-90", country: "United States", authority: "Illinois", cls: "Class A",
+                number: "D1234-5678-90", country: "United States", authority: "Illinois", cls: "Class A", cdl: "Yes",
                 issueDate: "2022-03-04", expDate: "2027-03-04", front: "", back: "",
                 hasEndorsements: true, endorsements: ["H - Placarded Hazmat", "N - Tank Vehicles"],
                 hasRestrictions: true, restrictions: ["B - Corrective Lenses"],
             },
             {
-                number: "D9988-1122-33", country: "United States", authority: "Indiana", cls: "Class B",
+                number: "D9988-1122-33", country: "United States", authority: "Indiana", cls: "Class B", cdl: "Yes",
                 issueDate: "2018-06-01", expDate: "2022-05-30", front: "", back: "",
                 hasEndorsements: false, endorsements: [], hasRestrictions: false, restrictions: [],
             },
@@ -454,97 +394,98 @@ export function DriverLicenseForm({ onBack, embedded }: { onBack: () => void; em
                     <LicenseDocument ref={docRef} licenses={licenses} hasDisq={hasDisq} disqDetails={disqDetails} suspensions={suspensions} theme={theme} branding={branding} />
                 </div>
             ) : (
-            <div className={embedded ? "space-y-6" : "mx-auto max-w-3xl space-y-6 px-6 py-6"}>
+            <div className={embedded ? "space-y-6" : "mx-auto max-w-4xl space-y-6 px-6 py-6"}>
                 <div className={embedded ? "hidden" : undefined}>
-                    <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Hiring Process · Form</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Hiring Process · License Review</p>
                     <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-slate-900"><CreditCard className="h-6 w-6 text-blue-600" /> Driver License Submission</h1>
                 </div>
 
                 <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600"><Info className="h-4 w-4" /></div>
-                    <p className="text-sm text-amber-800">These licenses were carried over from the applicant’s submitted application. Review each one, upload clear photos of the front and back, and add any others.</p>
+                    <p className="text-sm text-amber-800">These licenses were carried over from the applicant’s submitted application. Review each one, confirm the details and uploaded images, then sign off below.</p>
                 </div>
 
-                {/* Licenses (one or more) */}
-                <div>
-                    <h2 className="border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">Driver Licenses</h2>
-                    <p className="mb-3 mt-2 text-sm text-slate-500">Provide your current license and any others you have held within the last 3 years. Use <span className="font-medium text-slate-700">Add Another License</span> for each one.</p>
-                    <div className="space-y-5">
-                        {licenses.map((l, i) => (
-                            <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div className="mb-4 flex items-center justify-between">
-                                    <span className="text-sm font-semibold text-slate-700">License {i + 1}</span>
-                                    {licenses.length > 1 && (
-                                        <Button variant="ghost" size="sm" className="h-7 text-rose-500 hover:text-rose-600" onClick={() => setLicenses((list) => list.filter((_, idx) => idx !== i))}>
-                                            <Trash2 className="h-3.5 w-3.5" /> Remove
-                                        </Button>
-                                    )}
+                {/* Read-only license cards */}
+                {licenses.map((l, i) => {
+                    const rows = [
+                        { label: "License Number", value: l.number }, { label: "Country", value: l.country },
+                        { label: "Licensing Authority", value: l.authority }, { label: "License Class", value: l.cls },
+                        { label: "Issue Date", value: l.issueDate }, { label: "Expiration Date", value: l.expDate },
+                        { label: "Commercial (CDL)", value: l.cdl }, { label: "Endorsements", value: l.endorsements.join(", ") || (l.hasEndorsements ? "Yes" : "None") },
+                    ];
+                    return (
+                        <div key={i} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{i + 1}</span>
+                                    <h2 className="text-sm font-bold text-slate-800">License {i + 1}{l.number ? ` · ${l.number}` : ""}</h2>
                                 </div>
-                                <LicenseCard value={l} onChange={(patch) => setLic(i, patch)} />
+                                {l.cls && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{l.cls}</span>}
                             </div>
-                        ))}
-                        <button type="button" onClick={() => setLicenses((list) => [...list, newLicense()])} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50">
-                            <Plus className="h-4 w-4" /> Add Another License
-                        </button>
-                    </div>
-                </div>
-
-                {/* License disqualification */}
-                <div>
-                    <h2 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">License Disqualification Details</h2>
-                    <ToggleRow
-                        label="Have you ever been denied, suspended, revoked, or disqualified from a license, permit, or privilege to operate a motor vehicle?"
-                        checked={hasDisq}
-                        onChange={setHasDisq}
-                    />
-                    {hasDisq && (
-                        <div className="mt-5">
-                            <RevealPanel>
-                                <div className="space-y-5">
-                                    <div>
-                                        <Label className="text-slate-700">Details</Label>
-                                        <Input className="mt-1.5" value={disqDetails} onChange={(e) => setDisqDetails(e.target.value)} />
-                                        <p className="mt-1 text-xs text-slate-400">Briefly describe what happened.</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-800">Suspensions / Revocations</p>
-                                        <div className="mt-3 space-y-4">
-                                            {suspensions.map((s, i) => (
-                                                <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                                                    <div className="mb-4 flex items-center justify-between">
-                                                        <span className="text-sm font-semibold text-slate-700">{s.type || `Entry ${i + 1}`}</span>
-                                                        <Button variant="ghost" size="sm" className="h-7 text-rose-500 hover:text-rose-600" onClick={() => setSuspensions((list) => list.filter((_, idx) => idx !== i))}>
-                                                            <Trash2 className="h-3.5 w-3.5" /> Remove
-                                                        </Button>
-                                                    </div>
-                                                    <Grid>
-                                                        <Field label="Type" required><SelectBox value={s.type} placeholder="Select" items={DISQ_TYPES} onChange={(v) => setSusp(i, { type: v })} /></Field>
-                                                        <Field label="Date" required><Input type="date" value={s.date} onChange={(e) => setSusp(i, { date: e.target.value })} /></Field>
-                                                        <Field label="State / Province"><SelectBox value={s.state} placeholder="Please choose" items={STATES_PROVINCES} onChange={(v) => setSusp(i, { state: v })} /></Field>
-                                                        <Field label="Reinstatement Date"><Input type="date" value={s.reinstated} onChange={(e) => setSusp(i, { reinstated: e.target.value })} /></Field>
-                                                    </Grid>
-                                                    <Field className="mt-5" label="Reason"><Input value={s.reason} onChange={(e) => setSusp(i, { reason: e.target.value })} /></Field>
-                                                </div>
-                                            ))}
-                                            <button type="button" onClick={() => setSuspensions((list) => [...list, newSuspension()])} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-violet-300 bg-white px-4 py-3 text-sm font-semibold text-violet-600 transition hover:bg-violet-50">
-                                                <Plus className="h-4 w-4" /> Suspensions / Revocations
-                                            </button>
-                                            <p className="mt-2 text-xs text-slate-500">Add each suspension, revocation, or disqualification using the &ldquo;+&rdquo; button.</p>
-                                        </div>
+                            <div className="space-y-6 p-5">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    {rows.map((r, ri) => <RoField key={ri} label={r.label} value={r.value} />)}
+                                </div>
+                                <div>
+                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Uploaded Documents</p>
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <ReviewImageTile title="Front of License" filename={`license-${i + 1}-front.jpg`} src={l.front} onView={() => setDocView({ label: `License ${i + 1} — Front`, src: l.front })} />
+                                        <ReviewImageTile title="Back of License" filename={`license-${i + 1}-back.jpg`} src={l.back} onView={() => setDocView({ label: `License ${i + 1} — Back`, src: l.back })} />
                                     </div>
                                 </div>
-                            </RevealPanel>
+                            </div>
                         </div>
-                    )}
-                </div>
+                    );
+                })}
 
-                {/* Footer */}
-                <div className={cn(embedded ? "hidden" : "flex", "justify-end gap-3 border-t border-slate-200 pt-5")}>
-                    <Button variant="outline" onClick={onBack}>Cancel</Button>
-                    <Button variant="outline" onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> Preview</Button>
-                    <Button>Save license</Button>
-                </div>
+                {/* Review checklist */}
+                {licenses.length > 0 && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review checklist</p>
+                        {licenses.map((l, i) => {
+                            const checks = [
+                                { label: "Front of license uploaded", ok: true }, { label: "Back of license uploaded", ok: true },
+                                { label: "License number provided", ok: !!l.number }, { label: "Issue date provided", ok: !!l.issueDate },
+                                { label: "Expiration date provided", ok: !!l.expDate }, { label: "License class specified", ok: !!l.cls },
+                            ];
+                            return (
+                                <div key={i} className="mt-2">
+                                    {licenses.length > 1 && <p className="mb-1 text-sm font-semibold text-slate-700">License {i + 1}</p>}
+                                    <ul className="grid gap-1.5 sm:grid-cols-2">{checks.map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Remarks & comments */}
+                {licenses.length > 0 && <ReviewRemarks />}
+
+                {/* Reviewer sign-off */}
+                {licenses.length > 0 && <ReviewSignOff />}
             </div>
+            )}
+
+            {/* Uploaded-document preview */}
+            {docView && (
+                <Dialog open onOpenChange={(o) => { if (!o) setDocView(null); }}>
+                    <DialogContent className="max-w-2xl p-0">
+                        <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><Eye className="h-4 w-4" /></span> {docView.label}</DialogTitle>
+                        </DialogHeader>
+                        <div className="p-6">
+                            {docView.src ? (
+                                <img src={docView.src} alt={docView.label} className="mx-auto max-h-[60vh] rounded-lg border border-slate-200" />
+                            ) : (
+                                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 py-16 text-center">
+                                    <FileText className="h-10 w-10 text-slate-300" />
+                                    <p className="text-sm font-semibold text-slate-600">{docView.label}</p>
+                                    <p className="text-xs text-slate-400">Image preview unavailable in this prototype.</p>
+                                </div>
+                            )}
+                        </div>
+                    </DialogContent>
+                </Dialog>
             )}
         </div>
     );

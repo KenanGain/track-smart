@@ -1,7 +1,10 @@
 import { useRef, useState } from "react";
-import { UploadCloud, CornerDownRight, Trash2, FileText, X } from "lucide-react";
+import { UploadCloud, CornerDownRight, Trash2, FileText, X, Check, AlertCircle, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -206,32 +209,33 @@ export function PdfUpload({ value, onChange }: { value: string; onChange: (v: st
     const read = (f: File) => { setName(f.name); const r = new FileReader(); r.onload = () => onChange(String(r.result)); r.readAsDataURL(f); };
     const onFile = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) read(f); };
     const onDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) read(f); };
+    if (value) {
+        return (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm"><FileText className="h-5 w-5" /></div>
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{name || "Attached file"}</p>
+                    <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3.5 w-3.5" /> Uploaded</p>
+                </div>
+                <button type="button" onClick={() => ref.current?.click()} className="shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">Replace</button>
+                <button type="button" onClick={() => { onChange(""); setName(""); }} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-white hover:text-rose-500"><X className="h-4 w-4" /></button>
+                <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={onFile} />
+            </div>
+        );
+    }
     return (
-        <div
+        <button
+            type="button"
+            onClick={() => ref.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={onDrop}
-            className="rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/30 p-6"
+            className="group flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 px-6 py-7 text-center transition hover:border-blue-300 hover:bg-blue-50/40"
         >
-            <div className="flex flex-col items-center gap-2 text-center">
-                <UploadCloud className="h-7 w-7 text-slate-300" />
-                {value ? (
-                    <div className="flex items-center gap-2 text-sm">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        <span className="font-medium text-slate-700">{name || "Attached file"}</span>
-                        <button type="button" onClick={() => { onChange(""); setName(""); }} className="text-slate-400 hover:text-rose-500"><X className="h-4 w-4" /></button>
-                    </div>
-                ) : (
-                    <>
-                        <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => ref.current?.click()} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Choose File</button>
-                            <span className="text-sm text-slate-400">No file chosen</span>
-                        </div>
-                        <button type="button" onClick={() => ref.current?.click()} className="text-sm font-medium text-blue-600 hover:underline">Or Drag It Here.</button>
-                    </>
-                )}
-            </div>
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-50 text-blue-500 transition group-hover:bg-blue-100"><UploadCloud className="h-5 w-5" /></span>
+            <span className="text-sm text-slate-600"><span className="font-semibold text-blue-600">Click to upload</span> or drag &amp; drop</span>
+            <span className="text-xs text-slate-400">PDF or image · up to 10MB</span>
             <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={onFile} />
-        </div>
+        </button>
     );
 }
 
@@ -264,6 +268,128 @@ export function DocumentsUpload({ label, hint, value, onChange }: { label: strin
                 </button>
             </div>
             <input ref={ref} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={onFiles} />
+        </div>
+    );
+}
+
+// ── Read-only review primitives (shared by the License / MVR review steps) ──────
+export function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+
+/** A read-only field — label + boxed value. */
+export function RoField({ label, value }: { label: string; value: string }) {
+    return (
+        <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">{label}</label>
+            <div className="min-h-[38px] rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm text-slate-800">{value || <span className="text-slate-300">—</span>}</div>
+        </div>
+    );
+}
+
+/** An uploaded-document tile with a View action, or a "not provided" placeholder. */
+export function ReviewDocTile({ title, filename, uploaded, onView }: { title: string; filename: string; uploaded: boolean; onView: () => void }) {
+    if (!uploaded) {
+        return (
+            <div>
+                <p className="mb-1 text-xs font-semibold text-slate-500">{title}</p>
+                <div className="flex items-center gap-3 rounded-xl border border-dashed border-amber-300 bg-amber-50/40 p-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-amber-400 shadow-sm"><UploadCloud className="h-5 w-5" /></div>
+                    <div><p className="text-sm font-semibold text-amber-700">Not provided</p><p className="text-xs text-amber-600">No document on file</p></div>
+                </div>
+            </div>
+        );
+    }
+    return (
+        <div>
+            <p className="mb-1 text-xs font-semibold text-slate-500">{title}</p>
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500 shadow-sm"><FileText className="h-5 w-5" /></div>
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800">{filename}</p>
+                    <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3.5 w-3.5" /> Uploaded</p>
+                </div>
+                <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={onView}><Eye className="h-3.5 w-3.5" /> View</Button>
+            </div>
+        </div>
+    );
+}
+
+/** A single ✓ / ! review-checklist line. */
+export function CheckLine({ ok, label }: { ok: boolean; label: string }) {
+    return (
+        <li className="flex items-center gap-2 text-sm">
+            {ok ? <Check className="h-4 w-4 shrink-0 text-emerald-500" /> : <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />}
+            <span className={ok ? "text-slate-700" : "text-amber-700"}>{label}</span>
+        </li>
+    );
+}
+
+/** Remarks & comments block (local state). */
+export type RemarkItem = { id: number; text: string };
+
+/** Remarks & comments. Optionally controlled via value/onChange so the parent can
+ *  surface the remarks in a PDF document; falls back to internal state otherwise. */
+export function ReviewRemarks({ value, onChange }: { value?: RemarkItem[]; onChange?: (v: RemarkItem[]) => void } = {}) {
+    const [draft, setDraft] = useState("");
+    const [internal, setInternal] = useState<RemarkItem[]>([]);
+    const items = value ?? internal;
+    const setItems = (next: RemarkItem[]) => { if (onChange) onChange(next); else setInternal(next); };
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Remarks &amp; Comments</p>
+            <div className="mt-2 flex gap-2">
+                <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="Add a remark or comment…" className="resize-none" />
+                <Button size="sm" className="self-end" disabled={!draft.trim()} onClick={() => { setItems([{ id: items.length, text: draft.trim() }, ...items]); setDraft(""); }}>Add</Button>
+            </div>
+            {items.length > 0 && (
+                <div className="mt-3 space-y-2">
+                    {items.map((r) => <div key={r.id} className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-[13px] text-slate-700">{r.text}</div>)}
+                </div>
+            )}
+        </div>
+    );
+}
+
+export type SignOffData = { name: string; role: string; date: string; sig: string; done: boolean };
+export const newSignOff = (): SignOffData => ({ name: "", role: "Hiring Manager", date: todayISO(), sig: "", done: false });
+
+/** Reviewer sign-off — name / role / date / signature. Optionally controlled via
+ *  value/onChange so the parent can include the signed data in a PDF document. */
+export function ReviewSignOff({ heading, value, onChange }: { heading: string; value?: SignOffData; onChange?: (v: SignOffData) => void }) {
+    const [internal, setInternal] = useState<SignOffData>(newSignOff);
+    const data = value ?? internal;
+    const patch = (p: Partial<SignOffData>) => { const next = { ...data, ...p }; if (onChange) onChange(next); else setInternal(next); };
+    const { name, role, date, sig, done } = data;
+    const setName = (v: string) => patch({ name: v });
+    const setRole = (v: string) => patch({ role: v });
+    const setDate = (v: string) => patch({ date: v });
+    const setSig = (v: string) => patch({ sig: v });
+    const setDone = (v: boolean) => patch({ done: v });
+    return (
+        <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Reviewer Sign-Off</p>
+            <h3 className="mt-0.5 text-base font-semibold text-slate-900">{heading}</h3>
+            <p className="mt-1 text-sm text-slate-500">Confirm you have reviewed the form above. Your name, title, date and signature are recorded on file.</p>
+            {done ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                    <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> Reviewed &amp; signed</p>
+                    <div className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                        <p><span className="text-slate-500">Reviewed by:</span> <span className="font-semibold text-slate-800">{name}</span></p>
+                        <p><span className="text-slate-500">Title:</span> <span className="font-semibold text-slate-800">{role}</span></p>
+                        <p><span className="text-slate-500">Date:</span> <span className="font-semibold text-slate-800">{date}</span></p>
+                    </div>
+                    {sig && <div className="mt-3"><span className="text-sm text-slate-500">Signature:</span><img src={sig} alt="signature" className="mt-1 h-16 rounded border border-slate-200 bg-white" /></div>}
+                </div>
+            ) : (
+                <>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Reviewer name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></div>
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Title / role</Label><Input value={role} onChange={(e) => setRole(e.target.value)} /></div>
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                    </div>
+                    <div className="mt-4"><Label className="mb-1 block text-xs font-semibold text-slate-600">Signature</Label><SignaturePad onChange={setSig} /></div>
+                    <Button className="mt-4" disabled={!sig || !name.trim()} onClick={() => setDone(true)}><Check className="h-4 w-4" /> Confirm review &amp; sign</Button>
+                </>
+            )}
         </div>
     );
 }

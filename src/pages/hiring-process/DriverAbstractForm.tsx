@@ -1,15 +1,15 @@
 import { useRef, useState } from "react";
-import { ChevronLeft, Plus, Trash2, Eye, Printer, Download, Sparkles, Info, FileSearch, Flag, Leaf } from "lucide-react";
+import { ChevronLeft, Eye, Printer, Download, Sparkles, Info, FileSearch } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCompanyBranding } from "../ats/company-branding.data";
-import { US_STATES, CA_PROVINCES } from "./ApplicationSettingsPage";
-import { recordTypesFor, isCommercialType, US_MVR_TYPES } from "./abstract-records.data";
+import { US_STATES, CA_PROVINCES, InlineCollector, ViolationFields, AccidentFields, newIncident, newAccident as newAppAccident, violationCard, violationTitle, accidentCard, type Incident, type Accident as AppAccident } from "./ApplicationSettingsPage";
+import { US_MVR_TYPES } from "./abstract-records.data";
 import { usePrefill } from "./application-prefill";
-import { Field, Grid, SelectBox, ToggleRow, RevealPanel, PdfUpload } from "./FormKit";
+import { Field, Grid, SelectBox, ToggleRow, RevealPanel, PdfUpload, CheckLine, ReviewRemarks, ReviewSignOff, newSignOff, type RemarkItem, type SignOffData } from "./FormKit";
 import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocument";
 
 /**
@@ -21,8 +21,6 @@ import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocu
  * issuing authority, so each province/state shows its own products.
  */
 
-const STATUSES = ["Clear — no violations", "Violations on record", "Under review"];
-const SAFETY_RATINGS = ["Satisfactory", "Satisfactory — Unaudited", "Conditional", "Unsatisfactory"];
 const MODES = ["United States", "Canada", "Cross-Border (US & Canada)"];
 
 type Region = "United States" | "Canada";
@@ -32,8 +30,6 @@ type Abstract = { issueDate: string; pdf: string };
 const newAbstract = (): Abstract => ({ issueDate: "", pdf: "" });
 type Violation = { date: string; description: string; points: string; location: string };
 type Accident = { date: string; description: string; atFault: string };
-const newViolation = (): Violation => ({ date: "", description: "", points: "", location: "" });
-const newAccident = (): Accident => ({ date: "", description: "", atFault: "" });
 
 type DrivingRecord = {
     region: Region; authority: string; recordType: string; licenseNumber: string; status: string;
@@ -53,22 +49,33 @@ const newRecord = (region: Region): DrivingRecord => ({
     hasViolations: false, violations: [], hasAccidents: false, accidents: [],
 });
 
-const regionMeta = (r: Region) => r === "Canada"
-    ? { Icon: Leaf, accent: "text-rose-600 bg-rose-50", title: "Canada — Driver Abstract / CVOR" }
-    : { Icon: Flag, accent: "text-blue-600 bg-blue-50", title: "United States — Motor Vehicle Record (MVR)" };
-
-export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () => void; embedded?: boolean; variant?: "mvr" | "abstract" }) {
+export function DriverAbstractForm({ onBack, embedded, variant, startPreview, onSignOff }: { onBack: () => void; embedded?: boolean; variant?: "mvr" | "abstract"; startPreview?: boolean; onSignOff?: () => void }) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
     // When a variant is given the form is locked to a single country (MVR = US, Abstract = Canada).
     const lockedRegion: Region | null = variant === "mvr" ? "United States" : variant === "abstract" ? "Canada" : null;
+    const formTitle = variant === "mvr" ? "Motor Vehicle Record (MVR)" : variant === "abstract" ? "Driver Abstract" : "Driver Abstract / MVR";
     const [mode, setMode] = useState<string>(() => lockedRegion ?? (pf?.country === "Canada" ? "Canada" : "United States"));
     const [records, setRecords] = useState<DrivingRecord[]>(() => {
         const country = lockedRegion ?? (pf?.country === "Canada" ? "Canada" : "United States");
         return [{ ...newRecord(country), licenseNumber: pf?.licenses[0]?.number ?? "", authority: pf?.licenses[0]?.authority ?? "" }];
     });
 
-    const [preview, setPreview] = useState(false);
+    // Shared application Violation & Accident forms.
+    const [hasVr, setHasVr] = useState(false);
+    const [vrIncidents, setVrIncidents] = useState<Incident[]>([]);
+    const [hasAcc, setHasAcc] = useState(false);
+    const [vrAccidents, setVrAccidents] = useState<AppAccident[]>([]);
+
+    // Record summary (drives the review checklist).
+    const [summary, setSummary] = useState({ medicalExpiry: "", airBrake: "", roadTestClassA: "", demeritPoints: "", accidents: "", violations: "", inspections: "", outOfService: "" });
+    const setSum = (patch: Partial<typeof summary>) => setSummary((s) => ({ ...s, ...patch }));
+
+    // Review remarks + reviewer sign-off — lifted here so they appear in the PDF document.
+    const [remarks, setRemarks] = useState<RemarkItem[]>([]);
+    const [signoff, setSignoff] = useState<SignOffData>(newSignOff());
+
+    const [preview, setPreview] = useState(Boolean(startPreview));
     const [theme, setTheme] = useState<ThemeKey>("standard");
     const [downloading, setDownloading] = useState(false);
     const docRef = useRef<HTMLDivElement>(null);
@@ -83,13 +90,13 @@ export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () =
         const sample: DrivingRecord[] = [
             {
                 ...newRecord("United States"), authority: "Illinois", recordType: "Motor Vehicle Record (MVR)", licenseNumber: "D1234-5678-90", status: "Violations on record",
-                primary: { issueDate: "2026-05-20", pdf: "" }, orderNumber: "MVR-55210", searchDateTime: "2026-05-20T09:15", dateIssued: "2026-05-20", dateReceived: "2026-05-21",
+                primary: { issueDate: "2026-05-20", pdf: "uploaded" }, orderNumber: "MVR-55210", searchDateTime: "2026-05-20T09:15", dateIssued: "2026-05-20", dateReceived: "2026-05-21",
                 abstractNumber: "IL-MVR-77410", abstractIssueDate: "2026-05-20",
                 hasViolations: true, violations: [{ date: "2024-02-11", description: "Speeding 12 mph over limit", points: "3", location: "Illinois" }],
             },
             {
                 ...newRecord("Canada"), authority: "Ontario", recordType: "CVOR Abstract (Commercial)", licenseNumber: "O123-45678-90123", status: "Violations on record",
-                primary: { issueDate: "2026-05-18", pdf: "" }, additional: { issueDate: "2026-05-18", pdf: "" }, orderNumber: "ORD-99214", searchDateTime: "2026-05-18T10:30", dateIssued: "2026-05-18", dateReceived: "2026-05-19",
+                primary: { issueDate: "2026-05-18", pdf: "uploaded" }, additional: { issueDate: "2026-05-18", pdf: "" }, orderNumber: "ORD-99214", searchDateTime: "2026-05-18T10:30", dateIssued: "2026-05-18", dateReceived: "2026-05-19",
                 abstractNumber: "CVOR-7741203", abstractIssueDate: "2026-05-18", carrierName: "Northwind Transport", safetyRating: "Satisfactory",
                 hasViolations: true, violations: [{ date: "2023-08-03", description: "Failure to obey traffic control device", points: "2", location: "Ontario" }],
                 hasAccidents: true, accidents: [{ date: "2023-06-18", description: "Rear-end collision, minor damage", atFault: "No" }],
@@ -119,38 +126,74 @@ export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () =
         } finally { setDownloading(false); }
     };
 
-    const fmtDateTime = (s: string) => (s ? s.replace("T", " ") : "");
     const recordSections = (r: DrivingRecord, prefixed: boolean): DocSection[] => {
         const isCanada = r.region === "Canada";
-        const isCvor = isCommercialType(r.recordType);
         const authLabel = isCanada ? "Issuing Province" : "Issuing State";
         const pointsLabel = isCanada ? "Demerit Points" : "Points";
         const attached = (a: Abstract) => (a.pdf ? "Attached" : "Not attached");
         const p = prefixed ? `${isCanada ? "CA" : "US"} · ` : "";
         return [
-            { title: `${p}Driving Record`, groups: [{ rows: [{ label: "Country", value: r.region }, { label: authLabel, value: r.authority }, { label: "Record / Abstract Type", value: r.recordType }, { label: "License Number", value: r.licenseNumber }, { label: "Status", value: r.status }] }] },
-            {
-                title: `${p}Driver ${isCanada ? "Abstract" : "MVR"} (PDF)`,
-                groups: [
-                    { label: "Primary", rows: [{ label: "Issue Date", value: r.primary.issueDate }, { label: "Document", value: attached(r.primary) }] },
-                    ...(r.additional.issueDate || r.additional.pdf ? [{ label: "Additional", rows: [{ label: "Issue Date", value: r.additional.issueDate }, { label: "Document", value: attached(r.additional) }] }] : []),
-                    { rows: [{ label: "Order / Ministry Number", value: r.orderNumber }, { label: "Search Date & Time", value: fmtDateTime(r.searchDateTime) }, { label: "Date Issued", value: r.dateIssued }, { label: "Date Received", value: r.dateReceived }] },
-                ],
-            },
-            { title: `${p}${isCanada ? "CVOR / Abstract" : "Abstract / Record"} Number`, groups: [{ rows: [{ label: "Abstract Number", value: r.abstractNumber }, { label: "Issue Date", value: r.abstractIssueDate }, { label: "Issuing Authority", value: r.authority }, ...(isCvor ? [{ label: "Carrier Name", value: r.carrierName }, { label: "Safety Rating", value: r.safetyRating }] : [])] }] },
+            { title: `${p}Driving Record`, groups: [{ rows: [
+                { label: "Issuing Country", value: r.region }, { label: authLabel, value: r.authority },
+                { label: "Date Issued", value: r.dateIssued }, { label: "Date Received", value: r.dateReceived },
+                { label: `Driver ${isCanada ? "Abstract" : "MVR"} (PDF)`, value: attached(r.primary) },
+            ] }] },
             ...(r.hasViolations ? [{ title: `${p}Violations / Convictions`, groups: r.violations.map((vi, i) => ({ label: r.violations.length > 1 ? `Violation ${i + 1}` : undefined, rows: [{ label: "Date", value: vi.date }, { label: "Charge / Description", value: vi.description }, { label: pointsLabel, value: vi.points }, { label: "State / Location", value: vi.location }] })) }] : []),
             ...(r.hasAccidents ? [{ title: `${p}Accidents / Collisions`, groups: r.accidents.map((a, i) => ({ label: r.accidents.length > 1 ? `Accident ${i + 1}` : undefined, rows: [{ label: "Date", value: a.date }, { label: "Description", value: a.description }, { label: "At Fault", value: a.atFault }] })) }] : []),
         ];
     };
-    const sections = records.flatMap((r) => recordSections(r, records.length > 1));
+    // Checklist rows (shared shape with the on-screen checklist) → document.
+    const summaryChecks = [
+        { label: "Medical expiry date provided", ok: !!summary.medicalExpiry },
+        { label: "Air brake endorsement recorded", ok: !!summary.airBrake },
+        { label: "Road test (Class A) passed", ok: !!summary.roadTestClassA },
+        { label: "Current demerit points recorded", ok: !!summary.demeritPoints },
+        { label: "Total accidents / crashes recorded", ok: !!summary.accidents },
+        { label: "Total violations recorded", ok: !!summary.violations },
+        { label: "Total inspections recorded", ok: !!summary.inspections },
+        { label: "Total out-of-service recorded", ok: !!summary.outOfService },
+    ];
+    const recordChecks = (r: DrivingRecord) => {
+        const noun = r.region === "Canada" ? "Abstract" : "MVR";
+        return [
+            { label: `${noun} report uploaded`, ok: !!r.primary.pdf },
+            { label: "Issuing state / province provided", ok: !!r.authority },
+            { label: "Date issued provided", ok: !!r.dateIssued },
+            { label: "Date received provided", ok: !!r.dateReceived },
+        ];
+    };
+    const checkVal = (ok: boolean) => (ok ? "✓ Complete" : "Pending");
+
+    // Document sections: records → summary → review checklist → remarks → reviewer sign-off.
+    const reviewSections: DocSection[] = [
+        { title: "Summary", groups: [{ rows: [
+            { label: "Medical Expiry Date", value: summary.medicalExpiry },
+            { label: "Air Brake Endorsement", value: summary.airBrake },
+            { label: "Road Test Passed (Class A)", value: summary.roadTestClassA },
+            { label: "Current Demerit Points", value: summary.demeritPoints },
+            { label: "Total Accidents / Crashes", value: summary.accidents },
+            { label: "Total Violations", value: summary.violations },
+            { label: "Total Inspections", value: summary.inspections },
+            { label: "Total Out-of-Service (OOS)", value: summary.outOfService },
+        ] }] },
+        { title: "Review Checklist", groups: [
+            ...records.map((r) => ({ label: records.length > 1 ? `Driver ${r.region === "Canada" ? "Abstract" : "MVR"} Record` : undefined, rows: recordChecks(r).map((c) => ({ label: c.label, value: checkVal(c.ok) })) })),
+            { label: records.length > 1 ? "Summary" : undefined, rows: summaryChecks.map((c) => ({ label: c.label, value: checkVal(c.ok) })) },
+        ] },
+        ...(remarks.length ? [{ title: "Remarks & Comments", groups: [{ rows: remarks.slice().reverse().map((r, i) => ({ label: `Remark ${i + 1}`, value: r.text })) }] }] : []),
+        { title: "Reviewer Sign-Off", groups: [signoff.done
+            ? { rows: [{ label: "Reviewed by", value: signoff.name }, { label: "Title", value: signoff.role }, { label: "Date", value: signoff.date }, { label: "Status", value: "Reviewed & signed" }], images: signoff.sig ? [signoff.sig] : undefined }
+            : { rows: [{ label: "Status", value: "Pending review — not yet signed" }] }] },
+    ];
+    const sections = [...records.flatMap((r) => recordSections(r, records.length > 1)), ...reviewSections];
 
     const editBody = (
         <>
             <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Info className="h-4 w-4" /></div>
                 <p className="text-sm text-slate-600">{lockedRegion
-                    ? <>Choose the issuing {lockedRegion === "Canada" ? "province" : "state"} and the record types update to that jurisdiction’s products.</>
-                    : <>Choose the issuing province/state and the record types update to that jurisdiction’s products. A <span className="font-medium text-slate-700">cross-border</span> driver supplies <span className="font-medium text-slate-700">both</span> a US MVR and a Canadian abstract.</>}</p>
+                    ? <>Choose the issuing {lockedRegion === "Canada" ? "province" : "state"}, enter the dates and upload the report, then complete the review checklist and sign off below.</>
+                    : <>Choose the issuing province/state, enter the record details, then complete the review checklist and sign off below. A <span className="font-medium text-slate-700">cross-border</span> driver supplies <span className="font-medium text-slate-700">both</span> a US MVR and a Canadian abstract.</>}</p>
             </div>
 
             {/* Mode — hidden when the form is locked to one country via `variant`. */}
@@ -162,21 +205,77 @@ export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () =
                 </div>
             )}
 
-            {/* Records */}
-            {records.map((r, i) => {
-                const m = regionMeta(r.region);
-                return (
-                    <div key={i} className={records.length > 1 ? "rounded-2xl border border-slate-200 bg-white/60 p-5" : ""}>
-                        {records.length > 1 && (
-                            <div className="mb-4 flex items-center gap-2">
-                                <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg", m.accent)}><m.Icon className="h-4 w-4" /></span>
-                                <h2 className="text-base font-bold text-slate-900">{m.title}</h2>
-                            </div>
-                        )}
-                        <RecordCard value={r} onChange={(patch) => setRecord(i, patch)} />
-                    </div>
-                );
-            })}
+            {/* One continuous block — record, summary, then violations & accidents */}
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {records.map((r, i) => <RecordCard key={i} value={r} onChange={(patch) => setRecord(i, patch)} />)}
+
+                {/* Summary */}
+                <div className="p-5">
+                    <h2 className="mb-3 text-base font-bold text-slate-900">Summary</h2>
+                    <Grid>
+                        <Field label="Medical Expiry Date"><Input type="date" value={summary.medicalExpiry} onChange={(e) => setSum({ medicalExpiry: e.target.value })} /></Field>
+                        <Field label="Air Brake Endorsement"><SelectBox value={summary.airBrake} placeholder="Select" items={["Yes", "No"]} onChange={(v) => setSum({ airBrake: v })} /></Field>
+                        <Field label="Road Test Passed (Class A)"><Input type="date" value={summary.roadTestClassA} onChange={(e) => setSum({ roadTestClassA: e.target.value })} /></Field>
+                        <Field label="Current Demerit Points"><Input type="number" value={summary.demeritPoints} onChange={(e) => setSum({ demeritPoints: e.target.value })} /></Field>
+                        <Field label="Total Accidents / Crashes"><Input type="number" value={summary.accidents} onChange={(e) => setSum({ accidents: e.target.value })} /></Field>
+                        <Field label="Total Violations"><Input type="number" value={summary.violations} onChange={(e) => setSum({ violations: e.target.value })} /></Field>
+                        <Field label="Total Inspections"><Input type="number" value={summary.inspections} onChange={(e) => setSum({ inspections: e.target.value })} /></Field>
+                        <Field label="Total Out-of-Service (OOS)"><Input type="number" value={summary.outOfService} onChange={(e) => setSum({ outOfService: e.target.value })} /></Field>
+                    </Grid>
+                </div>
+
+                {/* Violations & Accidents */}
+                <div className="space-y-5 p-5">
+                    <h2 className="text-base font-bold text-slate-900">Violations &amp; Accidents</h2>
+                    <ToggleRow label="Any violations or convictions on record?" checked={hasVr} onChange={(b) => setHasVr(b)} />
+                    {hasVr && (
+                        <RevealPanel title="Violations / Convictions">
+                            <InlineCollector items={vrIncidents} setItems={setVrIncidents} factory={newIncident} addLabel="Add Violation" cardTitle={violationTitle} renderCard={violationCard} renderForm={(d, set) => <ViolationFields d={d} set={set} />} />
+                        </RevealPanel>
+                    )}
+                    <ToggleRow label="Any accidents or collisions on record?" checked={hasAcc} onChange={(b) => setHasAcc(b)} />
+                    {hasAcc && (
+                        <RevealPanel title="Accidents / Collisions">
+                            <InlineCollector items={vrAccidents} setItems={setVrAccidents} factory={newAppAccident} addLabel="Add Accident" cardTitle={(a) => a.type || "New Accident"} renderCard={accidentCard} renderForm={(d, set) => <AccidentFields d={d} set={set} />} />
+                        </RevealPanel>
+                    )}
+                </div>
+            </div>
+
+            {/* Review checklist */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review checklist</p>
+                {records.map((r, i) => {
+                    const noun = r.region === "Canada" ? "Abstract" : "MVR";
+                    const checks = [
+                        { label: `${noun} report uploaded`, ok: !!r.primary.pdf },
+                        { label: "Issuing state / province provided", ok: !!r.authority },
+                        { label: "Date issued provided", ok: !!r.dateIssued },
+                        { label: "Date received provided", ok: !!r.dateReceived },
+                    ];
+                    return (
+                        <div key={i} className="mt-2">
+                            {records.length > 1 && <p className="mb-1 text-sm font-semibold text-slate-700">Driver {noun} Record</p>}
+                            <ul className="grid gap-1.5 sm:grid-cols-2">{checks.map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
+                        </div>
+                    );
+                })}
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                    <ul className="grid gap-1.5 sm:grid-cols-2">
+                        <CheckLine ok={!!summary.medicalExpiry} label="Medical expiry date provided" />
+                        <CheckLine ok={!!summary.airBrake} label="Air brake endorsement recorded" />
+                        <CheckLine ok={!!summary.roadTestClassA} label="Road test (Class A) passed" />
+                        <CheckLine ok={!!summary.demeritPoints} label="Current demerit points recorded" />
+                        <CheckLine ok={!!summary.accidents} label="Total accidents / crashes recorded" />
+                        <CheckLine ok={!!summary.violations} label="Total violations recorded" />
+                        <CheckLine ok={!!summary.inspections} label="Total inspections recorded" />
+                        <CheckLine ok={!!summary.outOfService} label="Total out-of-service recorded" />
+                    </ul>
+                </div>
+            </div>
+
+            <ReviewRemarks value={remarks} onChange={setRemarks} />
+            <ReviewSignOff heading="I have reviewed the driving record(s) above." value={signoff} onChange={(v) => { setSignoff(v); if (v.done && !signoff.done) onSignOff?.(); }} />
         </>
     );
 
@@ -217,22 +316,21 @@ export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () =
 
             {preview ? (
                 <div className="px-6 py-8">
-                    <FormDocument ref={docRef} title="Driver Abstract / MVR" subtitle={mode} badge={mode.startsWith("Cross") ? "US · Canada" : mode} sections={sections} theme={theme} branding={branding} />
+                    <FormDocument ref={docRef} title={formTitle} subtitle={mode} badge={mode.startsWith("Cross") ? "US · Canada" : mode} sections={sections} theme={theme} branding={branding} />
                 </div>
             ) : (
-                <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+                <div className="mx-auto max-w-4xl space-y-6 px-6 py-6">
                     <div>
                         <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Hiring Process · Form</p>
-                        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-slate-900"><FileSearch className="h-6 w-6 text-blue-600" /> Driver Abstract / MVR</h1>
+                        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-slate-900"><FileSearch className="h-6 w-6 text-blue-600" /> {formTitle}</h1>
                     </div>
 
                     {editBody}
 
-                    {/* Footer */}
+                    {/* Footer — the sign-off block above is the single confirm/save action. */}
                     <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
                         <Button variant="outline" onClick={onBack}>Cancel</Button>
                         <Button variant="outline" onClick={() => setPreview(true)}><Eye className="h-4 w-4" /> PDF Preview</Button>
-                        <Button>Save record</Button>
                     </div>
                 </div>
             )}
@@ -240,124 +338,35 @@ export function DriverAbstractForm({ onBack, embedded, variant }: { onBack: () =
     );
 }
 
-// Abstract document block (issue date + PDF upload). Module-level so it isn't
-// remounted on every keystroke (which would drop input focus).
-function AbstractBlock({ title, hint, value, onChange }: { title: string; hint: string; value: Abstract; onChange: (a: Abstract) => void }) {
-    return (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="mb-4 text-sm font-semibold text-slate-800">{title}</h3>
-            <Field className="max-w-xs" label="Issue Date" required><Input type="date" value={value.issueDate} onChange={(e) => onChange({ ...value, issueDate: e.target.value })} /></Field>
-            <div className="mt-4"><PdfUpload value={value.pdf} onChange={(pdf) => onChange({ ...value, pdf })} /></div>
-            <p className="mt-2 text-xs text-slate-400">{hint}</p>
-        </div>
-    );
-}
-
-// ----------------------------- one jurisdiction's record -----------------------------
+// ----------------------------- one jurisdiction's record (editable) -----------------------------
 function RecordCard({ value, onChange }: { value: DrivingRecord; onChange: (patch: Partial<DrivingRecord>) => void }) {
     const isCanada = value.region === "Canada";
-    const isCvor = isCommercialType(value.recordType);
+    const noun = isCanada ? "Abstract" : "MVR";
     const authLabel = isCanada ? "Issuing Province" : "Issuing State";
-    const pointsLabel = isCanada ? "Demerit Points" : "Points";
-    const docNoun = isCanada ? "abstract" : "MVR";
     const pdfHint = isCanada ? "Upload the driver abstract PDF for the selected province." : "Upload the Motor Vehicle Record (MVR) PDF.";
     const auth = authoritiesFor(value.region);
-    const recTypes = recordTypesFor(value.region, value.authority);
 
-    const onAuthority = (a: string) => onChange(isCanada ? { authority: a, recordType: recordTypesFor("Canada", a)[0] ?? "" } : { authority: a });
-    const setViol = (i: number, patch: Partial<Violation>) => onChange({ violations: value.violations.map((v, idx) => (idx === i ? { ...v, ...patch } : v)) });
-    const setAcc = (i: number, patch: Partial<Accident>) => onChange({ accidents: value.accidents.map((a, idx) => (idx === i ? { ...a, ...patch } : a)) });
+    const onCountry = (c: string) => onChange({ region: c as Region, authority: "" });
+    const onAuthority = (a: string) => onChange({ authority: a });
 
     return (
-        <div className="space-y-6">
-            {/* Driving record */}
-            <div>
-                <h2 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">Driving Record</h2>
-                <Grid>
-                    <Field label={authLabel} required><SelectBox value={value.authority} placeholder="Please choose" items={auth} onChange={onAuthority} /></Field>
-                    <Field label="Record / Abstract Type" required><SelectBox value={value.recordType} placeholder={isCanada && !value.authority ? "Choose province first" : "Select type"} items={recTypes} disabled={isCanada && !value.authority} onChange={(v) => onChange({ recordType: v })} /></Field>
-                    <Field label="License Number" required><Input value={value.licenseNumber} onChange={(e) => onChange({ licenseNumber: e.target.value })} /></Field>
-                    <Field label="Record Status" required><SelectBox value={value.status} placeholder="Select status" items={STATUSES} onChange={(v) => onChange({ status: v })} /></Field>
-                </Grid>
+        <div className="p-5">
+            <div className="mb-5 flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <p className="text-base font-bold text-slate-900">Driver {noun} Record</p>
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{value.region}</span>
             </div>
-
-            {/* Abstract documents */}
-            <div>
-                <h2 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">Driver {isCanada ? "Abstract" : "MVR"} (PDF)</h2>
-                <div className="space-y-5">
-                    <AbstractBlock title={`Driver ${isCanada ? "Abstract" : "MVR"} (PDF)`} hint={pdfHint} value={value.primary} onChange={(a) => onChange({ primary: a })} />
-                    <AbstractBlock title={`Additional ${isCanada ? "Abstract" : "MVR"} (PDF)`} hint={`Optional — attach a second ${docNoun} PDF (e.g. both the CVOR and the 3-Year Driver Record).`} value={value.additional} onChange={(a) => onChange({ additional: a })} />
-                    <Grid>
-                        <Field label="Order / Ministry Number"><Input value={value.orderNumber} onChange={(e) => onChange({ orderNumber: e.target.value })} /></Field>
-                        <Field label="Search Date & Time" hint="Date & time the abstract was pulled."><Input type="datetime-local" value={value.searchDateTime} onChange={(e) => onChange({ searchDateTime: e.target.value })} /></Field>
-                        <Field label="Date Issued"><Input type="date" value={value.dateIssued} onChange={(e) => onChange({ dateIssued: e.target.value })} /></Field>
-                        <Field label="Date Received"><Input type="date" value={value.dateReceived} onChange={(e) => onChange({ dateReceived: e.target.value })} /></Field>
-                    </Grid>
-                </div>
-            </div>
-
-            {/* Abstract number */}
-            <div>
-                <h2 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">{isCanada ? "CVOR / Abstract Number" : "Abstract / Record Number"}</h2>
-                <Grid>
-                    <Field className="sm:col-span-2" label="Abstract Number"><Input placeholder="Enter number…" value={value.abstractNumber} onChange={(e) => onChange({ abstractNumber: e.target.value })} /></Field>
-                    <Field label="Issue Date"><Input type="date" value={value.abstractIssueDate} onChange={(e) => onChange({ abstractIssueDate: e.target.value })} /></Field>
-                    <Field label="Issuing Authority"><Input value={value.authority} disabled placeholder="From record above" /></Field>
-                    {isCvor && (
-                        <>
-                            <Field label="Carrier Name"><Input value={value.carrierName} onChange={(e) => onChange({ carrierName: e.target.value })} /></Field>
-                            <Field label="Safety Rating"><SelectBox value={value.safetyRating} placeholder="Select rating" items={SAFETY_RATINGS} onChange={(v) => onChange({ safetyRating: v })} /></Field>
-                        </>
-                    )}
-                </Grid>
-            </div>
-
-            {/* Violations & accidents */}
-            <div>
-                <h2 className="mb-3 border-b border-slate-200 pb-2 text-base font-semibold text-slate-900">Violations &amp; Accidents</h2>
-                <div className="space-y-5">
-                    <ToggleRow label="Any violations or convictions on record?" checked={value.hasViolations} onChange={(b) => onChange({ hasViolations: b })} />
-                    {value.hasViolations && (
-                        <RevealPanel title="Violations / Convictions">
-                            {value.violations.map((vi, i) => (
-                                <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <div className="mb-4 flex items-center justify-between">
-                                        <span className="text-sm font-semibold text-slate-700">Violation {i + 1}</span>
-                                        <Button variant="ghost" size="sm" className="h-7 text-rose-500 hover:text-rose-600" onClick={() => onChange({ violations: value.violations.filter((_, idx) => idx !== i) })}><Trash2 className="h-3.5 w-3.5" /> Remove</Button>
-                                    </div>
-                                    <Grid>
-                                        <Field label="Date" required><Input type="date" value={vi.date} onChange={(e) => setViol(i, { date: e.target.value })} /></Field>
-                                        <Field label={pointsLabel}><Input type="number" value={vi.points} onChange={(e) => setViol(i, { points: e.target.value })} /></Field>
-                                        <Field className="sm:col-span-2" label="Charge / Description" required><Input value={vi.description} onChange={(e) => setViol(i, { description: e.target.value })} /></Field>
-                                        <Field label="State / Location"><SelectBox value={vi.location} placeholder="Please choose" items={auth} onChange={(val) => setViol(i, { location: val })} /></Field>
-                                    </Grid>
-                                </div>
-                            ))}
-                            <button type="button" onClick={() => onChange({ violations: [...value.violations, newViolation()] })} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Violation</button>
-                        </RevealPanel>
-                    )}
-
-                    <ToggleRow label="Any accidents or collisions on record?" checked={value.hasAccidents} onChange={(b) => onChange({ hasAccidents: b })} />
-                    {value.hasAccidents && (
-                        <RevealPanel title="Accidents / Collisions">
-                            {value.accidents.map((ac, i) => (
-                                <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <div className="mb-4 flex items-center justify-between">
-                                        <span className="text-sm font-semibold text-slate-700">Accident {i + 1}</span>
-                                        <Button variant="ghost" size="sm" className="h-7 text-rose-500 hover:text-rose-600" onClick={() => onChange({ accidents: value.accidents.filter((_, idx) => idx !== i) })}><Trash2 className="h-3.5 w-3.5" /> Remove</Button>
-                                    </div>
-                                    <Grid>
-                                        <Field label="Date" required><Input type="date" value={ac.date} onChange={(e) => setAcc(i, { date: e.target.value })} /></Field>
-                                        <Field label="At Fault?" required><SelectBox value={ac.atFault} placeholder="Select" items={["Yes", "No"]} onChange={(val) => setAcc(i, { atFault: val })} /></Field>
-                                        <Field className="sm:col-span-2" label="Description" required><Input value={ac.description} onChange={(e) => setAcc(i, { description: e.target.value })} /></Field>
-                                    </Grid>
-                                </div>
-                            ))}
-                            <button type="button" onClick={() => onChange({ accidents: [...value.accidents, newAccident()] })} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Accident</button>
-                        </RevealPanel>
-                    )}
-                </div>
+            <Grid>
+                <Field label="Issuing Country" required><SelectBox value={value.region} items={["United States", "Canada"]} onChange={onCountry} /></Field>
+                <Field label={authLabel} required><SelectBox value={value.authority} placeholder="Please choose" items={auth} onChange={onAuthority} /></Field>
+                <Field label="Date Issued"><Input type="date" value={value.dateIssued} onChange={(e) => onChange({ dateIssued: e.target.value })} /></Field>
+                <Field label="Date Received"><Input type="date" value={value.dateReceived} onChange={(e) => onChange({ dateReceived: e.target.value })} /></Field>
+            </Grid>
+            <div className="mt-5">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Driver {noun} (PDF)</p>
+                <PdfUpload value={value.primary.pdf} onChange={(pdf) => onChange({ primary: { ...value.primary, pdf } })} />
+                <p className="mt-2 text-xs text-slate-400">{pdfHint}</p>
             </div>
         </div>
     );
 }
+

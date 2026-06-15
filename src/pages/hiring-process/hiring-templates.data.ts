@@ -48,7 +48,7 @@ export const STEP_CATALOG: { id: string; name: string; group: "Core" | "Forms" |
     { id: "review", name: "Review", group: "Core" },
     { id: "driver-license", name: "Driver License Submission", group: "Forms" },
     { id: "mvr", name: "MVR — Motor Vehicle Record", group: "Forms" },
-    { id: "driver-abstract", name: "Driver Abstract / CVOR", group: "Forms" },
+    { id: "driver-abstract", name: "Driver Abstract", group: "Forms" },
     { id: "psp", name: "PSP — Pre-Employment Screening", group: "Forms" },
     { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", group: "Forms" },
     { id: "cda", name: "CDA — Commercial Driver Abstract", group: "Forms" },

@@ -92,17 +92,17 @@ const newMilitary = (): Military => ({
     country: "", branch: "", start: { ...emptyMY }, end: { ...emptyMY }, rank: "", dd214: "",
 });
 
-// Per-employer verification documents. On the application these are just
-// checkpoints the driver confirms — we request them from the employer during
-// the hiring process (no upload here). Each flag = "ask this employer for it".
+// Per-employer verification documents. Each one is either off, uploaded by the
+// driver now, or requested ("ask") from the employer during the hiring process.
 const EMPLOYER_DOCS = [
     { key: "performance", label: "Employer Performance Verification" },
     { key: "experience", label: "Employer Experience Letter" },
     { key: "insurance", label: "Insurance Experience Letter" },
 ] as const;
-type EmployerDocs = Record<string, boolean>;
+type DocMode = "off" | "upload" | "ask";
+type EmployerDocs = Record<string, DocMode>;
 const newEmployerDocs = (): EmployerDocs =>
-    Object.fromEntries(EMPLOYER_DOCS.map((d) => [d.key, true]));
+    Object.fromEntries(EMPLOYER_DOCS.map((d) => [d.key, "upload" as DocMode]));
 
 type Employer = {
     company: string; start: DateMY; end: DateMY;
@@ -163,25 +163,26 @@ const CHARGE_DESCRIPTIONS = [
 ];
 const FINE_AMOUNTS = ["$0 - $100", "$100 - $250", "$250 - $500", "$500 - $1,000", "$1,000+"];
 const PENALTIES = ["Fine", "Suspension", "Revocation", "Community Service", "Other"];
-type Incident = {
-    date: DateMY; charges: string[]; state: string; commercial: string;
+const VIOLATION_CATEGORIES = ["Driver Documents", "Visible Vehicle Components", "Cargo Securement", "Hazmat / Dangerous Goods", "Hours of Service"];
+export type Incident = {
+    date: DateMY; charges: string[]; state: string; commercial: string; category: string; outOfService: string;
     penalties: string[]; penaltyPoints: string; fineAmount: string; comments: string;
 };
-const newIncident = (): Incident => ({
-    date: { ...emptyMY }, charges: [], state: "", commercial: "", penalties: [], penaltyPoints: "", fineAmount: "", comments: "",
+export const newIncident = (): Incident => ({
+    date: { ...emptyMY }, charges: [], state: "", commercial: "", category: "", outOfService: "", penalties: [], penaltyPoints: "", fineAmount: "", comments: "",
 });
 
 const ACCIDENT_TYPES = [
     "Collision with vehicle", "Collision with fixed object", "Rear-end collision",
     "Sideswipe", "Rollover", "Pedestrian", "Animal", "Cargo / Spill", "Other",
 ];
-type Accident = {
+export type Accident = {
     date: DateMY; type: string; hazmat: string; towed: string; chemicalSpill: string;
     address: string; city: string; state: string;
     commercial: string; atFault: string; ticketed: string;
     fatalities: string; injuries: string; detail: string;
 };
-const newAccident = (): Accident => ({
+export const newAccident = (): Accident => ({
     date: { ...emptyMY }, type: "", hazmat: "", towed: "", chemicalSpill: "",
     address: "", city: "", state: "",
     commercial: "", atFault: "", ticketed: "",
@@ -563,6 +564,118 @@ function MultiEntry<T,>({ items, setItems, factory, addLabel, modalTitle, cardTi
     );
 }
 
+// Inline record list: each record edits in place with a Save button, then
+// collapses to a summary card (Edit / Delete). New records open in edit mode.
+export function InlineCollector<T,>({ items, setItems, factory, addLabel, cardTitle, renderCard, renderForm }: {
+    items: T[];
+    setItems: React.Dispatch<React.SetStateAction<T[]>>;
+    factory: () => T;
+    addLabel: string;
+    cardTitle: (item: T) => React.ReactNode;
+    renderCard: (item: T) => React.ReactNode;
+    renderForm: (draft: T, set: (patch: Partial<T>) => void) => React.ReactNode;
+}) {
+    const [editIdx, setEditIdx] = useState<number | null>(items.length ? null : null);
+    const setItem = (i: number, patch: Partial<T>) => setItems((prev) => prev.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+    const add = () => { const at = items.length; setItems((prev) => [...prev, factory()]); setEditIdx(at); };
+    const removeAt = (i: number) => { setItems((prev) => prev.filter((_, idx) => idx !== i)); setEditIdx((cur) => (cur === i ? null : cur !== null && cur > i ? cur - 1 : cur)); };
+    return (
+        <div className="space-y-3">
+            {items.map((item, i) => (i === editIdx ? (
+                <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                        <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                            {cardTitle(item) || `Record ${i + 1}`}
+                        </span>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeAt(i)} className="h-7 text-rose-500 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
+                    </div>
+                    {renderForm(item, (patch) => setItem(i, patch))}
+                    <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
+                        <Button type="button" onClick={() => setEditIdx(null)}><Check className="h-4 w-4" /> Save</Button>
+                    </div>
+                </div>
+            ) : (
+                <div key={i} className="relative rounded-lg bg-slate-100/80 p-4 pr-12">
+                    <div className="mb-2 text-sm font-semibold text-blue-600">{cardTitle(item)}</div>
+                    <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">{renderCard(item)}</div>
+                    <div className="absolute right-3 top-4 flex flex-col gap-2.5">
+                        <button type="button" onClick={() => setEditIdx(i)} className="text-slate-400 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => removeAt(i)} className="text-slate-400 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                </div>
+            )))}
+            <Button type="button" variant="outline" onClick={add} className="w-full border-dashed"><Plus className="h-4 w-4" /> {addLabel}</Button>
+        </div>
+    );
+}
+
+// ── Reusable Violation & Accident forms (shared with the MVR / Driver Abstract form) ──
+export function ViolationFields({ d, set }: { d: Incident; set: (patch: Partial<Incident>) => void }) {
+    return (
+        <div className="space-y-6">
+            <FormSection title="Violation">
+                <Grid>
+                    <Field label="Violation Date" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
+                    <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
+                    <Field label="Violation Category" required><Select value={d.category} placeholder="Please Choose" onChange={(v) => set({ category: v })}><Options items={VIOLATION_CATEGORIES} /></Select></Field>
+                    <Field label="Out of Service?" required><YesNo value={d.outOfService} onChange={(v) => set({ outOfService: v })} /></Field>
+                    <Field className="sm:col-span-2" label="Charge / Description (select all that apply)" required><CheckList items={CHARGE_DESCRIPTIONS} selected={d.charges} onToggle={(v) => set({ charges: toggleArr(d.charges, v) })} /></Field>
+                </Grid>
+            </FormSection>
+            <FormSection title="Penalty">
+                <Grid>
+                    <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
+                    <Field label="Demerit points"><TextInput type="number" min={0} placeholder="e.g. 2" value={d.penaltyPoints} onChange={(e) => set({ penaltyPoints: e.target.value })} /></Field>
+                    <Field className="sm:col-span-2" label="Penalty / Fine (select all that apply)" required><CheckList items={PENALTIES} selected={d.penalties} onToggle={(v) => set({ penalties: toggleArr(d.penalties, v) })} /></Field>
+                    <Field label="Fine amount (if applicable)"><Select value={d.fineAmount} placeholder="Please Choose" onChange={(v) => set({ fineAmount: v })}><Options items={FINE_AMOUNTS} /></Select></Field>
+                </Grid>
+            </FormSection>
+            <Field label="Comments" hint='If you answered "Other" to any question, please provide additional detail.'><Textarea rows={2} value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
+        </div>
+    );
+}
+export const violationTitle = (d: Incident) => (d.charges[0] ? `${d.charges[0]}${d.charges.length > 1 ? ` +${d.charges.length - 1}` : ""}` : "New Violation");
+export const violationCard = (d: Incident) => (<><KV k="Date" v={fmtMY(d.date)} /><KV k="State / Prov" v={d.state ? abbr(d.state) : "-"} /><KV k="Demerit pts" v={d.penaltyPoints || "-"} /><KV k="Penalty" v={d.penalties.join(", ") || "-"} /></>);
+
+export function AccidentFields({ d, set }: { d: Accident; set: (patch: Partial<Accident>) => void }) {
+    return (
+        <div className="space-y-6">
+            <FormSection title="Accident / Incident">
+                <Grid>
+                    <Field label="Date of Accident / Incident" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
+                    <Field label="Type of Accident / Incident" required><Select value={d.type} placeholder="Please Choose" onChange={(v) => set({ type: v })}><Options items={ACCIDENT_TYPES} /></Select></Field>
+                </Grid>
+            </FormSection>
+            <FormSection title="Location">
+                <Grid>
+                    <Field className="sm:col-span-2" label="Location for the accident (complete address)" required><Textarea rows={2} value={d.address} placeholder="Street, City, State / Prov, ZIP / Postal" onChange={(e) => set({ address: e.target.value })} /></Field>
+                    <Field label="City"><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
+                    <Field label="State / Prov" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
+                </Grid>
+            </FormSection>
+            <FormSection title="Circumstances">
+                <Grid>
+                    <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
+                    <Field label="Were you at fault?" required><YesNo value={d.atFault} onChange={(v) => set({ atFault: v })} /></Field>
+                    <Field label="Were you ticketed?" required><YesNo value={d.ticketed} onChange={(v) => set({ ticketed: v })} /></Field>
+                    <Field label="Was any vehicle towed away?"><YesNo value={d.towed} onChange={(v) => set({ towed: v })} /></Field>
+                    <Field label="Hazmat accident / incident"><YesNo value={d.hazmat} onChange={(v) => set({ hazmat: v })} /></Field>
+                    <Field label="Chemical spill?"><YesNo value={d.chemicalSpill} onChange={(v) => set({ chemicalSpill: v })} /></Field>
+                </Grid>
+            </FormSection>
+            <FormSection title="Casualties">
+                <Grid>
+                    <Field label="Total number of fatalities"><TextInput type="number" min={0} value={d.fatalities} placeholder="0" onChange={(e) => set({ fatalities: e.target.value })} /></Field>
+                    <Field label="Total number of injuries"><TextInput type="number" min={0} value={d.injuries} placeholder="0" onChange={(e) => set({ injuries: e.target.value })} /></Field>
+                </Grid>
+            </FormSection>
+            <Field label="Please enter detailed information about this accident" required><Textarea rows={3} value={d.detail} onChange={(e) => set({ detail: e.target.value })} /></Field>
+        </div>
+    );
+}
+export const accidentCard = (d: Accident) => (<><KV k="Date" v={fmtMY(d.date)} /><KV k="State / Prov" v={d.state ? abbr(d.state) : "-"} /><KV k="At Fault" v={d.atFault || "-"} /><KV k="Ticketed" v={d.ticketed || "-"} /></>);
+
 // ----------------------------- residence history modal -----------------------------
 function ResidenceModal({ rows, onClose, onSave }: {
     rows: ResidenceRow[]; onClose: () => void; onSave: (rows: ResidenceRow[]) => void;
@@ -741,9 +854,9 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         setHadAccidents("Yes");
         setAccidents([{ date: { m: "06", y: "2023" }, type: "Rear-end collision", hazmat: "No", towed: "No", chemicalSpill: "No", address: "1420 W Industrial Pkwy, Springfield, IL 62704", city: "Springfield", state: st, commercial: "Yes", atFault: "No", ticketed: "No", fatalities: "0", injuries: "0", detail: "Minor rear-end at low speed; no injuries." }]);
         setHadViolations("Yes");
-        setIncidents([{ date: { m: "02", y: "2024" }, charges: ["Speeding"], state: st, commercial: "No", penalties: ["Fine"], penaltyPoints: "2", fineAmount: "$100 - $250", comments: "" }]);
+        setIncidents([{ date: { m: "02", y: "2024" }, charges: ["Speeding"], state: st, commercial: "No", category: "Hours of Service", outOfService: "No", penalties: ["Fine"], penaltyPoints: "2", fineAmount: "$100 - $250", comments: "" }]);
         setEmployedRecently("Yes");
-        setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes", docs: { performance: true, experience: true, insurance: false } }]);
+        setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes", docs: { performance: "upload", experience: "upload", insurance: "ask" } }]);
         setAttendedSchool("Yes");
         setEducation([{ school: "Lincoln Technical Institute", start: { m: "09", y: "2019" }, end: { m: "06", y: "2020" }, city: "Springfield", state: st, country: config.defaultCountry, telephone: "", study: "Diesel Mechanics", graduation: { m: "06", y: "2020" } }]);
         setMilitaryEver("No");
@@ -788,7 +901,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
 
     // One employer's fields, rendered inline on the Employment step.
     const employerForm = (d: Employer, set: (patch: Partial<Employer>) => void) => {
-        const setDoc = (key: string, on: boolean) => set({ docs: { ...d.docs, [key]: on } });
+        const setDoc = (key: string, mode: DocMode) => set({ docs: { ...d.docs, [key]: mode } });
         return (
             <div className="space-y-6">
                 <FormSection title="Employer">
@@ -823,17 +936,29 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                 </FormSection>
 
                 <FormSection title="Verification Documents">
-                    <p className="mb-2.5 text-xs text-slate-500">Select the documents we'll request from this employer during the hiring process.</p>
+                    <p className="mb-2.5 text-xs text-slate-500">Upload each document now. If the applicant doesn't have it, tick <span className="font-semibold text-slate-600">Ask employer</span> and we'll request it during the hiring process.</p>
                     <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
                         {EMPLOYER_DOCS.map((doc) => {
-                            const on = d.docs[doc.key];
+                            const mode = (d.docs[doc.key] ?? "upload") as DocMode;
+                            const ask = mode === "ask";
                             return (
-                                <label key={doc.key} className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-slate-50">
-                                    <Checkbox checked={on} onCheckedChange={(c) => setDoc(doc.key, Boolean(c))} />
-                                    <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                                    <span className="flex-1 text-sm font-medium text-slate-700">{doc.label}</span>
-                                    {on && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">Ask at hiring</span>}
-                                </label>
+                                <div key={doc.key} className="px-4 py-3">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                                        <span className="flex-1 text-sm font-medium text-slate-700">{doc.label}</span>
+                                        <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+                                            <Checkbox checked={ask} onCheckedChange={(c) => setDoc(doc.key, c ? "ask" : "upload")} />
+                                            Ask employer
+                                        </label>
+                                    </div>
+                                    {ask ? (
+                                        <p className="mt-1.5 text-xs text-slate-400">We'll request this from the employer at hiring — the applicant doesn't need to provide it now.</p>
+                                    ) : (
+                                        <button type="button" className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/40 px-3 py-3 text-sm font-medium text-slate-500 transition hover:bg-slate-50">
+                                            <Upload className="h-4 w-4" /> Upload {doc.label} <span className="text-xs font-normal text-slate-400">(PNG, JPG or PDF)</span>
+                                        </button>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
@@ -861,30 +986,6 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                     <Field label="Owner-operator on this experience?" required><YesNo value={d.ownerOperator} onChange={(v) => set({ ownerOperator: v })} /></Field>
                 </Grid>
             </FormSection>
-        </div>
-    );
-
-    // One traffic-violation entry, rendered inline on the Traffic Violation step.
-    const incidentForm = (d: Incident, set: (patch: Partial<Incident>) => void) => (
-        <div className="space-y-6">
-            <FormSection title="Violation">
-                <Grid>
-                    <Field label="Violation Date" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
-                    <Field label="State / Province" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
-                    <Field className="sm:col-span-2" label="Charge / Description (select all that apply)" required><CheckList items={CHARGE_DESCRIPTIONS} selected={d.charges} onToggle={(v) => set({ charges: toggleArr(d.charges, v) })} /></Field>
-                </Grid>
-            </FormSection>
-
-            <FormSection title="Penalty">
-                <Grid>
-                    <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
-                    <Field label="Penalty points"><TextInput type="number" min={0} placeholder="e.g. 2" value={d.penaltyPoints} onChange={(e) => set({ penaltyPoints: e.target.value })} /></Field>
-                    <Field className="sm:col-span-2" label="Penalty / Fine (select all that apply)" required><CheckList items={PENALTIES} selected={d.penalties} onToggle={(v) => set({ penalties: toggleArr(d.penalties, v) })} /></Field>
-                    <Field label="Fine amount (if applicable)"><Select value={d.fineAmount} placeholder="Please Choose" onChange={(v) => set({ fineAmount: v })}><Options items={FINE_AMOUNTS} /></Select></Field>
-                </Grid>
-            </FormSection>
-
-            <Field label="Comments" hint='If you answered "Other" to any question, please provide additional detail.'><Textarea rows={2} value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
         </div>
     );
 
@@ -1036,112 +1137,6 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
             ),
         },
         {
-            key: "accident", title: "Accident Details", fields: 3, render: () => (
-                <div className="space-y-5">
-                    <Field label="Were you involved in any accidents/incidents with any vehicle in the last 5 years (even if not at fault)?" required><YesNo value={hadAccidents} onChange={setHadAccidents} /></Field>
-                    {hadAccidents === "Yes" && (
-                        <>
-                            <p className="text-sm italic text-slate-500">Please enter detailed information about each accident, whether chargeable, recordable, reportable, or your fault.</p>
-                            <MultiEntry
-                                items={accidents}
-                                setItems={setAccidents}
-                                factory={newAccident}
-                                addLabel="Add Another Accident"
-                                modalTitle="Accident Details"
-                                cardTitle={(a) => a.type || "New Accident"}
-                                renderCard={(a) => (
-                                    <>
-                                        <KV k="Date" v={fmtMY(a.date)} />
-                                        <KV k="State / Prov" v={a.state ? abbr(a.state) : "-"} />
-                                        <KV k="At Fault" v={a.atFault || "-"} />
-                                        <KV k="Ticketed" v={a.ticketed || "-"} />
-                                    </>
-                                )}
-                                renderForm={(d, set) => (
-                                    <div className="space-y-6">
-                                        {/* When & what */}
-                                        <FormSection title="Accident / Incident">
-                                            <Grid>
-                                                <Field label="Date of Accident / Incident" required><DateDuo value={d.date} years={HIST_YEARS} onChange={(v) => set({ date: v })} /></Field>
-                                                <Field label="Type of Accident / Incident" required><Select value={d.type} placeholder="Please Choose" onChange={(v) => set({ type: v })}><Options items={ACCIDENT_TYPES} /></Select></Field>
-                                            </Grid>
-                                        </FormSection>
-
-                                        {/* Location */}
-                                        <FormSection title="Location">
-                                            <Grid>
-                                                <Field className="sm:col-span-2" label="Location for the accident (complete address)" required><Textarea rows={2} value={d.address} placeholder="Street, City, State / Prov, ZIP / Postal" onChange={(e) => set({ address: e.target.value })} /></Field>
-                                                <Field label="City"><TextInput value={d.city} onChange={(e) => set({ city: e.target.value })} /></Field>
-                                                <Field label="State / Prov" required><SearchSelect value={d.state} placeholder="Please Choose" items={STATES_PROVINCES} onChange={(v) => set({ state: v })} /></Field>
-                                            </Grid>
-                                        </FormSection>
-
-                                        {/* Circumstances — grouped Yes/No questions */}
-                                        <FormSection title="Circumstances">
-                                            <Grid>
-                                                <Field label="Were you in a commercial vehicle?" required><YesNo value={d.commercial} onChange={(v) => set({ commercial: v })} /></Field>
-                                                <Field label="Were you at fault?" required><YesNo value={d.atFault} onChange={(v) => set({ atFault: v })} /></Field>
-                                                <Field label="Were you ticketed?" required><YesNo value={d.ticketed} onChange={(v) => set({ ticketed: v })} /></Field>
-                                                <Field label="Was any vehicle towed away?"><YesNo value={d.towed} onChange={(v) => set({ towed: v })} /></Field>
-                                                <Field label="Hazmat accident / incident"><YesNo value={d.hazmat} onChange={(v) => set({ hazmat: v })} /></Field>
-                                                <Field label="Chemical spill?"><YesNo value={d.chemicalSpill} onChange={(v) => set({ chemicalSpill: v })} /></Field>
-                                            </Grid>
-                                        </FormSection>
-
-                                        {/* Casualties */}
-                                        <FormSection title="Casualties">
-                                            <Grid>
-                                                <Field label="Total number of fatalities"><TextInput type="number" min={0} value={d.fatalities} placeholder="0" onChange={(e) => set({ fatalities: e.target.value })} /></Field>
-                                                <Field label="Total number of injuries"><TextInput type="number" min={0} value={d.injuries} placeholder="0" onChange={(e) => set({ injuries: e.target.value })} /></Field>
-                                            </Grid>
-                                        </FormSection>
-
-                                        {/* Narrative */}
-                                        <Field label="Please enter detailed information about this accident" required><Textarea rows={3} value={d.detail} onChange={(e) => set({ detail: e.target.value })} /></Field>
-                                    </div>
-                                )}
-                            />
-                        </>
-                    )}
-                </div>
-            ),
-        },
-        {
-            key: "violation", title: "Traffic Violation Details", fields: 3, render: () => (
-                <div className="space-y-5">
-                    <Field label="Have you had any moving violations or traffic convictions in the past 3 Years?" required>
-                        <YesNo value={hadViolations} onChange={(v) => { setHadViolations(v); if (v === "Yes" && incidents.length === 0) setIncidents([newIncident()]); }} />
-                    </Field>
-                    {hadViolations === "Yes" && (
-                        <>
-                            {incidents.map((inc, i) => {
-                                const set = (patch: Partial<Incident>) => setIncidents((xs) => xs.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
-                                return (
-                                    <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                                        <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
-                                            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
-                                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
-                                                {inc.charges[0] || `Violation ${i + 1}`}{inc.charges.length > 1 && <span className="text-xs font-normal text-slate-400"> +{inc.charges.length - 1}</span>}
-                                            </span>
-                                            {incidents.length > 1 && (
-                                                <Button type="button" variant="ghost" size="sm" onClick={() => setIncidents((xs) => xs.filter((_, idx) => idx !== i))} className="h-7 text-rose-500 hover:text-rose-600">
-                                                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                                                </Button>
-                                            )}
-                                        </div>
-                                        {incidentForm(inc, set)}
-                                    </div>
-                                );
-                            })}
-                            <Button type="button" variant="outline" onClick={() => setIncidents((xs) => [...xs, newIncident()])} className="w-full border-dashed">
-                                <Plus className="h-4 w-4" /> Add Another Violation
-                            </Button>
-                        </>
-                    )}
-                </div>
-            ),
-        },
-        {
             key: "employment", title: "Employment Details", fields: 5, render: () => (
                 <div className="space-y-5">
                     <Field label="Have you been employed, contracted, or attended a company orientation in the last 3 years?" required>
@@ -1172,6 +1167,31 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                                 <Plus className="h-4 w-4" /> Add Another Employer
                             </Button>
                         </>
+                    )}
+                </div>
+            ),
+        },
+        {
+            key: "unemployment", title: "Unemployment", fields: 3, render: () => (
+                <div className="space-y-5">
+                    <Field label="Have you been unemployed at any time within the last 3 years?" required><YesNo value={wasUnemployed} onChange={setWasUnemployed} /></Field>
+                    {wasUnemployed === "Yes" && (
+                        <MultiEntry
+                            items={unemployment}
+                            setItems={setUnemployment}
+                            factory={newUnemployment}
+                            addLabel="Add Another Period"
+                            modalTitle="Unemployment Information"
+                            cardTitle={(u) => `${fmtMY(u.start)} - ${fmtMY(u.end)}`}
+                            renderCard={(u) => <KV k="Comments" v={u.comments || "-"} />}
+                            renderForm={(d, set) => (
+                                <>
+                                    <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
+                                    <Field label="End Date" required hint={endDateHint("unemployed")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
+                                    <Field label="Comments"><Textarea value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
+                                </>
+                            )}
+                        />
                     )}
                 </div>
             ),
@@ -1215,6 +1235,47 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
             ),
         },
         {
+            key: "accident", title: "Accident Details", fields: 3, render: () => (
+                <div className="space-y-5">
+                    <Field label="Were you involved in any accidents/incidents with any vehicle in the last 5 years (even if not at fault)?" required><YesNo value={hadAccidents} onChange={setHadAccidents} /></Field>
+                    {hadAccidents === "Yes" && (
+                        <>
+                            <p className="text-sm italic text-slate-500">Please enter detailed information about each accident, whether chargeable, recordable, reportable, or your fault.</p>
+                            <InlineCollector
+                                items={accidents}
+                                setItems={setAccidents}
+                                factory={newAccident}
+                                addLabel="Add Another Accident"
+                                cardTitle={(a) => a.type || "New Accident"}
+                                renderCard={accidentCard}
+                                renderForm={(d, set) => <AccidentFields d={d} set={set} />}
+                            />
+                        </>
+                    )}
+                </div>
+            ),
+        },
+        {
+            key: "violation", title: "Traffic Violation Details", fields: 3, render: () => (
+                <div className="space-y-5">
+                    <Field label="Have you had any moving violations or traffic convictions in the past 3 Years?" required>
+                        <YesNo value={hadViolations} onChange={(v) => { setHadViolations(v); if (v === "Yes" && incidents.length === 0) setIncidents([newIncident()]); }} />
+                    </Field>
+                    {hadViolations === "Yes" && (
+                        <InlineCollector
+                            items={incidents}
+                            setItems={setIncidents}
+                            factory={newIncident}
+                            addLabel="Add Another Violation"
+                            cardTitle={violationTitle}
+                            renderCard={violationCard}
+                            renderForm={(d, set) => <ViolationFields d={d} set={set} />}
+                        />
+                    )}
+                </div>
+            ),
+        },
+        {
             key: "military", title: "Military Service", fields: 6, render: () => (
                 <div className="space-y-5">
                     <Field label="Were you ever in the military?"><YesNo value={militaryEver} onChange={setMilitaryEver} /></Field>
@@ -1227,31 +1288,6 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                             <Field label="Rank at discharge" required><TextInput value={military.rank} onChange={(e) => setM({ rank: e.target.value })} /></Field>
                             <Field label="Can you obtain your DD214?"><YesNo value={military.dd214} onChange={(v) => setM({ dd214: v })} /></Field>
                         </Grid>
-                    )}
-                </div>
-            ),
-        },
-        {
-            key: "unemployment", title: "Unemployment", fields: 3, render: () => (
-                <div className="space-y-5">
-                    <Field label="Have you been unemployed at any time within the last 3 years?" required><YesNo value={wasUnemployed} onChange={setWasUnemployed} /></Field>
-                    {wasUnemployed === "Yes" && (
-                        <MultiEntry
-                            items={unemployment}
-                            setItems={setUnemployment}
-                            factory={newUnemployment}
-                            addLabel="Add Another Period"
-                            modalTitle="Unemployment Information"
-                            cardTitle={(u) => `${fmtMY(u.start)} - ${fmtMY(u.end)}`}
-                            renderCard={(u) => <KV k="Comments" v={u.comments || "-"} />}
-                            renderForm={(d, set) => (
-                                <>
-                                    <Field label="Start Date" required><DateDuo value={d.start} years={HIST_YEARS} onChange={(v) => set({ start: v })} /></Field>
-                                    <Field label="End Date" required hint={endDateHint("unemployed")}><DateDuo value={d.end} years={HIST_YEARS} onChange={(v) => set({ end: v })} /></Field>
-                                    <Field label="Comments"><Textarea value={d.comments} onChange={(e) => set({ comments: e.target.value })} /></Field>
-                                </>
-                            )}
-                        />
                     )}
                 </div>
             ),

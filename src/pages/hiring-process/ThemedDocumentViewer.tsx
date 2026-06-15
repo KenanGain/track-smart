@@ -8,7 +8,7 @@ import { useCompanyBranding } from "../ats/company-branding.data";
 import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocument";
 
 /** Themed, printable document shell (theme tabs + Print + Download PDF). */
-export function ThemedDocumentViewer({ title, subtitle, badge, sections, fileName, onBack, backLabel = "Back", emptyTitle = "Nothing to show", emptyText = "" }: {
+export function ThemedDocumentViewer({ title, subtitle, badge, sections, fileName, onBack, backLabel = "Back", emptyTitle = "Nothing to show", emptyText = "", footer }: {
     title: string;
     subtitle?: string;
     badge?: string;
@@ -18,6 +18,7 @@ export function ThemedDocumentViewer({ title, subtitle, badge, sections, fileNam
     backLabel?: string;
     emptyTitle?: string;
     emptyText?: string;
+    footer?: React.ReactNode;
 }) {
     const [branding] = useCompanyBranding();
     const [theme, setTheme] = useState<ThemeKey>("standard");
@@ -67,6 +68,7 @@ export function ThemedDocumentViewer({ title, subtitle, badge, sections, fileNam
             {sections.length ? (
                 <div className="px-6 py-8">
                     <FormDocument ref={docRef} title={title} subtitle={subtitle} badge={badge} sections={sections} theme={theme} branding={branding} />
+                    {footer && <div className="no-print mx-auto mt-6 max-w-[800px]">{footer}</div>}
                 </div>
             ) : (
                 <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">

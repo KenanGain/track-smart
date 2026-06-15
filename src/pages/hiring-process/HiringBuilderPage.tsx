@@ -16,7 +16,7 @@ import { useHiringTemplates, totalForms, driverTypeName, type HiringTemplate } f
 const FORMS = [
     { id: "driver-license", name: "Driver License Submission", desc: "License details with front/back upload, endorsements, restrictions, and multiple licenses.", Icon: CreditCard, accent: "bg-blue-50 text-blue-600" },
     { id: "mvr", name: "MVR — Motor Vehicle Record", desc: "US state driving record (MVR) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-emerald-50 text-emerald-600" },
-    { id: "driver-abstract", name: "Driver Abstract / CVOR", desc: "Canadian province driving abstract (Ontario CVOR, Alberta 5-Year, …) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-rose-50 text-rose-600" },
+    { id: "driver-abstract", name: "Driver Abstract", desc: "Canadian province driving abstract (Ontario, Alberta 5-Year, …) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-rose-50 text-rose-600" },
     { id: "employment-verification", name: "Employment Verification", desc: "Consolidated previous-employer reference (§391.23 / §40.25) — rating, safety evaluation, signatures and completed-response upload.", Icon: FileSignature, accent: "bg-violet-50 text-violet-600" },
     { id: "road-test", name: "Road Test Evaluation", desc: "FMCSA §391.31 road test — driver & equipment, scored sections with checklists, and certification.", Icon: ClipboardCheck, accent: "bg-amber-50 text-amber-600" },
     { id: "psp", name: "PSP — Pre-Employment Screening", desc: "FMCSA Pre-Employment Screening Program — 5-year crash · 3-year inspection history, with report PDF.", Icon: ShieldCheck, accent: "bg-sky-50 text-sky-600" },

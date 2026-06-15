@@ -1,12 +1,12 @@
 import { forwardRef, useRef, useState } from "react";
-import { ChevronLeft, ChevronDown, Download, Printer, RotateCcw, MessageSquarePlus, FileText, FileSignature, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, Check, X, Paperclip, Image as ImageIcon } from "lucide-react";
+import { ChevronLeft, ChevronDown, Download, Printer, RotateCcw, MessageSquarePlus, FileText, FileSignature, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, Check, X, Paperclip, Image as ImageIcon, Pencil, Calendar } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyBranding } from "../ats/company-branding.data";
-import { useApplicants, formName, formRegion, relativeTime, ACTOR, type Applicant, type SubSection } from "./applicants.data";
+import { useApplicants, formName, formRegion, relativeTime, ACTOR, type Applicant, type SubSection, type SubGroup } from "./applicants.data";
 import { consentDefsForType, THEME_HEX } from "./policy-forms.data";
 import { PolicyDocument } from "./PolicyForm";
 import { buildPrefill } from "./application-prefill";
@@ -182,31 +182,7 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                 {/* Submitted data */}
                 {tab === "data" && (
                     hasData ? (
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            {a.submission!.map((sec) => (
-                                <div key={sec.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <div className="mb-3 flex items-center gap-2">
-                                        <h2 className="text-sm font-bold uppercase tracking-wide" style={{ color: accent }}>{sec.title}</h2>
-                                        {sec.groups.length > 1 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{sec.groups.length}</span>}
-                                    </div>
-                                    <div className="space-y-4">
-                                        {sec.groups.map((grp, gi) => (
-                                            <div key={gi} className={gi > 0 ? "border-t border-slate-100 pt-3" : ""}>
-                                                {grp.label && <p className="mb-1.5 text-xs font-semibold text-slate-600">{grp.label}</p>}
-                                                <dl className="space-y-2">
-                                                    {grp.fields.map((f) => (
-                                                        <div key={f.label} className="flex justify-between gap-4 border-b border-dashed border-slate-100 pb-1.5 text-sm last:border-0">
-                                                            <dt className="text-slate-500">{f.label}</dt>
-                                                            <dd className="text-right font-medium text-slate-900">{f.value || "—"}</dd>
-                                                        </div>
-                                                    ))}
-                                                </dl>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <SubmittedDataTab a={a} accent={accent} updateOne={updateOne} />
                     ) : (
                         <EmptyData onReissue={reissue} />
                     )
@@ -305,6 +281,128 @@ export function ApplicantDetailPage({ applicantId, onNavigate }: { applicantId: 
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+// ── Submitted Data tab — card view, list view for multi-entry sections, per-section edit ──
+type UpdateFn = (id: string, patch: (prev: Applicant) => Partial<Applicant>) => void;
+
+// Surface the entry's identifying field (employer name, school, city, …) as a heading.
+const PRIMARY_KEYS = ["employer", "school", "institution", "company", "license number", "street address", "equipment class", "carrier"];
+const primaryField = (g: SubGroup) => {
+    for (const k of PRIMARY_KEYS) { const f = g.fields.find((x) => x.label.toLowerCase().includes(k)); if (f?.value) return f; }
+    return g.fields[0];
+};
+// Surface a date / from–to / expiry field as a chip.
+const dateField = (g: SubGroup) => g.fields.find((f) => /(^| )dates?( |$)|from|to|period|expiration|expiry/i.test(f.label) && /\d/.test(f.value));
+
+function SubmittedDataTab({ a, accent, updateOne }: { a: Applicant; accent: string; updateOne: UpdateFn }) {
+    const [editing, setEditing] = useState<string | null>(null);
+    const [draft, setDraft] = useState<SubSection | null>(null);
+
+    const startEdit = (sec: SubSection) => { setEditing(sec.title); setDraft(structuredClone(sec)); };
+    const cancelEdit = () => { setEditing(null); setDraft(null); };
+    const setField = (gi: number, fi: number, value: string) =>
+        setDraft((d) => d ? { ...d, groups: d.groups.map((g, i) => i !== gi ? g : { ...g, fields: g.fields.map((f, j) => j !== fi ? f : { ...f, value }) }) } : d);
+    const saveEdit = () => {
+        if (!draft) return;
+        const now = Date.now();
+        updateOne(a.id, (prev) => ({
+            submission: (prev.submission ?? []).map((s) => s.title === draft.title ? draft : s),
+            events: [{ id: `e-${now}`, type: "status", text: `Edited “${draft.title}”`, at: now, author: ACTOR }, ...prev.events],
+        }));
+        cancelEdit();
+    };
+
+    return (
+        <div className="space-y-4">
+            {a.submission!.map((sec) => {
+                const isMulti = sec.groups.length > 1;
+                const isEditing = editing === sec.title;
+                const view = isEditing && draft ? draft : sec;
+                return (
+                    <div key={sec.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <header className="mb-4 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-sm font-bold uppercase tracking-wide" style={{ color: accent }}>{sec.title}</h2>
+                                {isMulti && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{sec.groups.length}</span>}
+                            </div>
+                            {isEditing ? (
+                                <div className="flex items-center gap-1.5">
+                                    <Button size="sm" className="h-7 gap-1 px-2.5 text-xs" onClick={saveEdit}><Check className="h-3.5 w-3.5" /> Save</Button>
+                                    <Button variant="ghost" size="sm" className="h-7 gap-1 px-2.5 text-xs" onClick={cancelEdit}><X className="h-3.5 w-3.5" /> Cancel</Button>
+                                </div>
+                            ) : (
+                                <Button variant="outline" size="sm" className="h-7 gap-1 px-2.5 text-xs" onClick={() => startEdit(sec)}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
+                            )}
+                        </header>
+
+                        {isEditing ? (
+                            <div className="space-y-4">
+                                {view.groups.map((g, gi) => (
+                                    <div key={gi} className={gi > 0 ? "border-t border-slate-100 pt-4" : ""}>
+                                        {g.label && <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">{g.label}</p>}
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            {g.fields.map((f, fi) => (
+                                                <label key={fi} className="block">
+                                                    <span className="mb-1 block text-[11px] font-medium text-slate-500">{f.label}</span>
+                                                    <input value={f.value} onChange={(e) => setField(gi, fi, e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : isMulti ? (
+                            <div className="space-y-3">
+                                {sec.groups.map((g, gi) => <EntryRow key={gi} group={g} index={gi} />)}
+                            </div>
+                        ) : (
+                            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+                                {sec.groups[0].fields.map((f) => (
+                                    <div key={f.label} className="min-w-0 border-b border-dashed border-slate-100 pb-2">
+                                        <dt className="text-[11px] font-medium text-slate-400">{f.label}</dt>
+                                        <dd className="mt-0.5 break-words text-sm font-semibold text-slate-900">{f.value || "—"}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// One entry within a multi-entry section — a row card with a title + from–to chip + detail grid.
+function EntryRow({ group, index }: { group: SubGroup; index: number }) {
+    const primary = primaryField(group);
+    const date = dateField(group);
+    const rest = group.fields.filter((f) => f !== primary && f !== date);
+    return (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{group.label || `Entry ${index + 1}`}</p>
+                    <p className="truncate text-sm font-bold text-slate-900">{primary?.value || "—"}</p>
+                </div>
+                {date && (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" /> <span className="font-normal text-slate-400">{date.label}</span> {date.value}
+                    </span>
+                )}
+            </div>
+            {rest.length > 0 && (
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {rest.map((f) => (
+                        <div key={f.label} className="min-w-0">
+                            <dt className="truncate text-[11px] text-slate-400">{f.label}</dt>
+                            <dd className="truncate text-sm font-medium text-slate-900">{f.value || "—"}</dd>
+                        </div>
+                    ))}
+                </dl>
+            )}
         </div>
     );
 }

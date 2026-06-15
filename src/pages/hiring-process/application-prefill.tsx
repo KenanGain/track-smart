@@ -4,8 +4,9 @@ import type { Applicant, SubSection, SubGroup } from "./applicants.data";
 // Normalized data captured in the driver's application, reused to pre-fill the
 // downstream hiring forms (driver name, licence, address, employment, …).
 
-export type PrefillLicense = { number: string; cls: string; authority: string; exp: string; cdl: string; endorsements: string };
-export type PrefillEmployer = { employer: string; position: string; dates: string; reason: string };
+export type PrefillLicense = { number: string; cls: string; authority: string; issue: string; exp: string; cdl: string; endorsements: string; country?: string };
+export type PrefillEmployer = { employer: string; position: string; dates: string; from: string; to: string; reason: string };
+export type PrefillUnemployment = { dates: string; from: string; to: string; comments: string };
 export type PrefillAddress = { street: string; city: string; state: string; zip: string; country: string; full: string };
 
 export type ApplicantPrefill = {
@@ -15,6 +16,15 @@ export type ApplicantPrefill = {
     address: PrefillAddress;
     licenses: PrefillLicense[];
     employment: PrefillEmployer[];
+    unemployment: PrefillUnemployment[];
+};
+
+// Split a "MM-YYYY - MM-YYYY" (or "YYYY - YYYY") dates string into from / to.
+// Separator is a hyphen surrounded by spaces, so internal "MM-YYYY" hyphens stay intact.
+const splitDates = (s: string): { from: string; to: string } => {
+    const parts = (s || "").split(/\s+[–-]\s+/).map((x) => x.trim());
+    if (parts.length >= 2) return { from: parts[0], to: parts.slice(1).join(" - ") };
+    return { from: s || "", to: "" };
 };
 
 const Ctx = createContext<ApplicantPrefill | null>(null);
@@ -61,18 +71,24 @@ export function buildPrefill(a: Applicant): ApplicantPrefill {
         number: fieldIn(g, "number"),
         cls: fieldIn(g, "class"),
         authority: fieldIn(g, "authority"),
+        country: fieldIn(g, "country"),
+        issue: fieldIn(g, "issue"),
         exp: fieldIn(g, "expiration"),
         cdl: fieldIn(g, "commercial", "cdl"),
         endorsements: fieldIn(g, "endorsement"),
     })).filter((l) => l.number || l.cls);
 
     const empSec = section(sub, "Employment History");
-    const employment: PrefillEmployer[] = (empSec?.groups ?? []).map((g) => ({
-        employer: fieldIn(g, "employer"),
-        position: fieldIn(g, "position"),
-        dates: fieldIn(g, "dates"),
-        reason: fieldIn(g, "reason"),
-    })).filter((e) => e.employer);
+    const employment: PrefillEmployer[] = (empSec?.groups ?? []).map((g) => {
+        const dates = fieldIn(g, "dates");
+        return { employer: fieldIn(g, "employer"), position: fieldIn(g, "position"), dates, ...splitDates(dates), reason: fieldIn(g, "reason") };
+    }).filter((e) => e.employer);
+
+    const unempSec = section(sub, "Unemployment History");
+    const unemployment: PrefillUnemployment[] = (unempSec?.groups ?? []).map((g) => {
+        const dates = fieldIn(g, "dates");
+        return { dates, ...splitDates(dates), comments: fieldIn(g, "comment") };
+    }).filter((u) => u.from && /\d/.test(u.from));
 
     return {
         firstName: a.firstName,
@@ -88,6 +104,7 @@ export function buildPrefill(a: Applicant): ApplicantPrefill {
         address,
         licenses,
         employment,
+        unemployment,
     };
 }
 
