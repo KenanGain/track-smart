@@ -14,7 +14,7 @@ export const FULFILL_META: Record<FulfillMode, { label: string; hint: string }> 
     "upload-fill": { label: "Upload + Fill", hint: "Attach a document and fill the form" },
 };
 const FORM_FULFILLMENT: Record<string, FulfillMode> = {
-    mvr: "order", "driver-abstract": "order", psp: "order", cvdr: "order", cda: "order",
+    mvr: "order", "driver-abstract": "order", psp: "order", cvdr: "order", cda: "order", "cvdr-cda": "order",
     "employment-verification": "order", "dot-verification": "order",
     "criminal-background": "upload", "substance-testing": "upload-fill",
 };
@@ -46,12 +46,10 @@ export const makeReviewStep = (idSeed: string, extra: string[] = []): TemplateSt
 export const STEP_CATALOG: { id: string; name: string; group: "Core" | "Forms" | "Policy" }[] = [
     { id: "application", name: "Application", group: "Core" },
     { id: "review", name: "Review", group: "Core" },
-    { id: "driver-license", name: "Driver License Submission", group: "Forms" },
     { id: "mvr", name: "MVR — Motor Vehicle Record", group: "Forms" },
     { id: "driver-abstract", name: "Driver Abstract", group: "Forms" },
     { id: "psp", name: "PSP — Pre-Employment Screening", group: "Forms" },
-    { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", group: "Forms" },
-    { id: "cda", name: "CDA — Commercial Driver Abstract", group: "Forms" },
+    { id: "cvdr-cda", name: "CVDR / CDA", group: "Forms" },
     { id: "criminal-background", name: "Criminal Background Check", group: "Forms" },
     { id: "substance-testing", name: "Substance Testing", group: "Forms" },
     { id: "employment-verification", name: "Employment Verification", group: "Forms" },
@@ -81,7 +79,7 @@ export function totalForms(t: HiringTemplate): number {
 
 const st = (tplId: string, n: number, title: string, formIds: string[]): TemplateStep => ({ id: `${tplId}-st${n}`, title, formIds });
 // A single-report step, titled by the report's short name (one form per step).
-const REPORT_TITLES: Record<string, string> = { psp: "PSP", mvr: "MVR", "driver-abstract": "Driver Abstract", cvdr: "CVDR", cda: "CDA" };
+const REPORT_TITLES: Record<string, string> = { psp: "PSP", mvr: "MVR", "driver-abstract": "Driver Abstract", cvdr: "CVDR", cda: "CDA", "cvdr-cda": "CVDR / CDA" };
 const rep = (tplId: string, n: number, fid: string): TemplateStep => ({ id: `${tplId}-st${n}`, title: REPORT_TITLES[fid] ?? stepName(fid), formIds: [fid] });
 
 const DEFAULT_TEMPLATES: HiringTemplate[] = [
@@ -89,7 +87,6 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         id: "tpl-us", name: "US Driver", description: "Interstate US driver — PSP, MVR and DOT history.", locked: true, driverType: "us", checklistId: "cl-us",
         steps: [
             makeAppStep("tpl-us", ["fcra-disclosure", "mvr-release", "clearinghouse-consent", "substance-consent-release"]),
-            st("tpl-us", 1, "License Details", ["driver-license"]),
             rep("tpl-us", 2, "psp"),
             rep("tpl-us", 3, "mvr"),
             st("tpl-us", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
@@ -101,7 +98,6 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         id: "tpl-canada", name: "Canada Driver", description: "Canadian driver — Abstract / CVOR and employment verification.", locked: true, driverType: "canada", checklistId: "cl-canada",
         steps: [
             makeAppStep("tpl-canada", ["mvr-release"]),
-            st("tpl-canada", 1, "License Details", ["driver-license"]),
             rep("tpl-canada", 2, "driver-abstract"),  // Canada Abstract / CVOR
             st("tpl-canada", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-canada", 4, "Employment Verification", ["employment-verification"]),
@@ -112,10 +108,9 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         id: "tpl-cross", name: "Cross-Border (US–Canada)", description: "Cross-border driver — full PSP, MVR and DOT verification.", locked: true, driverType: "cross-border", checklistId: "cl-cross",
         steps: [
             makeAppStep("tpl-cross", ["fcra-disclosure", "mvr-release", "clearinghouse-consent"]),
-            st("tpl-cross", 1, "License Details", ["driver-license"]),
             rep("tpl-cross", 2, "psp"),
             rep("tpl-cross", 3, "mvr"),
-            rep("tpl-cross", 4, "cvdr"),
+            rep("tpl-cross", 4, "cvdr-cda"),
             st("tpl-cross", 5, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-cross", 6, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-cross"),
@@ -125,7 +120,6 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         id: "tpl-local", name: "Local / Domestic Driver", description: "Domestic CDL hire — MVR, background check and road test.", locked: true, driverType: "local", checklistId: "cl-local",
         steps: [
             makeAppStep("tpl-local", ["mvr-release"]),
-            st("tpl-local", 1, "License Details", ["driver-license"]),
             rep("tpl-local", 2, "mvr"),
             st("tpl-local", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-local", 4, "Road Test", ["road-test"]),
@@ -137,7 +131,6 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         id: "tpl-us-fast", name: "US Driver — Fast Track", description: "Lean US pre-employment — MVR, drug test and DOT verification.", locked: true, driverType: "us", checklistId: "cl-us",
         steps: [
             makeAppStep("tpl-us-fast", ["mvr-release", "clearinghouse-consent", "substance-consent-release"]),
-            st("tpl-us-fast", 1, "License Details", ["driver-license"]),
             rep("tpl-us-fast", 2, "mvr"),
             st("tpl-us-fast", 3, "Testing", ["substance-testing"]),
             st("tpl-us-fast", 4, "Employment Verification", ["dot-verification"]),
@@ -148,7 +141,6 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
         id: "tpl-oo", name: "Owner-Operator", description: "Owner-operator — full screening plus medical card and annual review.", locked: true, driverType: "us", checklistId: "cl-us",
         steps: [
             makeAppStep("tpl-oo", ["fcra-disclosure", "mvr-release", "clearinghouse-consent", "substance-consent-release"]),
-            st("tpl-oo", 1, "License Details", ["driver-license"]),
             rep("tpl-oo", 2, "psp"),
             rep("tpl-oo", 3, "mvr"),
             st("tpl-oo", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
@@ -159,7 +151,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
     },
 ];
 
-const KEY = "hp_templates_v2";
+const KEY = "hp_templates_v4";
 const EVENT = "hp-templates-change";
 
 function load(): HiringTemplate[] {

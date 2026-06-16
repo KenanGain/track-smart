@@ -4,6 +4,7 @@ import { DriverLicenseForm } from "./DriverLicenseForm";
 import { DriverAbstractForm } from "./DriverAbstractForm";
 import { EmploymentVerificationForm } from "./EmploymentVerificationForm";
 import { ScreeningReportForm } from "./ScreeningReportForm";
+import { CVDR_CDA_TYPE } from "./screening-reports.data";
 import { CriminalBackgroundForm } from "./CriminalBackgroundForm";
 import { SubstanceTestingForm } from "./SubstanceTestingForm";
 import { DotVerificationForm } from "./DotVerificationForm";
@@ -37,8 +38,10 @@ export function HiringFormView({ formId, onBack, embedded, startPreview, onSignO
     if (formId === "driver-license") return <DriverLicenseForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "mvr") return <DriverAbstractForm variant="mvr" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "driver-abstract") return <DriverAbstractForm variant="abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
-    if (formId === "employment-verification") return <EmploymentVerificationForm onBack={onBack} embedded={embedded} />;
+    if (formId === "employment-verification") return <EmploymentVerificationForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "psp") return <ScreeningReportForm fixedType="PSP — Pre-Employment Screening Program" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
+    // CVDR and CDA are captured together as one combined Canadian record. Legacy ids kept for saved data.
+    if (formId === "cvdr-cda") return <ScreeningReportForm fixedType={CVDR_CDA_TYPE} onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "cvdr") return <ScreeningReportForm fixedType="CVDR — Commercial Vehicle Driver Record" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "cda") return <ScreeningReportForm fixedType="CDA — Commercial Driver Abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "criminal-background") return <CriminalBackgroundForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCompanyBranding } from "../ats/company-branding.data";
-import { STATES_PROVINCES, InlineCollector, ViolationFields, AccidentFields, newIncident, newAccident as newAppAccident, violationCard, violationTitle, accidentCard, type Incident, type Accident as AppAccident } from "./ApplicationSettingsPage";
+import { STATES_PROVINCES, US_STATES, CA_PROVINCES, InlineCollector, ViolationFields, AccidentFields, newIncident, newAccident as newAppAccident, violationCard, violationTitle, accidentCard, type Incident, type Accident as AppAccident } from "./ApplicationSettingsPage";
 import { REPORT_TYPES, INSPECTION_LEVELS, isPspType } from "./screening-reports.data";
 import { Field, Grid, SelectBox, ToggleRow, RevealPanel, PdfUpload, CheckLine, ReviewRemarks, ReviewSignOff, newSignOff, type RemarkItem, type SignOffData } from "./FormKit";
 import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocument";
@@ -16,29 +16,35 @@ import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocu
  * a quick summary, and crash / inspection detail. Built to mirror the MVR form.
  */
 
+// Short product name for headings — the part before the " — " description.
+// Handles the combined "CVDR / CDA" type (no description) as a whole.
+const shortType = (t: string) => t.split(" — ")[0];
+
 type Inspection = { date: string; level: string; state: string; oos: string; description: string };
 const newInspection = (): Inspection => ({ date: "", level: "", state: "", oos: "", description: "" });
 
 type Report = {
-    type: string; region: string; reportNumber: string; issueDate: string; dateReceived: string;
+    type: string; region: string; issuingState: string; reportNumber: string; issueDate: string; dateReceived: string;
     primaryPdf: string;
-    crashesCount: string; inspectionsCount: string; violationsCount: string; oosCount: string; demeritPoints: string;
+    crashesCount: string; inspectionsCount: string; violationsCount: string; oosCount: string; oosRate: string; demeritPoints: string;
     hasViolations: boolean; violations: Incident[];
     hasAccidents: boolean; accidents: AppAccident[];
     hasInspections: boolean; inspections: Inspection[];
 };
-const newReport = (type = REPORT_TYPES[0]): Report => ({
-    type, region: "United States", reportNumber: "", issueDate: "", dateReceived: "",
+const newReport = (type = REPORT_TYPES[0], region = "United States"): Report => ({
+    type, region, issuingState: "", reportNumber: "", issueDate: "", dateReceived: "",
     primaryPdf: "",
-    crashesCount: "", inspectionsCount: "", violationsCount: "", oosCount: "", demeritPoints: "",
+    crashesCount: "", inspectionsCount: "", violationsCount: "", oosCount: "", oosRate: "", demeritPoints: "",
     hasViolations: false, violations: [], hasAccidents: false, accidents: [],
     hasInspections: false, inspections: [],
 });
 
 export function ScreeningReportForm({ onBack, embedded, fixedType, startPreview, onSignOff }: { onBack: () => void; embedded?: boolean; fixedType?: string; startPreview?: boolean; onSignOff?: () => void }) {
     const [branding] = useCompanyBranding();
-    // When `fixedType` is set the form is locked to a single product (PSP / CVDR / CDA).
-    const [reports, setReports] = useState<Report[]>([newReport(fixedType ?? REPORT_TYPES[0])]);
+    // When `fixedType` is set the form is locked to a single product + country:
+    //   PSP → United States · CVDR / CDA → Canada.
+    const lockedRegion: string | null = fixedType ? (isPspType(fixedType) ? "United States" : "Canada") : null;
+    const [reports, setReports] = useState<Report[]>([newReport(fixedType ?? REPORT_TYPES[0], lockedRegion ?? "United States")]);
 
     const [preview, setPreview] = useState(Boolean(startPreview));
     const [theme, setTheme] = useState<ThemeKey>("standard");
@@ -53,13 +59,13 @@ export function ScreeningReportForm({ onBack, embedded, fixedType, startPreview,
 
     const fillSample = () => {
         const psp: Report = {
-            ...newReport(fixedType ?? "PSP — Pre-Employment Screening Program"), region: "United States", reportNumber: "PSP-2026-554120",
+            ...newReport(fixedType ?? "PSP — Pre-Employment Screening Program"), region: "United States", issuingState: "Indiana", reportNumber: "PSP-2026-554120",
             issueDate: "2026-05-20", dateReceived: "2026-05-21", primaryPdf: "uploaded",
-            crashesCount: "1", inspectionsCount: "6", violationsCount: "3", oosCount: "0", demeritPoints: "4",
+            crashesCount: "1", inspectionsCount: "6", violationsCount: "3", oosCount: "0", oosRate: "0", demeritPoints: "4",
             hasInspections: true, inspections: [{ date: "2024-02-11", level: "Level I — Full", state: "Indiana", oos: "No", description: "Logbook form & manner — minor" }],
         };
         const cvdr: Report = {
-            ...newReport(fixedType && !isPspType(fixedType) ? fixedType : "CVDR — Commercial Vehicle Driver Record"), region: "Canada", reportNumber: "CVDR-Ontario-99214",
+            ...newReport(fixedType && !isPspType(fixedType) ? fixedType : "CVDR — Commercial Vehicle Driver Record"), region: "Canada", issuingState: "Ontario", reportNumber: "CVDR-Ontario-99214",
             issueDate: "2026-05-18", dateReceived: "2026-05-19", primaryPdf: "uploaded",
             crashesCount: "0", inspectionsCount: "2", violationsCount: "1", oosCount: "0", demeritPoints: "2",
             hasInspections: true, inspections: [{ date: "2023-08-03", level: "Level II — Walk-Around", state: "Ontario", oos: "No", description: "Minor — marker lamp" }],
@@ -88,31 +94,58 @@ export function ScreeningReportForm({ onBack, embedded, fixedType, startPreview,
     };
 
     const reportSections = (r: Report, prefixed: boolean): DocSection[] => {
-        const short = r.type.split(" ")[0];
+        const short = shortType(r.type);
         const p = prefixed ? `${short} · ` : "";
         const attached = (s: string) => (s ? "Attached" : "Not attached");
+        const psp = isPspType(r.type);
+        const summaryRows = psp
+            ? [{ label: "Total Accidents / Crashes", value: r.crashesCount }, { label: "Total Driver Inspections", value: r.inspectionsCount }, { label: "Total Driver OOS Inspections", value: r.oosCount }, { label: "Driver OOS Rate (%)", value: r.oosRate }, { label: "Total Driver Violations", value: r.violationsCount }]
+            : [{ label: "Total Accidents / Crashes", value: r.crashesCount }, { label: "Total Inspections", value: r.inspectionsCount }, { label: "Total Violations", value: r.violationsCount }, { label: "Total Out-of-Service (OOS)", value: r.oosCount }, { label: "Current Demerit Points", value: r.demeritPoints }];
+        const stateLabel = r.region === "Canada" ? "Issuing Province" : "Issuing State";
+        const reportRows = [
+            { label: "Type", value: r.type },
+            { label: "Issuing Country", value: r.region },
+            { label: stateLabel, value: r.issuingState },
+            ...(psp ? [] : [{ label: "Report Number", value: r.reportNumber }]),
+            { label: "Issue Date", value: r.issueDate },
+            { label: "Date Received", value: r.dateReceived },
+            { label: "Document", value: attached(r.primaryPdf) },
+        ];
         return [
-            { title: `${p}Report`, groups: [{ rows: [{ label: "Type", value: r.type }, { label: "Issuing Country", value: r.region }, { label: "Report Number", value: r.reportNumber }, { label: "Issue Date", value: r.issueDate }, { label: "Date Received", value: r.dateReceived }, { label: "Document", value: attached(r.primaryPdf) }] }] },
-            { title: `${p}Summary`, groups: [{ rows: [{ label: "Total Accidents / Crashes", value: r.crashesCount }, { label: "Total Inspections", value: r.inspectionsCount }, { label: "Total Violations", value: r.violationsCount }, { label: "Total Out-of-Service (OOS)", value: r.oosCount }, { label: "Current Demerit Points", value: r.demeritPoints }] }] },
-            ...(r.hasInspections ? [{ title: `${p}Inspections / Violations`, groups: r.inspections.map((ins, i) => ({ label: r.inspections.length > 1 ? `Inspection ${i + 1}` : undefined, rows: [{ label: "Date", value: ins.date }, { label: "Level", value: ins.level }, { label: "State / Province", value: ins.state }, { label: "OOS", value: ins.oos }, { label: "Description", value: ins.description }] })) }] : []),
+            { title: `${p}Report`, groups: [{ rows: reportRows }] },
+            { title: `${p}${psp ? "Driver Summary" : "Summary"}`, groups: [{ rows: summaryRows }] },
+            ...(r.hasInspections ? [{ title: `${p}${psp ? "Violations" : "Inspections / Violations"}`, groups: r.inspections.map((ins, i) => ({ label: r.inspections.length > 1 ? `${psp ? "Violation" : "Inspection"} ${i + 1}` : undefined, rows: [{ label: "Date", value: ins.date }, { label: "Level", value: ins.level }, { label: "State / Province", value: ins.state }, { label: "OOS", value: ins.oos }, { label: "Description", value: ins.description }] })) }] : []),
         ];
     };
     const checkVal = (ok: boolean) => (ok ? "✓ Complete" : "Pending");
-    const reportChecks = (r: Report) => [
-        { label: `${r.type.split(" ")[0]} report uploaded`, ok: !!r.primaryPdf },
+    // Base report checks + a PSP / non-PSP summary tail.
+    const baseChecks = (r: Report) => [
+        { label: `${shortType(r.type)} report uploaded`, ok: !!r.primaryPdf },
         { label: "Issuing country provided", ok: !!r.region },
-        { label: "Report number provided", ok: !!r.reportNumber },
+        { label: `Issuing ${r.region === "Canada" ? "province" : "state"} provided`, ok: !!r.issuingState },
+        ...(isPspType(r.type) ? [] : [{ label: "Report number provided", ok: !!r.reportNumber }]),
         { label: "Issue date provided", ok: !!r.issueDate },
         { label: "Date received provided", ok: !!r.dateReceived },
-        { label: "Total accidents / crashes recorded", ok: !!r.crashesCount },
-        { label: "Total violations recorded", ok: !!r.violationsCount },
-        { label: "Total inspections recorded", ok: !!r.inspectionsCount },
-        { label: "Total out-of-service recorded", ok: !!r.oosCount },
-        { label: "Current demerit points recorded", ok: !!r.demeritPoints },
     ];
+    const summaryChecks = (r: Report) => isPspType(r.type)
+        ? [
+            { label: "Total accidents / crashes recorded", ok: !!r.crashesCount },
+            { label: "Total driver inspections recorded", ok: !!r.inspectionsCount },
+            { label: "Total driver OOS inspections recorded", ok: !!r.oosCount },
+            { label: "Driver OOS rate recorded", ok: !!r.oosRate },
+            { label: "Total driver violations recorded", ok: !!r.violationsCount },
+        ]
+        : [
+            { label: "Total accidents / crashes recorded", ok: !!r.crashesCount },
+            { label: "Total violations recorded", ok: !!r.violationsCount },
+            { label: "Total inspections recorded", ok: !!r.inspectionsCount },
+            { label: "Total out-of-service recorded", ok: !!r.oosCount },
+            { label: "Current demerit points recorded", ok: !!r.demeritPoints },
+        ];
+    const reportChecks = (r: Report) => [...baseChecks(r), ...summaryChecks(r)];
     // Document sections: per-report detail → review checklist → remarks → reviewer sign-off.
     const reviewSections: DocSection[] = [
-        { title: "Review Checklist", groups: reports.map((r) => ({ label: reports.length > 1 ? `${r.type.split(" ")[0]} Report` : undefined, rows: reportChecks(r).map((c) => ({ label: c.label, value: checkVal(c.ok) })) })) },
+        { title: "Review Checklist", groups: reports.map((r) => ({ label: reports.length > 1 ? `${shortType(r.type)} Report` : undefined, rows: reportChecks(r).map((c) => ({ label: c.label, value: checkVal(c.ok) })) })) },
         ...(remarks.length ? [{ title: "Remarks & Comments", groups: [{ rows: remarks.slice().reverse().map((r, i) => ({ label: `Remark ${i + 1}`, value: r.text })) }] }] : []),
         { title: "Reviewer Sign-Off", groups: [signoff.done
             ? { rows: [{ label: "Reviewed by", value: signoff.name }, { label: "Title", value: signoff.role }, { label: "Date", value: signoff.date }, { label: "Status", value: "Reviewed & signed" }], images: signoff.sig ? [signoff.sig] : undefined }
@@ -133,7 +166,7 @@ export function ScreeningReportForm({ onBack, embedded, fixedType, startPreview,
                 <div key={i}>
                     {reports.length > 1 && (
                         <div className="mb-3 flex items-center justify-between">
-                            <h2 className="text-base font-bold text-slate-900">{r.type.split(" ")[0]} Report</h2>
+                            <h2 className="text-base font-bold text-slate-900">{shortType(r.type)} Report</h2>
                             <Button variant="ghost" size="sm" className="h-7 text-rose-500 hover:text-rose-600" onClick={() => setReports((l) => l.filter((_, idx) => idx !== i))}><Trash2 className="h-3.5 w-3.5" /> Remove</Button>
                         </div>
                     )}
@@ -141,35 +174,18 @@ export function ScreeningReportForm({ onBack, embedded, fixedType, startPreview,
                 </div>
             ))}
 
-            {!fixedType && <button type="button" onClick={() => setReports((l) => [...l, newReport("CVDR — Commercial Vehicle Driver Record")])} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Another Report</button>}
+            {!fixedType && <button type="button" onClick={() => setReports((l) => [...l, newReport("CVDR — Commercial Vehicle Driver Record", "Canada")])} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Another Report</button>}
 
             {/* Review checklist */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review checklist</p>
-                {reports.map((r, i) => {
-                    const short = r.type.split(" ")[0];
-                    const checks = [
-                        { label: `${short} report uploaded`, ok: !!r.primaryPdf },
-                        { label: "Issuing country provided", ok: !!r.region },
-                        { label: "Report number provided", ok: !!r.reportNumber },
-                        { label: "Issue date provided", ok: !!r.issueDate },
-                        { label: "Date received provided", ok: !!r.dateReceived },
-                    ];
-                    const summaryChecks = [
-                        { label: "Total accidents / crashes recorded", ok: !!r.crashesCount },
-                        { label: "Total violations recorded", ok: !!r.violationsCount },
-                        { label: "Total inspections recorded", ok: !!r.inspectionsCount },
-                        { label: "Total out-of-service recorded", ok: !!r.oosCount },
-                        { label: "Current demerit points recorded", ok: !!r.demeritPoints },
-                    ];
-                    return (
-                        <div key={i} className="mt-2">
-                            {reports.length > 1 && <p className="mb-1 text-sm font-semibold text-slate-700">{short} Report</p>}
-                            <ul className="grid gap-1.5 sm:grid-cols-2">{checks.map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
-                            <ul className="mt-1.5 grid gap-1.5 border-t border-slate-100 pt-2 sm:grid-cols-2">{summaryChecks.map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
-                        </div>
-                    );
-                })}
+                {reports.map((r, i) => (
+                    <div key={i} className="mt-2">
+                        {reports.length > 1 && <p className="mb-1 text-sm font-semibold text-slate-700">{shortType(r.type)} Report</p>}
+                        <ul className="grid gap-1.5 sm:grid-cols-2">{baseChecks(r).map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
+                        <ul className="mt-1.5 grid gap-1.5 border-t border-slate-100 pt-2 sm:grid-cols-2">{summaryChecks(r).map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
+                    </div>
+                ))}
             </div>
 
             <ReviewRemarks value={remarks} onChange={setRemarks} />
@@ -214,7 +230,7 @@ export function ScreeningReportForm({ onBack, embedded, fixedType, startPreview,
 
             {preview ? (
                 <div className="px-6 py-8">
-                    <FormDocument ref={docRef} title={fixedType ?? "Driver Screening Reports"} subtitle="PSP / CVDR / CDA" badge={reports.length > 1 ? "Cross-Border" : reports[0]?.type.split(" ")[0]} sections={sections} theme={theme} branding={branding} />
+                    <FormDocument ref={docRef} title={fixedType ?? "Driver Screening Reports"} subtitle="PSP / CVDR / CDA" badge={reports.length > 1 ? "Cross-Border" : reports[0] && shortType(reports[0].type)} sections={sections} theme={theme} branding={branding} />
                 </div>
             ) : (
                 <div className="mx-auto max-w-4xl space-y-6 px-6 py-6">
@@ -256,7 +272,8 @@ function InspectionFields({ d, set }: { d: Inspection; set: (patch: Partial<Insp
 
 // ----------------------------- one report (editable, one continuous block) -----------------------------
 function ReportCard({ value, onChange, locked }: { value: Report; onChange: (patch: Partial<Report>) => void; locked?: boolean }) {
-    const short = value.type.split(" ")[0];
+    const short = shortType(value.type);
+    const psp = isPspType(value.type);
     const setViolations: React.Dispatch<React.SetStateAction<Incident[]>> = (a) => onChange({ violations: typeof a === "function" ? a(value.violations) : a });
     const setAccidents: React.Dispatch<React.SetStateAction<AppAccident[]>> = (a) => onChange({ accidents: typeof a === "function" ? a(value.accidents) : a });
     const setInspections: React.Dispatch<React.SetStateAction<Inspection[]>> = (a) => onChange({ inspections: typeof a === "function" ? a(value.inspections) : a });
@@ -271,8 +288,11 @@ function ReportCard({ value, onChange, locked }: { value: Report; onChange: (pat
                 </div>
                 <Grid>
                     {!locked && <Field label="Report Type" required><SelectBox value={value.type} items={REPORT_TYPES} onChange={(t) => onChange({ type: t })} /></Field>}
-                    <Field label="Issuing Country" required><SelectBox value={value.region} items={["United States", "Canada"]} onChange={(v) => onChange({ region: v })} /></Field>
-                    <Field label="Report Number" required><Input placeholder="Enter number…" value={value.reportNumber} onChange={(e) => onChange({ reportNumber: e.target.value })} /></Field>
+                    {locked
+                        ? <Field label="Issuing Country"><div className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700">{value.region}</div></Field>
+                        : <Field label="Issuing Country" required><SelectBox value={value.region} items={["United States", "Canada"]} onChange={(v) => onChange({ region: v })} /></Field>}
+                    <Field label={value.region === "Canada" ? "Issuing Province" : "Issuing State"} required><SelectBox value={value.issuingState} placeholder="Please choose" items={value.region === "Canada" ? CA_PROVINCES : US_STATES} onChange={(v) => onChange({ issuingState: v })} /></Field>
+                    {!psp && <Field label="Report Number" required><Input placeholder="Enter number…" value={value.reportNumber} onChange={(e) => onChange({ reportNumber: e.target.value })} /></Field>}
                     <Field label="Issue Date" required><Input type="date" value={value.issueDate} onChange={(e) => onChange({ issueDate: e.target.value })} /></Field>
                     <Field label="Date Received"><Input type="date" value={value.dateReceived} onChange={(e) => onChange({ dateReceived: e.target.value })} /></Field>
                 </Grid>
@@ -283,45 +303,76 @@ function ReportCard({ value, onChange, locked }: { value: Report; onChange: (pat
                 </div>
             </div>
 
-            {/* Summary */}
+            {/* Summary — PSP shows a driver-inspection summary; CVDR / CDA keep demerit points. */}
             <div className="p-5">
-                <h2 className="mb-3 text-base font-bold text-slate-900">Summary</h2>
-                <Grid>
-                    <Field label="Total Accidents / Crashes"><Input type="number" value={value.crashesCount} onChange={(e) => onChange({ crashesCount: e.target.value })} /></Field>
-                    <Field label="Total Violations"><Input type="number" value={value.violationsCount} onChange={(e) => onChange({ violationsCount: e.target.value })} /></Field>
-                    <Field label="Total Inspections"><Input type="number" value={value.inspectionsCount} onChange={(e) => onChange({ inspectionsCount: e.target.value })} /></Field>
-                    <Field label="Total Out-of-Service (OOS)"><Input type="number" value={value.oosCount} onChange={(e) => onChange({ oosCount: e.target.value })} /></Field>
-                    <Field label="Current Demerit Points"><Input type="number" value={value.demeritPoints} onChange={(e) => onChange({ demeritPoints: e.target.value })} /></Field>
-                </Grid>
-            </div>
-
-            {/* Violations & Accidents */}
-            <div className="space-y-5 p-5">
-                <h2 className="text-base font-bold text-slate-900">Violations &amp; Accidents</h2>
-                <ToggleRow label="Any violations or convictions on record?" checked={value.hasViolations} onChange={(b) => onChange({ hasViolations: b })} />
-                {value.hasViolations && (
-                    <RevealPanel title="Violations / Convictions">
-                        <InlineCollector items={value.violations} setItems={setViolations} factory={newIncident} addLabel="Add Violation" cardTitle={violationTitle} renderCard={violationCard} renderForm={(d, set) => <ViolationFields d={d} set={set} />} />
-                    </RevealPanel>
-                )}
-                <ToggleRow label="Any accidents or collisions on record?" checked={value.hasAccidents} onChange={(b) => onChange({ hasAccidents: b })} />
-                {value.hasAccidents && (
-                    <RevealPanel title="Accidents / Collisions">
-                        <InlineCollector items={value.accidents} setItems={setAccidents} factory={newAppAccident} addLabel="Add Accident" cardTitle={(a) => a.type || "New Accident"} renderCard={accidentCard} renderForm={(d, set) => <AccidentFields d={d} set={set} />} />
-                    </RevealPanel>
+                <h2 className="mb-3 text-base font-bold text-slate-900">{psp ? "Driver Summary" : "Summary"}</h2>
+                {psp ? (
+                    <Grid>
+                        <Field label="Total Accidents / Crashes"><Input type="number" value={value.crashesCount} onChange={(e) => onChange({ crashesCount: e.target.value })} /></Field>
+                        <Field label="Total Driver Inspections"><Input type="number" value={value.inspectionsCount} onChange={(e) => onChange({ inspectionsCount: e.target.value })} /></Field>
+                        <Field label="Total Driver OOS Inspections"><Input type="number" value={value.oosCount} onChange={(e) => onChange({ oosCount: e.target.value })} /></Field>
+                        <Field label="Driver OOS Rate (%)"><Input type="number" value={value.oosRate} onChange={(e) => onChange({ oosRate: e.target.value })} /></Field>
+                        <Field label="Total Driver Violations"><Input type="number" value={value.violationsCount} onChange={(e) => onChange({ violationsCount: e.target.value })} /></Field>
+                    </Grid>
+                ) : (
+                    <Grid>
+                        <Field label="Total Accidents / Crashes"><Input type="number" value={value.crashesCount} onChange={(e) => onChange({ crashesCount: e.target.value })} /></Field>
+                        <Field label="Total Violations"><Input type="number" value={value.violationsCount} onChange={(e) => onChange({ violationsCount: e.target.value })} /></Field>
+                        <Field label="Total Inspections"><Input type="number" value={value.inspectionsCount} onChange={(e) => onChange({ inspectionsCount: e.target.value })} /></Field>
+                        <Field label="Total Out-of-Service (OOS)"><Input type="number" value={value.oosCount} onChange={(e) => onChange({ oosCount: e.target.value })} /></Field>
+                        <Field label="Current Demerit Points"><Input type="number" value={value.demeritPoints} onChange={(e) => onChange({ demeritPoints: e.target.value })} /></Field>
+                    </Grid>
                 )}
             </div>
 
-            {/* Inspections */}
-            <div className="space-y-5 p-5">
-                <h2 className="text-base font-bold text-slate-900">Inspections</h2>
-                <ToggleRow label="Any inspections on record?" checked={value.hasInspections} onChange={(b) => onChange({ hasInspections: b })} />
-                {value.hasInspections && (
-                    <RevealPanel title="Inspections / Violations">
-                        <InlineCollector items={value.inspections} setItems={setInspections} factory={newInspection} addLabel="Add Inspection" cardTitle={(ins) => ins.date ? `Inspection · ${ins.date}` : "New Inspection"} renderCard={inspectionCard} renderForm={(d, set) => <InspectionFields d={d} set={set} />} />
-                    </RevealPanel>
-                )}
-            </div>
+            {/* Inspection & accident detail. PSP has no convictions block — inspections + accidents together. */}
+            {psp ? (
+                <div className="space-y-5 p-5">
+                    <h2 className="text-base font-bold text-slate-900">Violation and Accident</h2>
+                    <ToggleRow label="Any violations on record?" checked={value.hasInspections} onChange={(b) => onChange({ hasInspections: b })} />
+                    {value.hasInspections && (
+                        <RevealPanel title="Violations">
+                            <InlineCollector items={value.inspections} setItems={setInspections} factory={newInspection} addLabel="Add Violation" cardTitle={(ins) => ins.date ? `Violation · ${ins.date}` : "New Violation"} renderCard={inspectionCard} renderForm={(d, set) => <InspectionFields d={d} set={set} />} />
+                        </RevealPanel>
+                    )}
+                    <ToggleRow label="Any accidents or collisions on record?" checked={value.hasAccidents} onChange={(b) => onChange({ hasAccidents: b })} />
+                    {value.hasAccidents && (
+                        <RevealPanel title="Accidents / Collisions">
+                            <InlineCollector items={value.accidents} setItems={setAccidents} factory={newAppAccident} addLabel="Add Accident" cardTitle={(a) => a.type || "New Accident"} renderCard={accidentCard} renderForm={(d, set) => <AccidentFields d={d} set={set} />} />
+                        </RevealPanel>
+                    )}
+                </div>
+            ) : (
+                <>
+                    {/* Violations & Accidents */}
+                    <div className="space-y-5 p-5">
+                        <h2 className="text-base font-bold text-slate-900">Violations &amp; Accidents</h2>
+                        <ToggleRow label="Any violations or convictions on record?" checked={value.hasViolations} onChange={(b) => onChange({ hasViolations: b })} />
+                        {value.hasViolations && (
+                            <RevealPanel title="Violations / Convictions">
+                                <InlineCollector items={value.violations} setItems={setViolations} factory={newIncident} addLabel="Add Violation" cardTitle={violationTitle} renderCard={violationCard} renderForm={(d, set) => <ViolationFields d={d} set={set} />} />
+                            </RevealPanel>
+                        )}
+                        <ToggleRow label="Any accidents or collisions on record?" checked={value.hasAccidents} onChange={(b) => onChange({ hasAccidents: b })} />
+                        {value.hasAccidents && (
+                            <RevealPanel title="Accidents / Collisions">
+                                <InlineCollector items={value.accidents} setItems={setAccidents} factory={newAppAccident} addLabel="Add Accident" cardTitle={(a) => a.type || "New Accident"} renderCard={accidentCard} renderForm={(d, set) => <AccidentFields d={d} set={set} />} />
+                            </RevealPanel>
+                        )}
+                    </div>
+
+                    {/* Inspections */}
+                    <div className="space-y-5 p-5">
+                        <h2 className="text-base font-bold text-slate-900">Inspections</h2>
+                        <ToggleRow label="Any inspections on record?" checked={value.hasInspections} onChange={(b) => onChange({ hasInspections: b })} />
+                        {value.hasInspections && (
+                            <RevealPanel title="Inspections / Violations">
+                                <InlineCollector items={value.inspections} setItems={setInspections} factory={newInspection} addLabel="Add Inspection" cardTitle={(ins) => ins.date ? `Inspection · ${ins.date}` : "New Inspection"} renderCard={inspectionCard} renderForm={(d, set) => <InspectionFields d={d} set={set} />} />
+                            </RevealPanel>
+                        )}
+                    </div>
+                </>
+            )}
         </div>
     );
 }

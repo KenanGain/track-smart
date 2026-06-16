@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useState } from "react";
-import { ChevronLeft, ChevronDown, Download, Printer, RotateCcw, MessageSquarePlus, FileText, FileSignature, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, Check, X, Paperclip, Image as ImageIcon, Pencil, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronDown, Download, Printer, RotateCcw, MessageSquarePlus, FileText, FileSignature, ClipboardList, Mail, Phone, Building2, History, Activity, Send, Loader2, FileCheck2, ShieldCheck, ThumbsUp, Check, X, Paperclip, Image as ImageIcon, Pencil, Calendar, Eye } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
@@ -300,6 +300,8 @@ const dateField = (g: SubGroup) => g.fields.find((f) => /(^| )dates?( |$)|from|t
 function SubmittedDataTab({ a, accent, updateOne }: { a: Applicant; accent: string; updateOne: UpdateFn }) {
     const [editing, setEditing] = useState<string | null>(null);
     const [draft, setDraft] = useState<SubSection | null>(null);
+    const [preview, setPreview] = useState<{ title: string; file: string } | null>(null);
+    const licenseUpload = (idx: number, side: "front" | "back") => (a.uploads ?? []).find((u) => u.id === `lic-${idx}-${side}`);
 
     const startEdit = (sec: SubSection) => { setEditing(sec.title); setDraft(structuredClone(sec)); };
     const cancelEdit = () => { setEditing(null); setDraft(null); };
@@ -354,6 +356,14 @@ function SubmittedDataTab({ a, accent, updateOne }: { a: Applicant; accent: stri
                                     </div>
                                 ))}
                             </div>
+                        ) : sec.title === "License Details" ? (
+                            <div className="space-y-4">
+                                {sec.groups.map((g, gi) => (
+                                    <LicenseReviewCard key={gi} group={g} index={gi} accent={accent}
+                                        front={licenseUpload(gi, "front")} back={licenseUpload(gi, "back")}
+                                        onView={(title, file) => setPreview({ title, file })} />
+                                ))}
+                            </div>
                         ) : isMulti ? (
                             <div className="space-y-3">
                                 {sec.groups.map((g, gi) => <EntryRow key={gi} group={g} index={gi} />)}
@@ -371,6 +381,81 @@ function SubmittedDataTab({ a, accent, updateOne }: { a: Applicant; accent: stri
                     </div>
                 );
             })}
+
+            {preview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setPreview(null)}>
+                    <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                            <p className="text-sm font-bold text-slate-900">{preview.title}</p>
+                            <button type="button" onClick={() => setPreview(null)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+                        </div>
+                        <div className="p-5">
+                            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+                                <ImageIcon className="h-10 w-10 text-slate-300" />
+                                <p className="text-sm font-semibold text-slate-700">{preview.file}</p>
+                                <p className="text-xs text-slate-400">Image preview unavailable in this prototype.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// A license shown like the hiring License Review — read-only field grid + uploaded front/back document tiles.
+function LicenseReviewCard({ group, index, accent, front, back, onView }: {
+    group: SubGroup; index: number; accent: string;
+    front?: { label: string; file: string }; back?: { label: string; file: string };
+    onView: (title: string, file: string) => void;
+}) {
+    const numberField = group.fields.find((f) => /number/i.test(f.label));
+    const classField = group.fields.find((f) => /class/i.test(f.label));
+    // Show the real document tiles instead of the "License Images" text summary.
+    const fields = group.fields.filter((f) => !/license images/i.test(f.label));
+    const DocTile = ({ title, file }: { title: string; file?: string }) => (
+        <div>
+            <p className="mb-1.5 text-[11px] font-semibold text-slate-500">{title}</p>
+            {file ? (
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500 shadow-sm"><FileText className="h-4.5 w-4.5" /></div>
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800">{file}</p>
+                        <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3.5 w-3.5" /> Uploaded</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => onView(title, file)}><Eye className="h-3.5 w-3.5" /> View</Button>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-400">
+                    <FileText className="h-4 w-4" /> Not uploaded
+                </div>
+            )}
+        </div>
+    );
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: accent }}>{index + 1}</span>
+                    <p className="truncate text-sm font-bold text-slate-900">License {index + 1}{numberField?.value ? ` · ${numberField.value}` : ""}</p>
+                </div>
+                {classField?.value && <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{classField.value}</span>}
+            </div>
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {fields.map((f) => (
+                    <div key={f.label}>
+                        <dt className="mb-1 text-[11px] font-semibold text-slate-500">{f.label}</dt>
+                        <dd className="flex min-h-[40px] items-center break-words rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-800">{f.value || "—"}</dd>
+                    </div>
+                ))}
+            </dl>
+            <div className="mt-4">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Uploaded Documents</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <DocTile title="Front of License" file={front?.file} />
+                    <DocTile title="Back of License" file={back?.file} />
+                </div>
+            </div>
         </div>
     );
 }

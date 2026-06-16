@@ -92,21 +92,48 @@ export function UploadBox({ label, value, onChange }: { label: string; value: st
 export function SignaturePad({ label = "Signature", onChange }: { label?: string; onChange: (v: string) => void }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawing = useRef(false);
-    const point = (e: React.PointerEvent<HTMLCanvasElement>) => { const r = canvasRef.current!.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-    const start = (e: React.PointerEvent<HTMLCanvasElement>) => { const ctx = canvasRef.current?.getContext("2d"); if (!ctx) return; drawing.current = true; const p = point(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const [mode, setMode] = useState<"draw" | "type">("draw");
+    const [typed, setTyped] = useState("");
+    const point = (e: React.PointerEvent<HTMLCanvasElement>) => { const r = canvasRef.current!.getBoundingClientRect(); const sx = canvasRef.current!.width / r.width, sy = canvasRef.current!.height / r.height; return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy }; };
+    const start = (e: React.PointerEvent<HTMLCanvasElement>) => { if (mode !== "draw") return; const ctx = canvasRef.current?.getContext("2d"); if (!ctx) return; drawing.current = true; const p = point(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
     const move = (e: React.PointerEvent<HTMLCanvasElement>) => { if (!drawing.current) return; const ctx = canvasRef.current?.getContext("2d"); if (!ctx) return; const p = point(e); ctx.lineTo(p.x, p.y); ctx.strokeStyle = "#1e293b"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.stroke(); };
     const end = () => { if (drawing.current) { drawing.current = false; const c = canvasRef.current; if (c) onChange(c.toDataURL()); } };
-    const clear = () => { const c = canvasRef.current; const ctx = c?.getContext("2d"); if (c && ctx) { ctx.clearRect(0, 0, c.width, c.height); onChange(""); } };
+    // Render a typed name onto the canvas in a script font → signature image.
+    const renderTyped = (name: string) => {
+        const c = canvasRef.current; const ctx = c?.getContext("2d");
+        if (!c || !ctx) return;
+        ctx.clearRect(0, 0, c.width, c.height);
+        if (name.trim()) {
+            ctx.fillStyle = "#1e293b";
+            ctx.font = "52px 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive";
+            ctx.textBaseline = "middle";
+            ctx.fillText(name, 24, c.height / 2);
+            onChange(c.toDataURL());
+        } else { onChange(""); }
+    };
+    const clearCanvas = () => { const c = canvasRef.current; const ctx = c?.getContext("2d"); if (c && ctx) ctx.clearRect(0, 0, c.width, c.height); };
+    const clear = () => { clearCanvas(); setTyped(""); onChange(""); };
+    const switchMode = (m: "draw" | "type") => { setMode(m); clearCanvas(); setTyped(""); onChange(""); };
     return (
         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <Label className="text-slate-700">✎ {label}</Label>
-                <button type="button" onClick={clear} className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:text-rose-500"><Trash2 className="h-3 w-3" /> Clear</button>
+                <div className="flex items-center gap-1.5">
+                    <div className="flex rounded-md border border-slate-200 bg-white p-0.5">
+                        {(["draw", "type"] as const).map((m) => (
+                            <button key={m} type="button" onClick={() => switchMode(m)} className={cn("rounded px-2.5 py-1 text-xs font-semibold capitalize transition", mode === m ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-700")}>{m}</button>
+                        ))}
+                    </div>
+                    <button type="button" onClick={clear} className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:text-rose-500"><Trash2 className="h-3 w-3" /> Clear</button>
+                </div>
             </div>
+            {mode === "type" && (
+                <Input value={typed} onChange={(e) => { setTyped(e.target.value); renderTyped(e.target.value); }} placeholder="Type your full name" className="mb-2 bg-white" />
+            )}
             <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-                <canvas ref={canvasRef} width={680} height={150} onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end} className="block w-full touch-none" style={{ height: 150 }} />
+                <canvas ref={canvasRef} width={680} height={150} onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end} className={cn("block w-full", mode === "draw" ? "touch-none" : "pointer-events-none")} style={{ height: 150 }} />
             </div>
-            <p className="mt-1 text-xs text-slate-400">Draw your signature above using your mouse or finger.</p>
+            <p className="mt-1 text-xs text-slate-400">{mode === "draw" ? "Draw your signature above using your mouse or finger." : "Your typed name is rendered as your signature above."}</p>
         </div>
     );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, CreditCard, FileSearch, FileSignature, ClipboardCheck, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks } from "lucide-react";
+import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, FileSearch, FileSignature, ClipboardCheck, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,14 +14,12 @@ import { useHiringTemplates, totalForms, driverTypeName, type HiringTemplate } f
 
 // Forms built so far. (Form builders are wired up per form as we add them.)
 const FORMS = [
-    { id: "driver-license", name: "Driver License Submission", desc: "License details with front/back upload, endorsements, restrictions, and multiple licenses.", Icon: CreditCard, accent: "bg-blue-50 text-blue-600" },
     { id: "mvr", name: "MVR — Motor Vehicle Record", desc: "US state driving record (MVR) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-emerald-50 text-emerald-600" },
     { id: "driver-abstract", name: "Driver Abstract", desc: "Canadian province driving abstract (Ontario, Alberta 5-Year, …) with report upload, violations and accidents.", Icon: FileSearch, accent: "bg-rose-50 text-rose-600" },
     { id: "employment-verification", name: "Employment Verification", desc: "Consolidated previous-employer reference (§391.23 / §40.25) — rating, safety evaluation, signatures and completed-response upload.", Icon: FileSignature, accent: "bg-violet-50 text-violet-600" },
     { id: "road-test", name: "Road Test Evaluation", desc: "FMCSA §391.31 road test — driver & equipment, scored sections with checklists, and certification.", Icon: ClipboardCheck, accent: "bg-amber-50 text-amber-600" },
     { id: "psp", name: "PSP — Pre-Employment Screening", desc: "FMCSA Pre-Employment Screening Program — 5-year crash · 3-year inspection history, with report PDF.", Icon: ShieldCheck, accent: "bg-sky-50 text-sky-600" },
-    { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", desc: "Canadian commercial vehicle driver record with report PDF, crashes and inspections.", Icon: ShieldCheck, accent: "bg-indigo-50 text-indigo-600" },
-    { id: "cda", name: "CDA — Commercial Driver Abstract", desc: "Commercial driver abstract with report PDF, crashes and inspections.", Icon: ShieldCheck, accent: "bg-teal-50 text-teal-600" },
+    { id: "cvdr-cda", name: "CVDR / CDA", desc: "Combined Canadian commercial driver record (CVDR & CDA) with report PDF, crashes and inspections.", Icon: ShieldCheck, accent: "bg-indigo-50 text-indigo-600" },
     { id: "criminal-background", name: "Criminal Background Check", desc: "Consent, scope and results of the criminal background check, with report upload and signature.", Icon: ShieldAlert, accent: "bg-rose-50 text-rose-600" },
     { id: "substance-testing", name: "Substance Testing", desc: "DOT / non-DOT drug & alcohol test (49 CFR Part 40) — collection, lab, result, lab-report upload and consent.", Icon: FlaskConical, accent: "bg-purple-50 text-purple-600" },
     { id: "dot-verification", name: "DOT / Employment Verification", desc: "Previous DOT employer verification — §40.25 drug & alcohol history, §391.23 accidents, signature and response upload.", Icon: BadgeCheck, accent: "bg-teal-50 text-teal-600" },

@@ -8,6 +8,10 @@ export const REPORT_TYPES = [
     "CDA — Commercial Driver Abstract",
 ];
 
+// CVDR and CDA are the two Canadian commercial driver-record products; they are
+// captured together in a single combined report.
+export const CVDR_CDA_TYPE = "CVDR / CDA";
+
 export const PSP_YEARS = "5-Year Crash · 3-Year Inspection";
 export const OTHER_YEARS = ["3 years", "5 years"];
 

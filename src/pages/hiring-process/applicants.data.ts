@@ -133,7 +133,11 @@ export const formRegion = (id: string) => APPLICATION_FORMS.find((f) => f.id ===
 // ---- submission profile (supports multiple licenses / addresses / jobs / etc.) ----
 type Addr = { street: string; unit?: string; city: string; state: string; zip: string; dates?: string };
 type Lic = { number: string; cls: string; authority: string; exp: string; cdl: string; endorsements: string; frontImage?: string; backImage?: string };
-type Emp = { employer: string; position: string; dates: string; reason: string; verifications?: string };
+type Emp = {
+    employer: string; position: string; dates: string; reason: string; verifications?: string;
+    telephone?: string; addr1?: string; addr2?: string; city?: string; state?: string; zip?: string; country?: string;
+    terminated?: string; current?: string; operatedCMV?: string;
+};
 type Edu = { school: string; study: string; dates: string };
 type Rec = { label: string; detail: string };
 type DrivExp = { equipment: string; freight: string; regions: string; dates: string; miles: string; ownerOperator: string };
@@ -209,7 +213,12 @@ function build(a: Pick<Applicant, "firstName" | "lastName" | "email" | "formId" 
                 { label: "Employer", value: e.employer },
                 { label: "Position", value: e.position },
                 { label: "Dates", value: e.dates },
+                { label: "Telephone", value: e.telephone ?? "" },
+                { label: "Employer Address", value: [e.addr1, e.addr2, e.city, [e.state, e.zip].filter(Boolean).join(" "), e.country].filter(Boolean).join(", ") },
                 { label: "Reason for leaving", value: e.reason },
+                { label: "Terminated / discharged / laid off", value: e.terminated ?? "" },
+                { label: "Current employer", value: e.current ?? "" },
+                { label: "Operated commercial motor vehicle", value: e.operatedCMV ?? "" },
                 ...(e.verifications ? [{ label: "Verification (ask at hiring)", value: e.verifications }] : []),
             ],
         })) : [naGroup("Employment")] },
@@ -290,8 +299,8 @@ const SEED: Applicant[] = [
                 { equipment: "Tractor and Semi-trailer", freight: "Van, Reefer", regions: "USA, Border", dates: "01-2021 - 03-2024", miles: "250,000", ownerOperator: "No" },
             ],
             employment: [
-                { employer: "Roadrunner Freight", position: "OTR Driver", dates: "01-2021 - 03-2024", reason: "Career advancement", verifications: "Performance Verification, Experience Letter" },
-                { employer: "Prairie Haul Co.", position: "Regional Driver", dates: "05-2018 - 12-2020", reason: "Relocated", verifications: "Experience Letter" },
+                { employer: "Roadrunner Freight", position: "OTR Driver", dates: "01-2021 - 03-2024", reason: "Career advancement", telephone: "(555) 900-1200", addr1: "500 Depot St", city: "Springfield", state: "Illinois", zip: "62701", country: "United States", terminated: "No", current: "No", operatedCMV: "Yes", verifications: "Experience Letter" },
+                { employer: "Prairie Haul Co.", position: "Regional Driver", dates: "05-2018 - 12-2020", reason: "Relocated", telephone: "(555) 412-7788", addr1: "88 Prairie Rd", city: "Peoria", state: "Illinois", zip: "61602", country: "United States", terminated: "No", current: "No", operatedCMV: "Yes", verifications: "Insurance Experience Letter" },
             ],
             unemployment: [{ dates: "01-2021 - 04-2021", comments: "Short gap between roles while relocating." }],
             education: [{ school: "Lincoln Technical Institute", study: "Diesel Mechanics", dates: "2019 - 2020" }],
@@ -308,7 +317,7 @@ const SEED: Applicant[] = [
             phone: "(773) 555-0192", dob: "07/22/1991", idNumber: "***-**-7781",
             addresses: [{ street: "920 Oak Street", city: "Joliet", state: "Illinois", zip: "60435", dates: "2019 - present" }],
             licenses: [{ number: "R8821-1140-22", cls: "Class B", authority: "Illinois", exp: "11-30-2028", cdl: "Yes", endorsements: "None", frontImage: "marcus-license-front.jpg", backImage: "marcus-license-back.jpg" }],
-            employment: [{ employer: "Midwest Distribution", position: "Local Delivery Driver", dates: "06-2019 - 05-2024", reason: "Seeking local route", verifications: "Employer Experience Letter, Insurance Experience Letter" }],
+            employment: [{ employer: "Midwest Distribution", position: "Local Delivery Driver", dates: "06-2019 - 05-2024", reason: "Seeking local route", telephone: "(773) 444-9080", addr1: "1400 Industrial Ave", city: "Joliet", state: "Illinois", zip: "60436", country: "United States", terminated: "No", current: "No", operatedCMV: "Yes", verifications: "Employer Experience Letter, Insurance Experience Letter" }],
             education: [{ school: "Joliet Community College", study: "Logistics", dates: "2017 - 2019" }],
             record: [],
             signedAt: "06/06/2026",
@@ -379,7 +388,7 @@ const SEED: Applicant[] = [
     ),
 ];
 
-const KEY = "hp_applicants_v9";
+const KEY = "hp_applicants_v11";
 
 function read(): Applicant[] {
     if (typeof window === "undefined") return SEED;

@@ -1,86 +1,94 @@
 import { useState } from "react";
 import { FlaskConical } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useCompanyBranding } from "../ats/company-branding.data";
-import { Field, Grid, SelectBox, RadioRows, PdfUpload } from "./FormKit";
+import { Field, Grid, RadioRows, PdfUpload, CheckLine, ReviewSignOff, newSignOff, type SignOffData } from "./FormKit";
 import { FormScaffold, SectionTitle } from "./FormScaffold";
-import { usePrefill } from "./application-prefill";
 import type { DocSection } from "./FormDocument";
 
-const TEST_TYPES = ["Pre-Employment", "Random", "Post-Accident", "Reasonable Suspicion", "Return-to-Duty", "Follow-Up"];
-const REGULATIONS = ["DOT — 49 CFR Part 40", "Non-DOT (Company Policy)"];
-const RESULTS = ["Passed", "Failed", "Pending"];
+const STATUSES = ["Negative — no substances detected", "Positive", "Pending"];
+const RESULTS = ["Pass", "Fail"];
 
 export function SubstanceTestingForm({ onBack, embedded, startPreview }: { onBack: () => void; embedded?: boolean; startPreview?: boolean }) {
     const [branding] = useCompanyBranding();
-    const pf = usePrefill();
-    const [driver, setDriver] = useState(() => pf?.fullName ?? "");
-    const [testType, setTestType] = useState("Pre-Employment");
-    const [regulation, setRegulation] = useState(REGULATIONS[0]);
-    const [provider, setProvider] = useState("");
-    const [testDate, setTestDate] = useState("");
-    const [resultDate, setResultDate] = useState("");
+    const [requested, setRequested] = useState("");
+    const [completed, setCompleted] = useState("");
+    const [status, setStatus] = useState("");
     const [result, setResult] = useState("");
-    const [notes, setNotes] = useState("");
+    const [passFail, setPassFail] = useState("");
     const [pdf, setPdf] = useState("");
+    const [comments, setComments] = useState("");
+    const [signoff, setSignoff] = useState<SignOffData>(newSignOff());
 
     const fillSample = () => {
-        setDriver("Jane Doe"); setTestType("Pre-Employment"); setRegulation(REGULATIONS[0]);
-        setProvider("Quest Diagnostics"); setTestDate("2026-05-22"); setResultDate("2026-05-24");
-        setResult("Passed"); setNotes("");
+        setRequested("2026-05-22"); setCompleted("2026-05-24");
+        setStatus("Negative — no substances detected"); setResult("All panels negative; specimen valid.");
+        setPassFail("Pass"); setPdf("uploaded");
+        setComments("Drug & alcohol test returned negative. Eligible to proceed.");
     };
 
+    const checks = [
+        { label: "Date requested recorded", ok: !!requested },
+        { label: "Date completed recorded", ok: !!completed },
+        { label: "Status recorded", ok: !!status },
+        { label: "Result recorded", ok: !!result },
+        { label: "Pass / fail determined", ok: !!passFail },
+        { label: "Report document uploaded", ok: !!pdf },
+        { label: "Reviewer sign-off completed", ok: signoff.done },
+    ];
+
     const sections: DocSection[] = [
-        { title: "Test", groups: [{ rows: [
-            { label: "Driver", value: driver },
-            { label: "Test Type", value: testType },
-            { label: "Regulation", value: regulation },
-            { label: "Testing Provider (3rd party)", value: provider },
-            { label: "Test Date", value: testDate },
-            { label: "Result Date", value: resultDate },
-        ] }] },
-        { title: "Result", groups: [{ rows: [
+        { title: "Substance Test", groups: [{ rows: [
+            { label: "Date Requested", value: requested },
+            { label: "Date Completed", value: completed },
+            { label: "Status", value: status },
             { label: "Result", value: result },
-            ...(result === "Failed" && notes ? [{ label: "Notes", value: notes }] : []),
-            { label: "Report", value: pdf ? "Attached" : "Not attached" },
+            { label: "Pass / Fail", value: passFail },
+            { label: "Report Document", value: pdf ? "Attached" : "Not attached" },
         ] }] },
+        ...(comments ? [{ title: "Comments", groups: [{ rows: [{ label: "Comments", value: comments }] }] }] : []),
+        { title: "Review Checklist", groups: [{ rows: checks.map((c) => ({ label: c.label, value: c.ok ? "✓ Complete" : "Pending" })) }] },
+        { title: "Reviewer Sign-Off", groups: [signoff.done
+            ? { rows: [{ label: "Reviewed by", value: signoff.name }, { label: "Title", value: signoff.role }, { label: "Date", value: signoff.date }, { label: "Status", value: "Reviewed & signed" }], images: signoff.sig ? [signoff.sig] : undefined }
+            : { rows: [{ label: "Status", value: "Pending review — not yet signed" }] }] },
     ];
 
     return (
         <FormScaffold
             title="Substance Testing" Icon={FlaskConical} onBack={onBack} onFillSample={fillSample} embedded={embedded} startPreview={startPreview}
-            docTitle="Drug & Alcohol Test" docSubtitle={`${testType} · ${regulation}`} badge={result || undefined} sections={sections} branding={branding} fileName="substance-testing.pdf"
-            intro={<>Drug &amp; alcohol testing is performed by a third-party provider. Record the test details and the <span className="font-medium text-slate-700">Pass / Fail</span> result, then attach the provider’s report.</>}
+            docTitle="Drug & Alcohol Test" docSubtitle={status || undefined} badge={passFail || undefined} sections={sections} branding={branding} fileName="substance-testing.pdf"
+            intro={<>Record the drug &amp; alcohol test — request &amp; completion dates, the status and result, the pass / fail determination, and upload the provider’s report. Add comments and complete the review checklist below.</>}
         >
             <div>
-                <SectionTitle>Test Details</SectionTitle>
-                <Grid>
-                    <Field label="Driver" required><Input value={driver} onChange={(e) => setDriver(e.target.value)} /></Field>
-                    <Field label="Test Type"><SelectBox value={testType} items={TEST_TYPES} onChange={setTestType} /></Field>
-                    <Field label="Regulation"><SelectBox value={regulation} items={REGULATIONS} onChange={setRegulation} /></Field>
-                    <Field label="Testing Provider" hint="Third-party lab / clinic."><Input value={provider} onChange={(e) => setProvider(e.target.value)} /></Field>
-                    <Field label="Test Date"><Input type="date" value={testDate} onChange={(e) => setTestDate(e.target.value)} /></Field>
-                    <Field label="Result Date"><Input type="date" value={resultDate} onChange={(e) => setResultDate(e.target.value)} /></Field>
-                </Grid>
-            </div>
-
-            <div>
-                <SectionTitle>Result</SectionTitle>
+                <SectionTitle>Substance Test</SectionTitle>
                 <div className="space-y-5">
-                    <Field label="Result" required><RadioRows items={RESULTS} value={result} onChange={setResult} /></Field>
-                    {result === "Failed" && (
-                        <Field label="Notes" hint="Optional — substances, dilute, refusal, etc.">
-                            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                        </Field>
-                    )}
+                    <Grid>
+                        <Field label="Date Requested" required><Input type="date" value={requested} onChange={(e) => setRequested(e.target.value)} /></Field>
+                        <Field label="Date Completed"><Input type="date" value={completed} onChange={(e) => setCompleted(e.target.value)} /></Field>
+                    </Grid>
+                    <Field label="Status" required><RadioRows items={STATUSES} value={status} onChange={setStatus} /></Field>
+                    <Field label="Result"><Input value={result} onChange={(e) => setResult(e.target.value)} placeholder="Summary of findings" /></Field>
+                    <Field label="Pass / Fail" required><RadioRows items={RESULTS} value={passFail} onChange={setPassFail} cols={2} /></Field>
                 </div>
             </div>
 
             <div>
                 <SectionTitle>Test Report</SectionTitle>
                 <PdfUpload value={pdf} onChange={setPdf} />
-                <p className="mt-2 text-xs text-slate-400">Upload the report provided by the third-party testing provider.</p>
             </div>
+
+            <div>
+                <SectionTitle>Comments</SectionTitle>
+                <Textarea rows={3} value={comments} onChange={(e) => setComments(e.target.value)} placeholder="Add a comment…" className="resize-none" />
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review Checklist</p>
+                <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">{checks.map((c, i) => <CheckLine key={i} ok={c.ok} label={c.label} />)}</ul>
+            </div>
+
+            <ReviewSignOff heading="I have reviewed the substance test above." value={signoff} onChange={setSignoff} />
         </FormScaffold>
     );
 }

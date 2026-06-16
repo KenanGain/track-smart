@@ -95,7 +95,6 @@ const newMilitary = (): Military => ({
 // Per-employer verification documents. Each one is either off, uploaded by the
 // driver now, or requested ("ask") from the employer during the hiring process.
 const EMPLOYER_DOCS = [
-    { key: "performance", label: "Employer Performance Verification" },
     { key: "experience", label: "Employer Experience Letter" },
     { key: "insurance", label: "Insurance Experience Letter" },
 ] as const;
@@ -930,7 +929,6 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                         <Field className="sm:col-span-2" label="Reason for leaving?" required><TextInput value={d.reasonLeaving} onChange={(e) => set({ reasonLeaving: e.target.value })} /></Field>
                         <Field label="Were you terminated / discharged / laid off?" required><YesNo value={d.terminated} onChange={(v) => set({ terminated: v })} /></Field>
                         <Field label="Is this your current employer?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
-                        <Field label="May we contact this employer now?" required><YesNo value={d.mayContact} onChange={(v) => set({ mayContact: v })} /></Field>
                         <Field label="Did you operate a commercial motor vehicle?" required><YesNo value={d.operatedCMV} onChange={(v) => set({ operatedCMV: v })} /></Field>
                     </Grid>
                 </FormSection>

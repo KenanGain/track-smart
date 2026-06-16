@@ -207,7 +207,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
 
             {/* One continuous block — record, summary, then violations & accidents */}
             <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                {records.map((r, i) => <RecordCard key={i} value={r} onChange={(patch) => setRecord(i, patch)} />)}
+                {records.map((r, i) => <RecordCard key={i} value={r} onChange={(patch) => setRecord(i, patch)} locked={!!lockedRegion} />)}
 
                 {/* Summary */}
                 <div className="p-5">
@@ -339,7 +339,7 @@ export function DriverAbstractForm({ onBack, embedded, variant, startPreview, on
 }
 
 // ----------------------------- one jurisdiction's record (editable) -----------------------------
-function RecordCard({ value, onChange }: { value: DrivingRecord; onChange: (patch: Partial<DrivingRecord>) => void }) {
+function RecordCard({ value, onChange, locked }: { value: DrivingRecord; onChange: (patch: Partial<DrivingRecord>) => void; locked?: boolean }) {
     const isCanada = value.region === "Canada";
     const noun = isCanada ? "Abstract" : "MVR";
     const authLabel = isCanada ? "Issuing Province" : "Issuing State";
@@ -356,7 +356,9 @@ function RecordCard({ value, onChange }: { value: DrivingRecord; onChange: (patc
                 <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{value.region}</span>
             </div>
             <Grid>
-                <Field label="Issuing Country" required><SelectBox value={value.region} items={["United States", "Canada"]} onChange={onCountry} /></Field>
+                {locked
+                    ? <Field label="Issuing Country"><div className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700">{value.region}</div></Field>
+                    : <Field label="Issuing Country" required><SelectBox value={value.region} items={["United States", "Canada"]} onChange={onCountry} /></Field>}
                 <Field label={authLabel} required><SelectBox value={value.authority} placeholder="Please choose" items={auth} onChange={onAuthority} /></Field>
                 <Field label="Date Issued"><Input type="date" value={value.dateIssued} onChange={(e) => onChange({ dateIssued: e.target.value })} /></Field>
                 <Field label="Date Received"><Input type="date" value={value.dateReceived} onChange={(e) => onChange({ dateReceived: e.target.value })} /></Field>

@@ -5,7 +5,10 @@ import type { Applicant, SubSection, SubGroup } from "./applicants.data";
 // downstream hiring forms (driver name, licence, address, employment, …).
 
 export type PrefillLicense = { number: string; cls: string; authority: string; issue: string; exp: string; cdl: string; endorsements: string; country?: string };
-export type PrefillEmployer = { employer: string; position: string; dates: string; from: string; to: string; reason: string };
+export type PrefillEmployer = {
+    employer: string; position: string; dates: string; from: string; to: string; reason: string; askDocs: string[];
+    telephone: string; address: string; terminated: string; current: string; operatedCMV: string;
+};
 export type PrefillUnemployment = { dates: string; from: string; to: string; comments: string };
 export type PrefillAddress = { street: string; city: string; state: string; zip: string; country: string; full: string };
 
@@ -21,7 +24,7 @@ export type ApplicantPrefill = {
 
 // Split a "MM-YYYY - MM-YYYY" (or "YYYY - YYYY") dates string into from / to.
 // Separator is a hyphen surrounded by spaces, so internal "MM-YYYY" hyphens stay intact.
-const splitDates = (s: string): { from: string; to: string } => {
+export const splitDates = (s: string): { from: string; to: string } => {
     const parts = (s || "").split(/\s+[–-]\s+/).map((x) => x.trim());
     if (parts.length >= 2) return { from: parts[0], to: parts.slice(1).join(" - ") };
     return { from: s || "", to: "" };
@@ -70,8 +73,9 @@ export function buildPrefill(a: Applicant): ApplicantPrefill {
     const licenses: PrefillLicense[] = (licSec?.groups ?? []).map((g) => ({
         number: fieldIn(g, "number"),
         cls: fieldIn(g, "class"),
-        authority: fieldIn(g, "authority"),
-        country: fieldIn(g, "country"),
+        // The application captures the issuing state/province under that label.
+        authority: fieldIn(g, "authority", "issuing", "state", "province"),
+        country: fieldIn(g, "country") || address.country,
         issue: fieldIn(g, "issue"),
         exp: fieldIn(g, "expiration"),
         cdl: fieldIn(g, "commercial", "cdl"),
@@ -81,7 +85,18 @@ export function buildPrefill(a: Applicant): ApplicantPrefill {
     const empSec = section(sub, "Employment History");
     const employment: PrefillEmployer[] = (empSec?.groups ?? []).map((g) => {
         const dates = fieldIn(g, "dates");
-        return { employer: fieldIn(g, "employer"), position: fieldIn(g, "position"), dates, ...splitDates(dates), reason: fieldIn(g, "reason") };
+        const askRaw = fieldIn(g, "ask at hiring", "verification");
+        const askDocs = askRaw ? askRaw.split(/[,;]/).map((s) => s.trim()).filter(Boolean) : [];
+        return {
+            employer: fieldIn(g, "employer"), position: fieldIn(g, "position"), dates, ...splitDates(dates),
+            reason: fieldIn(g, "reason"),
+            telephone: fieldIn(g, "telephone", "phone"),
+            address: fieldIn(g, "address"),
+            terminated: fieldIn(g, "terminated"),
+            current: fieldIn(g, "current employer"),
+            operatedCMV: fieldIn(g, "operated", "commercial motor"),
+            askDocs,
+        };
     }).filter((e) => e.employer);
 
     const unempSec = section(sub, "Unemployment History");
