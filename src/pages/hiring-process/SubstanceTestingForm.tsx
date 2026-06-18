@@ -15,7 +15,6 @@ export function SubstanceTestingForm({ onBack, embedded, startPreview }: { onBac
     const [requested, setRequested] = useState("");
     const [completed, setCompleted] = useState("");
     const [status, setStatus] = useState("");
-    const [result, setResult] = useState("");
     const [passFail, setPassFail] = useState("");
     const [pdf, setPdf] = useState("");
     const [comments, setComments] = useState("");
@@ -23,7 +22,7 @@ export function SubstanceTestingForm({ onBack, embedded, startPreview }: { onBac
 
     const fillSample = () => {
         setRequested("2026-05-22"); setCompleted("2026-05-24");
-        setStatus("Negative — no substances detected"); setResult("All panels negative; specimen valid.");
+        setStatus("Negative — no substances detected");
         setPassFail("Pass"); setPdf("uploaded");
         setComments("Drug & alcohol test returned negative. Eligible to proceed.");
     };
@@ -32,7 +31,6 @@ export function SubstanceTestingForm({ onBack, embedded, startPreview }: { onBac
         { label: "Date requested recorded", ok: !!requested },
         { label: "Date completed recorded", ok: !!completed },
         { label: "Status recorded", ok: !!status },
-        { label: "Result recorded", ok: !!result },
         { label: "Pass / fail determined", ok: !!passFail },
         { label: "Report document uploaded", ok: !!pdf },
         { label: "Reviewer sign-off completed", ok: signoff.done },
@@ -43,7 +41,6 @@ export function SubstanceTestingForm({ onBack, embedded, startPreview }: { onBac
             { label: "Date Requested", value: requested },
             { label: "Date Completed", value: completed },
             { label: "Status", value: status },
-            { label: "Result", value: result },
             { label: "Pass / Fail", value: passFail },
             { label: "Report Document", value: pdf ? "Attached" : "Not attached" },
         ] }] },
@@ -68,7 +65,6 @@ export function SubstanceTestingForm({ onBack, embedded, startPreview }: { onBac
                         <Field label="Date Completed"><Input type="date" value={completed} onChange={(e) => setCompleted(e.target.value)} /></Field>
                     </Grid>
                     <Field label="Status" required><RadioRows items={STATUSES} value={status} onChange={setStatus} /></Field>
-                    <Field label="Result"><Input value={result} onChange={(e) => setResult(e.target.value)} placeholder="Summary of findings" /></Field>
                     <Field label="Pass / Fail" required><RadioRows items={RESULTS} value={passFail} onChange={setPassFail} cols={2} /></Field>
                 </div>
             </div>

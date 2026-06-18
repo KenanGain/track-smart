@@ -304,6 +304,10 @@ export function EmploymentVerificationForm({ onBack, embedded, startPreview }: {
                         attemptLabel={`attempt ${v.attempts + 1} of ${MAX_ATTEMPTS}`}
                         prefill={{ email: v.contact, phone: e.telephone, address: e.address }}
                         docs={DOCS.map((d) => ({ key: d.key, label: d.label, preselected: reqOpen.only ? d.key === reqOpen.only : v.docs[d.key].source === "employer", received: v.docs[d.key].received }))}
+                        forms={[
+                            { key: "accident-history", label: "Accident History (§391.23)", preselected: false },
+                            { key: "drug-alcohol-history", label: "Drug & Alcohol History (§391.23)", preselected: false },
+                        ]}
                         dataRows={[
                             { label: "Employer", value: e.employer }, { label: "Position", value: e.position },
                             { label: "Employment dates", value: period }, { label: "Reason for leaving", value: e.reason },

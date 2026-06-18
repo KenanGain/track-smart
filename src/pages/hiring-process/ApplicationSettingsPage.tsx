@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2, Upload, Image as ImageIcon, FileText } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2, Upload, Image as ImageIcon, FileText, ClipboardList, FileSignature } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,9 @@ import { Select as ShadSelect, SelectTrigger, SelectValue, SelectContent, Select
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { SubTabs } from "@/components/ui/SubTabs";
 import { ConsentPhase } from "./ApplicationConsents";
-import { consentsForType } from "./policy-forms.data";
+import { consentsForType, consentRegion, POLICY_FORMS } from "./policy-forms.data";
 
 /**
  * Settings -> Hiring Process -> Applications
@@ -108,6 +109,7 @@ type Employer = {
     addr1: string; addr2: string; country: string; city: string; state: string; zip: string;
     telephone: string; position: string; reasonLeaving: string;
     terminated: string; current: string; mayContact: string; operatedCMV: string;
+    subjectFMCSR: string; safetySensitive: string;
     docs: EmployerDocs;
 };
 const newEmployer = (): Employer => ({
@@ -115,6 +117,7 @@ const newEmployer = (): Employer => ({
     addr1: "", addr2: "", country: "United States", city: "", state: "", zip: "",
     telephone: "", position: "", reasonLeaving: "",
     terminated: "", current: "", mayContact: "", operatedCMV: "",
+    subjectFMCSR: "", safetySensitive: "",
     docs: newEmployerDocs(),
 });
 
@@ -432,15 +435,19 @@ function CheckList({ items, selected, onToggle }: { items: string[]; selected: s
     );
 }
 
-// Draw-to-sign pad backed by a <canvas>; supports mouse + touch via pointer events.
+// Draw-or-type signature pad backed by a <canvas>; supports mouse + touch via pointer events.
 function SignaturePad() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawing = useRef(false);
+    const [mode, setMode] = useState<"draw" | "type">("draw");
+    const [typed, setTyped] = useState("");
     const point = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        const rect = canvasRef.current!.getBoundingClientRect();
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        const r = canvasRef.current!.getBoundingClientRect();
+        const sx = canvasRef.current!.width / r.width, sy = canvasRef.current!.height / r.height;
+        return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy };
     };
     const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
+        if (mode !== "draw") return;
         const ctx = canvasRef.current?.getContext("2d");
         if (!ctx) return;
         drawing.current = true;
@@ -460,31 +467,41 @@ function SignaturePad() {
         ctx.stroke();
     };
     const end = () => { drawing.current = false; };
-    const clear = () => {
-        const c = canvasRef.current;
-        const ctx = c?.getContext("2d");
-        if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
+    const clearCanvas = () => { const c = canvasRef.current; const ctx = c?.getContext("2d"); if (c && ctx) ctx.clearRect(0, 0, c.width, c.height); };
+    // Render a typed name onto the canvas in a script font → signature image.
+    const renderTyped = (name: string) => {
+        const c = canvasRef.current; const ctx = c?.getContext("2d");
+        if (!c || !ctx) return;
+        ctx.clearRect(0, 0, c.width, c.height);
+        if (name.trim()) {
+            ctx.fillStyle = "#1e293b";
+            ctx.font = "52px 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive";
+            ctx.textBaseline = "middle";
+            ctx.fillText(name, 24, c.height / 2);
+        }
     };
+    const clear = () => { clearCanvas(); setTyped(""); };
+    const switchMode = (m: "draw" | "type") => { setMode(m); clearCanvas(); setTyped(""); };
     return (
-        <div>
-            <div className="relative overflow-hidden rounded-md border-2 border-dashed border-slate-400 bg-white">
-                <canvas
-                    ref={canvasRef}
-                    width={560}
-                    height={180}
-                    onPointerDown={start}
-                    onPointerMove={move}
-                    onPointerUp={end}
-                    onPointerLeave={end}
-                    className="block w-full touch-none"
-                    style={{ height: 180 }}
-                />
-                <div className="pointer-events-none absolute inset-x-10 bottom-10 border-b border-slate-800" />
+        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-slate-700">✎ Signature</Label>
+                <div className="flex items-center gap-1.5">
+                    <div className="flex rounded-md border border-slate-200 bg-white p-0.5">
+                        {(["draw", "type"] as const).map((m) => (
+                            <button key={m} type="button" onClick={() => switchMode(m)} className={cn("rounded px-2.5 py-1 text-xs font-semibold capitalize transition", mode === m ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-700")}>{m}</button>
+                        ))}
+                    </div>
+                    <button type="button" onClick={clear} className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:text-rose-500"><Trash2 className="h-3 w-3" /> Clear</button>
+                </div>
             </div>
-            <div className="mt-3 flex justify-end gap-3">
-                <Button type="button" variant="secondary" onClick={clear}>Clear</Button>
-                <Button type="button">Save</Button>
+            {mode === "type" && (
+                <Input value={typed} onChange={(e) => { setTyped(e.target.value); renderTyped(e.target.value); }} placeholder="Type your full name" className="mb-2 bg-white" />
+            )}
+            <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                <canvas ref={canvasRef} width={680} height={160} onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end} className={cn("block w-full", mode === "draw" ? "touch-none" : "pointer-events-none")} style={{ height: 160 }} />
             </div>
+            <p className="mt-1 text-xs text-slate-400">{mode === "draw" ? "Draw your signature above using your mouse or finger." : "Your typed name is rendered as your signature above."}</p>
         </div>
     );
 }
@@ -759,6 +776,27 @@ export const APPLICATION_FORMS: FormConfig[] = [
     { id: "canada-owner-operator", name: "Canada Owner-Operator", region: "Canada", blurb: "For Canadian owner-operators - SIN, provincial licensing and authority.", defaultCountry: "Canada", idLabel: "SIN", Icon: Snowflake, accent: "bg-sky-50 text-sky-600" },
 ];
 
+// ----------------------------- hiring / report form catalog -----------------------------
+// The individual forms used across the hiring process, browsable & previewable on their own.
+export type HiringFormItem = { id: string; name: string; blurb: string; group: string };
+export const HIRING_FORMS: HiringFormItem[] = [
+    { id: "driver-license", name: "Driver License", blurb: "License details, class, endorsements and front/back upload.", group: "License & Driving" },
+    { id: "psp", name: "PSP — Pre-Employment Screening Program", blurb: "FMCSA crash and inspection history report.", group: "Reports & Screening" },
+    { id: "mvr", name: "MVR — Motor Vehicle Record", blurb: "US motor vehicle record review.", group: "Reports & Screening" },
+    { id: "driver-abstract", name: "Driver Abstract", blurb: "Canadian driving record / abstract review.", group: "Reports & Screening" },
+    { id: "cvdr", name: "CVDR — Commercial Vehicle Driver Record", blurb: "Commercial vehicle driver record.", group: "Reports & Screening" },
+    { id: "cda", name: "CDA — Commercial Driver Abstract", blurb: "Commercial driver abstract.", group: "Reports & Screening" },
+    { id: "accident-history", name: "Accident History (§391.23)", blurb: "Safety Performance History — accident portion.", group: "Safety Performance (§391.23)" },
+    { id: "drug-alcohol-history", name: "Drug & Alcohol History (§391.23)", blurb: "DOT-regulated drug & alcohol testing history.", group: "Safety Performance (§391.23)" },
+    { id: "dot-verification", name: "DOT Employment Verification", blurb: "Prior DOT-regulated employment verification.", group: "Safety Performance (§391.23)" },
+    { id: "criminal-background", name: "Criminal Background Check", blurb: "Criminal record screening result.", group: "Medical & Compliance" },
+    { id: "substance-testing", name: "Substance Testing", blurb: "Pre-employment drug & alcohol test result.", group: "Medical & Compliance" },
+    { id: "medical-card", name: "Medical Card", blurb: "DOT medical examiner's certificate.", group: "Medical & Compliance" },
+    { id: "annual-review", name: "Annual Review of Driving Record", blurb: "§391.25 annual driving-record review.", group: "Medical & Compliance" },
+    { id: "clearinghouse-query", name: "Clearinghouse Query", blurb: "FMCSA Drug & Alcohol Clearinghouse query.", group: "Medical & Compliance" },
+];
+const HIRING_FORM_GROUPS = ["License & Driving", "Reports & Screening", "Safety Performance (§391.23)", "Medical & Compliance"];
+
 // ----------------------------- application form view -----------------------------
 function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig; onBack: () => void; onPreview?: () => void }) {
     // Personal
@@ -855,7 +893,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         setHadViolations("Yes");
         setIncidents([{ date: { m: "02", y: "2024" }, charges: ["Speeding"], state: st, commercial: "No", category: "Hours of Service", outOfService: "No", penalties: ["Fine"], penaltyPoints: "2", fineAmount: "$100 - $250", comments: "" }]);
         setEmployedRecently("Yes");
-        setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes", docs: { performance: "upload", experience: "upload", insurance: "ask" } }]);
+        setEmployers([{ company: "Roadrunner Freight", start: { m: "01", y: "2021" }, end: { m: "03", y: "2024" }, addr1: "500 Depot St", addr2: "", country: config.defaultCountry, city: "Springfield", state: st, zip: "62701", telephone: "(555) 900-1200", position: "OTR Driver", reasonLeaving: "Career advancement", terminated: "No", current: "No", mayContact: "Yes", operatedCMV: "Yes", subjectFMCSR: "Yes", safetySensitive: "Yes", docs: { performance: "upload", experience: "upload", insurance: "ask" } }]);
         setAttendedSchool("Yes");
         setEducation([{ school: "Lincoln Technical Institute", start: { m: "09", y: "2019" }, end: { m: "06", y: "2020" }, city: "Springfield", state: st, country: config.defaultCountry, telephone: "", study: "Diesel Mechanics", graduation: { m: "06", y: "2020" } }]);
         setMilitaryEver("No");
@@ -930,6 +968,8 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                         <Field label="Were you terminated / discharged / laid off?" required><YesNo value={d.terminated} onChange={(v) => set({ terminated: v })} /></Field>
                         <Field label="Is this your current employer?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
                         <Field label="Did you operate a commercial motor vehicle?" required><YesNo value={d.operatedCMV} onChange={(v) => set({ operatedCMV: v })} /></Field>
+                        <Field label="Were you subject to FMCSRs while employed?" required><YesNo value={d.subjectFMCSR} onChange={(v) => set({ subjectFMCSR: v })} /></Field>
+                        <Field className="sm:col-span-2" label="Was your job designated as a Safety-Sensitive function in any DOT-regulated mode subject to the drug and alcohol testing requirements of 49 CFR Part 40?" required><YesNo value={d.safetySensitive} onChange={(v) => set({ safetySensitive: v })} /></Field>
                     </Grid>
                 </FormSection>
 
@@ -1317,8 +1357,12 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                         </label>
                         <Field className="mt-3" label="Email Address"><TextInput type="email" value={copyEmail} onChange={(e) => setCopyEmail(e.target.value)} /></Field>
                     </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Declarations</p>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">By signing, I authorize the investigation of my employment and safety-performance history and certify that the information in this application is true and complete. The full declarations — including my §391.23 rights to review, correct, and attach a rebuttal to previous-employer information — are presented and signed on the <span className="font-medium text-slate-700">Safety Performance History Investigation Authorization</span> consent form.</p>
+                    </div>
                     <InfoAlert>By signing below, I agree to use an electronic signature and acknowledge that an electronic signature is as legally binding as an ink signature.</InfoAlert>
-                    <p className="text-sm text-slate-600">Please use your finger or mouse to sign your name in the rectangle below. Click "Save" when finished.</p>
+                    <p className="text-sm text-slate-600">Draw your signature with your finger or mouse, or switch to <span className="font-medium text-slate-700">Type</span> to enter your name.</p>
                     <SignaturePad />
                 </div>
             ),
@@ -1467,67 +1511,162 @@ export function ApplicationFormPage({ formId, onNavigate }: { formId: string; on
 }
 
 // ----------------------------- page: application form catalog -----------------------------
-export function ApplicationSettingsPage({ onNavigate }: { onNavigate: (path: string) => void }) {
+const TABS = [
+    { key: "application", label: "Application Forms", Icon: FileText },
+    { key: "forms", label: "Forms", Icon: ClipboardList },
+    { key: "consent", label: "Consent Forms", Icon: FileSignature },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
+const TAB_COPY: Record<TabKey, { kicker: string; title: string; blurb: string }> = {
+    application: { kicker: "Driver Hiring - Step 1", title: "Application Forms", blurb: "The application is the first step of driver hiring. Choose the form that matches the driver type - each one collects the fields appropriate for that region." },
+    forms: { kicker: "Driver Hiring - Forms", title: "Hiring Forms", blurb: "Every individual hiring & report form used across the process. Open any one to view it on its own." },
+    consent: { kicker: "Driver Hiring - Consents", title: "Consent Forms", blurb: "The consent and policy forms a driver signs as part of the application. Open any one to view it on its own." },
+};
+
+export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate: (path: string) => void; initialTab?: string }) {
+    const [tab, setTab] = useState<TabKey>(
+        TABS.some((t) => t.key === initialTab) ? (initialTab as TabKey) : "application",
+    );
     const open = (f: FormConfig) => onNavigate(`${APPLICATIONS_PATH}/${f.id}`);
     const preview = (f: FormConfig) => onNavigate(`${APPLICATIONS_PATH}/${f.id}/preview`);
+    const openForm = (id: string) => onNavigate(`/settings/hiring-process/forms/${id}`);
+    const openConsent = (id: string) => onNavigate(`/settings/hiring-process/consent/${id}`);
+    const copy = TAB_COPY[tab];
 
     return (
         <div className="min-h-screen bg-slate-50">
             {/* Header band */}
             <div className="border-b border-slate-200 bg-white">
                 <div className="mx-auto max-w-5xl px-6 py-6">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Driver Hiring - Step 1</p>
-                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">Application Forms</h1>
-                    <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                        The application is the first step of driver hiring. Choose the form that matches the
-                        driver type - each one collects the fields appropriate for that region.
-                    </p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{copy.kicker}</p>
+                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">{copy.title}</h1>
+                    <p className="mt-1 max-w-2xl text-sm text-slate-500">{copy.blurb}</p>
+                </div>
+                {/* Tabs — shared SubTabs (same as the Workflows builder) */}
+                <div className="mx-auto max-w-5xl px-6">
+                    <SubTabs
+                        tabs={TABS.map((t) => ({ id: t.key, label: t.label, icon: t.Icon }))}
+                        activeId={tab}
+                        onChange={(id) => setTab(id)}
+                        bordered={false}
+                    />
                 </div>
             </div>
 
-            {/* Form list */}
             <div className="mx-auto max-w-5xl px-6 py-8">
-                <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-slate-700">{APPLICATION_FORMS.length} application forms</h2>
-                    <span className="text-xs text-slate-400">13 sections + driver-type consent forms</span>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <div className="hidden items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:flex">
-                        <span className="flex-1">Application Form</span>
-                        <span className="w-44 text-center">Includes</span>
-                        <span className="w-[230px] text-right">Actions</span>
-                    </div>
-                    <div className="divide-y divide-slate-100">
-                        {APPLICATION_FORMS.map((f) => (
-                            <div key={f.id} className="group flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                                <div className="flex min-w-0 flex-1 items-center gap-4">
-                                    <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", f.accent)}>
-                                        <f.Icon className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="font-semibold text-slate-900">{f.name}</span>
-                                            <Badge variant="secondary" className="bg-slate-100 text-slate-500">{f.region}</Badge>
-                                        </div>
-                                        <p className="mt-0.5 truncate text-sm text-slate-500">{f.blurb}</p>
-                                    </div>
-                                </div>
-                                <div className="hidden w-44 flex-col items-center gap-1 sm:flex">
-                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">13 sections</span>
-                                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">{consentsForType(f.id).length} consent forms</span>
-                                </div>
-                                <div className="flex w-full items-center justify-end gap-2 sm:w-[230px]">
-                                    <Button variant="outline" size="sm" onClick={() => preview(f)}>
-                                        <Eye className="h-4 w-4" /> Preview
-                                    </Button>
-                                    <Button size="sm" onClick={() => open(f)}>
-                                        Open form <ArrowRight className="h-4 w-4" />
-                                    </Button>
-                                </div>
+                {tab === "application" && (
+                    <>
+                        <div className="mb-3 flex items-center justify-between">
+                            <h2 className="text-sm font-semibold text-slate-700">{APPLICATION_FORMS.length} application forms</h2>
+                            <span className="text-xs text-slate-400">13 sections + driver-type consent forms</span>
+                        </div>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <div className="hidden items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:flex">
+                                <span className="flex-1">Application Form</span>
+                                <span className="w-44 text-center">Includes</span>
+                                <span className="w-[230px] text-right">Actions</span>
                             </div>
-                        ))}
-                    </div>
-                </div>
+                            <div className="divide-y divide-slate-100">
+                                {APPLICATION_FORMS.map((f) => (
+                                    <div key={f.id} className="group flex flex-col gap-4 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
+                                        <div className="flex min-w-0 flex-1 items-center gap-4">
+                                            <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", f.accent)}>
+                                                <f.Icon className="h-5 w-5" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="font-semibold text-slate-900">{f.name}</span>
+                                                    <Badge variant="secondary" className="bg-slate-100 text-slate-500">{f.region}</Badge>
+                                                </div>
+                                                <p className="mt-0.5 truncate text-sm text-slate-500">{f.blurb}</p>
+                                            </div>
+                                        </div>
+                                        <div className="hidden w-44 flex-col items-center gap-1 sm:flex">
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">13 sections</span>
+                                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">{consentsForType(f.id).length} consent forms</span>
+                                        </div>
+                                        <div className="flex w-full items-center justify-end gap-2 sm:w-[230px]">
+                                            <Button variant="outline" size="sm" onClick={() => preview(f)}>
+                                                <Eye className="h-4 w-4" /> Preview
+                                            </Button>
+                                            <Button size="sm" onClick={() => open(f)}>
+                                                Open form <ArrowRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {tab === "forms" && (
+                    <>
+                        <div className="mb-3 flex items-center justify-between">
+                            <h2 className="text-sm font-semibold text-slate-700">{HIRING_FORMS.length} forms</h2>
+                            <span className="text-xs text-slate-400">Open any form to view it individually</span>
+                        </div>
+                        <div className="space-y-6">
+                            {HIRING_FORM_GROUPS.map((group) => (
+                                <div key={group}>
+                                    <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">{group}</h3>
+                                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                                        <div className="divide-y divide-slate-100">
+                                            {HIRING_FORMS.filter((f) => f.group === group).map((f) => (
+                                                <div key={f.id} className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50/70">
+                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
+                                                        <FileText className="h-5 w-5" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate font-semibold text-slate-900">{f.name}</p>
+                                                        <p className="truncate text-sm text-slate-500">{f.blurb}</p>
+                                                    </div>
+                                                    <Button size="sm" onClick={() => openForm(f.id)}>
+                                                        Open form <ArrowRight className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                {tab === "consent" && (
+                    <>
+                        <div className="mb-3 flex items-center justify-between">
+                            <h2 className="text-sm font-semibold text-slate-700">{POLICY_FORMS.length} consent forms</h2>
+                            <span className="text-xs text-slate-400">Signed by the driver as part of the application</span>
+                        </div>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                            <div className="divide-y divide-slate-100">
+                                {POLICY_FORMS.map((c) => {
+                                    const region = consentRegion(c.id);
+                                    const regionStyle = region === "US" ? "bg-blue-50 text-blue-600" : region === "Canada" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500";
+                                    const regionLabel = region === "All" ? "Universal" : region;
+                                    return (
+                                        <div key={c.id} className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50/70">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500">
+                                                <FileText className="h-5 w-5" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate font-semibold text-slate-900">{c.title} {c.accentTitle}</p>
+                                                <p className="truncate text-sm text-slate-500">{c.blurb}</p>
+                                            </div>
+                                            <span className={cn("hidden shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-block", regionStyle)}>{regionLabel}</span>
+                                            <Button size="sm" onClick={() => openConsent(c.id)}>
+                                                Open form <ArrowRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

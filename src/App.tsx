@@ -55,11 +55,15 @@ import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
 import { HiringProcessPlaceholder } from '@/pages/hiring-process/HiringProcessPlaceholder'
 import { ApplicationSettingsPage, ApplicationFormPage } from '@/pages/hiring-process/ApplicationSettingsPage'
 import { ApplicationFormPreviewPage } from '@/pages/hiring-process/ApplicationFormPreview'
+import { HiringFormView } from '@/pages/hiring-process/formRegistry'
+import { PolicyForm } from '@/pages/hiring-process/PolicyForm'
+import { POLICY_FORMS } from '@/pages/hiring-process/policy-forms.data'
 import { ApplicationsHiringPage } from '@/pages/hiring-process/ApplicationsHiringPage'
 import { ApplicantDetailPage } from '@/pages/hiring-process/ApplicantDetailPage'
 import { HiringBuilderPage } from '@/pages/hiring-process/HiringBuilderPage'
 import { HiringMonitorPage } from '@/pages/hiring-process/HiringMonitorPage'
 import { HiringFileDashboard } from '@/pages/hiring-process/HiringFileDashboard'
+import { TestingFormsPage } from '@/pages/hiring-process/TestingFormsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
@@ -494,8 +498,9 @@ function App() {
         if (path === "/hiring-process/onboarding") {
             return <HiringProcessPlaceholder title="Onboarding" />
         }
-        if (path === "/settings/hiring-process/applications") {
-            return <ApplicationSettingsPage onNavigate={handleNavigate} />
+        if (path === "/settings/hiring-process/applications" || path.startsWith("/settings/hiring-process/applications?")) {
+            const tab = new URLSearchParams(path.split("?")[1] || "").get("tab") || undefined
+            return <ApplicationSettingsPage onNavigate={handleNavigate} initialTab={tab} />
         }
         if (path.startsWith("/settings/hiring-process/applications/")) {
             const rest = path.slice("/settings/hiring-process/applications/".length)
@@ -510,6 +515,18 @@ function App() {
         }
         if (path === "/settings/hiring-process/onboarding") {
             return <HiringProcessPlaceholder title="Onboarding Settings" />
+        }
+        if (path === "/settings/hiring-process/testing-forms") {
+            return <TestingFormsPage />
+        }
+        if (path.startsWith("/settings/hiring-process/forms/")) {
+            const formId = path.slice("/settings/hiring-process/forms/".length)
+            return <HiringFormView formId={formId} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=forms")} />
+        }
+        if (path.startsWith("/settings/hiring-process/consent/")) {
+            const consentId = path.slice("/settings/hiring-process/consent/".length)
+            const def = POLICY_FORMS.find((f) => f.id === consentId)
+            if (def) return <PolicyForm def={def} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=consent")} />
         }
         if (path === "/dq-files") {
             return <DqFilesPage onNavigate={handleNavigate} />

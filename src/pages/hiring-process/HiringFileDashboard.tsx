@@ -1,9 +1,11 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, Send, FileSearch, BadgeCheck, RotateCcw,
-    AlertCircle, Clock, ExternalLink, Mail,
+    AlertCircle, Clock, ExternalLink, Mail, Printer, Share2,
     MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip,
 } from "lucide-react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +30,9 @@ import { PrefillProvider, buildPrefill, splitDates, type PrefillEmployer, type P
 import { SignaturePad } from "./FormKit";
 import { PolicyDocument } from "./PolicyForm";
 import { POLICY_FORMS } from "./policy-forms.data";
-import { useCompanyBranding } from "../ats/company-branding.data";
-import type { DocSection } from "./FormDocument";
+import { useCompanyBranding, type CompanyBranding } from "../ats/company-branding.data";
+import { FormDocument, THEMES, type DocSection, type ThemeKey } from "./FormDocument";
+import { ClassicSphForms, type ClassicSphData } from "./ClassicSphForms";
 
 const TEMPLATE_FOR_FORM: Record<string, string> = { us: "tpl-us", canada: "tpl-canada", "cross-border": "tpl-cross" };
 const DONE_STATES: DocStatus[] = ["received", "verified", "skipped"];
@@ -167,13 +170,13 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
             };
         });
         // One-click fulfilment for the actionable checklist items on the review page.
-        const fulfill = (kind: "send" | "respond" | "verify" | "doc", docKey?: string) => updateOne(a.id, (prev) => {
+        const fulfill = (kind: "send" | "respond" | "verify" | "doc", docKey?: string, attempt?: number) => updateOne(a.id, (prev) => {
             if (kind === "doc" && docKey) return { docs: { ...(prev.docs ?? {}), [docKey]: "received" as DocStatus }, events: [{ id: `ev-${Date.now()}`, type: "doc", text: `Marked received — ${docKey.split(":").slice(-1)[0]} (${check.employer})`, at: Date.now(), author: ACTOR }, ...prev.events] };
             const cur = base.map((b) => (prev.empChecks ?? []).find((c) => c.id === b.id) ?? b);
             const next = cur.map((c) => {
                 if (c.id !== empReview) return c;
                 if (kind === "send") return { ...c, status: "sent" as const, attempts: [...c.attempts, { at: Date.now(), method: "Email" as RequestChannel, to: c.email || "" }] };
-                if (kind === "respond") return { ...c, status: "responded" as const, respondedAt: Date.now() };
+                if (kind === "respond") return { ...c, status: "responded" as const, respondedAt: Date.now(), respondedAttempt: attempt ?? c.attempts.length - 1 };
                 return { ...c, status: "verified" as const, verifiedAt: Date.now() };
             });
             const verb = kind === "send" ? "Sent verification request" : kind === "respond" ? "Recorded employer response" : "Verified employment";
@@ -771,10 +774,71 @@ function LicenseReviewView({ a, pf, focusIndex, existingReview, remarks, onAddRe
 }
 
 // ── Employment-verification review — a dedicated page per previous employer ─────
+// Dedicated page for the employer's returned §391.23 form — themes, Print, Download PDF, Share.
+// "Traditional" renders the verbatim FMCSA paper forms (filled + signed); other themes render
+// the styled key-value document.
+function ReturnedFormPage({ title, subtitle, sections, classic, formPage, branding, onBack }: {
+    title: string; subtitle?: string; sections: DocSection[]; classic: ClassicSphData; formPage: "accident" | "drug"; branding: CompanyBranding; onBack: () => void;
+}) {
+    const [theme, setTheme] = useState<ThemeKey>("traditional");
+    const [downloading, setDownloading] = useState(false);
+    const [shared, setShared] = useState(false);
+    const docRef = useRef<HTMLDivElement>(null);
+    const downloadPdf = async () => {
+        const el = docRef.current;
+        if (!el) return;
+        setDownloading(true);
+        try {
+            const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+            const pdf = new jsPDF({ unit: "pt", format: "a4" });
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+            const imgH = (canvas.height * pageW) / canvas.width;
+            let heightLeft = imgH, position = 0;
+            const img = canvas.toDataURL("image/png");
+            pdf.addImage(img, "PNG", 0, position, pageW, imgH);
+            heightLeft -= pageH;
+            while (heightLeft > 0) { position -= pageH; pdf.addPage(); pdf.addImage(img, "PNG", 0, position, pageW, imgH); heightLeft -= pageH; }
+            pdf.save("safety-performance-history.pdf");
+        } finally { setDownloading(false); }
+    };
+    const share = async () => {
+        const payload = { title, text: `${title}${subtitle ? ` — ${subtitle}` : ""}`, url: window.location.href };
+        try {
+            if (typeof navigator !== "undefined" && (navigator as Navigator).share) { await (navigator as Navigator).share(payload); return; }
+            if (typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(payload.url); setShared(true); setTimeout(() => setShared(false), 1800); }
+        } catch { /* user dismissed share sheet */ }
+    };
+    return (
+        <div className="min-h-screen bg-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
+                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Back</button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                        {THEMES.map((t) => (
+                            <button key={t.key} type="button" onClick={() => setTheme(t.key)} className={cn("rounded-md px-2.5 py-1 text-xs font-semibold transition", theme === t.key ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white")}>{t.name}</button>
+                        ))}
+                    </div>
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={share}><Share2 className="h-3.5 w-3.5" /> {shared ? "Link copied" : "Share"}</Button>
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => window.print()}><Printer className="h-3.5 w-3.5" /> Print</Button>
+                    <Button size="sm" className="h-8 gap-1.5" onClick={downloadPdf} disabled={downloading}><Download className="h-3.5 w-3.5" /> {downloading ? "Generating…" : "Download PDF"}</Button>
+                </div>
+            </div>
+            <div className="px-4 py-8">
+                <div ref={docRef} className={cn("mx-auto max-w-[820px]", theme === "traditional" && "bg-white p-6 shadow-lg")}>
+                    {theme === "traditional"
+                        ? <ClassicSphForms data={classic} branding={branding} page={formPage} />
+                        : <FormDocument title={title} subtitle={subtitle} sections={sections} theme={theme} branding={branding} />}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function EmploymentReviewView({ a, check, filled, index, total, existingReview, remarks, onAddRemark, onFulfill, onRequest, onSendDoc, onBack, onReview }: {
     a: Applicant; check: EmpCheck; filled?: PrefillEmployer; index: number; total: number; existingReview?: ReviewSignoff;
     remarks: Remark[]; onAddRemark: (text: string) => void;
-    onFulfill: (kind: "send" | "respond" | "verify" | "doc", docKey?: string) => void;
+    onFulfill: (kind: "send" | "respond" | "verify" | "doc", docKey?: string, attempt?: number) => void;
     onRequest: (req: { to: string; subject: string; message: string; verifyData?: boolean; docKeys?: string[]; docLabels?: string[] }) => void;
     onSendDoc: (p: { docLabel: string; org: string; to: string }) => void;
     onBack: () => void; onReview: (r: ReviewSignoff) => void;
@@ -783,6 +847,9 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
     // `only` pre-checks a single document; otherwise every employer-sourced, not-yet-received letter.
     const [reqOpen, setReqOpen] = useState<{ only?: string } | null>(null);
     const [sendDoc, setSendDoc] = useState<{ label: string } | null>(null);
+    const [openResp, setOpenResp] = useState<number | null>(null);   // which request row is expanded
+    const [viewForm, setViewForm] = useState<"accident" | "drug" | null>(null);   // which returned form to view
+    const [branding] = useCompanyBranding();
     const openReq = (docKey?: string) => setReqOpen({ only: docKey });
     const tinyBtn = "h-7 gap-1 px-2.5 text-xs";
     const statusLabel: Record<string, string> = { pending: "Not requested", sent: `Sent · ${check.attempts.length}/${EMP_MAX_ATTEMPTS}`, responded: "Responded", verified: "Verified" };
@@ -835,6 +902,81 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
         { label: "Employment dates & position verified", ok: check.status === "verified", actionLabel: "Verify", onAction: () => onFulfill("verify") },
         { label: "Reviewer sign-off completed", ok: !!existingReview },
     ];
+    // ── The employer's returned §391.23 form (shown once they've responded) ──
+    const hasResponse = check.status === "responded" || check.status === "verified" || !!check.respondedAt;
+    const respondedIdx = hasResponse ? (check.respondedAttempt ?? check.attempts.length - 1) : -1;   // the request that got the response
+    const effectiveOpen = openResp === null ? respondedIdx : openResp;    // default-open the responded row
+    const respPos = filled?.position ?? check.position ?? "Driver";
+    const responseRows = [
+        { label: "Employed by this company", value: "Yes" },
+        { label: "Employed as", value: respPos },
+        { label: "Employment dates", value: `${filled?.from ?? "—"} to ${filled?.to ?? "—"}` },
+        { label: "Operated a commercial motor vehicle", value: filled?.operatedCMV || "Yes" },
+        { label: "Subject to FMCSRs while employed", value: "Yes" },
+        { label: "Performed a safety-sensitive function (Part 40)", value: "Yes" },
+        { label: "Reason for leaving", value: filled?.reason || "—" },
+        { label: "Eligible for rehire", value: "Yes" },
+        { label: "Reportable accidents (last 3 years)", value: "None reported" },
+        { label: "Alcohol test result ≥ 0.04", value: "No" },
+        { label: "Verified positive / refused drug test", value: "No" },
+        { label: "Completed a SAP-prescribed program", value: "N/A" },
+    ];
+    const completedByRows = [
+        { label: "Completed by", value: "Dana Whitfield" }, { label: "Title", value: "Safety Manager" },
+        { label: "Company", value: filled?.employer ?? check.employer }, { label: "Telephone", value: filled?.telephone || "—" },
+        { label: "Address", value: filled?.address || "—" }, { label: "Date", value: dateOf(check.respondedAt) },
+    ];
+    const attachedDocs = docs.filter((d) => DONE_STATES.includes(d.status));
+    // Render the signer's name as a script-font signature image so it shows in the document & PDF.
+    const sigDataUrl = useMemo(() => {
+        const c = document.createElement("canvas");
+        c.width = 440; c.height = 280;   // matches the document's h-28 w-44 image box (no crop)
+        const ctx = c.getContext("2d");
+        if (!ctx) return "";
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.fillStyle = "#1e293b";
+        ctx.font = "60px 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive";
+        ctx.textBaseline = "middle";
+        ctx.fillText("Dana Whitfield", 20, c.height / 2);
+        return c.toDataURL();
+    }, []);
+    // Data for the verbatim FMCSA §391.23 paper forms (Traditional / Classic view).
+    const classicData: ClassicSphData = {
+        applicantName: `${a.firstName} ${a.lastName}`,
+        employedByUs: "Yes",
+        employedAs: respPos, fromMY: filled?.from ?? "", toMY: filled?.to ?? "",
+        droveCMV: filled?.operatedCMV || "Yes",
+        vehicleTypes: ["Tractor-Semitrailer"], otherVehicle: "",
+        reasons: [], noHistory: false, noAccidentData: true, accidents: [],
+        otherAccidents: "None on file.", remarks: "Driver maintained a good safety record during employment.",
+        daNotSubject: false, daFrom: filled?.from ?? "", daTo: filled?.to ?? "",
+        answers: ["No", "No", "No", "No", "No", "No"],
+        company: filled?.employer ?? check.employer,
+        street: filled?.address ?? "", cityStateZip: "", telephone: filled?.telephone ?? "",
+        name: "Dana Whitfield", title: "Safety Manager", date: dateOf(check.respondedAt), sig: sigDataUrl,
+    };
+    // The returned form rendered as a themed, printable §391.23 document.
+    const respSections: DocSection[] = [
+        { title: "Safety Performance History (§391.23)", groups: [{ rows: responseRows.map((r) => ({ label: r.label, value: r.value })) }] },
+        { title: "Completed By", groups: [{ rows: [...completedByRows.map((r) => ({ label: r.label, value: r.value })), { label: "Signature", value: "Dana Whitfield (electronically signed)" }], images: sigDataUrl ? [sigDataUrl] : undefined }] },
+        ...(attachedDocs.length ? [{ title: "Documents Attached", groups: [{ rows: attachedDocs.map((d) => ({ label: d.label, value: "Attached by employer" })) }] }] : []),
+    ];
+
+    // Dedicated returned-form page (replaces the review view while open).
+    if (viewForm) {
+        return (
+            <ReturnedFormPage
+                title="Safety Performance History — Returned Form"
+                subtitle={`${filled?.employer ?? check.employer} · ${a.firstName} ${a.lastName}`}
+                sections={respSections}
+                classic={classicData}
+                formPage={viewForm}
+                branding={branding}
+                onBack={() => setViewForm(null)}
+            />
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
@@ -865,6 +1007,111 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                     <div className="grid gap-4 p-5 sm:grid-cols-2">
                         {filledRows.map((r, ri) => <RoField key={ri} label={r.label} value={r.value} />)}
                     </div>
+                </div>
+
+                {/* Requests & responses — a list of every request sent, each expandable to its response */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requests &amp; Responses</h2>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{check.attempts.length} sent · {hasResponse ? "1 response" : "0 responses"}</span>
+                    </div>
+                    {check.attempts.length === 0 ? (
+                        <div className="flex items-center gap-3 px-5 py-5 text-sm text-slate-500">
+                            <Clock className="h-4 w-4 shrink-0 text-slate-400" />
+                            <p>No requests sent yet. Use <span className="font-semibold text-slate-600">Send request</span> below; once the employer completes the form, their response appears here.</p>
+                        </div>
+                    ) : (
+                        <ul className="divide-y divide-slate-100">
+                            {check.attempts.map((at, i) => {
+                                const responded = i === respondedIdx;
+                                const open = effectiveOpen === i;
+                                return (
+                                    <li key={i}>
+                                        <button type="button" onClick={() => setOpenResp(open ? -1 : i)} className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition hover:bg-slate-50">
+                                            <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full", responded ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600")}>
+                                                {responded ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-semibold text-slate-800">Request #{i + 1} <span className="font-normal text-slate-400">· via {at.method}{at.to ? ` · ${at.to}` : ""}</span></p>
+                                                <p className="text-xs text-slate-400">Sent {relativeTime(at.at)}{responded ? ` · responded ${relativeTime(check.respondedAt!)}` : ""}</p>
+                                            </div>
+                                            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", responded ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{responded ? "Responded" : "Awaiting response"}</span>
+                                            <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-400 transition", open && "rotate-180")} />
+                                        </button>
+                                        {open && (
+                                            <div className="border-t border-slate-100 bg-slate-50/40 px-5 py-4">
+                                                {responded ? (
+                                                    <div className="space-y-4">
+                                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Returned form · Safety Performance History (§391.23)</p>
+                                                        <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                                                            {responseRows.map((r, ri) => (
+                                                                <div key={ri} className="border-b border-slate-100 pb-2">
+                                                                    <dt className="text-xs font-medium text-slate-500">{r.label}</dt>
+                                                                    <dd className="mt-0.5 text-sm font-semibold text-slate-800">{r.value || "—"}</dd>
+                                                                </div>
+                                                            ))}
+                                                        </dl>
+                                                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Completed by</p>
+                                                            <div className="mt-2 grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
+                                                                {completedByRows.map((r, ri) => (
+                                                                    <p key={ri} className={r.label === "Address" ? "sm:col-span-2" : ""}><span className="text-slate-500">{r.label}:</span> <span className="font-semibold text-slate-800">{r.value}</span></p>
+                                                                ))}
+                                                            </div>
+                                                            <div className="mt-3 flex items-center gap-2">
+                                                                <span className="text-sm text-slate-500">Signature:</span>
+                                                                <span className="inline-block rounded border border-slate-200 bg-white px-4 py-1.5 text-lg italic text-slate-800" style={{ fontFamily: "'Segoe Script','Brush Script MT','Snell Roundhand',cursive" }}>Dana Whitfield</span>
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Forms (2)</p>
+                                                            <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                                                {([["accident", "Accident History (§391.23)"], ["drug", "Drug & Alcohol History (§391.23)"]] as const).map(([k, lbl]) => (
+                                                                    <li key={k} className="flex items-center gap-3 px-4 py-2.5">
+                                                                        <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+                                                                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{lbl}</span>
+                                                                        <span className="text-[11px] font-semibold text-emerald-600">Completed</span>
+                                                                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setViewForm(k)}><Eye className="h-3.5 w-3.5" /> View</Button>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Documents attached ({attachedDocs.length})</p>
+                                                            {attachedDocs.length ? (
+                                                                <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                                                    {attachedDocs.map((d, di) => (
+                                                                        <li key={di} className="flex items-center gap-3 px-4 py-2.5">
+                                                                            <FileText className="h-4 w-4 shrink-0 text-emerald-500" />
+                                                                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{d.label}</span>
+                                                                            <span className="text-[11px] font-semibold text-emerald-600">Attached</span>
+                                                                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setPreview({ label: d.label })}><Eye className="h-3.5 w-3.5" /> View</Button>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : (
+                                                                <p className="mt-2 text-sm text-slate-400">No documents attached with this response.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        <div className="flex items-center gap-3 text-sm text-slate-500">
+                                                            <Clock className="h-4 w-4 shrink-0 text-slate-400" />
+                                                            <p>Awaiting the employer's response to this request. When they complete the form, the returned answers and documents will show here — or log it now.</p>
+                                                        </div>
+                                                        {check.status !== "verified" && (
+                                                            <Button size="sm" className={tinyBtn} onClick={() => onFulfill("respond", undefined, i)}><Check className="h-3.5 w-3.5" /> Record response &amp; mark fulfilled</Button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
                 </div>
 
                 {/* Verification documents — driver-provided letters or asked from the employer, side by side */}
@@ -961,6 +1208,10 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                     attemptLabel={`attempt ${check.attempts.length + 1} of ${EMP_MAX_ATTEMPTS}`}
                     prefill={{ email: check.email, phone: filled?.telephone, address: filled?.address }}
                     docs={docs.map((d) => ({ key: d.key, label: d.label, preselected: reqOpen.only ? d.key === reqOpen.only : d.source === "employer", received: DONE_STATES.includes(d.status) }))}
+                    forms={[
+                        { key: "accident-history", label: "Accident History (§391.23)", preselected: false },
+                        { key: "drug-alcohol-history", label: "Drug & Alcohol History (§391.23)", preselected: false },
+                    ]}
                     dataRows={[
                         { label: "Employer", value: filled?.employer ?? check.employer },
                         { label: "Position", value: filled?.position ?? check.position },
@@ -1135,8 +1386,9 @@ function ApplicationFormView({ title, subtitle, badge, sections, fileName, focus
                             {header}
                             <div className={cn("p-5", multi ? "space-y-4" : "space-y-5")}>
                                 {sec.groups.map((g, gi) => {
-                                    const dateRow = g.rows.find((r) => /^dates$/i.test(r.label));
-                                    const rest = g.rows.filter((r) => r !== dateRow);
+                                    const gRows = g.rows ?? [];
+                                    const dateRow = gRows.find((r) => /^dates$/i.test(r.label));
+                                    const rest = gRows.filter((r) => r !== dateRow);
                                     const ft = dateRow ? splitDates(String(dateRow.value ?? "")) : null;
                                     const chip = ft && (ft.from || ft.to) ? <FromToChip from={ft.from} to={ft.to} /> : null;
                                     if (multi) {
@@ -1176,7 +1428,7 @@ function ApplicationFormView({ title, subtitle, badge, sections, fileName, focus
 
                 {/* Review checklist + reviewer sign-off — together at the bottom (full application only) */}
                 {!focusSection && sections.length > 0 && (() => {
-                    const has = (kw: RegExp) => sections.some((s) => kw.test(s.title) && s.groups.some((g) => g.rows.some((r) => String(r.value ?? "").trim())));
+                    const has = (kw: RegExp) => sections.some((s) => kw.test(s.title) && s.groups.some((g) => (g.rows ?? []).some((r) => String(r.value ?? "").trim())));
                     const checks = [
                         { label: "Applicant information complete", ok: has(/applicant|personal/i) }, { label: "Address history provided", ok: has(/address/i) },
                         { label: "License details provided", ok: has(/licen/i) }, { label: "Employment history provided", ok: has(/employ/i) },

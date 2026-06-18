@@ -148,6 +148,7 @@ function buildSchema(config: FormConfig): PSection[] {
         {
             title: "Signature & Declarations",
             fields: [
+                { label: "Declarations", sample: "I authorize the investigation of my employment and safety-performance history and certify the information in this application is true and complete. The full declarations and my §391.23 rights (review, correct, rebut previous-employer information) are signed on the Safety Performance History Investigation Authorization consent form.", full: true },
                 { label: "Applicant Name", sample: "Kenan Gain" },
                 { label: "Date Signed", sample: "06/09/2026" },
                 { label: "Signature", sample: "Electronically signed — Kenan Gain", full: true },

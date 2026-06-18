@@ -91,7 +91,7 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                 {/* Tabs */}
                 <div>
                     <SubTabs
-                        tabs={TABS.map((t) => ({ id: t.key, label: t.label, icon: t.Icon, count: t.count }))}
+                        tabs={TABS.map((t) => ({ id: t.key, label: t.label, icon: t.Icon }))}
                         activeId={tab}
                         onChange={(id) => setTab(id as Tab)}
                     />

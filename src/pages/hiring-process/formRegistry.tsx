@@ -7,6 +7,8 @@ import { ScreeningReportForm } from "./ScreeningReportForm";
 import { CVDR_CDA_TYPE } from "./screening-reports.data";
 import { CriminalBackgroundForm } from "./CriminalBackgroundForm";
 import { SubstanceTestingForm } from "./SubstanceTestingForm";
+import { AccidentHistoryForm } from "./AccidentHistoryForm";
+import { DrugAlcoholHistoryForm } from "./DrugAlcoholHistoryForm";
 import { DotVerificationForm } from "./DotVerificationForm";
 import { MedicalCardForm } from "./MedicalCardForm";
 import { AnnualReviewForm } from "./AnnualReviewForm";
@@ -46,6 +48,8 @@ export function HiringFormView({ formId, onBack, embedded, startPreview, onSignO
     if (formId === "cda") return <ScreeningReportForm fixedType="CDA — Commercial Driver Abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "criminal-background") return <CriminalBackgroundForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "substance-testing") return <SubstanceTestingForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "accident-history") return <AccidentHistoryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "drug-alcohol-history") return <DrugAlcoholHistoryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "dot-verification") return <DotVerificationForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "medical-card") return <MedicalCardForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "annual-review") return <AnnualReviewForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;

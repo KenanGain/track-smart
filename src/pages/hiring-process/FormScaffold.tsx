@@ -13,7 +13,7 @@ import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocu
  * with Print + Download, and a titled edit body. Each form supplies its fields
  * (children) and the computed preview `sections`.
  */
-export function FormScaffold({ title, Icon, intro, onBack, onFillSample, docTitle, docSubtitle, badge, sections, branding, fileName, children, embedded, startPreview }: {
+export function FormScaffold({ title, Icon, intro, onBack, onFillSample, docTitle, docSubtitle, badge, sections, branding, fileName, children, embedded, startPreview, sheet }: {
     title: string;
     Icon: React.ElementType;
     intro?: React.ReactNode;
@@ -30,6 +30,8 @@ export function FormScaffold({ title, Icon, intro, onBack, onFillSample, docTitl
     embedded?: boolean;
     /** Open directly in the themed PDF preview. */
     startPreview?: boolean;
+    /** Render the edit body as a single white sheet (for forms sent outside the company). */
+    sheet?: boolean;
 }) {
     const [preview, setPreview] = useState(!!startPreview);
     const [theme, setTheme] = useState<ThemeKey>("standard");
@@ -118,7 +120,9 @@ export function FormScaffold({ title, Icon, intro, onBack, onFillSample, docTitl
                             <p className="text-sm text-slate-600">{intro}</p>
                         </div>
                     )}
-                    {children}
+                    {sheet ? (
+                        <div className="space-y-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">{children}</div>
+                    ) : children}
                     <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
                         <Button variant="outline" onClick={onBack}>Cancel</Button>
                         <Button>Save form</Button>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, FileText } from "lucide-react";
+import { Send, FileText, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,16 +15,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
  */
 
 export type RequestDocOption = { key: string; label: string; preselected?: boolean; received?: boolean };
+export type RequestFormOption = { key: string; label: string; preselected?: boolean };
 export type RequestDataRow = { label: string; value: string };
 
 export type EmployerRequestPayload = {
-    docKeys: string[]; docLabels: string[]; verifyData: boolean;
+    docKeys: string[]; docLabels: string[]; formKeys: string[]; formLabels: string[]; verifyData: boolean;
     to: string; phone: string; address: string; contact: string;
     subject: string; message: string;
 };
 
 export function EmployerRequestDialog({
-    employerName, applicantName, period, brandName, attemptLabel, docs, dataRows, defaultVerifyData, prefill, onClose, onSend,
+    employerName, applicantName, period, brandName, attemptLabel, docs, forms = [], dataRows, defaultVerifyData, prefill, inline, sendLabel, defaultSubject, intro, onClose, onSend,
 }: {
     employerName: string;
     applicantName: string;
@@ -32,14 +33,21 @@ export function EmployerRequestDialog({
     brandName: string;
     attemptLabel?: string;
     docs: RequestDocOption[];
+    forms?: RequestFormOption[];               // safety-performance forms to send for the employer to complete online
     dataRows?: RequestDataRow[];               // employment data the employer can be asked to confirm
     defaultVerifyData?: boolean;               // start with "confirm the data is correct" ticked
     prefill?: { email?: string; phone?: string; address?: string; contact?: string };
+    inline?: boolean;                          // render as an embedded card (not a modal popup)
+    sendLabel?: string;                        // override the primary button label
+    defaultSubject?: string;                   // override the starting subject line
+    intro?: string;                            // override the opening sentence of the message
     onClose: () => void;
     onSend: (payload: EmployerRequestPayload) => void;
 }) {
     const [want, setWant] = useState<Record<string, boolean>>(() =>
         Object.fromEntries(docs.map((d) => [d.key, !!d.preselected && !d.received])));
+    const [wantForm, setWantForm] = useState<Record<string, boolean>>(() =>
+        Object.fromEntries(forms.map((f) => [f.key, f.preselected !== false])));
     const [verifyData, setVerifyData] = useState(!!defaultVerifyData);
     const [to, setTo] = useState(prefill?.email ?? "");
     const [phone, setPhone] = useState(prefill?.phone ?? "");
@@ -47,44 +55,49 @@ export function EmployerRequestDialog({
     const [contact, setContact] = useState(prefill?.contact ?? "");
     const [touchedMsg, setTouchedMsg] = useState(false);
 
-    const composeMessage = (wantMap: Record<string, boolean>, verify: boolean) => {
+    const composeMessage = (wantMap: Record<string, boolean>, formMap: Record<string, boolean>, verify: boolean) => {
         const docLines = docs.filter((d) => wantMap[d.key]).map((d) => `  • ${d.label}`).join("\n");
+        const formLines = forms.filter((f) => formMap[f.key]).map((f) => `  • ${f.label}`).join("\n");
         const dataBlock = verify && dataRows?.length
             ? ["", `Please confirm the following employment details are correct, or reply with the corrected information:`, "", ...dataRows.map((r) => `  • ${r.label}: ${r.value || "—"}`)].join("\n")
             : "";
         const docBlock = docLines
             ? ["", `Please provide the following document(s) for our records:`, "", docLines].join("\n")
             : "";
+        const formBlock = formLines
+            ? ["", `Please also complete the following form(s) online using the secure link in this email:`, "", formLines].join("\n")
+            : "";
+        const opening = intro ?? `We are completing an employment verification for ${applicantName}${period ? ` (employed ${period})` : ""}.`;
         return [
             `Dear ${employerName || "Employer"},`, ``,
-            `We are completing an employment verification for ${applicantName}${period ? ` (employed ${period})` : ""}.${docBlock}${dataBlock}`, ``,
+            `${opening}${docBlock}${formBlock}${dataBlock}`, ``,
             `Thank you,`, brandName,
         ].join("\n");
     };
 
-    const [subject, setSubject] = useState(`Employment verification — ${applicantName}${employerName ? ` (${employerName})` : ""}`);
-    const [message, setMessage] = useState(() => composeMessage(Object.fromEntries(docs.map((d) => [d.key, !!d.preselected && !d.received])), !!defaultVerifyData));
+    const [subject, setSubject] = useState(defaultSubject ?? `Employment verification — ${applicantName}${employerName ? ` (${employerName})` : ""}`);
+    const [message, setMessage] = useState(() => composeMessage(
+        Object.fromEntries(docs.map((d) => [d.key, !!d.preselected && !d.received])),
+        Object.fromEntries(forms.map((f) => [f.key, f.preselected !== false])),
+        !!defaultVerifyData));
 
-    const sync = (wantMap: Record<string, boolean>, verify: boolean) => { if (!touchedMsg) setMessage(composeMessage(wantMap, verify)); };
-    const toggle = (key: string) => { const next = { ...want, [key]: !want[key] }; setWant(next); sync(next, verifyData); };
-    const toggleVerify = () => { const next = !verifyData; setVerifyData(next); sync(want, next); };
+    const sync = (wantMap: Record<string, boolean>, formMap: Record<string, boolean>, verify: boolean) => { if (!touchedMsg) setMessage(composeMessage(wantMap, formMap, verify)); };
+    const toggle = (key: string) => { const next = { ...want, [key]: !want[key] }; setWant(next); sync(next, wantForm, verifyData); };
+    const toggleForm = (key: string) => { const next = { ...wantForm, [key]: !wantForm[key] }; setWantForm(next); sync(want, next, verifyData); };
+    const toggleVerify = () => { const next = !verifyData; setVerifyData(next); sync(want, wantForm, next); };
 
     const anyWanted = docs.some((d) => want[d.key]);
-    const canSend = anyWanted || verifyData;
+    const anyForm = forms.some((f) => wantForm[f.key]);
+    const canSend = anyWanted || anyForm || verifyData;
     const submit = () => {
         if (!canSend) return;
         const chosen = docs.filter((d) => want[d.key]);
-        onSend({ docKeys: chosen.map((d) => d.key), docLabels: chosen.map((d) => d.label), verifyData, to, phone, address, contact, subject, message });
+        const chosenForms = forms.filter((f) => wantForm[f.key]);
+        onSend({ docKeys: chosen.map((d) => d.key), docLabels: chosen.map((d) => d.label), formKeys: chosenForms.map((f) => f.key), formLabels: chosenForms.map((f) => f.label), verifyData, to, phone, address, contact, subject, message });
     };
 
-    return (
-        <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="sm:max-w-xl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><Send className="h-4 w-4" /></span> Request documents from {employerName || "previous employer"}</DialogTitle>
-                    <p className="text-sm font-normal text-slate-500">Employment verification for {applicantName}{period ? ` · ${period}` : ""}{attemptLabel ? ` · ${attemptLabel}` : ""}.</p>
-                </DialogHeader>
-                <div className="max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-2">
+    const fields = (
+        <>
                     <div>
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Send to</p>
                         <div className="mt-2 grid gap-3 sm:grid-cols-2">
@@ -112,6 +125,22 @@ export function EmployerRequestDialog({
                         </div>
                     </div>
 
+                    {forms.length > 0 && (
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Forms to complete <span className="font-normal normal-case text-slate-400">— sent for the employer to fill online</span></p>
+                            <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                                {forms.map((f) => (
+                                    <label key={f.key} className="flex cursor-pointer items-center gap-3 px-3.5 py-2.5 hover:bg-slate-50">
+                                        <Checkbox checked={!!wantForm[f.key]} onCheckedChange={() => toggleForm(f.key)} />
+                                        <ClipboardCheck className="h-4 w-4 shrink-0 text-blue-500" />
+                                        <span className="flex-1 text-sm font-medium text-slate-700">{f.label}</span>
+                                        <span className="text-[10px] font-semibold text-blue-600">Secure form link</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {dataRows && dataRows.length > 0 && (
                         <div>
                             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Confirm the data</p>
@@ -131,14 +160,41 @@ export function EmployerRequestDialog({
                             )}
                         </div>
                     )}
-                    {!canSend && <p className="text-xs text-amber-600">Select a document or tick “confirm the data” to send.</p>}
+                    {!canSend && <p className="text-xs text-amber-600">Select a document or form, or tick “confirm the data”, to send.</p>}
                     <div><Label className="text-xs font-semibold text-slate-500">Subject</Label><Input className="mt-1.5" value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
                     <div><Label className="text-xs font-semibold text-slate-500">Message</Label><Textarea className="mt-1.5 resize-none" rows={7} value={message} onChange={(e) => { setMessage(e.target.value); setTouchedMsg(true); }} /></div>
+        </>
+    );
+
+    const footer = (
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button disabled={!canSend} onClick={submit}><Send className="h-4 w-4" /> {sendLabel ?? "Send request"}</Button>
+        </div>
+    );
+
+    if (inline) {
+        return (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-100 px-6 py-4">
+                    <div className="flex items-center gap-2 text-base font-semibold text-slate-900"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><Send className="h-4 w-4" /></span> Request documents from {employerName || "previous employer"}</div>
+                    <p className="mt-1 text-sm text-slate-500">Employment verification for {applicantName}{period ? ` · ${period}` : ""}{attemptLabel ? ` · ${attemptLabel}` : ""}.</p>
                 </div>
-                <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
-                    <Button variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button disabled={!canSend} onClick={submit}><Send className="h-4 w-4" /> Send request</Button>
-                </div>
+                <div className="space-y-4 px-6 py-5">{fields}</div>
+                {footer}
+            </div>
+        );
+    }
+
+    return (
+        <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><Send className="h-4 w-4" /></span> Request documents from {employerName || "previous employer"}</DialogTitle>
+                    <p className="text-sm font-normal text-slate-500">Employment verification for {applicantName}{period ? ` · ${period}` : ""}{attemptLabel ? ` · ${attemptLabel}` : ""}.</p>
+                </DialogHeader>
+                <div className="max-h-[60vh] space-y-4 overflow-y-auto px-6 pb-2">{fields}</div>
+                {footer}
             </DialogContent>
         </Dialog>
     );

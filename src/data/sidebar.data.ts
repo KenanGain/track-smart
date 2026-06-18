@@ -176,6 +176,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
                     { key: "settings-hiring-process-applications", label: "Application Form", icon: FileText, path: "/settings/hiring-process/applications", badge: "New" },
                     { key: "settings-hiring-process-hiring", label: "Workflows", icon: Workflow, path: "/settings/hiring-process/hiring", badge: "New" },
                     { key: "settings-hiring-process-onboarding", label: "Onboarding Setup", icon: UserPlus, path: "/settings/hiring-process/onboarding", badge: "New" },
+                    { key: "settings-hiring-process-testing-forms", label: "Testing Forms", icon: FlaskConical, path: "/settings/hiring-process/testing-forms", badge: "New" },
                 ],
             },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },

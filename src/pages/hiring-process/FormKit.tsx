@@ -38,6 +38,67 @@ export function SelectBox({ value, onChange, items, placeholder, disabled }: {
     );
 }
 
+/** Segmented Yes / No toggle (blue Yes · slate No), used inline next to a question label. */
+export function YesNo({ value, onChange, options = ["Yes", "No"] }: { value: string; onChange: (v: string) => void; options?: [string, string] | string[] }) {
+    return (
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            {options.map((opt, i) => {
+                const on = value === opt;
+                return (
+                    <button key={opt} type="button" onClick={() => onChange(opt)}
+                        className={cn("min-w-[72px] rounded-md px-4 py-1.5 text-sm font-semibold transition",
+                            on ? (i === 0 ? "bg-blue-600 text-white shadow-sm" : "bg-slate-700 text-white shadow-sm") : "text-slate-500 hover:text-slate-700")}>
+                        {opt}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+/** A full-width Yes/No question row: label on the left, segmented toggle on the right. */
+export function YesNoRow({ label, value, onChange, required }: { label: string; value: string; onChange: (v: string) => void; required?: boolean }) {
+    return (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <span className="pr-4 text-sm font-medium text-slate-700">{label}{required && <span className="text-rose-500"> *</span>}</span>
+            <YesNo value={value} onChange={onChange} />
+        </div>
+    );
+}
+
+const MONTH_OPTS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
+/** Numeric month + year selector. Stores and loads the value as "YYYY-MM". */
+export function MonthYear({ value, onChange, yearsBack = 40 }: { value: string; onChange: (v: string) => void; yearsBack?: number }) {
+    const [y = "", m = ""] = (value || "").split("-");
+    const thisYear = new Date().getFullYear();
+    const yearOpts = Array.from({ length: yearsBack }, (_, i) => String(thisYear - i));
+    const set = (mm: string, yy: string) => onChange(mm && yy ? `${yy}-${mm}` : "");
+    return (
+        <div className="grid grid-cols-2 gap-2">
+            <SelectBox value={m} items={MONTH_OPTS} placeholder="MM" onChange={(v) => set(v, y)} />
+            <SelectBox value={y} items={yearOpts} placeholder="YYYY" onChange={(v) => set(m, v)} />
+        </div>
+    );
+}
+
+export type Address = { street: string; city: string; state: string; zip: string; country: string };
+export const emptyAddress = (): Address => ({ street: "", city: "", state: "", zip: "", country: "United States" });
+export const formatAddress = (a: Address) => [a.street, [a.city, a.state].filter(Boolean).join(", "), a.zip, a.country].filter(Boolean).join(" · ");
+/** Standard address block — Street / City / State-Province / ZIP-Postal / Country. */
+export function AddressFields({ value, onChange }: { value: Address; onChange: (v: Address) => void }) {
+    const set = (p: Partial<Address>) => onChange({ ...value, ...p });
+    const isCanada = value.country === "Canada";
+    return (
+        <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+            <Field className="sm:col-span-2" label="Street address"><Input value={value.street} onChange={(e) => set({ street: e.target.value })} placeholder="Street address" /></Field>
+            <Field label="City"><Input value={value.city} onChange={(e) => set({ city: e.target.value })} placeholder="City" /></Field>
+            <Field label={isCanada ? "Province" : "State"}><Input value={value.state} onChange={(e) => set({ state: e.target.value })} placeholder={isCanada ? "Province" : "State"} /></Field>
+            <Field label={isCanada ? "Postal code" : "ZIP code"}><Input value={value.zip} onChange={(e) => set({ zip: e.target.value })} placeholder={isCanada ? "A1A 1A1" : "ZIP code"} /></Field>
+            <Field label="Country"><SelectBox value={value.country} items={["United States", "Canada"]} onChange={(v) => set({ country: v })} /></Field>
+        </div>
+    );
+}
+
 export function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (b: boolean) => void }) {
     return (
         <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
@@ -376,12 +437,91 @@ export function ReviewRemarks({ value, onChange }: { value?: RemarkItem[]; onCha
     );
 }
 
+/**
+ * CompletedByCertification — the end component a previous employer fills when we send them
+ * a §391.23 form: their company details (company, telephone, address) plus the certification
+ * (name, title, date, signature). One self-contained card; the parent captures it on submit.
+ */
+export type CompletedBy = { company: string; telephone: string; address: Address; name: string; role: string; date: string; sig: string; done: boolean };
+export const newCompletedBy = (): CompletedBy => ({ company: "", telephone: "", address: emptyAddress(), name: "", role: "", date: todayISO(), sig: "", done: false });
+
+export function CompletedByCertification({
+    value, onChange, checklist,
+    kicker = "Completed by — your details & certification",
+    companyHeading = "Company details",
+    companySubtext = "The company and contact completing this form.",
+    certKicker = "Certification",
+    certHeading = "I certify the information above is true and complete.",
+    certSubtext = "Complete the fields above, then sign to certify the information is true and complete to the best of your knowledge. We receive this on submit.",
+    nameLabel = "Your name",
+    buttonLabel = "Complete & sign",
+    signedLabel = "Completed & signed",
+    signedByLabel = "Completed by",
+}: {
+    value: CompletedBy; onChange: (v: CompletedBy) => void; checklist?: React.ReactNode;
+    kicker?: string; companyHeading?: string; companySubtext?: string;
+    certKicker?: string; certHeading?: string; certSubtext?: string;
+    nameLabel?: string; buttonLabel?: string; signedLabel?: string; signedByLabel?: string;
+}) {
+    const patch = (p: Partial<CompletedBy>) => onChange({ ...value, ...p });
+    const { company, telephone, address, name, role, date, sig, done } = value;
+    const addrOk = !!address.street && !!address.city && !!address.state;
+    const canSign = !!company && addrOk && !!name.trim() && !!sig;
+    return (
+        <div className="rounded-2xl border border-blue-200 bg-white p-6 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">{kicker}</p>
+            {done ? (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                    <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> {signedLabel}</p>
+                    <div className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                        <p><span className="text-slate-500">Company:</span> <span className="font-semibold text-slate-800">{company}</span></p>
+                        <p><span className="text-slate-500">Telephone:</span> <span className="font-semibold text-slate-800">{telephone || "—"}</span></p>
+                        <p className="sm:col-span-2"><span className="text-slate-500">Address:</span> <span className="font-semibold text-slate-800">{formatAddress(address) || "—"}</span></p>
+                        <p><span className="text-slate-500">{signedByLabel}:</span> <span className="font-semibold text-slate-800">{name}</span></p>
+                        <p><span className="text-slate-500">Title:</span> <span className="font-semibold text-slate-800">{role || "—"}</span></p>
+                        <p><span className="text-slate-500">Date:</span> <span className="font-semibold text-slate-800">{date}</span></p>
+                    </div>
+                    {sig && <div className="mt-3"><span className="text-sm text-slate-500">Signature:</span><img src={sig} alt="signature" className="mt-1 h-16 rounded border border-slate-200 bg-white" /></div>}
+                    <Button variant="outline" size="sm" className="mt-4" onClick={() => patch({ done: false })}>Edit</Button>
+                </div>
+            ) : (
+                <>
+                    <h3 className="mt-0.5 text-base font-semibold text-slate-900">{companyHeading}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{companySubtext}</p>
+                    <div className="mt-4 space-y-5">
+                        <Grid>
+                            <Field label="Company" required><Input value={company} onChange={(e) => patch({ company: e.target.value })} placeholder="Company name" /></Field>
+                            <Field label="Telephone"><Input type="tel" value={telephone} onChange={(e) => patch({ telephone: e.target.value })} placeholder="(555) 000-0000" /></Field>
+                        </Grid>
+                        <AddressFields value={address} onChange={(a) => patch({ address: a })} />
+                    </div>
+
+                    {checklist && <div className="mt-6 border-t border-slate-100 pt-6">{checklist}</div>}
+
+                    <div className="mt-6 border-t border-slate-100 pt-6">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">{certKicker}</p>
+                        <h3 className="mt-0.5 text-base font-semibold text-slate-900">{certHeading}</h3>
+                        <p className="mt-1 text-sm text-slate-500">{certSubtext}</p>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                            <div><Label className="mb-1 block text-xs font-semibold text-slate-600">{nameLabel}</Label><Input value={name} onChange={(e) => patch({ name: e.target.value })} placeholder="Your name" /></div>
+                            <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Title / role</Label><Input value={role} onChange={(e) => patch({ role: e.target.value })} placeholder="e.g. Safety Manager" /></div>
+                            <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Date</Label><Input type="date" value={date} onChange={(e) => patch({ date: e.target.value })} /></div>
+                        </div>
+                        <div className="mt-4"><Label className="mb-1 block text-xs font-semibold text-slate-600">Signature</Label><SignaturePad onChange={(v) => patch({ sig: v })} /></div>
+                        <Button className="mt-4" disabled={!canSign} onClick={() => patch({ done: true })}><Check className="h-4 w-4" /> {buttonLabel}</Button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
 export type SignOffData = { name: string; role: string; date: string; sig: string; done: boolean };
 export const newSignOff = (): SignOffData => ({ name: "", role: "Hiring Manager", date: todayISO(), sig: "", done: false });
 
 /** Reviewer sign-off — name / role / date / signature. Optionally controlled via
  *  value/onChange so the parent can include the signed data in a PDF document. */
-export function ReviewSignOff({ heading, value, onChange }: { heading: string; value?: SignOffData; onChange?: (v: SignOffData) => void }) {
+export function ReviewSignOff({ heading, value, onChange, bare, kicker = "Reviewer Sign-Off", subtext = "Confirm you have reviewed the form above. Your name, title, date and signature are recorded on file.", nameLabel = "Reviewer name", buttonLabel = "Confirm review & sign", signedLabel = "Reviewed & signed", signedByLabel = "Reviewed by" }: { heading: string; value?: SignOffData; onChange?: (v: SignOffData) => void; bare?: boolean; kicker?: string; subtext?: string; nameLabel?: string; buttonLabel?: string; signedLabel?: string; signedByLabel?: string }) {
     const [internal, setInternal] = useState<SignOffData>(newSignOff);
     const data = value ?? internal;
     const patch = (p: Partial<SignOffData>) => { const next = { ...data, ...p }; if (onChange) onChange(next); else setInternal(next); };
@@ -392,15 +532,15 @@ export function ReviewSignOff({ heading, value, onChange }: { heading: string; v
     const setSig = (v: string) => patch({ sig: v });
     const setDone = (v: boolean) => patch({ done: v });
     return (
-        <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Reviewer Sign-Off</p>
+        <div className={cn(!bare && "rounded-2xl border border-blue-200 bg-white p-5 shadow-sm")}>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">{kicker}</p>
             <h3 className="mt-0.5 text-base font-semibold text-slate-900">{heading}</h3>
-            <p className="mt-1 text-sm text-slate-500">Confirm you have reviewed the form above. Your name, title, date and signature are recorded on file.</p>
+            <p className="mt-1 text-sm text-slate-500">{subtext}</p>
             {done ? (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                    <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> Reviewed &amp; signed</p>
+                    <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700"><Check className="h-4 w-4" /> {signedLabel}</p>
                     <div className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-                        <p><span className="text-slate-500">Reviewed by:</span> <span className="font-semibold text-slate-800">{name}</span></p>
+                        <p><span className="text-slate-500">{signedByLabel}:</span> <span className="font-semibold text-slate-800">{name}</span></p>
                         <p><span className="text-slate-500">Title:</span> <span className="font-semibold text-slate-800">{role}</span></p>
                         <p><span className="text-slate-500">Date:</span> <span className="font-semibold text-slate-800">{date}</span></p>
                     </div>
@@ -409,12 +549,12 @@ export function ReviewSignOff({ heading, value, onChange }: { heading: string; v
             ) : (
                 <>
                     <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Reviewer name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></div>
+                        <div><Label className="mb-1 block text-xs font-semibold text-slate-600">{nameLabel}</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" /></div>
                         <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Title / role</Label><Input value={role} onChange={(e) => setRole(e.target.value)} /></div>
                         <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
                     </div>
                     <div className="mt-4"><Label className="mb-1 block text-xs font-semibold text-slate-600">Signature</Label><SignaturePad onChange={setSig} /></div>
-                    <Button className="mt-4" disabled={!sig || !name.trim()} onClick={() => setDone(true)}><Check className="h-4 w-4" /> Confirm review &amp; sign</Button>
+                    <Button className="mt-4" disabled={!sig || !name.trim()} onClick={() => setDone(true)}><Check className="h-4 w-4" /> {buttonLabel}</Button>
                 </>
             )}
         </div>

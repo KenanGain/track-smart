@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { ChevronLeft, Eye, Printer, Download, Sparkles, Check } from "lucide-react";
+import { ChevronLeft, Eye, Printer, Download, Sparkles, Check, Share2 } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
@@ -9,10 +9,25 @@ import { useCompanyBranding } from "../ats/company-branding.data";
 import type { CompanyBranding } from "../ats/company-branding.data";
 import { STATES_PROVINCES } from "./ApplicationSettingsPage";
 import { Field, Grid, SelectBox, YesNoField, SignaturePad } from "./FormKit";
-import { THEME_HEX, type PolicyFormDef, type PolicyBlock, type PolicyField } from "./policy-forms.data";
+import { THEME_HEX, type PolicyFormDef, type PolicyBlock, type PolicyField, type ListItem } from "./policy-forms.data";
+import { THEMES, type ThemeKey } from "./FormDocument";
 import { usePrefill } from "./application-prefill";
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+// Render a typed name as a script-font signature image (for "Fill sample data").
+function makeSignatureImage(name: string): string {
+    if (typeof document === "undefined") return "";
+    const c = document.createElement("canvas");
+    c.width = 440; c.height = 140;
+    const ctx = c.getContext("2d");
+    if (!ctx) return "";
+    ctx.fillStyle = "#1e293b";
+    ctx.font = "48px 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive";
+    ctx.textBaseline = "middle";
+    ctx.fillText(name || "Jane Doe", 16, c.height / 2);
+    return c.toDataURL("image/png");
+}
 
 // Replace {key} placeholders in legal text with the captured value (or a blank line).
 function renderText(text: string, values: Record<string, string>, preview: boolean) {
@@ -26,104 +41,186 @@ function renderText(text: string, values: Record<string, string>, preview: boole
     });
 }
 
-function Block({ block, values, preview }: { block: PolicyBlock; values: Record<string, string>; preview: boolean }) {
-    if ("h" in block) return <p className="mt-4 text-[13px] font-bold uppercase tracking-wide text-slate-800 first:mt-0">{block.h}</p>;
-    if ("p" in block) return <p className="text-[13px] leading-relaxed text-slate-600">{renderText(block.p, values, preview)}</p>;
-    if ("note" in block) return <p className="text-[13px] font-semibold leading-relaxed text-slate-800">{block.note}</p>;
-    if ("ol" in block) return <ol className="list-decimal space-y-2 pl-5 text-[13px] leading-relaxed text-slate-600">{block.ol.map((t, i) => <li key={i}>{t}</li>)}</ol>;
-    if ("ul" in block) return <ul className="list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-slate-600">{block.ul.map((t, i) => <li key={i}>{t}</li>)}</ul>;
+// Markers deepen with nesting: 1. 2. 3. → i. ii. iii. → A. B. C.
+const LIST_MARKERS = ["decimal", "lower-roman", "upper-alpha"];
+function NestedList({ items, depth = 0, mono }: { items: ListItem[]; depth?: number; mono?: boolean }) {
+    return (
+        <ol className={cn("space-y-1.5 text-[13px] leading-relaxed", mono ? "text-black" : "text-slate-600", depth === 0 ? "pl-5" : "mt-1.5 pl-6")}
+            style={{ listStyleType: LIST_MARKERS[Math.min(depth, LIST_MARKERS.length - 1)] }}>
+            {items.map((it, i) => (
+                <li key={i}>
+                    {it.text}
+                    {it.sub && it.sub.length > 0 && <NestedList items={it.sub} depth={depth + 1} mono={mono} />}
+                </li>
+            ))}
+        </ol>
+    );
+}
+
+function Block({ block, values, preview, mono }: { block: PolicyBlock; values: Record<string, string>; preview: boolean; mono?: boolean }) {
+    const body = mono ? "text-black" : "text-slate-600";
+    const strong = mono ? "text-black" : "text-slate-800";
+    if ("h" in block) return <p className={cn("mt-4 text-[13px] font-bold uppercase tracking-wide first:mt-0", strong)}>{block.h}</p>;
+    if ("p" in block) return <p className={cn("text-[13px] leading-relaxed", body)}>{renderText(block.p, values, preview)}</p>;
+    if ("note" in block) return <p className={cn("text-[13px] font-semibold leading-relaxed", strong)}>{block.note}</p>;
+    if ("ol" in block) return <ol className={cn("list-decimal space-y-2 pl-5 text-[13px] leading-relaxed", body)}>{block.ol.map((t, i) => <li key={i}>{t}</li>)}</ol>;
+    if ("ul" in block) return <ul className={cn("list-disc space-y-1 pl-5 text-[13px] leading-relaxed", body)}>{block.ul.map((t, i) => <li key={i}>{t}</li>)}</ul>;
+    if ("list" in block) return <NestedList items={block.list} mono={mono} />;
+    if ("callout" in block) {
+        const notice = (block.tone ?? "notice") === "notice";
+        return (
+            <div className={cn("rounded-lg border p-3 text-[12px] leading-relaxed",
+                mono ? "border-black bg-white text-black" : notice ? "border-slate-300 bg-slate-50 text-slate-600" : "border-blue-200 bg-blue-50 text-slate-700")}>
+                {renderText(block.callout, values, preview)}
+            </div>
+        );
+    }
     return null;
 }
 
 // Single underlined value + label, used for field rows and signature blocks in the document.
-function SignLine({ field, values, sigs }: { field: PolicyField; values: Record<string, string>; sigs: Record<string, string> }) {
+function SignLine({ field, values, sigs, mono }: { field: PolicyField; values: Record<string, string>; sigs: Record<string, string>; mono?: boolean }) {
     const isSign = field.kind === "sign";
     const img = sigs[field.key];
+    const line = mono ? "border-black" : "border-slate-400";
+    const label = mono ? "text-black" : "text-slate-700";
+    const valueCls = mono ? "text-black" : "text-slate-800";
+    if (field.kind === "choice") {
+        return (
+            <div className="col-span-full">
+                <p className={cn("text-[12px] font-bold", label)}>{field.label}</p>
+                <div className="mt-1.5 space-y-1.5">
+                    {(field.options ?? []).map((opt) => {
+                        const on = values[field.key] === opt;
+                        return (
+                            <p key={opt} className={cn("flex items-center gap-2 text-[13px]", valueCls)}>
+                                <span className={cn("flex h-3.5 w-3.5 items-center justify-center border text-[11px] leading-none", mono ? "border-black" : "border-slate-500")}>{on ? "✕" : ""}</span>
+                                {opt}
+                            </p>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
     return (
         <div>
-            <div className="flex h-12 items-end justify-center border-b border-slate-400 pb-0.5">
+            <div className={cn("flex h-12 items-end justify-center border-b pb-0.5", line)}>
                 {isSign
                     ? (img ? <img src={img} alt="" className="max-h-11" /> : null)
-                    : <span className="pb-1 text-[13px] text-slate-800">{values[field.key] || ""}</span>}
+                    : <span className={cn("pb-1 text-[13px]", valueCls)}>{values[field.key] || ""}</span>}
             </div>
-            <p className="mt-1 text-[12px] font-bold text-slate-700">{field.label}</p>
+            <p className={cn("mt-1 text-[12px] font-bold", label)}>{field.label}</p>
         </div>
     );
 }
 
-// ── The printable policy document ───────────────────────────────────────────
-export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; values: Record<string, string>; sigs: Record<string, string>; branding: CompanyBranding }>(
-    ({ def, values, sigs, branding }, ref) => {
+// ── The printable policy document (5 themes: standard / compact / enhanced / traditional / bw) ──
+export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; values: Record<string, string>; sigs: Record<string, string>; branding: CompanyBranding; theme?: ThemeKey }>(
+    ({ def, values, sigs, branding, theme = "standard" }, ref) => {
+        const trad = theme === "traditional";
+        const bw = theme === "bw";
+        const mono = trad || bw;                 // monochrome serif "paper" styling
+        const compact = theme === "compact";
+        const enhanced = theme === "enhanced";
         const hex = THEME_HEX[def.theme];
+        const accent = mono ? "#111827" : hex;   // header / accent colour
+        const border1 = mono ? "#cbd5e1" : `${hex}66`;
+        const border2 = mono ? "#e2e8f0" : `${hex}33`;
         const total = DAYS.reduce((s, d) => s + (Number(values[`day${d}_hrs`]) || 0), 0);
+        const contact = [branding.address, branding.phone].filter(Boolean).join(" · ");
+
+        const docCls = cn(
+            "mx-auto bg-white shadow-sm",
+            trad ? "border-2 border-black p-8 font-serif text-black text-[12.5px]"
+                : bw ? "p-10 font-serif text-black text-[12.5px]"
+                    : compact ? "p-8 text-[11px]" : "p-10",
+        );
+        const tableCellBorder = mono ? "border-slate-400" : "border-slate-300";
+
         return (
-            <div ref={ref} id="app-doc" className="mx-auto max-w-3xl bg-white p-10 shadow-sm" style={{ width: 794 }}>
-                {/* Letterhead */}
-                <div className="mb-6 flex items-center gap-3 border-b-2 pb-4" style={{ borderColor: hex }}>
-                    {branding.logoDataUrl && <img src={branding.logoDataUrl} alt="" className="h-12 w-12 rounded object-contain" />}
-                    <div>
-                        <p className="text-lg font-bold text-slate-900">{branding.name}</p>
-                        {(branding.address || branding.phone) && <p className="text-[11px] text-slate-500">{[branding.address, branding.phone].filter(Boolean).join(" · ")}</p>}
+            <div ref={ref} id="app-doc" className={docCls} style={{ width: 794 }}>
+                {/* Letterhead + title */}
+                {enhanced ? (
+                    <div className="mb-6 rounded-lg px-6 py-5 text-white" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}cc)` }}>
+                        <div className="flex items-center gap-3">
+                            {branding.logoDataUrl && <img src={branding.logoDataUrl} alt="" className="h-11 w-11 rounded object-contain" />}
+                            <div>
+                                <p className="text-base font-bold leading-tight">{branding.name}</p>
+                                {contact && <p className="text-[11px] text-white/80">{contact}</p>}
+                            </div>
+                        </div>
+                        <h1 className="mt-3 border-t border-white/25 pt-3 text-2xl font-bold leading-tight">{def.title} {def.accentTitle}</h1>
                     </div>
-                </div>
+                ) : (
+                    <>
+                        <div className={cn("mb-6 flex items-center gap-3 border-b-2 pb-4", trad && "justify-center text-center")} style={{ borderColor: accent }}>
+                            {branding.logoDataUrl && !trad && <img src={branding.logoDataUrl} alt="" className="h-12 w-12 rounded object-contain" />}
+                            <div>
+                                <p className={cn("font-bold", compact ? "text-base" : "text-lg", mono ? "text-black" : "text-slate-900")}>{branding.name}</p>
+                                {contact && <p className={cn("text-[11px]", mono ? "text-gray-600" : "text-slate-500")}>{contact}</p>}
+                            </div>
+                        </div>
+                        <h1 className={cn("font-extrabold leading-tight", compact ? "text-xl" : "text-[26px]", mono ? "text-black" : "text-slate-900", trad && "text-center")}>
+                            {def.title}<br /><span style={mono ? undefined : { color: accent }}>{def.accentTitle}</span>
+                        </h1>
+                    </>
+                )}
 
-                {/* Title */}
-                <h1 className="text-[26px] font-extrabold leading-tight text-slate-900">{def.title}<br /><span style={{ color: hex }}>{def.accentTitle}</span></h1>
-
-                <div className="mt-5 rounded-lg border p-6" style={{ borderColor: `${hex}66` }}>
+                <div className={cn("mt-5 p-6", enhanced ? "rounded-lg border border-slate-200 shadow-sm" : mono ? "border" : "rounded-lg border")} style={mono ? { borderColor: accent } : enhanced ? undefined : { borderColor: border1 }}>
                     {/* Questions */}
                     {def.questions && (
-                        <div className="mb-5 overflow-hidden rounded border" style={{ borderColor: `${hex}66` }}>
-                            <div className="flex items-center justify-between px-3 py-1.5 text-[12px] font-bold uppercase text-white" style={{ backgroundColor: hex }}>
+                        <div className="mb-5 overflow-hidden rounded border" style={{ borderColor: border1 }}>
+                            <div className="flex items-center justify-between px-3 py-1.5 text-[12px] font-bold uppercase text-white" style={{ backgroundColor: accent }}>
                                 <span>{def.questionsTitle}</span><span>Yes or No</span>
                             </div>
                             {def.questions.map((q) => (
-                                <div key={q.key} className="flex items-center justify-between gap-4 border-t px-3 py-2 text-[13px] text-slate-700" style={{ borderColor: `${hex}33` }}>
+                                <div key={q.key} className={cn("flex items-center justify-between gap-4 border-t px-3 py-2 text-[13px]", mono ? "text-black" : "text-slate-700")} style={{ borderColor: border2 }}>
                                     <span>{q.text}</span>
                                     <span className="flex shrink-0 gap-3 text-[12px] font-semibold">
-                                        <span className={cn("flex items-center gap-1", values[q.key] === "Yes" ? "text-slate-900" : "text-slate-300")}>{values[q.key] === "Yes" && <Check className="h-3 w-3" />}Yes</span>
-                                        <span className={cn("flex items-center gap-1", values[q.key] === "No" ? "text-slate-900" : "text-slate-300")}>{values[q.key] === "No" && <Check className="h-3 w-3" />}No</span>
+                                        <span className={cn("flex items-center gap-1", values[q.key] === "Yes" ? (mono ? "text-black" : "text-slate-900") : "text-slate-300")}>{values[q.key] === "Yes" && <Check className="h-3 w-3" />}Yes</span>
+                                        <span className={cn("flex items-center gap-1", values[q.key] === "No" ? (mono ? "text-black" : "text-slate-900") : "text-slate-300")}>{values[q.key] === "No" && <Check className="h-3 w-3" />}No</span>
                                     </span>
                                 </div>
                             ))}
                         </div>
                     )}
-                    {def.note && <p className="mb-4 text-[12px] font-semibold" style={{ color: hex }}>*****{def.note}</p>}
+                    {def.note && <p className="mb-4 text-[12px] font-semibold" style={{ color: accent }}>*****{def.note}</p>}
 
                     {/* Body */}
-                    <div className="space-y-3">{def.body.map((b, i) => <Block key={i} block={b} values={values} preview />)}</div>
+                    <div className="space-y-3">{def.body.map((b, i) => <Block key={i} block={b} values={values} preview mono={mono} />)}</div>
 
                     {/* On-duty grid */}
                     {def.onDuty && (
                         <div className="mt-5">
                             <div className="mb-4 grid grid-cols-3 gap-4">
-                                <SignLine field={{ key: "driverName", label: "Driver Name" }} values={values} sigs={sigs} />
-                                <SignLine field={{ key: "licenseNumber", label: "Driving License #" }} values={values} sigs={sigs} />
-                                <SignLine field={{ key: "state", label: "State" }} values={values} sigs={sigs} />
+                                <SignLine field={{ key: "driverName", label: "Driver Name" }} values={values} sigs={sigs} mono={mono} />
+                                <SignLine field={{ key: "licenseNumber", label: "Driving License #" }} values={values} sigs={sigs} mono={mono} />
+                                <SignLine field={{ key: "state", label: "State" }} values={values} sigs={sigs} mono={mono} />
                             </div>
                             <table className="w-full border-collapse text-center text-[12px]">
                                 <tbody>
-                                    <tr style={{ backgroundColor: `${hex}1a` }}>
-                                        <td className="border border-slate-300 px-2 py-1.5 font-bold">Day</td>
-                                        {DAYS.map((d) => <td key={d} className="border border-slate-300 px-2 py-1.5 font-bold">{d + 1}</td>)}
-                                        <td className="border border-slate-300 px-2 py-1.5 font-bold" rowSpan={1}>Total</td>
+                                    <tr style={{ backgroundColor: mono ? "#f1f5f9" : `${hex}1a` }}>
+                                        <td className={cn("border px-2 py-1.5 font-bold", tableCellBorder)}>Day</td>
+                                        {DAYS.map((d) => <td key={d} className={cn("border px-2 py-1.5 font-bold", tableCellBorder)}>{d + 1}</td>)}
+                                        <td className={cn("border px-2 py-1.5 font-bold", tableCellBorder)} rowSpan={1}>Total</td>
                                     </tr>
                                     <tr>
-                                        <td className="border border-slate-300 px-2 py-1.5 text-left font-semibold">Date</td>
-                                        {DAYS.map((d) => <td key={d} className="border border-slate-300 px-2 py-1.5">{values[`day${d}_date`] || ""}</td>)}
-                                        <td className="border border-slate-300 px-2 py-1.5 font-semibold">Hrs.</td>
+                                        <td className={cn("border px-2 py-1.5 text-left font-semibold", tableCellBorder)}>Date</td>
+                                        {DAYS.map((d) => <td key={d} className={cn("border px-2 py-1.5", tableCellBorder)}>{values[`day${d}_date`] || ""}</td>)}
+                                        <td className={cn("border px-2 py-1.5 font-semibold", tableCellBorder)}>Hrs.</td>
                                     </tr>
                                     <tr>
-                                        <td className="border border-slate-300 px-2 py-1.5 text-left font-semibold">Hrs. Worked</td>
-                                        {DAYS.map((d) => <td key={d} className="border border-slate-300 px-2 py-1.5">{values[`day${d}_hrs`] || ""}</td>)}
-                                        <td className="border border-slate-300 px-2 py-1.5 font-bold">{total || 0}</td>
+                                        <td className={cn("border px-2 py-1.5 text-left font-semibold", tableCellBorder)}>Hrs. Worked</td>
+                                        {DAYS.map((d) => <td key={d} className={cn("border px-2 py-1.5", tableCellBorder)}>{values[`day${d}_hrs`] || ""}</td>)}
+                                        <td className={cn("border px-2 py-1.5 font-bold", tableCellBorder)}>{total || 0}</td>
                                     </tr>
                                 </tbody>
                             </table>
-                            <p className="mt-4 text-[13px] leading-relaxed text-slate-600">I hereby certify that the information given above is correct to the best of my knowledge and belief and that I was last relieved from work at:</p>
+                            <p className={cn("mt-4 text-[13px] leading-relaxed", mono ? "text-black" : "text-slate-600")}>I hereby certify that the information given above is correct to the best of my knowledge and belief and that I was last relieved from work at:</p>
                             <div className="mt-3 grid grid-cols-2 gap-4">
-                                <SignLine field={{ key: "lastTime", label: "Time" }} values={values} sigs={sigs} />
-                                <SignLine field={{ key: "lastOn", label: "On" }} values={values} sigs={sigs} />
+                                <SignLine field={{ key: "lastTime", label: "Time" }} values={values} sigs={sigs} mono={mono} />
+                                <SignLine field={{ key: "lastOn", label: "On" }} values={values} sigs={sigs} mono={mono} />
                             </div>
                         </div>
                     )}
@@ -131,17 +228,32 @@ export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; v
                     {/* Mid fields */}
                     {def.fields && (
                         <div className="mt-6 grid grid-cols-3 gap-4">
-                            {def.fields.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} />)}
+                            {def.fields.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} mono={mono} />)}
                         </div>
                     )}
 
+                    {/* Grouped field sections */}
+                    {def.sections?.map((sec) => (
+                        <div key={sec.title} className="mt-6">
+                            <p className="mb-2 text-[12px] font-bold uppercase tracking-wide" style={{ color: accent }}>{sec.title}</p>
+                            {sec.note && <p className={cn("mb-3 text-[12px] leading-relaxed", mono ? "text-black" : "text-slate-600")}>{sec.note}</p>}
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+                                {sec.fields.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} mono={mono} />)}
+                            </div>
+                        </div>
+                    ))}
+
                     {/* Signature block */}
-                    <div className="mt-8 grid grid-cols-2 gap-x-8 gap-y-6">
-                        {def.signers.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} />)}
-                    </div>
+                    {def.signers.length > 0 && (
+                        <div className="mt-8 grid grid-cols-2 gap-x-8 gap-y-6">
+                            {def.signers.map((f) => <SignLine key={f.key} field={f} values={values} sigs={sigs} mono={mono} />)}
+                        </div>
+                    )}
+
+                    {def.footer && <p className={cn("mt-6 text-[12px] italic", mono ? "text-black" : "text-slate-600")}>{def.footer}</p>}
                 </div>
 
-                <p className="mt-4 text-[10px] text-slate-400">{[branding.name, branding.address, branding.phone].filter(Boolean).join(" · ")}</p>
+                <p className={cn("mt-4 text-[10px]", mono ? "text-gray-500" : "text-slate-400")}>{[branding.name, branding.address, branding.phone].filter(Boolean).join(" · ")}</p>
             </div>
         );
     },
@@ -153,12 +265,19 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
     const signKeys = def.signers.filter((s) => s.kind === "sign").map((s) => s.key);
+    // Every signature field across the form (signers + grouped sections + mid/intro fields).
+    const allSignKeys = [
+        ...def.signers,
+        ...(def.sections?.flatMap((s) => s.fields) ?? []),
+        ...(def.fields ?? []),
+        ...(def.intro ?? []),
+    ].filter((f) => f.kind === "sign").map((f) => f.key);
     const [values, setValues] = useState<Record<string, string>>(() => ({
         ...(pf ? {
             applicant: pf.fullName, printName: pf.fullName, driverName: pf.fullName,
-            ssn: pf.ssn, dob: pf.dob, company: branding.name,
+            ssn: pf.ssn, dob: pf.dob, company: branding.name, prospEmployer: branding.name,
             licenseNumber: pf.licenses[0]?.number ?? "", state: pf.licenses[0]?.authority ?? "",
-        } : { company: branding.name }),
+        } : { company: branding.name, prospEmployer: branding.name }),
         ...sharedValues,
     }));
     const [sigs, setSigs] = useState<Record<string, string>>(() => sharedSignature ? Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) : {});
@@ -167,7 +286,9 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
     useEffect(() => { if (sharedValues) setValues((v) => ({ ...v, ...sharedValues })); }, [sharedValues]);
     useEffect(() => { if (sharedSignature) setSigs((s) => ({ ...s, ...Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) })); }, [sharedSignature]);
     const [preview, setPreview] = useState(false);
+    const [theme, setTheme] = useState<ThemeKey>("standard");
     const [downloading, setDownloading] = useState(false);
+    const [shared, setShared] = useState(false);
     const docRef = useRef<HTMLDivElement>(null);
 
     const set = (k: string, v: string) => setValues((p) => ({ ...p, [k]: v }));
@@ -175,7 +296,19 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
     const hex = THEME_HEX[def.theme];
 
     const fillSample = () => {
-        setValues({ ...(def.sample ?? {}), ...onDutySample(def) });
+        const vals = { ...(def.sample ?? {}), ...onDutySample(def) };
+        setValues(vals);
+        const name = vals.printName || vals.applicant || vals.driverName || pf?.fullName || "Jane Doe";
+        const sig = makeSignatureImage(name);
+        if (sig) setSigs(Object.fromEntries(allSignKeys.map((k) => [k, sig])));
+    };
+
+    const share = async () => {
+        const payload = { title: `${def.title} ${def.accentTitle}`, text: `${def.title} ${def.accentTitle} — ${branding.name}`, url: typeof window !== "undefined" ? window.location.href : "" };
+        try {
+            if (typeof navigator !== "undefined" && (navigator as Navigator).share) { await (navigator as Navigator).share(payload); return; }
+            if (typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(payload.url || payload.text); setShared(true); setTimeout(() => setShared(false), 1800); }
+        } catch { /* user dismissed share sheet */ }
     };
 
     const downloadPdf = async () => {
@@ -198,6 +331,25 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
 
     const renderField = (f: PolicyField) => {
         if (f.kind === "sign") return <SignaturePad key={f.key} label={f.label} onChange={(v) => setSig(f.key, v)} />;
+        if (f.kind === "choice") return (
+            <Field key={f.key} label={f.label} className="sm:col-span-2">
+                <div className="space-y-2">
+                    {(f.options ?? []).map((opt) => {
+                        const on = values[f.key] === opt;
+                        return (
+                            <button key={opt} type="button" onClick={() => set(f.key, opt)}
+                                className={cn("flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition",
+                                    on ? "border-blue-500 bg-blue-50 text-slate-900" : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50")}>
+                                <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border", on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300")}>
+                                    {on && <Check className="h-3 w-3" />}
+                                </span>
+                                {opt}
+                            </button>
+                        );
+                    })}
+                </div>
+            </Field>
+        );
         return (
             <Field key={f.key} label={f.label} className={f.kind === "date" ? "max-w-xs" : undefined}>
                 {f.kind === "state"
@@ -220,7 +372,13 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
                 <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Policy</button>
                 {preview ? (
                     <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                            {THEMES.map((t) => (
+                                <button key={t.key} type="button" onClick={() => setTheme(t.key)} className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition", theme === t.key ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white")}>{t.name}</button>
+                            ))}
+                        </div>
                         <Button variant="outline" size="sm" onClick={() => setPreview(false)}>Edit</Button>
+                        <Button variant="outline" size="sm" onClick={share}><Share2 className="h-4 w-4" /> {shared ? "Link copied" : "Share"}</Button>
                         <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
                         <Button size="sm" onClick={downloadPdf} disabled={downloading}><Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}</Button>
                     </div>
@@ -233,7 +391,9 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
             </div>
 
             {preview ? (
-                <div className="px-6 py-8"><PolicyDocument ref={docRef} def={def} values={values} sigs={sigs} branding={branding} /></div>
+                <div className="px-6 py-8">
+                    <PolicyDocument ref={docRef} def={def} values={values} sigs={sigs} branding={branding} theme={theme} />
+                </div>
             ) : (
                 <div className={embedded ? "space-y-6" : "mx-auto max-w-3xl space-y-6 px-6 py-6"}>
                     <div className={embedded ? "hidden" : undefined}>
@@ -258,11 +418,23 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
                     )}
 
                     {/* Statement text (read-only, so the signer sees what they agree to) */}
-                    <Section title="Statement" hex={hex}>
-                        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                            {def.body.map((b, i) => <Block key={i} block={b} values={values} preview={false} />)}
-                        </div>
-                    </Section>
+                    {def.body.length > 0 && (
+                        <Section title="Statement" hex={hex}>
+                            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                                {def.body.map((b, i) => <Block key={i} block={b} values={values} preview={false} />)}
+                            </div>
+                        </Section>
+                    )}
+
+                    {/* Grouped field sections (e.g. applicant / previous employer / prospective employer) */}
+                    {def.sections?.map((sec) => (
+                        <Section key={sec.title} title={sec.title} hex={hex}>
+                            <div className="space-y-4">
+                                {sec.note && <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-600 shadow-sm">{sec.note}</p>}
+                                <Grid>{sec.fields.map(renderField)}</Grid>
+                            </div>
+                        </Section>
+                    ))}
 
                     {/* On-duty grid */}
                     {def.onDuty && (
@@ -306,9 +478,13 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
                     )}
 
                     {/* Signature block */}
-                    <Section title="Signature" hex={hex}>
-                        <div className="space-y-5">{def.signers.map(renderField)}</div>
-                    </Section>
+                    {def.signers.length > 0 && (
+                        <Section title="Signature" hex={hex}>
+                            <div className="space-y-5">{def.signers.map(renderField)}</div>
+                        </Section>
+                    )}
+
+                    {def.footer && <p className="text-[12px] italic text-slate-500">{def.footer}</p>}
 
                     <div className={`${embedded ? "hidden" : "flex"} justify-end gap-3 border-t border-slate-200 pt-5`}>
                         <Button variant="outline" onClick={onBack}>Cancel</Button>

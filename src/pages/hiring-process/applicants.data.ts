@@ -102,6 +102,7 @@ export type EmpAttempt = { at: number; method: string; to: string };
 export type EmpCheck = {
     id: string; employer: string; position: string; dates: string; email: string;
     attempts: EmpAttempt[]; status: EmpStatus; respondedAt?: number; verifiedAt?: number;
+    respondedAttempt?: number;   // index of the request (attempt) the employer's response is logged against
     verifierSig?: string;   // hiring-manager signature captured when verifying on the dashboard
 };
 export const EMP_MAX_ATTEMPTS = 5;
