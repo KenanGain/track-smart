@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -768,12 +768,9 @@ export type FormConfig = {
 };
 
 export const APPLICATION_FORMS: FormConfig[] = [
-    { id: "local", name: "Local / Domestic", region: "Domestic", blurb: "For local and domestic drivers operating within a single region.", defaultCountry: "United States", idLabel: "SSN / SIN", Icon: MapPin, accent: "bg-emerald-50 text-emerald-600" },
-    { id: "us", name: "US Driver", region: "United States", blurb: "FMCSA-compliant application for US-based commercial drivers.", defaultCountry: "United States", idLabel: "SSN", Icon: Flag, accent: "bg-blue-50 text-blue-600" },
-    { id: "canada", name: "Canada Driver", region: "Canada", blurb: "Application for Canadian drivers - SIN and provincial licensing.", defaultCountry: "Canada", idLabel: "SIN", Icon: Leaf, accent: "bg-rose-50 text-rose-600" },
-    { id: "cross-border", name: "Cross-border (US-Canada)", region: "US - Canada", blurb: "For drivers operating across the US-Canada border.", defaultCountry: "United States", idLabel: "SSN / SIN", Icon: Globe, accent: "bg-violet-50 text-violet-600" },
-    { id: "us-owner-operator", name: "US Owner-Operator", region: "United States", blurb: "For US owner-operators running under their own or a leased authority.", defaultCountry: "United States", idLabel: "SSN", Icon: Truck, accent: "bg-amber-50 text-amber-600" },
-    { id: "canada-owner-operator", name: "Canada Owner-Operator", region: "Canada", blurb: "For Canadian owner-operators - SIN, provincial licensing and authority.", defaultCountry: "Canada", idLabel: "SIN", Icon: Snowflake, accent: "bg-sky-50 text-sky-600" },
+    { id: "us", name: "US Only Driver", region: "United States", blurb: "FMCSA-compliant application for drivers operating only within the United States.", defaultCountry: "United States", idLabel: "SSN", Icon: Flag, accent: "bg-blue-50 text-blue-600" },
+    { id: "canada", name: "Canada Only Driver", region: "Canada", blurb: "Application for drivers operating only within Canada - SIN and provincial licensing.", defaultCountry: "Canada", idLabel: "SIN", Icon: Leaf, accent: "bg-rose-50 text-rose-600" },
+    { id: "cross-border", name: "Canada (Cross Border)", region: "Canada / US", blurb: "For Canada-based drivers operating across the Canada-US border.", defaultCountry: "Canada", idLabel: "SIN / SSN", Icon: Globe, accent: "bg-violet-50 text-violet-600" },
 ];
 
 // ----------------------------- hiring / report form catalog -----------------------------

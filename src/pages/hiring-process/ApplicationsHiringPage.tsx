@@ -22,9 +22,8 @@ import { useApplicants, STATUS_META, STATUS_ORDER, STATUS_VERB, relativeTime, fo
 
 const HP_PATH = "/hiring-process/applications";
 
-// Only the 4 core driver types are offered when inviting; owner-operator variants
-// are handled via the Owner-Operator hiring template.
-const DRIVER_TYPE_IDS = ["local", "us", "canada", "cross-border"];
+// The three application forms offered when inviting a driver.
+const DRIVER_TYPE_IDS = ["us", "canada", "cross-border"];
 
 const CARRIERS = ["Acme Logistics", "Northwind Transport", "Blue Ridge Freight"];
 
