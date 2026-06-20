@@ -56,7 +56,7 @@ export function HiringFormView({ formId, onBack, embedded, startPreview, onSignO
     if (formId === "clearinghouse-query") return <ClearinghouseQueryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
 
     const policyDef = POLICY_FORMS.find((p) => p.id === formId);
-    if (policyDef) return <PolicyForm def={policyDef} onBack={onBack} embedded={embedded} />;
+    if (policyDef) return <PolicyForm def={policyDef} onBack={onBack} embedded={embedded} startPreview={startPreview} />;
 
     if (formId === "road-test") {
         const appForm = loadApplicationForms().find((f) => f.id === "form-ats-road-test");

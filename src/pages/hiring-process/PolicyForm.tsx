@@ -1,10 +1,11 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { ChevronLeft, Eye, Printer, Download, Sparkles, Check, Share2 } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useCompanyBranding } from "../ats/company-branding.data";
 import type { CompanyBranding } from "../ats/company-branding.data";
 import { STATES_PROVINCES } from "./ApplicationSettingsPage";
@@ -261,7 +262,12 @@ export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; v
 PolicyDocument.displayName = "PolicyDocument";
 
 // ── The form (edit + preview shell) ─────────────────────────────────────────
-export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValues }: { def: PolicyFormDef; onBack: () => void; embedded?: boolean; sharedSignature?: string; sharedValues?: Record<string, string> }) {
+// Imperative handle so a host (e.g. the consent wizard) can drive an embedded
+// form's "Fill sample data" / "PDF view" from its own top navbar.
+export type PolicyFormHandle = { fillSample: () => void; togglePreview: () => void };
+
+export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onBack: () => void; embedded?: boolean; startPreview?: boolean; sharedSignature?: string; sharedValues?: Record<string, string>; onPreviewChange?: (preview: boolean) => void; agree?: { checked: boolean; onChange: () => void; label: string } }>(
+    function PolicyForm({ def, onBack, embedded, startPreview, sharedSignature, sharedValues, onPreviewChange, agree }, ref) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();
     const signKeys = def.signers.filter((s) => s.kind === "sign").map((s) => s.key);
@@ -285,7 +291,7 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
     // merge them in without wiping anything the driver edited per-form.
     useEffect(() => { if (sharedValues) setValues((v) => ({ ...v, ...sharedValues })); }, [sharedValues]);
     useEffect(() => { if (sharedSignature) setSigs((s) => ({ ...s, ...Object.fromEntries(signKeys.map((k) => [k, sharedSignature])) })); }, [sharedSignature]);
-    const [preview, setPreview] = useState(false);
+    const [preview, setPreview] = useState(!!startPreview);
     const [theme, setTheme] = useState<ThemeKey>("standard");
     const [downloading, setDownloading] = useState(false);
     const [shared, setShared] = useState(false);
@@ -311,6 +317,9 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
         } catch { /* user dismissed share sheet */ }
     };
 
+    useImperativeHandle(ref, () => ({ fillSample, togglePreview: () => setPreview((p) => !p) }));
+    useEffect(() => { onPreviewChange?.(preview); }, [preview, onPreviewChange]);
+
     const downloadPdf = async () => {
         const el = docRef.current;
         if (!el) return;
@@ -330,7 +339,24 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
     };
 
     const renderField = (f: PolicyField) => {
-        if (f.kind === "sign") return <SignaturePad key={f.key} label={f.label} onChange={(v) => setSig(f.key, v)} />;
+        if (f.kind === "sign") {
+            // If a signature has already been applied (e.g. "sign once → all forms"),
+            // show it as a signed image with a re-sign option instead of a blank pad.
+            const existing = sigs[f.key];
+            if (existing) return (
+                <div key={f.key} className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                        <Label className="text-slate-700">✎ {f.label}</Label>
+                        <button type="button" onClick={() => setSig(f.key, "")} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Re-sign</button>
+                    </div>
+                    <div className="flex items-center justify-center rounded-md border border-slate-200 bg-white p-2">
+                        <img src={existing} alt={f.label} className="h-14 object-contain" />
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-emerald-600">Signed</p>
+                </div>
+            );
+            return <SignaturePad key={f.key} label={f.label} onChange={(v) => setSig(f.key, v)} />;
+        }
         if (f.kind === "choice") return (
             <Field key={f.key} label={f.label} className="sm:col-span-2">
                 <div className="space-y-2">
@@ -369,7 +395,7 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
             }`}</style>
 
             <div className={`${embedded ? "hidden" : "no-print"} flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3`}>
-                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Policy</button>
+                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> {def.kind === "policy" ? "Policy documents" : "Consent forms"}</button>
                 {preview ? (
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -391,13 +417,13 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
             </div>
 
             {preview ? (
-                <div className="px-6 py-8">
+                <div className={embedded ? "overflow-x-auto py-2" : "overflow-x-auto px-6 py-8"}>
                     <PolicyDocument ref={docRef} def={def} values={values} sigs={sigs} branding={branding} theme={theme} />
                 </div>
             ) : (
                 <div className={embedded ? "space-y-6" : "mx-auto max-w-3xl space-y-6 px-6 py-6"}>
                     <div className={embedded ? "hidden" : undefined}>
-                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: hex }}>Policy · Statement &amp; Signature</p>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: hex }}>{def.kind === "policy" ? "Policy" : "Consent"} · Statement &amp; Signature</p>
                         <h1 className="mt-1 text-2xl font-bold text-slate-900">{def.title} <span style={{ color: hex }}>{def.accentTitle}</span></h1>
                         <p className="mt-1 text-sm text-slate-500">{def.blurb}</p>
                     </div>
@@ -477,10 +503,25 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
                         <Section title={def.fieldsTitle ?? "Details"} hex={hex}><Grid>{def.fields.map(renderField)}</Grid></Section>
                     )}
 
-                    {/* Signature block */}
+                    {/* Agree — placed just above the signature, inside the form */}
+                    {agree && (
+                        <button type="button" onClick={agree.onChange}
+                            className={cn("flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left transition", agree.checked ? "border-emerald-300 bg-emerald-50/60" : "border-slate-200 bg-white hover:bg-slate-50")}>
+                            <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2", agree.checked ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white")}>
+                                {agree.checked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                            </span>
+                            <span className={cn("text-sm font-medium", agree.checked ? "text-emerald-800" : "text-slate-700")}>{agree.label}</span>
+                        </button>
+                    )}
+
+                    {/* Signature block — pad full width, then Print Name beside Date */}
                     {def.signers.length > 0 && (
                         <Section title="Signature" hex={hex}>
-                            <div className="space-y-5">{def.signers.map(renderField)}</div>
+                            <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
+                                {def.signers.map((f) => (
+                                    <div key={f.key} className={f.kind === "sign" ? "sm:col-span-2" : ""}>{renderField(f)}</div>
+                                ))}
+                            </div>
                         </Section>
                     )}
 
@@ -494,7 +535,8 @@ export function PolicyForm({ def, onBack, embedded, sharedSignature, sharedValue
             )}
         </div>
     );
-}
+});
+PolicyForm.displayName = "PolicyForm";
 
 function Section({ title, hex, children }: { title: string; hex: string; children: React.ReactNode }) {
     return (

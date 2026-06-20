@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2, Upload, Image as ImageIcon, FileText, ClipboardList, FileSignature } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Snowflake, Sparkles, Truck, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { ConsentPhase } from "./ApplicationConsents";
-import { consentsForType, consentRegion, POLICY_FORMS } from "./policy-forms.data";
+import { consentsForType, consentRegion, consentForms } from "./policy-forms.data";
 
 /**
  * Settings -> Hiring Process -> Applications
@@ -795,10 +795,9 @@ export const HIRING_FORMS: HiringFormItem[] = [
     { id: "annual-review", name: "Annual Review of Driving Record", blurb: "§391.25 annual driving-record review.", group: "Medical & Compliance" },
     { id: "clearinghouse-query", name: "Clearinghouse Query", blurb: "FMCSA Drug & Alcohol Clearinghouse query.", group: "Medical & Compliance" },
 ];
-const HIRING_FORM_GROUPS = ["License & Driving", "Reports & Screening", "Safety Performance (§391.23)", "Medical & Compliance"];
 
 // ----------------------------- application form view -----------------------------
-function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig; onBack: () => void; onPreview?: () => void }) {
+function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { config: FormConfig; onBack: () => void; onPreview?: () => void; initialPhase?: "application" | "consent" }) {
     // Personal
     const [firstName, setFirstName] = useState("");
     const [middleName, setMiddleName] = useState("");
@@ -867,11 +866,16 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
 
     // Wizard step + phase (application data → consent forms)
     const [step, setStep] = useState(0);
-    const [phase, setPhase] = useState<"application" | "consent">("application");
+    const [phase, setPhase] = useState<"application" | "consent">(initialPhase ?? "application");
 
     // Form-variant flags drive country-specific copy (work eligibility, etc.).
     const isCanada = config.defaultCountry === "Canada";
     const isCross = config.id === "cross-border";
+
+    // Whether this driver operates in / crosses into the US. Gates the US-federal
+    // report consents (FCRA · MVR · PSP · FMCSA Clearinghouse) in the consent step.
+    // Canada-only applications default to No; everyone else defaults to Yes.
+    const [operatesInUS, setOperatesInUS] = useState(isCanada && !isCross ? "No" : "Yes");
 
     // Populate the whole form with realistic dummy data so the filled view can
     // be reviewed at a glance.
@@ -881,6 +885,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
         setEmail("kenan.gain@example.com"); setPrimaryPhone("(555) 218-4471");
         setDob("1990-03-14"); setSsn("***-**-4471"); setLegalRight(true); setLegalRightCA(true);
         setPosition("Company Driver");
+        setOperatesInUS(isCanada && !isCross ? "No" : "Yes");
         setAddr1("18 Maple Ridge Rd"); setUnit("4"); setAddr2(""); setCountry(config.defaultCountry);
         setCity("Springfield"); setState(st); setZip("62704"); setResided3yr("Yes");
         setCellPhone("(555) 218-4471"); setConfirmEmail("kenan.gain@example.com");
@@ -969,7 +974,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                         <Field label="Is this your current employer?" required><YesNo value={d.current} onChange={(v) => set({ current: v })} /></Field>
                         <Field label="Did you operate a commercial motor vehicle?" required><YesNo value={d.operatedCMV} onChange={(v) => set({ operatedCMV: v })} /></Field>
                         <Field label="Were you subject to FMCSRs while employed?" required><YesNo value={d.subjectFMCSR} onChange={(v) => set({ subjectFMCSR: v })} /></Field>
-                        <Field className="sm:col-span-2" label="Was your job designated as a Safety-Sensitive function in any DOT-regulated mode subject to the drug and alcohol testing requirements of 49 CFR Part 40?" required><YesNo value={d.safetySensitive} onChange={(v) => set({ safetySensitive: v })} /></Field>
+                        <Field className="sm:col-span-2" label="Was your job designated as a Safety-Sensitive function in any DOT-regulated mode subject to the drug and alcohol testing requirements of 49 CFR Part 40?" hint="If Yes, you'll be asked to sign a Drug & Alcohol Testing Records Release for this previous employer in the consent step." required><YesNo value={d.safetySensitive} onChange={(v) => set({ safetySensitive: v })} /></Field>
                     </Grid>
                 </FormSection>
 
@@ -1048,6 +1053,7 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                         <ToggleField label={`Do you have legal right to work in ${isCanada ? "Canada" : "the United States"}?`} checked={isCanada ? legalRightCA : legalRight} onChange={isCanada ? setLegalRightCA : setLegalRight} />
                     )}
                     <Field className="sm:col-span-2" label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
+                    <Field className="sm:col-span-2" label="Will this driver operate in or cross into the United States?" hint="If No, US-federal consents (Personal Information / FCRA, MVR, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step." required><YesNo value={operatesInUS} onChange={setOperatesInUS} /></Field>
                 </Grid>
             ),
         },
@@ -1358,8 +1364,17 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
                         <Field className="mt-3" label="Email Address"><TextInput type="email" value={copyEmail} onChange={(e) => setCopyEmail(e.target.value)} /></Field>
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Declarations</p>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">By signing, I authorize the investigation of my employment and safety-performance history and certify that the information in this application is true and complete. The full declarations — including my §391.23 rights to review, correct, and attach a rebuttal to previous-employer information — are presented and signed on the <span className="font-medium text-slate-700">Safety Performance History Investigation Authorization</span> consent form.</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Declaration</p>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">By signing, I authorize the investigation of my employment and safety-performance history and certify that the information in this application is true and complete.</p>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">In the event of employment, I understand that false or misleading information given in my application or interview(s) may result in discharge. I also understand that I am required to abide by all rules and regulations of the Company.</p>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">I understand that the information I provide regarding my current and/or prior employers may be used, and those employer(s) will be contacted for the purpose of investigating my safety performance history as required by 49 CFR 391.23. I understand that I have the right to:</p>
+                        <ul className="mt-1.5 space-y-1.5 text-sm leading-relaxed text-slate-600">
+                            <li className="flex gap-2"><span className="text-slate-400">•</span><span>Review information provided by current/previous employers;</span></li>
+                            <li className="flex gap-2"><span className="text-slate-400">•</span><span>Have errors in the information corrected by previous employers, and for those previous employers to resend the corrected information to the prospective employer; and</span></li>
+                            <li className="flex gap-2"><span className="text-slate-400">•</span><span>Have a rebuttal statement attached to the alleged erroneous information, if the previous employer(s) and I cannot agree on the accuracy of the information.</span></li>
+                        </ul>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">This certifies that I completed this application, and that all entries on it and information in it are true and complete to the best of my knowledge.</p>
+                        <p className="mt-3 text-sm font-medium text-slate-700">Note: A motor carrier may require an applicant to provide more information than that required by the Federal Motor Carrier Safety Regulations.</p>
                     </div>
                     <InfoAlert>By signing below, I agree to use an electronic signature and acknowledge that an electronic signature is as legally binding as an ink signature.</InfoAlert>
                     <p className="text-sm text-slate-600">Draw your signature with your finger or mouse, or switch to <span className="font-medium text-slate-700">Type</span> to enter your name.</p>
@@ -1379,6 +1394,10 @@ function ApplicationFormView({ config, onBack, onPreview }: { config: FormConfig
             <ConsentPhase
                 typeId={config.id}
                 typeName={config.name}
+                operatesInUS={operatesInUS === "Yes"}
+                safetySensitiveEmployers={employers
+                    .filter((e) => e.safetySensitive === "Yes")
+                    .map((e) => ({ company: e.company, cityStateZip: [e.city, e.state, e.zip].filter(Boolean).join(", "), telephone: e.telephone }))}
                 onBack={() => setPhase("application")}
                 onSubmit={onBack}
             />
@@ -1496,7 +1515,7 @@ const APPLICATIONS_PATH = "/settings/hiring-process/applications";
 
 // ----------------------------- page: dedicated application form -----------------------------
 // Rendered at /settings/hiring-process/applications/:formId
-export function ApplicationFormPage({ formId, onNavigate }: { formId: string; onNavigate: (path: string) => void }) {
+export function ApplicationFormPage({ formId, onNavigate, initialPhase }: { formId: string; onNavigate: (path: string) => void; initialPhase?: "application" | "consent" }) {
     const config = APPLICATION_FORMS.find((f) => f.id === formId);
     const back = () => onNavigate(APPLICATIONS_PATH);
     if (!config) {
@@ -1507,20 +1526,18 @@ export function ApplicationFormPage({ formId, onNavigate }: { formId: string; on
             </div>
         );
     }
-    return <ApplicationFormView config={config} onBack={back} onPreview={() => onNavigate(`${APPLICATIONS_PATH}/${config.id}/preview`)} />;
+    return <ApplicationFormView config={config} onBack={back} initialPhase={initialPhase} onPreview={() => onNavigate(`${APPLICATIONS_PATH}/${config.id}/preview`)} />;
 }
 
 // ----------------------------- page: application form catalog -----------------------------
 const TABS = [
     { key: "application", label: "Application Forms", Icon: FileText },
-    { key: "forms", label: "Forms", Icon: ClipboardList },
     { key: "consent", label: "Consent Forms", Icon: FileSignature },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
 const TAB_COPY: Record<TabKey, { kicker: string; title: string; blurb: string }> = {
     application: { kicker: "Driver Hiring - Step 1", title: "Application Forms", blurb: "The application is the first step of driver hiring. Choose the form that matches the driver type - each one collects the fields appropriate for that region." },
-    forms: { kicker: "Driver Hiring - Forms", title: "Hiring Forms", blurb: "Every individual hiring & report form used across the process. Open any one to view it on its own." },
     consent: { kicker: "Driver Hiring - Consents", title: "Consent Forms", blurb: "The consent and policy forms a driver signs as part of the application. Open any one to view it on its own." },
 };
 
@@ -1530,21 +1547,22 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
     );
     const open = (f: FormConfig) => onNavigate(`${APPLICATIONS_PATH}/${f.id}`);
     const preview = (f: FormConfig) => onNavigate(`${APPLICATIONS_PATH}/${f.id}/preview`);
-    const openForm = (id: string) => onNavigate(`/settings/hiring-process/forms/${id}`);
+    const consents = (f: FormConfig) => onNavigate(`${APPLICATIONS_PATH}/${f.id}?phase=consent`);
     const openConsent = (id: string) => onNavigate(`/settings/hiring-process/consent/${id}`);
+    const previewConsent = (id: string) => onNavigate(`/settings/hiring-process/consent/${id}?pdf=1`);
     const copy = TAB_COPY[tab];
 
     return (
         <div className="min-h-screen bg-slate-50">
             {/* Header band */}
             <div className="border-b border-slate-200 bg-white">
-                <div className="mx-auto max-w-5xl px-6 py-6">
+                <div className="mx-auto max-w-6xl px-6 py-6">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{copy.kicker}</p>
                     <h1 className="mt-1 text-2xl font-semibold text-slate-900">{copy.title}</h1>
                     <p className="mt-1 max-w-2xl text-sm text-slate-500">{copy.blurb}</p>
                 </div>
                 {/* Tabs — shared SubTabs (same as the Workflows builder) */}
-                <div className="mx-auto max-w-5xl px-6">
+                <div className="mx-auto max-w-6xl px-6">
                     <SubTabs
                         tabs={TABS.map((t) => ({ id: t.key, label: t.label, icon: t.Icon }))}
                         activeId={tab}
@@ -1554,7 +1572,7 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                 </div>
             </div>
 
-            <div className="mx-auto max-w-5xl px-6 py-8">
+            <div className="mx-auto max-w-6xl px-6 py-8">
                 {tab === "application" && (
                     <>
                         <div className="mb-3 flex items-center justify-between">
@@ -1564,8 +1582,8 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                             <div className="hidden items-center gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 sm:flex">
                                 <span className="flex-1">Application Form</span>
-                                <span className="w-44 text-center">Includes</span>
-                                <span className="w-[230px] text-right">Actions</span>
+                                <span className="w-36 text-center">Includes</span>
+                                <span className="text-right">Actions</span>
                             </div>
                             <div className="divide-y divide-slate-100">
                                 {APPLICATION_FORMS.map((f) => (
@@ -1582,16 +1600,22 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                                                 <p className="mt-0.5 truncate text-sm text-slate-500">{f.blurb}</p>
                                             </div>
                                         </div>
-                                        <div className="hidden w-44 flex-col items-center gap-1 sm:flex">
+                                        <div className="hidden w-36 flex-col items-center gap-1 sm:flex">
                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">13 sections</span>
                                             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">{consentsForType(f.id).length} consent forms</span>
                                         </div>
-                                        <div className="flex w-full items-center justify-end gap-2 sm:w-[230px]">
-                                            <Button variant="outline" size="sm" onClick={() => preview(f)}>
-                                                <Eye className="h-4 w-4" /> Preview
+                                        <div className="flex w-full items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => open(f)}>
+                                                <FlaskConical className="h-4 w-4" /> Test
                                             </Button>
-                                            <Button size="sm" onClick={() => open(f)}>
-                                                Open form <ArrowRight className="h-4 w-4" />
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => preview(f)}>
+                                                <FileText className="h-4 w-4" /> Application form
+                                            </Button>
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => consents(f)}>
+                                                <FileSignature className="h-4 w-4" /> Consent forms
+                                            </Button>
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => preview(f)}>
+                                                <Eye className="h-4 w-4" /> PDF view
                                             </Button>
                                         </div>
                                     </div>
@@ -1601,49 +1625,15 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                     </>
                 )}
 
-                {tab === "forms" && (
-                    <>
-                        <div className="mb-3 flex items-center justify-between">
-                            <h2 className="text-sm font-semibold text-slate-700">{HIRING_FORMS.length} forms</h2>
-                            <span className="text-xs text-slate-400">Open any form to view it individually</span>
-                        </div>
-                        <div className="space-y-6">
-                            {HIRING_FORM_GROUPS.map((group) => (
-                                <div key={group}>
-                                    <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">{group}</h3>
-                                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                                        <div className="divide-y divide-slate-100">
-                                            {HIRING_FORMS.filter((f) => f.group === group).map((f) => (
-                                                <div key={f.id} className="group flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50/70">
-                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
-                                                        <FileText className="h-5 w-5" />
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="truncate font-semibold text-slate-900">{f.name}</p>
-                                                        <p className="truncate text-sm text-slate-500">{f.blurb}</p>
-                                                    </div>
-                                                    <Button size="sm" onClick={() => openForm(f.id)}>
-                                                        Open form <ArrowRight className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
-
                 {tab === "consent" && (
                     <>
                         <div className="mb-3 flex items-center justify-between">
-                            <h2 className="text-sm font-semibold text-slate-700">{POLICY_FORMS.length} consent forms</h2>
+                            <h2 className="text-sm font-semibold text-slate-700">{consentForms().length} consent forms</h2>
                             <span className="text-xs text-slate-400">Signed by the driver as part of the application</span>
                         </div>
                         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                             <div className="divide-y divide-slate-100">
-                                {POLICY_FORMS.map((c) => {
+                                {consentForms().map((c) => {
                                     const region = consentRegion(c.id);
                                     const regionStyle = region === "US" ? "bg-blue-50 text-blue-600" : region === "Canada" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500";
                                     const regionLabel = region === "All" ? "Universal" : region;
@@ -1657,9 +1647,17 @@ export function ApplicationSettingsPage({ onNavigate, initialTab }: { onNavigate
                                                 <p className="truncate text-sm text-slate-500">{c.blurb}</p>
                                             </div>
                                             <span className={cn("hidden shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-block", regionStyle)}>{regionLabel}</span>
-                                            <Button size="sm" onClick={() => openConsent(c.id)}>
-                                                Open form <ArrowRight className="h-4 w-4" />
-                                            </Button>
+                                            <div className="flex shrink-0 items-center gap-2">
+                                                <Button variant="outline" size="sm" className="shrink-0" onClick={() => openConsent(c.id)}>
+                                                    <FlaskConical className="h-4 w-4" /> Test
+                                                </Button>
+                                                <Button variant="outline" size="sm" className="shrink-0" onClick={() => previewConsent(c.id)}>
+                                                    <Eye className="h-4 w-4" /> PDF view
+                                                </Button>
+                                                <Button variant="outline" size="sm" className="shrink-0" onClick={() => openConsent(c.id)}>
+                                                    Open form <ArrowRight className="h-4 w-4" />
+                                                </Button>
+                                            </div>
                                         </div>
                                     );
                                 })}

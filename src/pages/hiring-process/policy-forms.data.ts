@@ -30,6 +30,7 @@ export interface PolicyFormDef {
     title: string;          // first line (dark)
     accentTitle: string;    // second line (themed colour)
     theme: PolicyTheme;
+    kind?: "consent" | "policy"; // "policy" = company/FMCSA policy document (Onboarding), not an application consent
     blurb: string;          // short edit-mode helper
     intro?: PolicyField[];  // inline fields shown before the body (e.g. "I, ____")
     questionsTitle?: string;
@@ -45,37 +46,38 @@ export interface PolicyFormDef {
     sample?: Record<string, string>; // fill-sample values keyed by field/question key
 }
 
-const SIGN_DATE: PolicyField[] = [
+// Standard signature module — identical on every consent form:
+// the Signature pad on top, then Print Name beside Date.
+const STANDARD_SIGN: PolicyField[] = [
     { key: "signature", label: "Applicant Signature", kind: "sign" },
-    { key: "date", label: "Date", kind: "date" },
-];
-const FULL_SIGN_BLOCK: PolicyField[] = [
-    { key: "signature", label: "Applicant Signature", kind: "sign" },
-    { key: "date", label: "Date", kind: "date" },
     { key: "printName", label: "Print Name", kind: "text" },
-    { key: "ssn", label: "Social Security #", kind: "text" },
-    { key: "witness", label: "Employer Witness", kind: "sign" },
-    { key: "title", label: "Title", kind: "text" },
+    { key: "date", label: "Date", kind: "date" },
 ];
+const SIGN_DATE = STANDARD_SIGN;
+const FULL_SIGN_BLOCK = STANDARD_SIGN;
 
 export const POLICY_FORMS: PolicyFormDef[] = [
     {
         id: "fcra-disclosure",
         title: "Fair Credit Reporting Act",
         accentTitle: "Disclosure Statement",
-        theme: "teal",
+        theme: "blue",
         blurb: "FCRA §604(b)(2)(A) disclosure that consumer reports may be obtained for employment purposes.",
+        intro: [{ key: "applicant", label: "Applicant name", kind: "text" }],
         body: [
+            { p: "I, {applicant}, consent to the collection, use, and disclosure of my personal information by {company} (“the Company”) for the purposes of evaluating my application for employment, verifying the information I have provided, and administering the employment relationship if I am hired." },
             { p: "In accordance with the provisions of Section 604 (b)(2)(A) of the Fair Credit Reporting Act, Public Law 91-508, as amended by the Consumer Credit Reporting Act of 1996 (Title II, Subtitle D, Chapter I, of Public Law 104-208), you are being informed that reports verifying your previous employment, previous drug and alcohol test results, and your driving record may be obtained on you for employment purposes. Your employer may obtain this information from Equifax, TransUnion, Experian or other vendors of information services." },
+            { p: "I understand that the Company will protect my personal information with appropriate safeguards and will retain it only as long as necessary for the purposes identified or as required by law." },
         ],
         signers: FULL_SIGN_BLOCK,
-        sample: { printName: "Jane Doe", ssn: "***-**-4471", date: "2026-06-05", title: "Safety Manager" },
+        sample: { applicant: "Jane Doe", printName: "Jane Doe", ssn: "***-**-4471", date: "2026-06-05" },
     },
     {
         id: "license-compliance",
         title: "Certification of Compliance With",
         accentTitle: "Driver License Requirements",
-        theme: "teal",
+        theme: "blue",
+        kind: "policy",
         blurb: "FMCSR Parts 383 & 391 single-license certification signed by the driver.",
         body: [
             { h: "MOTOR CARRIER INSTRUCTIONS:" },
@@ -107,7 +109,8 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         id: "on-duty-hours",
         title: "Driver Statement of",
         accentTitle: "On-Duty Hours",
-        theme: "teal",
+        theme: "blue",
+        kind: "policy",
         blurb: "§395.8(j)(2) signed statement of the prior 7 days on-duty and last relief time.",
         body: [
             { h: "INSTRUCTIONS:" },
@@ -125,7 +128,8 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         id: "other-compensated-work",
         title: "Driver Certification for",
         accentTitle: "Other Compensated Work",
-        theme: "teal",
+        theme: "blue",
+        kind: "policy",
         blurb: "Driver certifies whether they perform / intend to perform compensated work for another employer.",
         questionsTitle: "PLEASE ANSWER QUESTIONS",
         questions: [
@@ -152,12 +156,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "In conjunction with my potential employment at {company} (“the company”), I {applicant} (applicant) consent to the release of my Motor Vehicle Records (MVR) to the company. I understand the company will use these records to evaluate my suitability to fulfill driving duties that may be related to the position for which I am applying. I also consent to the review, evaluation, and other use of any MVR I may have provided to the company." },
             { p: "This consent is given in satisfaction of Public Law 18 USC 2721 et. Seq., “Federal Drivers Privacy Protection Act”, and is intended to constitute “written consent” as required by this Act." },
         ],
-        signers: [
-            { key: "signature", label: "Applicant Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-            { key: "licenseNumber", label: "Driving License #", kind: "text" },
-            { key: "state", label: "State", kind: "state" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { company: "Acme Logistics", applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", date: "2026-06-05" },
     },
     {
@@ -173,19 +172,14 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "I understand that if the limited query conducted indicates that drug or alcohol violation information about me exists in the Clearinghouse, the FMCSA will not disclose that information to this company without first obtaining additional specific consent from me." },
             { p: "I further understand that if I refuse to provide consent for this motor carrier to conduct a limited query of the Clearinghouse, then the company must prohibit me from performing safety-sensitive functions, including driving a commercial motor vehicle, as required by the FMCSA's drug and alcohol program regulations." },
         ],
-        signers: [
-            { key: "signature", label: "Applicant Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-            { key: "licenseNumber", label: "Driving License #", kind: "text" },
-            { key: "state", label: "State", kind: "state" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Illinois", date: "2026-06-05" },
     },
     {
         id: "substance-consent-release",
         title: "Alcohol and Controlled Substance",
         accentTitle: "Consent and Release",
-        theme: "orange",
+        theme: "blue",
         blurb: "Applicant consent & release to alcohol / controlled-substance testing as a condition of employment.",
         questionsTitle: "APPLICANT MUST ANSWER:",
         questions: [
@@ -209,10 +203,10 @@ export const POLICY_FORMS: PolicyFormDef[] = [
     },
     {
         id: "alcohol-drug-records-release",
-        title: "Alcohol & Controlled Substances",
+        title: "Previous Employer Drug & Alcohol",
         accentTitle: "Testing Records Release Authorization",
-        theme: "orange",
-        blurb: "§40.25(g) / §391.23(h) applicant authorization to release prior alcohol & controlled-substance testing records to the prospective employer.",
+        theme: "blue",
+        blurb: "§40.25(g) / §391.23(h) authorization to release a previous employer's DOT drug & alcohol testing records — asked for each previous employer where the job was a DOT safety-sensitive function (49 CFR Part 40).",
         sections: [
             {
                 title: "Applicant",
@@ -251,10 +245,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             },
         ],
         body: [],
-        signers: [
-            { key: "signature", label: "Applicant's Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-        ],
+        signers: STANDARD_SIGN,
         footer: "This information is being requested in compliance with §40.25(g) and §391.23.",
         sample: {
             printName: "Jane Doe", ssn: "***-**-4471", dob: "1990-04-12",
@@ -333,7 +324,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         id: "sph-investigation-auth",
         title: "Safety Performance History",
         accentTitle: "Investigation Authorization",
-        theme: "teal",
+        theme: "blue",
         blurb: "Applicant authorization to investigate employment / safety-performance history and release of liability (49 CFR §391.23).",
         body: [
             { p: "I authorize you to make investigations (including contacting current and prior employers) into my personal, employment, financial, medical history, and other related matters as may be necessary in arriving at an employment decision. I hereby release employers, schools, health care providers, and other persons from all liability in responding to inquiries and releasing information in connection with my application." },
@@ -347,11 +338,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "This certifies that I completed this application, and that all entries on it and information in it are true and complete to the best of my knowledge." },
             { note: "Note: A motor carrier may require an applicant to provide more information than that required by the Federal Motor Carrier Safety Regulations." },
         ],
-        signers: [
-            { key: "signature", label: "Applicant Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-            { key: "printName", label: "Print Name", kind: "text" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { printName: "Jane Doe", date: "2026-06-05" },
     },
     {
@@ -373,21 +360,17 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "If you agree that the Prospective Employer may obtain such background reports, please read the following and sign below:" },
             { p: "I authorize {prospEmployer} (“Prospective Employer”) to access the FMCSA Pre-Employment Screening Program (PSP) system to seek information regarding my commercial driving safety record and information regarding my safety inspection history. I understand that I am authorizing the release of safety performance information including crash data from the previous five (5) years and inspection history from the previous three (3) years. I understand and acknowledge that this release of information may assist the Prospective Employer to make a determination regarding my suitability as an employee." },
             { p: "I have read the above Disclosure Regarding Background Reports provided to me by Prospective Employer and I understand that if I sign this Disclosure and Authorization, Prospective Employer may obtain a report of my crash and inspection history. I hereby authorize Prospective Employer and its employees, authorized agents, and/or affiliates to obtain the information authorized above." },
-            { callout: "NOTICE: This form is made available to monthly account holders by NIC on behalf of the U.S. Department of Transportation, Federal Motor Carrier Safety Administration (FMCSA). Account holders are required by federal law to obtain an Applicant’s written or electronic consent prior to accessing the Applicant’s PSP report. Further, account holders are required by FMCSA to use the language contained in this Disclosure and Authorization form to obtain an Applicant’s consent. The language must be used in whole, exactly as provided. Further, the language on this form must exist as one stand-alone document. The language may NOT be included with other consent forms or any other language.", tone: "notice" },
             { callout: "NOTICE: The prospective employment concept referenced in this form contemplates the definition of “employee” contained at 49 C.F.R. 383.5.", tone: "notice" },
         ],
-        signers: [
-            { key: "signature", label: "Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-            { key: "printName", label: "Print Name", kind: "text" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { prospEmployer: "Acme Logistics", printName: "Jane Doe", date: "2026-06-05" },
     },
     {
         id: "drug-alcohol-policy-receipt",
         title: "Drug & Alcohol Policy",
         accentTitle: "Certificate of Receipt",
-        theme: "orange",
+        theme: "blue",
+        kind: "policy",
         blurb: "§382 certificate that the driver received the company's controlled-substance & alcohol educational materials and policy.",
         body: [
             { p: "This is to certify I have been provided educational materials that explain the requirements of Part 382 of the Federal Motor Carrier Safety Regulations, regarding the testing of controlled substances and alcohol. I have received information regarding the policies and procedures of this company regarding controlled substance and alcohol testing:" },
@@ -429,7 +412,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         id: "handbook-acknowledgment",
         title: "Employee Acknowledgment of",
         accentTitle: "Company Policy",
-        theme: "teal",
+        theme: "blue",
         blurb: "Driver acknowledges receipt of the employee handbook and at-will employment relationship.",
         body: [
             { p: "The employee handbook describes important information about {handbookTopic}, and I understand that I should consult my supervisor or consult the Policies and Procedures Manual regarding any questions not answered in the employee handbook." },
@@ -438,10 +421,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "Furthermore, I acknowledge that this employee handbook is neither a contract of employment nor a legal document." },
             { p: "I have received the employee handbook, and I understood that it is my responsibility to read and comply with the policies contained in this employee handbook and any revisions made to it." },
         ],
-        signers: [
-            { key: "signature", label: "Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { handbookTopic: "the Company’s policies, procedures, and benefits", terminationParty: "the Company", date: "2026-06-05" },
     },
     {
@@ -457,10 +437,7 @@ export const POLICY_FORMS: PolicyFormDef[] = [
             { p: "This consent is given in accordance with the Personal Information Protection and Electronic Documents Act (PIPEDA) and any applicable provincial privacy legislation. I understand that I may withdraw this consent at any time, subject to legal or contractual restrictions and reasonable notice, by contacting the Company, and that withdrawing consent may affect the Company’s ability to consider or continue my employment." },
             { p: "I understand that the Company will protect my personal information with appropriate safeguards and will retain it only as long as necessary for the purposes identified or as required by law." },
         ],
-        signers: [
-            { key: "signature", label: "Applicant Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { applicant: "Jane Doe", date: "2026-06-05" },
     },
     {
@@ -468,38 +445,30 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         title: "Driver's Abstract",
         accentTitle: "Driving Record Consent",
         theme: "blue",
-        blurb: "Canada — written consent to release the provincial Driver's Abstract / CVOR driving record (counterpart to the US MVR release).",
+        blurb: "Canada — written consent to release the provincial Driver's Abstract / CVDR / CDA driving record (counterpart to the US MVR release).",
         intro: [{ key: "applicant", label: "Applicant name", kind: "text" }],
         body: [
             { p: "In conjunction with my application for employment with {company} (“the Company”), I, {applicant}, consent to the release of my provincial Driver’s Abstract / driving record to the Company. I understand the Company will use this record to evaluate my suitability to perform the driving duties related to the position for which I am applying." },
-            { p: "I authorize the applicable provincial or territorial licensing authority to release my driving record, including my Commercial Vehicle Operator’s Registration (CVOR) abstract where applicable, to the Company and its authorized agents." },
+            { p: "I authorize the applicable provincial or territorial licensing authority to release my driving record, including my Commercial Vehicle Driver Record (CVDR) and Commercial Driver Abstract (CDA) where applicable, to the Company and its authorized agents." },
             { p: "I also consent to the review, evaluation, and other use of any driving abstract I may have provided to the Company. This consent is given as written authorization for the release of my driving record under applicable provincial privacy and highway-traffic legislation." },
         ],
-        signers: [
-            { key: "signature", label: "Applicant Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-            { key: "licenseNumber", label: "Driver's Licence #", kind: "text" },
-            { key: "state", label: "Province", kind: "state" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { applicant: "Jane Doe", licenseNumber: "D1234-5678-90", state: "Ontario", date: "2026-06-05" },
     },
     {
         id: "ca-criminal-record-check",
         title: "Criminal Record Check",
-        accentTitle: "Consent (Canada)",
-        theme: "teal",
-        blurb: "Canada — consent to a criminal record check (CPIC) for the purpose of evaluating the application.",
+        accentTitle: "Consent",
+        theme: "blue",
+        blurb: "Consent to a criminal record / background check for the purpose of evaluating the application.",
         intro: [{ key: "applicant", label: "Applicant name", kind: "text" }],
         body: [
-            { p: "I, {applicant}, consent to {company} (“the Company”) and its authorized agents conducting a criminal record check (including a search of the Canadian Police Information Centre (CPIC) database) for the purpose of evaluating my application for employment." },
+            { p: "I, {applicant}, consent to {company} (“the Company”) and its authorized agents conducting a criminal record / background check (including, in Canada, a search of the Canadian Police Information Centre (CPIC) database) for the purpose of evaluating my application for employment." },
             { p: "I understand that the results of this check may be used by the Company in making employment-related decisions, and I release the Company, the police service, and any service provider from liability arising from the lawful collection, use, and disclosure of this information." },
             { p: "I certify that the personal information I have provided to enable this check is true and complete. I understand that I may be required to provide acceptable identification to complete the check, and that a record may require verification of my identity, including fingerprints, in certain circumstances." },
             { note: "A criminal record is not necessarily a bar to employment; results are considered in relation to the duties of the position and applicable law." },
         ],
-        signers: [
-            { key: "signature", label: "Applicant Signature", kind: "sign" },
-            { key: "date", label: "Date", kind: "date" },
-        ],
+        signers: STANDARD_SIGN,
         sample: { applicant: "Jane Doe", date: "2026-06-05" },
     },
 ];
@@ -511,21 +480,42 @@ export const THEME_HEX: Record<PolicyTheme, string> = { teal: "#0d9488", blue: "
 // clearinghouse, substance) apply to US / cross-border drivers; the universal
 // certifications apply to everyone. Report access (PSP / Abstract / CVOR) is
 // collected via the hiring-template forms, not as consent signatures.
+// NB: "alcohol-drug-records-release" is intentionally NOT here — it is asked
+// conditionally, once per previous employer the applicant flagged as a DOT
+// safety-sensitive job (49 CFR Part 40). See ConsentPhase.
 const US_POLICY = [
     "fcra-disclosure", "mvr-release", "clearinghouse-consent",
     "psp-disclosure-auth", "substance-consent-release",
-    "alcohol-drug-records-release", "sph-records-request", "sph-investigation-auth",
-    "drug-alcohol-policy-receipt",
+    "sph-records-request", "sph-investigation-auth",
 ];
-const UNIVERSAL_POLICY = ["license-compliance", "on-duty-hours", "other-compensated-work", "handbook-acknowledgment"];
-const CANADA_POLICY = ["pipeda-consent", "ca-driver-abstract-consent", "ca-criminal-record-check"];
+// Form id asked once per safety-sensitive previous employer (driven by the
+// application's "DOT safety-sensitive function?" answer per employer).
+export const SAFETY_SENSITIVE_RELEASE_ID = "alcohol-drug-records-release";
+const UNIVERSAL_POLICY = ["handbook-acknowledgment", "ca-criminal-record-check"];
+const CANADA_POLICY = ["pipeda-consent", "ca-driver-abstract-consent"];
 const isCanadaType = (id: string) => id === "canada" || id === "canada-owner-operator";
 
+// US-federal report consents — only asked when the driver actually operates in /
+// crosses into the United States. Skipped for drivers who stay out of the US.
+// (US personal-information consent · MVR · PSP · FMCSA D&A Clearinghouse.)
+export const US_FEDERAL_CONSENTS = [
+    "fcra-disclosure", "mvr-release", "psp-disclosure-auth", "clearinghouse-consent",
+];
+
+// Onboarding policy documents — company / FMCSA policy statements signed during
+// onboarding, NOT part of the application consents. Surfaced on the Onboarding
+// Setup page rather than the Consent Forms tab.
+export const policyDocuments = (): PolicyFormDef[] => POLICY_FORMS.filter((f) => f.kind === "policy");
+export const consentForms = (): PolicyFormDef[] => POLICY_FORMS.filter((f) => f.kind !== "policy");
+
 // Ordered list of policy-form ids for a given application/driver type.
-export function consentsForType(typeId: string): string[] {
-    return isCanadaType(typeId)
+// `operatesInUS` (default true) gates the US-federal report consents — when the
+// driver does not operate in the US, FCRA / MVR / PSP / Clearinghouse are skipped.
+export function consentsForType(typeId: string, operatesInUS = true): string[] {
+    const ids = isCanadaType(typeId)
         ? [...UNIVERSAL_POLICY, ...CANADA_POLICY]
         : [...US_POLICY, ...UNIVERSAL_POLICY];
+    return operatesInUS ? ids : ids.filter((id) => !US_FEDERAL_CONSENTS.includes(id));
 }
 
 // Which region a consent form belongs to — drives the muted tag on the
@@ -536,8 +526,8 @@ export function consentRegion(id: string): "US" | "Canada" | "All" {
     return "US";
 }
 
-export function consentDefsForType(typeId: string): PolicyFormDef[] {
-    return consentsForType(typeId)
+export function consentDefsForType(typeId: string, operatesInUS = true): PolicyFormDef[] {
+    return consentsForType(typeId, operatesInUS)
         .map((id) => POLICY_FORMS.find((f) => f.id === id))
         .filter((f): f is PolicyFormDef => Boolean(f));
 }

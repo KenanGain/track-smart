@@ -148,7 +148,7 @@ function buildSchema(config: FormConfig): PSection[] {
         {
             title: "Signature & Declarations",
             fields: [
-                { label: "Declarations", sample: "I authorize the investigation of my employment and safety-performance history and certify the information in this application is true and complete. The full declarations and my §391.23 rights (review, correct, rebut previous-employer information) are signed on the Safety Performance History Investigation Authorization consent form.", full: true },
+                { label: "Declaration", sample: "By signing, I authorize the investigation of my employment and safety-performance history and certify that the information in this application is true and complete. In the event of employment, I understand that false or misleading information given in my application or interview(s) may result in discharge. I also understand that I am required to abide by all rules and regulations of the Company. I understand that the information I provide regarding my current and/or prior employers may be used, and those employer(s) will be contacted for the purpose of investigating my safety performance history as required by 49 CFR 391.23. I understand that I have the right to: review information provided by current/previous employers; have errors in the information corrected by previous employers, and for those previous employers to resend the corrected information to the prospective employer; and have a rebuttal statement attached to the alleged erroneous information, if the previous employer(s) and I cannot agree on the accuracy of the information. This certifies that I completed this application, and that all entries on it and information in it are true and complete to the best of my knowledge. Note: A motor carrier may require an applicant to provide more information than that required by the Federal Motor Carrier Safety Regulations.", full: true },
                 { label: "Applicant Name", sample: "Kenan Gain" },
                 { label: "Date Signed", sample: "06/09/2026" },
                 { label: "Signature", sample: "Electronically signed — Kenan Gain", full: true },
@@ -317,7 +317,7 @@ export function ApplicationFormPreviewPage({ formId, onNavigate }: { formId: str
 
             {/* Toolbar */}
             <div className="no-print sticky top-0 z-10 border-b border-slate-200 bg-white">
-                <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-6 py-3">
+                <div className="flex flex-wrap items-center gap-3 px-6 py-3">
                     <button type="button" onClick={() => onNavigate(APPLICATIONS_PATH)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900">
                         <ChevronLeft className="h-4 w-4" /> Application Forms
                     </button>
@@ -374,10 +374,21 @@ export function ApplicationFormPreviewPage({ formId, onNavigate }: { formId: str
                                 </h2>
                                 <div className={rowsWrapCls}>
                                     {sec.fields.map((fld) => (
-                                        <div key={fld.label} className={cn(rowCls, fld.full && theme === "compact" && "col-span-2")}>
-                                            <span className={cn(bw ? "text-gray-700" : "text-slate-500")}>{fld.label}</span>
-                                            <span className="text-right"><Value value={fld.sample} show={sample} bw={bw} /></span>
-                                        </div>
+                                        fld.full ? (
+                                            // Long / block fields (declarations, comments, signature) read as a
+                                            // full-width left-aligned paragraph, label above — never squeezed into a value column.
+                                            <div key={fld.label} className={cn("py-1.5", theme === "compact" ? "col-span-2 border-b border-slate-100" : "")}>
+                                                <span className={cn("block text-[11px] font-semibold uppercase tracking-wide", bw ? "text-gray-700" : "text-slate-500")}>{fld.label}</span>
+                                                {sample
+                                                    ? <p className={cn("mt-1 leading-relaxed", bw ? "text-black" : "text-slate-800")}>{fld.sample}</p>
+                                                    : <div className={cn("mt-1.5 h-10 rounded border", bw ? "border-gray-400" : "border-slate-200")} />}
+                                            </div>
+                                        ) : (
+                                            <div key={fld.label} className={rowCls}>
+                                                <span className={cn(bw ? "text-gray-700" : "text-slate-500")}>{fld.label}</span>
+                                                <span className="text-right"><Value value={fld.sample} show={sample} bw={bw} /></span>
+                                            </div>
+                                        )
                                     ))}
                                 </div>
                             </div>

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, FileSearch, FileSignature, ClipboardCheck, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks } from "lucide-react";
+import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, FileSearch, FileSignature, ClipboardCheck, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SubTabs } from "@/components/ui/SubTabs";
-import { POLICY_FORMS, THEME_HEX } from "./policy-forms.data";
+import { policyDocuments, THEME_HEX } from "./policy-forms.data";
 import { HiringFormView } from "./formRegistry";
 import { TemplateBuilder } from "./TemplateBuilder";
 import { TemplateTester } from "./TemplateTester";
@@ -43,27 +43,30 @@ const FORMS = [
 type Tab = "forms" | "policy" | "templates" | "checklists";
 
 export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
-    const [tab, setTab] = useState<Tab>("forms");
+    const [tab, setTab] = useState<Tab>("templates");
     const [flash, setFlash] = useState<string | null>(null);
     const [openForm, setOpenForm] = useState<string | null>(null);
+    const [openPreview, setOpenPreview] = useState(false);
     const [editTemplate, setEditTemplate] = useState<string | null>(null);
     const [testTemplate, setTestTemplate] = useState<HiringTemplate | null>(null);
     const [editChecklist, setEditChecklist] = useState<string | null>(null);
     const { templates, remove: removeTemplate } = useHiringTemplates(carrierId);
     const { checklists, remove: removeChecklist } = useChecklists();
+    // Only the workflow/onboarding policy documents — not the application consent forms.
+    const policyForms = policyDocuments();
 
     if (testTemplate) return <TemplateTester template={testTemplate} onBack={() => setTestTemplate(null)} />;
     if (editTemplate !== null) return <TemplateBuilder templateId={editTemplate} carrierId={carrierId} onBack={() => setEditTemplate(null)} />;
     if (editChecklist !== null) return <ChecklistBuilder checklistId={editChecklist} onBack={() => setEditChecklist(null)} />;
-    if (openForm !== null) return <HiringFormView formId={openForm} onBack={() => setOpenForm(null)} />;
+    if (openForm !== null) return <HiringFormView formId={openForm} startPreview={openPreview} onBack={() => { setOpenForm(null); setOpenPreview(false); }} />;
 
     const TABS: { key: Tab; label: string; Icon: React.ElementType; count: number }[] = [
-        { key: "forms", label: "Forms", Icon: FileText, count: FORMS.length },
-        { key: "policy", label: "Policy", Icon: FileSignature, count: POLICY_FORMS.length },
         { key: "templates", label: "Workflows", Icon: LayoutTemplate, count: templates.length },
+        { key: "forms", label: "Forms", Icon: FileText, count: FORMS.length },
+        { key: "policy", label: "Policy", Icon: FileSignature, count: policyForms.length },
         { key: "checklists", label: "Checklists", Icon: ListChecks, count: checklists.length },
     ];
-    const tabCount = tab === "forms" ? FORMS.length : tab === "policy" ? POLICY_FORMS.length : tab === "templates" ? templates.length : checklists.length;
+    const tabCount = tab === "forms" ? FORMS.length : tab === "policy" ? policyForms.length : tab === "templates" ? templates.length : checklists.length;
     const tabLabel = tab === "forms" ? "Forms" : tab === "policy" ? "Policy & Signature Forms" : tab === "templates" ? "Hiring Workflows" : "Approval Checklists";
 
     return (
@@ -76,6 +79,15 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                     <p className="mt-1 max-w-2xl text-sm text-slate-500">
                         Set up the forms applicants complete, then sequence them into reusable hiring workflows — License Check, Employment Check, and more.
                     </p>
+                </div>
+                {/* Tabs — shared SubTabs, attached to the header band (same as Application Forms) */}
+                <div className="mx-auto max-w-5xl px-6">
+                    <SubTabs
+                        tabs={TABS.map((t) => ({ id: t.key, label: t.label, icon: t.Icon }))}
+                        activeId={tab}
+                        onChange={(id) => setTab(id as Tab)}
+                        bordered={false}
+                    />
                 </div>
             </div>
 
@@ -90,13 +102,7 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
 
                 {/* Tabs */}
                 <div>
-                    <SubTabs
-                        tabs={TABS.map((t) => ({ id: t.key, label: t.label, icon: t.Icon }))}
-                        activeId={tab}
-                        onChange={(id) => setTab(id as Tab)}
-                    />
-
-                    <div className="mt-5 rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
                         {/* Toolbar */}
                         <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm font-semibold text-slate-700">
@@ -161,15 +167,17 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                                                 <p className="truncate text-sm text-slate-500">{f.desc}</p>
                                             </div>
                                         </div>
-                                        <div className="flex justify-end">
-                                            <Button size="sm" onClick={() => setOpenForm(f.id)}>Open <ArrowRight className="h-4 w-4" /></Button>
+                                        <div className="flex shrink-0 flex-nowrap justify-end gap-2">
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(f.id); }}><FlaskConical className="h-4 w-4" /> Test</Button>
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(true); setOpenForm(f.id); }}><Eye className="h-4 w-4" /> PDF view</Button>
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(f.id); }}>Open <ArrowRight className="h-4 w-4" /></Button>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         ) : tab === "policy" ? (
                             <div className="divide-y divide-slate-100">
-                                {POLICY_FORMS.map((p) => (
+                                {policyForms.map((p) => (
                                     <div key={p.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
                                         <div className="flex min-w-0 flex-1 items-center gap-4">
                                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${THEME_HEX[p.theme]}1a`, color: THEME_HEX[p.theme] }}>
@@ -180,8 +188,10 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                                                 <p className="truncate text-sm text-slate-500">{p.blurb}</p>
                                             </div>
                                         </div>
-                                        <div className="flex justify-end">
-                                            <Button size="sm" onClick={() => setOpenForm(p.id)}>Open <ArrowRight className="h-4 w-4" /></Button>
+                                        <div className="flex shrink-0 flex-nowrap justify-end gap-2">
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(p.id); }}><FlaskConical className="h-4 w-4" /> Test</Button>
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(true); setOpenForm(p.id); }}><Eye className="h-4 w-4" /> PDF view</Button>
+                                            <Button variant="outline" size="sm" className="shrink-0" onClick={() => { setOpenPreview(false); setOpenForm(p.id); }}>Open <ArrowRight className="h-4 w-4" /></Button>
                                         </div>
                                     </div>
                                 ))}

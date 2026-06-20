@@ -57,6 +57,7 @@ import { ApplicationSettingsPage, ApplicationFormPage } from '@/pages/hiring-pro
 import { ApplicationFormPreviewPage } from '@/pages/hiring-process/ApplicationFormPreview'
 import { HiringFormView } from '@/pages/hiring-process/formRegistry'
 import { PolicyForm } from '@/pages/hiring-process/PolicyForm'
+import { OnboardingSetupPage } from '@/pages/hiring-process/OnboardingSetupPage'
 import { POLICY_FORMS } from '@/pages/hiring-process/policy-forms.data'
 import { ApplicationsHiringPage } from '@/pages/hiring-process/ApplicationsHiringPage'
 import { ApplicantDetailPage } from '@/pages/hiring-process/ApplicantDetailPage'
@@ -504,17 +505,24 @@ function App() {
         }
         if (path.startsWith("/settings/hiring-process/applications/")) {
             const rest = path.slice("/settings/hiring-process/applications/".length)
-            const [formId, sub] = rest.split("/")
+            const [restPath, queryStr] = rest.split("?")
+            const [formId, sub] = restPath.split("/")
             if (sub === "preview") {
                 return <ApplicationFormPreviewPage formId={formId} onNavigate={handleNavigate} />
             }
-            return <ApplicationFormPage formId={formId} onNavigate={handleNavigate} />
+            const phase = new URLSearchParams(queryStr || "").get("phase")
+            return <ApplicationFormPage formId={formId} onNavigate={handleNavigate} initialPhase={phase === "consent" ? "consent" : undefined} />
         }
         if (path === "/settings/hiring-process/hiring") {
             return <HiringBuilderPage carrierId={selectedAccount?.id} />
         }
         if (path === "/settings/hiring-process/onboarding") {
-            return <HiringProcessPlaceholder title="Onboarding Settings" />
+            return <OnboardingSetupPage onNavigate={handleNavigate} />
+        }
+        if (path.startsWith("/settings/hiring-process/policy/")) {
+            const policyId = path.slice("/settings/hiring-process/policy/".length)
+            const def = POLICY_FORMS.find((f) => f.id === policyId)
+            if (def) return <PolicyForm def={def} onBack={() => handleNavigate("/settings/hiring-process/onboarding")} />
         }
         if (path === "/settings/hiring-process/testing-forms") {
             return <TestingFormsPage />
@@ -524,9 +532,10 @@ function App() {
             return <HiringFormView formId={formId} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=forms")} />
         }
         if (path.startsWith("/settings/hiring-process/consent/")) {
-            const consentId = path.slice("/settings/hiring-process/consent/".length)
+            const [consentId, query] = path.slice("/settings/hiring-process/consent/".length).split("?")
             const def = POLICY_FORMS.find((f) => f.id === consentId)
-            if (def) return <PolicyForm def={def} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=consent")} />
+            const pdf = new URLSearchParams(query || "").get("pdf") === "1"
+            if (def) return <PolicyForm def={def} startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=consent")} />
         }
         if (path === "/dq-files") {
             return <DqFilesPage onNavigate={handleNavigate} />
