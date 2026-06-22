@@ -62,6 +62,12 @@ export type DocStatus = "pending" | "requested" | "received" | "verified" | "ski
 // A recorded reviewer sign-off (who reviewed a form/section, when, with signature).
 export type ReviewSignoff = { by: string; role: string; date: string; sig: string; at: number };
 
+// Road Test step — the person assigned to conduct the FMCSA §391.31 road test for
+// the driver, and how the requirement is satisfied (certify / license / document).
+export type RoadTestMethod = "certify" | "license" | "document";
+export type RoadTestDoc = { label: string; fileName?: string; kind: "certificate" | "license" | "document" | "additional" };
+export type RoadTestState = { examiner?: string; examinerRole?: string; examinerEmail?: string; assignedAt?: number; method?: RoadTestMethod; documents?: RoadTestDoc[]; formValues?: Record<string, unknown> };
+
 // Per-step review lifecycle: initial → waiting for review → reviewed → complete / incomplete
 export type StepStatus = "initial" | "waiting" | "reviewed" | "complete" | "incomplete";
 export const STEP_STATUS_META: Record<StepStatus, { label: string; tone: string; dot: string }> = {
@@ -125,6 +131,7 @@ export type Applicant = {
     employerDocModes?: Record<string, "off" | "upload" | "ask">;  // per verification-doc type, from the application builder
     requests?: AppRequest[];     // open / resolved requests raised on the file
     empChecks?: EmpCheck[];      // employment-verification state per previous employer
+    roadTest?: RoadTestState;    // §391.31 road test — assigned examiner + fulfilment method
     checklistState?: { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> }; // review checklist fill state
 };
 
@@ -313,7 +320,32 @@ const SEED: Applicant[] = [
         },
     ),
     seedApplicant(
-        { id: "a2", firstName: "Marcus", lastName: "Reed", email: "marcus.reed@example.com", formId: "local", carrier: "Acme Logistics", carrierId: "acct-001", template: "Fast-Track Hiring", status: "submitted", stepsDone: 12, stepsTotal: 12, invitedAt: "Jun 4, 2026", updatedAt: NOW - 2 * H, position: "Local Driver", phone: "(773) 555-0192" },
+        {
+            id: "a2", firstName: "Marcus", lastName: "Reed", email: "marcus.reed@example.com", formId: "local", carrier: "Acme Logistics", carrierId: "acct-001", template: "Fast-Track Hiring", status: "submitted", stepsDone: 12, stepsTotal: 12, invitedAt: "Jun 4, 2026", updatedAt: NOW - 2 * H, position: "Local Driver", phone: "(773) 555-0192",
+            // Road test already conducted — Step 2 shows the completed view with a filled, viewable evaluation.
+            docs: { "road-test": "received" },
+            roadTest: {
+                examiner: "Ravi Sharma", examinerRole: "Road Test Examiner", examinerEmail: "ravi.sharma@acmetrucking.com", assignedAt: NOW - 2 * D, method: "certify",
+                documents: [
+                    { label: "Certificate of Road Test (§391.31)", kind: "certificate" },
+                    { label: "Additional document", fileName: "medical-card.pdf", kind: "additional" },
+                ],
+                formValues: {
+                    "f-ats-rt-driver": "Marcus Reed", "f-ats-rt-address": "920 Oak Street, Joliet, Illinois 60435", "f-ats-rt-ssn": "***-**-7781",
+                    "f-ats-rt-license": "R8821-1140-22", "f-ats-rt-state": "Illinois", "f-ats-rt-class": "Class B",
+                    "f-ats-rt-tractor": "Freightliner M2 106", "f-ats-rt-trailer": "26' Box / Straight Truck", "f-ats-rt-length": "75 minutes",
+                    "f-ats-rt-miles-from": "Joliet Terminal", "f-ats-rt-miles-to": "Bolingbrook DC", "f-ats-rt-weather": "Clear, dry",
+                    "f-ats-rt-start": "09:00", "f-ats-rt-finish": "10:15", "f-ats-rt-date": "2026-06-18",
+                    "f-ats-rt-ev1-score": 4, "f-ats-rt-ev2-score": 5, "f-ats-rt-ev3-score": 4,
+                    "f-ats-rt-qualified": ["Straight Truck"],
+                    "f-ats-rt-cert-driver": "Marcus Reed", "f-ats-rt-cert-ssn": "***-**-7781", "f-ats-rt-cert-license": "R8821-1140-22", "f-ats-rt-cert-state": "Illinois",
+                    "f-ats-rt-power-unit": "Freightliner M2 106", "f-ats-rt-trailer-type": "26' Box / Straight Truck", "f-ats-rt-cert-date": "2026-06-18", "f-ats-rt-approx-miles": "18",
+                    "f-ats-rt-examiner": "Ravi Sharma", "f-ats-rt-examiner-title": "Road Test Examiner", "f-ats-rt-examiner-date": "2026-06-18",
+                    "f-ats-rt-org": "Acme Logistics · 1240 Logistics Way, Aberdeen, MD 21001",
+                    "f-ats-rt-equiv-method": "Road test conducted (§391.31)",
+                },
+            },
+        },
         {
             phone: "(773) 555-0192", dob: "07/22/1991", idNumber: "***-**-7781",
             addresses: [{ street: "920 Oak Street", city: "Joliet", state: "Illinois", zip: "60435", dates: "2019 - present" }],
@@ -389,7 +421,7 @@ const SEED: Applicant[] = [
     ),
 ];
 
-const KEY = "hp_applicants_v11";
+const KEY = "hp_applicants_v12";
 
 function read(): Applicant[] {
     if (typeof window === "undefined") return SEED;

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { FlaskConical, CarFront, FileText, ArrowRight } from "lucide-react";
+import { FlaskConical, CarFront, FileText, ArrowRight, Briefcase, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { buildPrefill } from "./application-prefill";
+import { buildPrefill, PrefillProvider } from "./application-prefill";
 import { RecipientFormPreview, type RecipientDoc } from "./RecipientFormPreview";
+import { HiringFormView } from "./formRegistry";
 import { useApplicants } from "./applicants.data";
 
 // The Safety Performance History (§391.23) forms an admin can open and test from Settings.
@@ -17,9 +18,16 @@ const TESTING_FORMS: { id: string; label: string; desc: string; Icon: typeof Fla
         { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
         { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
     ] },
+    { id: "employment-verification", label: "Employment Verification", desc: "§391.23 employment verification — previous employer confirmation.", Icon: Briefcase, group: "Employment", docs: [
+        { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
+        { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
+    ] },
+    { id: "road-test", label: "Road Test Evaluation", desc: "FMCSA §391.31 — open and fill the examiner's evaluation form (scored sections + certification).", Icon: ClipboardCheck, group: "Road Test", docs: [
+        { key: "road-test-certificate", label: "Road Test Certificate", note: "Signed §391.31 record / certificate of road test." },
+    ] },
 ];
 
-const GROUPS = ["Safety Performance History"];
+const GROUPS = ["Safety Performance History", "Employment", "Road Test"];
 
 export function TestingFormsPage() {
     const { applicants } = useApplicants();
@@ -30,6 +38,15 @@ export function TestingFormsPage() {
 
     if (openForm) {
         const meta = TESTING_FORMS.find((f) => f.id === openForm);
+        // Road Test is conducted internally by an examiner (not emailed to a previous
+        // employer) — open the actual Road Test Evaluation so it can be filled & tested.
+        if (openForm === "road-test") {
+            return (
+                <PrefillProvider value={prefill}>
+                    <HiringFormView formId="road-test" onBack={() => setOpenForm(null)} />
+                </PrefillProvider>
+            );
+        }
         return (
             <RecipientFormPreview
                 formId={openForm}
@@ -37,7 +54,7 @@ export function TestingFormsPage() {
                 applicantName={prefill?.fullName ?? "the applicant"}
                 prefill={prefill}
                 requestDocs={meta?.docs ?? []}
-                forms={TESTING_FORMS.map((f) => ({ key: f.id, label: f.label }))}
+                forms={TESTING_FORMS.filter((f) => f.group === meta?.group).map((f) => ({ key: f.id, label: f.label }))}
                 onBack={() => setOpenForm(null)}
             />
         );

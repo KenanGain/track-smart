@@ -1906,24 +1906,6 @@ function hiringAtsForms(): ApplicationFormDef[] {
             { id: 'f-ats-rt-equiv-c', type: 'paragraph', required: false, options: [], label: '', instruction: '(c) A motor carrier may require any person who presents a license or certificate as equivalent to the road test to take a road test or any other test of his driving skill as a condition to his employment as a driver.' },
             { id: 'f-ats-rt-equiv-method', type: 'radio', required: false, options: ['Road test conducted (§391.31)', 'License accepted as equivalent', 'Prior certificate accepted as equivalent'], instruction: 'How was this requirement satisfied?', label: 'Method' },
             { id: 'f-ats-rt-equiv-doc', type: 'document', required: false, options: [], instruction: 'If accepting an equivalent, retain a legible copy of the license / certificate.', label: 'Equivalent license / certificate copy', documentTypeId: 'dt-road-test' },
-
-            // ── C-TPAT Cross-Border Security Acknowledgement ──
-            { id: 'f-ats-rt-ctpat-head', type: 'heading', required: false, options: [], label: 'C-TPAT Cross-Border Security Acknowledgement', instruction: '' },
-            { id: 'f-ats-rt-ctpat-intro', type: 'paragraph', required: false, options: [], label: '', instruction: 'The driver must — via satellite, or when not available via telephone — provide detailed information on the breach or tampering. This information should include the following:' },
-            { id: 'f-ats-rt-ctpat-list', type: 'bullet-list', required: false, label: '', instruction: '', options: [
-                'Location, day, and time the security breach was noticed',
-                'Truck or trailer — compartments or structure have been tampered with',
-                'Seal tampered with, and whether access to the trailer was gained',
-                'Take a photograph whenever possible',
-                'Dispatch will record this information and contact the authorities in the local area, or — if en route to the border — notify the A-TCET',
-            ] },
-            { id: 'f-ats-rt-ctpat-statement', type: 'paragraph', required: false, options: [], label: '', instruction: 'I, as driver / owner-operator of the company, take full responsibility for ensuring the security of the company’s shipments being hauled across the border. I undertake to perform my duties and obligations seriously as a driver of a C-TPAT carrier. If I have any doubt, questions, or concerns, I will contact dispatch or any other responsible officer for necessary information.' },
-            { id: 'f-ats-rt-ctpat-driver-name', type: 'text', required: false, options: [], instruction: '', label: 'Name of the driver', width: 'half' },
-            { id: 'f-ats-rt-ctpat-driver-date', type: 'date', required: false, options: [], instruction: '', label: 'Date', width: 'half' },
-            { id: 'f-ats-rt-ctpat-driver-sign', type: 'signature', required: false, options: [], instruction: '', label: 'Driver signature' },
-            { id: 'f-ats-rt-ctpat-witness-name', type: 'text', required: false, options: [], instruction: '', label: 'Name of the witness', width: 'half' },
-            { id: 'f-ats-rt-ctpat-witness-date', type: 'date', required: false, options: [], instruction: '', label: 'Date', width: 'half' },
-            { id: 'f-ats-rt-ctpat-witness-sign', type: 'signature', required: false, options: [], instruction: '', label: 'Witness signature' },
         ]),
         // Custom-rendered (TrainingCertificateForm): branded module-completion certificate generator.
         mk('form-ats-training-certificates', 'Module Completion Certificates', 'Module Completion Certificate', 'Generate branded training / module completion certificates — recipient, module name and date — with dynamic company branding; issue more than one and attach uploaded certificates.', [

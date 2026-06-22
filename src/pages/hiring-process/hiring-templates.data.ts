@@ -16,7 +16,7 @@ export const FULFILL_META: Record<FulfillMode, { label: string; hint: string }> 
 const FORM_FULFILLMENT: Record<string, FulfillMode> = {
     mvr: "order", "driver-abstract": "order", psp: "order", cvdr: "order", cda: "order", "cvdr-cda": "order",
     "employment-verification": "order", "dot-verification": "order",
-    "criminal-background": "upload", "substance-testing": "upload-fill",
+    "criminal-background": "upload", "substance-testing": "upload-fill", "road-test": "upload-fill",
 };
 export const fulfillModeFor = (fid: string): FulfillMode => FORM_FULFILLMENT[fid] ?? "fill";
 
@@ -90,7 +90,8 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-us", 2, "psp"),
             rep("tpl-us", 3, "mvr"),
             st("tpl-us", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
-            st("tpl-us", 5, "Employment Verification", ["dot-verification"]),
+            st("tpl-us", 5, "Road Test", ["road-test"]),
+            st("tpl-us", 6, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-us"),
         ],
     },
@@ -100,7 +101,8 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             makeAppStep("tpl-canada", ["mvr-release"]),
             rep("tpl-canada", 2, "driver-abstract"),  // Canada Abstract / CVOR
             st("tpl-canada", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
-            st("tpl-canada", 4, "Employment Verification", ["employment-verification"]),
+            st("tpl-canada", 4, "Road Test", ["road-test"]),
+            st("tpl-canada", 5, "Employment Verification", ["employment-verification"]),
             makeReviewStep("tpl-canada"),
         ],
     },
@@ -112,7 +114,8 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-cross", 3, "mvr"),
             rep("tpl-cross", 4, "cvdr-cda"),
             st("tpl-cross", 5, "Background & Testing", ["criminal-background", "substance-testing"]),
-            st("tpl-cross", 6, "Employment Verification", ["dot-verification"]),
+            st("tpl-cross", 6, "Road Test", ["road-test"]),
+            st("tpl-cross", 7, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-cross"),
         ],
     },

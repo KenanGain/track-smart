@@ -1,15 +1,31 @@
 import { useMemo, useRef, useState } from 'react';
 import {
     ArrowLeft, Save, Download, Check, X, UploadCloud, FileText, ClipboardCheck,
-    ListChecks, Award, Eye, ChevronLeft, Printer, Sparkles,
+    ListChecks, Award, Eye, ChevronLeft, Printer, Sparkles, CreditCard, FileCheck2,
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import { cn } from '@/lib/utils';
 import { useCompanyBranding } from './company-branding.data';
+import type { CompanyBranding } from './company-branding.data';
 import { generateApplicationFormPdf } from './generateApplicationFormPdf';
 import { PDF_TEMPLATES } from './ApplicationFormPrint';
 import { SignaturePad } from './SignaturePad';
+import { FileDropZone } from '@/components/compliance/FileDropZone';
+import { ComplianceUploadModal } from '@/components/compliance/ComplianceUploadModal';
+import type { UploadedDocument } from '@/types/key-numbers.types';
 import type { ApplicationFormDef, FormField } from './application-forms.data';
 import type { FieldValue } from './CustomFormWizard';
+import { usePrefill } from '../hiring-process/application-prefill';
+
+const CERT_FRAME = '#33337a'; // navy/indigo certificate frame (matches the branded certificate module)
+
+// The three §391.33 fulfilment methods (moved above the certification, drive what's shown).
+const METHOD_META: Record<string, { Icon: typeof Award; blurb: string }> = {
+    'Road test conducted (§391.31)': { Icon: Award, blurb: 'Conduct the test and issue the §391.31 Certification of Road Test below.' },
+    'License accepted as equivalent': { Icon: CreditCard, blurb: 'Accept a valid CDL as the equivalent — select the licence on file or upload a copy (§391.33(a)(1)).' },
+    'Prior certificate accepted as equivalent': { Icon: FileCheck2, blurb: 'Accept a prior road-test certificate from the last 3 years — upload a copy (§391.33(a)(2)).' },
+};
 
 /** Performance rating scale shown at the top of the evaluation. */
 const RATING_SCALE = [
@@ -33,14 +49,19 @@ const splitHeading = (label: string) => {
  * scale, live per-section scores, and a Final Score / pass mark. Reads from the
  * shared form definition so Download PDF / Submit reuse the same values.
  */
-export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef; onClose: () => void }) {
+type SubmitDoc = { label: string; fileName?: string; kind: string };
+export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initialValues }: { appForm: ApplicationFormDef; onClose: () => void; onSubmit?: (info?: { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; initialValues?: Record<string, unknown> }) {
     const [branding] = useCompanyBranding();
-    const [values, setValues] = useState<Record<string, unknown>>({});
+    const pf = usePrefill();   // driver's application data (licences) when opened from the hiring process
+    const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {});
     const [downloading, setDownloading] = useState(false);
     const [preview, setPreview] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [pdfVariant, setPdfVariant] = useState<string>(PDF_TEMPLATES[0]?.id ?? 'standard');
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const certRef = useRef<HTMLDivElement>(null);
+    const [certDownloading, setCertDownloading] = useState(false);
+    const [licUploadOpen, setLicUploadOpen] = useState(false);
     const accent = branding.accentColor;
 
     const set = (id: string, v: unknown) => setValues((s) => ({ ...s, [id]: v }));
@@ -69,9 +90,8 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
     };
 
     // Headings whose content folds into the PREVIOUS section as a sub-heading
-    // (rather than starting a new card) — e.g. the C-TPAT block is one document
-    // with the §391.33 Equivalent that precedes it.
-    const MERGE_INTO_PREVIOUS = useMemo(() => new Set(['f-ats-rt-ctpat-head']), []);
+    // (rather than starting a new card).
+    const MERGE_INTO_PREVIOUS = useMemo(() => new Set<string>(), []);
 
     // Split fields into the pre-heading driver block + one section per heading.
     const { header, sections } = useMemo(() => {
@@ -100,6 +120,11 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
         return Number.isFinite(v) ? Math.min(5, Math.max(0, v)) : 0;
     };
     const scored = sections.filter(isEval);
+    // Certification + §391.33 equivalent are rendered separately, below a method
+    // selector, so the three method options sit ABOVE the certification.
+    const certSec = sections.find((s) => s.heading.id === 'f-ats-rt-cert-head');
+    const equivSec = sections.find((s) => s.heading.id === 'f-ats-rt-equiv-head');
+    const flowSections = sections.filter((s) => s !== certSec && s !== equivSec);
     const finalScore = scored.reduce((n, s) => n + secScore(s), 0);
     const maxScore = scored.length * 5;
     const passMark = Math.ceil(maxScore * 0.8);
@@ -125,6 +150,45 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
             if (typeof url === 'string') { setPreviewUrl(url); setPdfVariant(variant); setPreview(true); }
         } finally { setDownloading(false); }
     };
+
+    // Export the branded Certificate of Road Test as a print-ready landscape PDF.
+    const downloadCertificate = async () => {
+        const node = certRef.current;
+        if (!node || certDownloading) return;
+        setCertDownloading(true);
+        try {
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+            const img = canvas.toDataURL('image/jpeg', 0.95);
+            const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+            const w = pdf.internal.pageSize.getWidth();
+            const h = pdf.internal.pageSize.getHeight();
+            pdf.addImage(img, 'JPEG', 0, 0, w, h, undefined, 'FAST');
+            const safe = `${str('f-ats-rt-cert-driver') || 'driver'}-road-test`.replace(/[\\/:*?"<>|]+/g, '-');
+            pdf.save(`certificate-${safe}.pdf`);
+        } finally { setCertDownloading(false); }
+    };
+
+    // Summary of what the examiner produced — fed back to the hiring file on submit.
+    const buildSubmitInfo = (): { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> } => {
+        const method = str('f-ats-rt-equiv-method');
+        const docs: SubmitDoc[] = [];
+        if (method === 'License accepted as equivalent') {
+            const licDocs = (Array.isArray(values['f-ats-rt-lic-docs']) ? values['f-ats-rt-lic-docs'] : []) as UploadedDocument[];
+            licDocs.forEach((d) => docs.push({ label: `Licence — ${d.slotLabel ?? 'copy'}`, fileName: d.fileName, kind: 'license' }));
+            const sel = str('f-ats-rt-equiv-license');
+            if (sel && licDocs.length === 0) docs.push({ label: `Licence on file: ${sel}`, kind: 'license' });
+        } else if (method === 'Prior certificate accepted as equivalent') {
+            if (str('f-ats-rt-equiv-doc')) docs.push({ label: 'Prior road-test certificate', fileName: str('f-ats-rt-equiv-doc'), kind: 'document' });
+        } else {
+            docs.push({ label: 'Certificate of Road Test (§391.31)', kind: 'certificate' });
+        }
+        arr('f-ats-rt-additional-docs').forEach((n) => docs.push({ label: 'Additional document', fileName: n, kind: 'additional' }));
+        return { method, docs, values };
+    };
+
+    // Closing without submitting saves a draft so the filled form can be viewed/continued.
+    const handleClose = () => { if (Object.keys(values).length > 0) onSaveValues?.(values); onClose(); };
 
     const fillSample = () => {
         const sampleText = (label: string) => {
@@ -172,7 +236,7 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
     {
         let buf: typeof sections = [];
         const flush = () => { if (buf.length) { blocks.push({ bento: true, secs: buf }); buf = []; } };
-        for (const sec of sections) {
+        for (const sec of flowSections) {
             if (isBentoSec(sec)) buf.push(sec);
             else { flush(); blocks.push({ bento: false, secs: [sec] }); }
         }
@@ -284,35 +348,237 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
         );
     };
 
+    // ── Fulfilment (§391.33) — the three method options sit ABOVE the certification
+    //    and drive what's shown: issue certificate · accept licence · prior certificate. ──
+    const renderFulfilment = () => {
+        const methodField = equivSec?.fields.find((f) => f.id === 'f-ats-rt-equiv-method');
+        const options = methodField?.options ?? [];
+        const docField = equivSec?.fields.find((f) => f.id === 'f-ats-rt-equiv-doc');
+        const paras = equivSec?.fields.filter((f) => f.type === 'paragraph') ?? [];
+        const method = str('f-ats-rt-equiv-method') || options[0] || '';
+        const licenses = pf?.licenses ?? [];
+        const selectedLic = str('f-ats-rt-equiv-license');
+        const context = (text?: string) => text
+            ? <p className="whitespace-pre-line rounded-lg bg-slate-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-slate-500">{text}</p>
+            : null;
+        const certField = (label: string, id: string, type = 'text') => (
+            <div>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</label>
+                <input type={type} value={str(id)} onChange={(e) => set(id, e.target.value)} className={INPUT} />
+            </div>
+        );
+        const docUpload = (id: string) => (
+            <FileDropZone compact files={str(id) ? [{ id, fileName: str(id) }] : []}
+                onAdd={(list) => { const f = list?.[0]; if (f) set(id, f.name); }} onRemove={() => set(id, '')} />
+        );
+        const addlDocs = arr('f-ats-rt-additional-docs');
+        const licDocs = (Array.isArray(values['f-ats-rt-lic-docs']) ? values['f-ats-rt-lic-docs'] : []) as UploadedDocument[];
+        const licDetail = licDocs[0];
+        return (
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <SectionHeader num="" title="Road Test Fulfilment (§391.33)" instruction="Choose how the §391.31 road-test requirement is satisfied — this drives what you complete below." accent={accent} />
+                <div className="space-y-5 p-4 sm:p-5">
+                    {/* The three significant method options */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {options.map((opt) => {
+                            const m = METHOD_META[opt];
+                            const Icon = m?.Icon ?? ClipboardCheck;
+                            const active = method === opt;
+                            return (
+                                <button key={opt} type="button" onClick={() => set('f-ats-rt-equiv-method', opt)}
+                                    className={cn('flex flex-col rounded-xl border p-3.5 text-left transition', active ? 'border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                                    <span className="flex items-center gap-2">
+                                        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500')}><Icon size={16} /></span>
+                                        <span className="flex-1 text-[13px] font-bold leading-tight text-slate-800">{opt}</span>
+                                        {active && <Check size={15} className="shrink-0 text-blue-600" />}
+                                    </span>
+                                    {m?.blurb && <span className="mt-2 text-xs leading-relaxed text-slate-500">{m.blurb}</span>}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Issue certificate → branded Certificate of Road Test (watermark + branding) + examiner sign-off */}
+                    {method === 'Road test conducted (§391.31)' && (
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-3">
+                                {certField("Driver's name", 'f-ats-rt-cert-driver')}
+                                {certField('Date of road test', 'f-ats-rt-cert-date', 'date')}
+                                {certField('Approx. miles driven', 'f-ats-rt-approx-miles', 'number')}
+                                {certField('Type of power unit', 'f-ats-rt-power-unit')}
+                                {certField('Type of trailer(s)', 'f-ats-rt-trailer-type')}
+                                {certField('If passenger carrier, type of bus', 'f-ats-rt-bus-type')}
+                            </div>
+
+                            {/* Examiner (end user) — name, signature & date */}
+                            <div className="rounded-xl border border-slate-200 p-4">
+                                <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">Examiner certification</p>
+                                <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-3">
+                                    {certField('Examiner name', 'f-ats-rt-examiner')}
+                                    {certField('Title', 'f-ats-rt-examiner-title')}
+                                    {certField('Date', 'f-ats-rt-examiner-date', 'date')}
+                                </div>
+                                <div className="mt-4">
+                                    <SignaturePad height={96} label="Signature of Examiner" value={str('f-ats-rt-sign') || null} onChange={(v) => set('f-ats-rt-sign', v ?? '')} helper="Draw the signature with your mouse or finger." />
+                                </div>
+                                <div className="mt-4">
+                                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Organization &amp; address of examiner</label>
+                                    <textarea value={str('f-ats-rt-org')} onChange={(e) => set('f-ats-rt-org', e.target.value)} rows={2} className={cn(INPUT, 'h-auto resize-y py-2.5')} />
+                                </div>
+                            </div>
+
+                            {/* Branded certificate preview (watermark + branding) */}
+                            <div>
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Certificate preview</p>
+                                    <button type="button" disabled={certDownloading} onClick={downloadCertificate}
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-bold text-white shadow-sm disabled:opacity-60" style={{ backgroundColor: accent }}>
+                                        <Download size={13} /> {certDownloading ? 'Generating…' : 'Download PDF'}
+                                    </button>
+                                </div>
+                                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-200/60 p-3 shadow-inner">
+                                    <div className="mx-auto" style={{ width: 960 }}>
+                                        <RoadTestCertificate innerRef={certRef} branding={branding}
+                                            driver={str('f-ats-rt-cert-driver')} date={str('f-ats-rt-cert-date')} miles={str('f-ats-rt-approx-miles')}
+                                            powerUnit={str('f-ats-rt-power-unit')} trailer={str('f-ats-rt-trailer-type')}
+                                            examiner={str('f-ats-rt-examiner')} title={str('f-ats-rt-examiner-title')}
+                                            examinerDate={str('f-ats-rt-examiner-date') || str('f-ats-rt-cert-date')} sig={str('f-ats-rt-sign')} />
+                                    </div>
+                                </div>
+                                <p className="mt-2 text-[12px] text-slate-400">Logo, company name and address come from your company branding. Download exports a print-ready landscape PDF.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Licence accepted as equivalent → select from the application OR upload a copy */}
+                    {method === 'License accepted as equivalent' && (
+                        <div className="space-y-4">
+                            {context(paras[0]?.instruction)}
+                            {licenses.length > 0 && (
+                                <div>
+                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Select the licence on file (from the application)</p>
+                                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                        {licenses.map((l, i) => {
+                                            const id = l.number || `licence-${i + 1}`;
+                                            const on = selectedLic === id;
+                                            return (
+                                                <button key={id} type="button" onClick={() => set('f-ats-rt-equiv-license', on ? '' : id)}
+                                                    className={cn('flex items-start gap-3 rounded-xl border p-3 text-left transition', on ? 'border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20' : 'border-slate-200 bg-white hover:bg-slate-50')}>
+                                                    <span className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', on ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500')}><CreditCard size={16} /></span>
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-[13px] font-bold text-slate-800">{l.number || `Licence ${i + 1}`}</span>
+                                                        <span className="block truncate text-xs text-slate-500">{[l.cls, l.authority, l.exp ? `exp ${l.exp}` : ''].filter(Boolean).join(' · ')}</span>
+                                                    </span>
+                                                    {on && <Check size={16} className="mt-0.5 shrink-0 text-blue-600" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="my-3 flex items-center gap-3">
+                                        <div className="h-px flex-1 bg-slate-200" />
+                                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">licence details &amp; copy</span>
+                                        <div className="h-px flex-1 bg-slate-200" />
+                                    </div>
+                                </div>
+                            )}
+                            {/* Front / back images + issue, expiry, state & country — via the shared compliance upload module */}
+                            <div className="rounded-xl border border-slate-200 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Licence copy &amp; details</p>
+                                        <p className="text-xs text-slate-500">Front &amp; back images, issue date, expiry date, issuing state and country.</p>
+                                    </div>
+                                    <button type="button" onClick={() => setLicUploadOpen(true)}
+                                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
+                                        <UploadCloud size={15} /> {licDocs.length ? 'Edit licence upload' : 'Upload licence'}
+                                    </button>
+                                </div>
+                                {licDocs.length > 0 && (
+                                    <div className="mt-3 space-y-2">
+                                        {licDocs.map((d) => (
+                                            <div key={d.id} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-[13px]">
+                                                <Check size={14} className="shrink-0 text-emerald-600" />
+                                                <span className="min-w-0 truncate font-medium text-slate-800">{d.slotLabel ? `${d.slotLabel}: ` : ''}{d.fileName}</span>
+                                            </div>
+                                        ))}
+                                        {licDetail && (
+                                            <p className="text-xs text-slate-500">{[licDetail.issuingState, licDetail.issuingCountry, licDetail.issueDate ? `issued ${licDetail.issueDate}` : '', licDetail.expiryDate ? `expires ${licDetail.expiryDate}` : ''].filter(Boolean).join(' · ')}</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <ComplianceUploadModal
+                                isOpen={licUploadOpen}
+                                onClose={() => setLicUploadOpen(false)}
+                                title="Driver's Licence — accepted as road-test equivalent (§391.33)"
+                                numberOfSlots={2}
+                                slotLabels={['Front', 'Back']}
+                                issueDateRequired
+                                expiryRequired
+                                issueStateRequired
+                                issueCountryRequired
+                                existing={licDocs}
+                                onSave={(docs) => set('f-ats-rt-lic-docs', docs)}
+                            />
+                        </div>
+                    )}
+
+                    {/* Prior certificate accepted → upload a supporting document */}
+                    {method === 'Prior certificate accepted as equivalent' && (
+                        <div className="space-y-4">
+                            {context(paras[1]?.instruction)}
+                            {docField && (
+                                <div>
+                                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Prior road-test certificate copy</p>
+                                    {docUpload(docField.id)}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Additional supporting documents — applies to any method */}
+                    <div className="rounded-xl border border-slate-200 p-4">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Additional supporting documents (optional)</p>
+                        <p className="mb-2 mt-0.5 text-xs text-slate-500">Attach any extra records related to the road test — e.g. medical card, training certificate or a prior-employer letter.</p>
+                        <FileDropZone compact multiple
+                            files={addlDocs.map((n, i) => ({ id: `add-${i}`, fileName: n }))}
+                            onAdd={(list) => { const names = Array.from(list ?? []).map((f) => f.name); if (names.length) set('f-ats-rt-additional-docs', [...addlDocs, ...names]); }}
+                            onRemove={(rid) => { const idx = Number(rid.split('-')[1]); set('f-ats-rt-additional-docs', addlDocs.filter((_, i) => i !== idx)); }} />
+                    </div>
+                </div>
+            </section>
+        );
+    };
+
     return (
         <div className="fixed inset-0 z-[60] flex flex-col bg-slate-100">
             {/* ── App bar ─────────────────────────────────────────────── */}
-            <header className="z-20 border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
-                <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700" title="Back">
+            <header className="z-20 border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
+                <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 sm:gap-4">
+                    <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                        <button type="button" onClick={handleClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700" title="Back">
                             <ArrowLeft size={16} />
                         </button>
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm" style={{ backgroundColor: accent }}>
+                        <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm sm:flex" style={{ backgroundColor: accent }}>
                             {branding.logoDataUrl ? <img src={branding.logoDataUrl} alt="" className="max-h-7 max-w-7 object-contain" /> : <ClipboardCheck size={19} />}
                         </span>
-                        <div className="leading-tight">
-                            <h1 className="text-[17px] font-bold text-slate-900">Road Test Evaluation</h1>
-                            <p className="text-[11px] text-slate-500">FMCSA §391.31 · {branding.name}</p>
+                        <div className="min-w-0 leading-tight">
+                            <h1 className="truncate text-[15px] font-bold text-slate-900 sm:text-[17px]">Road Test Evaluation</h1>
+                            <p className="truncate text-[11px] text-slate-500">FMCSA §391.31 · {branding.name}</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={onClose} className="hidden h-9 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 sm:block">Cancel</button>
-                        <button type="button" onClick={fillSample}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
-                            <Sparkles size={14} /> Fill sample data
+                    <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                        <button type="button" onClick={handleClose} className="hidden h-9 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 sm:block">Cancel</button>
+                        <button type="button" onClick={fillSample} title="Fill sample data"
+                            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 sm:px-3.5">
+                            <Sparkles size={14} /> <span className="hidden sm:inline">Fill sample data</span>
                         </button>
-                        <button type="button" disabled={downloading} onClick={() => openPreview(pdfVariant)}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-                            <Eye size={14} /> {downloading ? 'Preparing…' : 'PDF Preview'}
+                        <button type="button" disabled={downloading} onClick={() => openPreview(pdfVariant)} title="PDF Preview"
+                            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:px-3.5">
+                            <Eye size={14} /> <span className="hidden sm:inline">{downloading ? 'Preparing…' : 'PDF Preview'}</span>
                         </button>
-                        <button type="button" onClick={() => { window.alert('Road test record saved.'); onClose(); }}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-bold text-white shadow-sm" style={{ backgroundColor: accent }}>
+                        <button type="button" onClick={() => { onSubmit?.(buildSubmitInfo()); window.alert('Road test record saved.'); onClose(); }}
+                            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[13px] font-bold text-white shadow-sm sm:px-4" style={{ backgroundColor: accent }}>
                             <Save size={14} /> Submit
                         </button>
                     </div>
@@ -320,8 +586,8 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
             </header>
 
             {/* ── Sticky score bar ────────────────────────────────────── */}
-            <div className="z-10 border-b border-slate-200 bg-white/95 px-6 py-2.5 backdrop-blur">
-                <div className="mx-auto flex max-w-6xl items-center gap-4">
+            <div className="z-10 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6">
+                <div className="mx-auto flex max-w-6xl items-center gap-3 sm:gap-4">
                     <div className={cn('flex items-baseline gap-1 rounded-lg border px-3 py-1', passed ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50')}>
                         <span className={cn('text-xl font-bold tabular-nums leading-none', passed ? 'text-emerald-600' : 'text-slate-900')}>{finalScore}</span>
                         <span className="text-[13px] font-semibold text-slate-400">/ {maxScore}</span>
@@ -332,7 +598,7 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
                                 {scored.map((s, i) => (
                                     <span key={i} className="font-bold text-slate-700">{secScore(s) || '–'}{i < scored.length - 1 ? ' · ' : ''}</span>
                                 ))}
-                                <span className="ml-2 text-slate-400">{evalItemsChecked}/{evalItemsTotal} items checked</span>
+                                <span className="ml-2 hidden text-slate-400 sm:inline">{evalItemsChecked}/{evalItemsTotal} items checked</span>
                             </span>
                             <span>{pct}% · pass {passMark}/{maxScore}</span>
                         </div>
@@ -348,16 +614,16 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
 
             {/* ── Body ────────────────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-6xl space-y-5 px-6 py-6">
+                <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
                     {/* Hero: title + rating scale (+ driver details only if any are pre-heading) */}
                     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div className="px-6 py-5">
+                        <div className="px-4 py-5 sm:px-6">
                             <h2 className="text-center text-xl font-bold tracking-tight text-slate-900">ROAD TEST EVALUATION</h2>
                             <p className="mx-auto mt-1 max-w-2xl text-center text-[12px] leading-relaxed text-slate-500">
                                 Score each section out of 5. A minimum total of <span className="font-semibold text-slate-700">12 / 15</span> is required to pass.
                             </p>
                             {/* Rating scale pills */}
-                            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-5">
+                            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
                                 {RATING_SCALE.map((r) => (
                                     <div key={r.n} className={cn('rounded-lg border px-2.5 py-2 text-center', SCALE_TONE[r.n])}>
                                         <div className="flex items-center justify-center gap-1.5">
@@ -370,7 +636,7 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
                             </div>
                         </div>
                         {header.length > 0 && (
-                            <div className="border-t border-slate-100 px-6 py-5">
+                            <div className="border-t border-slate-100 px-4 py-5 sm:px-6">
                                 <p className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500"><FileText size={12} /> Driver & Equipment</p>
                                 <div className="grid grid-cols-1 gap-x-5 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                                     {header.map((f) => <Field key={f.id} field={f} value={str(f.id)} onChange={(v) => set(f.id, v)} />)}
@@ -384,13 +650,16 @@ export function RoadTestForm({ appForm, onClose }: { appForm: ApplicationFormDef
                         they read 1·2·3 across the top (4·5·6 next), while each column stacks
                         independently — packing tight with no forced-row gaps or empty columns. */}
                     {blocks.map((blk, bi) => blk.bento ? <BentoGrid key={`bento-${bi}`} secs={blk.secs} render={renderBentoCard} /> : renderFull(blk.secs[0]))}
+
+                    {/* Method selector + certification / equivalent (the three §391.33 options, above the certification) */}
+                    {(certSec || equivSec) && renderFulfilment()}
                 </div>
             </div>
 
             {/* ── Inline themed PDF preview ─────────────────────────────── */}
             {preview && previewUrl && (
                 <div className="absolute inset-0 z-40 flex flex-col bg-slate-100">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
                         <button type="button" onClick={() => setPreview(false)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900">
                             <ChevronLeft className="h-4 w-4" /> Edit
                         </button>
@@ -434,8 +703,8 @@ function BentoGrid({ secs, render }: { secs: Sec[]; render: (sec: Sec) => React.
 // ── Section header (numbered + optional right slot, e.g. rating stepper) ──────
 function SectionHeader({ num, title, instruction, accent, right }: { num: string; title: string; instruction?: string; accent: string; right?: React.ReactNode }) {
     return (
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
-            <div className="flex min-w-0 items-start gap-2.5">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5">
+            <div className="flex min-w-0 flex-1 items-start gap-2.5">
                 {num && (
                     <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold text-white" style={{ backgroundColor: accent }}>{num}</span>
                 )}
@@ -745,6 +1014,97 @@ function Label({ field }: { field: FormField }) {
         <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
             {field.label}{field.required && <span className="text-rose-500"> *</span>}
         </label>
+    );
+}
+
+// ── Branded Certificate of Road Test — fixed 960×742 (landscape letter ratio),
+//    watermark + company branding, examiner signature / name / date. Mirrors the
+//    Module Completion Certificate artwork so the brand styling stays consistent. ──
+function RoadTestCertificate({ innerRef, branding, driver, date, miles, powerUnit, trailer, examiner, title, examinerDate, sig }: {
+    innerRef: React.Ref<HTMLDivElement>;
+    branding: CompanyBranding;
+    driver: string; date: string; miles: string; powerUnit: string; trailer: string;
+    examiner: string; title: string; examinerDate: string; sig: string;
+}) {
+    const accent = branding.accentColor || '#2563eb';
+    const addressLines = (branding.address || '').split(/\s*·\s*|\n/).filter(Boolean);
+    const ver = `rt-${(date || '').replace(/-/g, '') || '00000000'}-${(driver || 'driver').replace(/\s+/g, '').slice(0, 6).toLowerCase()}`;
+    return (
+        <div ref={innerRef} style={{ width: 960, height: 742 }} className="relative overflow-hidden bg-white">
+            {/* Decorative double frame + corner accents */}
+            <div className="pointer-events-none absolute inset-3 rounded-sm border-[3px]" style={{ borderColor: CERT_FRAME }} />
+            <div className="pointer-events-none absolute inset-[18px] rounded-sm border" style={{ borderColor: accent }} />
+            {[['left-3 top-3', 'border-l-[6px] border-t-[6px]'], ['right-3 top-3', 'border-r-[6px] border-t-[6px]'], ['left-3 bottom-3', 'border-l-[6px] border-b-[6px]'], ['right-3 bottom-3', 'border-r-[6px] border-b-[6px]']].map(([pos, b], i) => (
+                <span key={i} className={cn('pointer-events-none absolute h-10 w-10 rounded-sm', pos, b)} style={{ borderColor: CERT_FRAME }} />
+            ))}
+
+            {/* Background arc watermark */}
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 960 742" fill="none" preserveAspectRatio="xMidYMid slice">
+                <path d="M120 700 C 380 260, 720 180, 980 60" stroke="#eef0f6" strokeWidth="120" fill="none" strokeLinecap="round" />
+                <path d="M40 720 C 360 320, 700 240, 1000 120" stroke="#f4f5fa" strokeWidth="90" fill="none" strokeLinecap="round" />
+            </svg>
+
+            {/* Logo + address */}
+            <div className="absolute left-12 top-11">
+                {branding.logoDataUrl
+                    ? <img src={branding.logoDataUrl} alt="" crossOrigin="anonymous" className="max-h-14 max-w-[200px] object-contain" />
+                    : <div className="text-[26px] font-extrabold leading-none" style={{ color: accent }}>{branding.name}</div>}
+                {addressLines.length > 0 && <div className="mt-3 space-y-0.5 text-[12px] leading-snug text-slate-500">{addressLines.map((l, i) => <p key={i}>{l}</p>)}</div>}
+            </div>
+
+            {/* Title */}
+            <div className="absolute inset-x-0 top-[19%] flex flex-col items-center px-20 text-center">
+                <p className="text-[15px] font-semibold uppercase tracking-[0.3em]" style={{ color: accent }}>Certificate of</p>
+                <h2 className="mt-1 text-[44px] font-extrabold leading-tight tracking-tight" style={{ color: CERT_FRAME }}>Road Test</h2>
+                <p className="mt-1.5 text-[12px] font-semibold uppercase tracking-[0.25em] text-slate-400">FMCSA §391.31 · §391.33</p>
+            </div>
+
+            {/* Certification body — big centered name, matching the main certificate */}
+            <div className="absolute inset-x-0 top-[38%] flex flex-col items-center px-24 text-center">
+                <p className="text-[18px] font-light text-slate-500">This is to certify that</p>
+                <h3 className="mt-2 max-w-[780px] text-[40px] font-extrabold leading-tight tracking-tight" style={{ color: CERT_FRAME }}>{driver || '—'}</h3>
+                <p className="mx-auto mt-4 max-w-[700px] text-[15px] font-light leading-relaxed text-slate-500">
+                    was given a road test under my supervision on <span className="font-semibold text-slate-700">{date || '—'}</span>, consisting of approximately <span className="font-semibold text-slate-700">{miles || '—'}</span> miles of driving — and possesses sufficient driving skill to operate safely the type of commercial motor vehicle listed below.
+                </p>
+                {(powerUnit || trailer) && (
+                    <p className="mt-3 text-[13px] text-slate-500">
+                        {powerUnit && <span><span className="font-semibold text-slate-600">Power unit:</span> {powerUnit}</span>}
+                        {powerUnit && trailer && <span className="mx-2 text-slate-300">·</span>}
+                        {trailer && <span><span className="font-semibold text-slate-600">Trailer(s):</span> {trailer}</span>}
+                    </p>
+                )}
+            </div>
+
+            {/* Examiner signature · name · date — formal certificate sign-off */}
+            <div className="absolute inset-x-24 bottom-[13%] flex items-end justify-between gap-16">
+                <div className="flex-1">
+                    <div className="flex h-14 items-end justify-center">
+                        {sig ? <img src={sig} alt="" className="max-h-14 object-contain" /> : null}
+                    </div>
+                    <div className="border-t-2 pt-1.5 text-center" style={{ borderColor: CERT_FRAME }}>
+                        <p className="text-[15px] font-bold text-slate-800">{examiner || 'Examiner'}{title ? `, ${title}` : ''}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Signature of Examiner</p>
+                    </div>
+                </div>
+                <div className="w-56">
+                    <div className="flex h-14 items-end justify-center">
+                        <span className="text-[16px] font-semibold text-slate-800">{examinerDate || '—'}</span>
+                    </div>
+                    <div className="border-t-2 pt-1.5 text-center" style={{ borderColor: CERT_FRAME }}>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Date</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Watermark text */}
+            <p className="absolute inset-x-0 bottom-[6.5%] text-center text-[18px] font-semibold italic tracking-wide text-slate-200">Certificate of Road Test</p>
+
+            {/* Footer */}
+            <div className="absolute inset-x-12 bottom-6 flex items-end justify-between border-t border-slate-200 pt-2.5 text-[9px] text-slate-400">
+                <span className="max-w-[640px] truncate">{[branding.name, branding.address].filter(Boolean).join(' · ')}</span>
+                <span className="shrink-0">{ver}{driver ? ` · ${driver}` : ''}</span>
+            </div>
+        </div>
     );
 }
 
