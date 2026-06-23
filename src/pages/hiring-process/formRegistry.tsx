@@ -36,7 +36,7 @@ function StepPlaceholder({ title, desc, onBack }: { title: string; desc: string;
 
 /** Renders the right form component for any catalog id. Always returns an element.
  *  `embedded` strips the admin chrome so the form renders inline as the applicant sees it. */
-export function HiringFormView({ formId, onBack, embedded, startPreview, onSignOff, onSaveValues, roadTestValues }: { formId: string; onBack: () => void; embedded?: boolean; startPreview?: boolean; onSignOff?: (info?: { method?: string; docs?: { label: string; fileName?: string; kind: string }[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; roadTestValues?: Record<string, unknown> }) {
+export function HiringFormView({ formId, onBack, embedded, startPreview, onSignOff, onSaveValues, roadTestValues, roadTestNote }: { formId: string; onBack: () => void; embedded?: boolean; startPreview?: boolean; onSignOff?: (info?: { method?: string; docs?: { label: string; fileName?: string; kind: string }[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; roadTestValues?: Record<string, unknown>; roadTestNote?: { examiner: string; driver: string } }) {
     if (formId === "driver-license") return <DriverLicenseForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "mvr") return <DriverAbstractForm variant="mvr" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
     if (formId === "driver-abstract") return <DriverAbstractForm variant="abstract" onBack={onBack} embedded={embedded} startPreview={startPreview} onSignOff={onSignOff} />;
@@ -60,7 +60,7 @@ export function HiringFormView({ formId, onBack, embedded, startPreview, onSignO
 
     if (formId === "road-test") {
         const appForm = loadApplicationForms().find((f) => f.id === "form-ats-road-test");
-        if (appForm) return <RoadTestForm appForm={appForm} onClose={onBack} onSubmit={onSignOff} onSaveValues={onSaveValues} initialValues={roadTestValues} />;
+        if (appForm) return <RoadTestForm appForm={appForm} onClose={onBack} onSubmit={onSignOff} onSaveValues={onSaveValues} initialValues={roadTestValues} embedded={embedded} reviewerNote={roadTestNote} />;
     }
 
     if (formId === "application") return <StepInfo embedded={embedded} title="Application" desc="The applicant completes the application form. The four application types are configured under Settings → Hiring Process → Applications." onBack={onBack} />;

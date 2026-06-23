@@ -50,7 +50,7 @@ const splitHeading = (label: string) => {
  * shared form definition so Download PDF / Submit reuse the same values.
  */
 type SubmitDoc = { label: string; fileName?: string; kind: string };
-export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initialValues }: { appForm: ApplicationFormDef; onClose: () => void; onSubmit?: (info?: { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; initialValues?: Record<string, unknown> }) {
+export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initialValues, embedded, reviewerNote }: { appForm: ApplicationFormDef; onClose: () => void; onSubmit?: (info?: { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; initialValues?: Record<string, unknown>; embedded?: boolean; reviewerNote?: { examiner: string; driver: string } }) {
     const [branding] = useCompanyBranding();
     const pf = usePrefill();   // driver's application data (licences) when opened from the hiring process
     const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {});
@@ -171,7 +171,7 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
 
     // Summary of what the examiner produced — fed back to the hiring file on submit.
     const buildSubmitInfo = (): { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> } => {
-        const method = str('f-ats-rt-equiv-method');
+        const method = str('f-ats-rt-equiv-method') || equivSec?.fields.find((f) => f.id === 'f-ats-rt-equiv-method')?.options?.[0] || '';
         const docs: SubmitDoc[] = [];
         if (method === 'License accepted as equivalent') {
             const licDocs = (Array.isArray(values['f-ats-rt-lic-docs']) ? values['f-ats-rt-lic-docs'] : []) as UploadedDocument[];
@@ -189,6 +189,7 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
 
     // Closing without submitting saves a draft so the filled form can be viewed/continued.
     const handleClose = () => { if (Object.keys(values).length > 0) onSaveValues?.(values); onClose(); };
+    const saveDraft = () => { onSaveValues?.(values); window.alert('Draft saved.'); onClose(); };
 
     const fillSample = () => {
         const sampleText = (label: string) => {
@@ -410,23 +411,6 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                                 {certField('If passenger carrier, type of bus', 'f-ats-rt-bus-type')}
                             </div>
 
-                            {/* Examiner (end user) — name, signature & date */}
-                            <div className="rounded-xl border border-slate-200 p-4">
-                                <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">Examiner certification</p>
-                                <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-3">
-                                    {certField('Examiner name', 'f-ats-rt-examiner')}
-                                    {certField('Title', 'f-ats-rt-examiner-title')}
-                                    {certField('Date', 'f-ats-rt-examiner-date', 'date')}
-                                </div>
-                                <div className="mt-4">
-                                    <SignaturePad height={96} label="Signature of Examiner" value={str('f-ats-rt-sign') || null} onChange={(v) => set('f-ats-rt-sign', v ?? '')} helper="Draw the signature with your mouse or finger." />
-                                </div>
-                                <div className="mt-4">
-                                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Organization &amp; address of examiner</label>
-                                    <textarea value={str('f-ats-rt-org')} onChange={(e) => set('f-ats-rt-org', e.target.value)} rows={2} className={cn(INPUT, 'h-auto resize-y py-2.5')} />
-                                </div>
-                            </div>
-
                             {/* Branded certificate preview (watermark + branding) */}
                             <div>
                                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -545,13 +529,31 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                             onAdd={(list) => { const names = Array.from(list ?? []).map((f) => f.name); if (names.length) set('f-ats-rt-additional-docs', [...addlDocs, ...names]); }}
                             onRemove={(rid) => { const idx = Number(rid.split('-')[1]); set('f-ats-rt-additional-docs', addlDocs.filter((_, i) => i !== idx)); }} />
                     </div>
+
+                    {/* Examiner sign-off — always required to submit, whichever method was chosen */}
+                    <div className="rounded-xl border border-slate-300 bg-slate-50/60 p-4" id="examiner-signoff">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Examiner certification &amp; sign-off <span className="text-rose-500">*</span></p>
+                        <p className="mb-3 mt-0.5 text-xs text-slate-500">The examiner who conducted the road test signs below. Name and signature are required to submit.</p>
+                        <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-3">
+                            {certField('Examiner name', 'f-ats-rt-examiner')}
+                            {certField('Title', 'f-ats-rt-examiner-title')}
+                            {certField('Date', 'f-ats-rt-examiner-date', 'date')}
+                        </div>
+                        <div className="mt-4">
+                            <SignaturePad height={96} label="Signature of Examiner" value={str('f-ats-rt-sign') || null} onChange={(v) => set('f-ats-rt-sign', v ?? '')} helper="Draw the signature with your mouse or finger." />
+                        </div>
+                        <div className="mt-4">
+                            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Organization &amp; address of examiner</label>
+                            <textarea value={str('f-ats-rt-org')} onChange={(e) => set('f-ats-rt-org', e.target.value)} rows={2} className={cn(INPUT, 'h-auto resize-y py-2.5')} />
+                        </div>
+                    </div>
                 </div>
             </section>
         );
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex flex-col bg-slate-100">
+        <div className={cn(embedded ? "relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white" : "fixed inset-0 z-[60] flex flex-col bg-slate-100")}>
             {/* ── App bar ─────────────────────────────────────────────── */}
             <header className="z-20 border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
                 <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 sm:gap-4">
@@ -569,15 +571,31 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                         <button type="button" onClick={handleClose} className="hidden h-9 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 sm:block">Cancel</button>
-                        <button type="button" onClick={fillSample} title="Fill sample data"
-                            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 sm:px-3.5">
-                            <Sparkles size={14} /> <span className="hidden sm:inline">Fill sample data</span>
-                        </button>
+                        {reviewerNote ? (
+                            <button type="button" onClick={saveDraft} title="Save as draft"
+                                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 sm:px-3.5">
+                                <Save size={14} /> <span className="hidden sm:inline">Save as Draft</span>
+                            </button>
+                        ) : (
+                            <button type="button" onClick={fillSample} title="Fill sample data"
+                                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 sm:px-3.5">
+                                <Sparkles size={14} /> <span className="hidden sm:inline">Fill sample data</span>
+                            </button>
+                        )}
                         <button type="button" disabled={downloading} onClick={() => openPreview(pdfVariant)} title="PDF Preview"
                             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:px-3.5">
                             <Eye size={14} /> <span className="hidden sm:inline">{downloading ? 'Preparing…' : 'PDF Preview'}</span>
                         </button>
-                        <button type="button" onClick={() => { onSubmit?.(buildSubmitInfo()); window.alert('Road test record saved.'); onClose(); }}
+                        <button type="button" onClick={() => {
+                                if (!str('f-ats-rt-examiner').trim() || !str('f-ats-rt-sign')) {
+                                    window.alert('Add the examiner name and signature at the bottom of the form to submit.');
+                                    document.getElementById('examiner-signoff')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    return;
+                                }
+                                onSubmit?.(buildSubmitInfo());
+                                window.alert('Road test record saved.');
+                                onClose();
+                            }}
                             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[13px] font-bold text-white shadow-sm sm:px-4" style={{ backgroundColor: accent }}>
                             <Save size={14} /> Submit
                         </button>
@@ -613,8 +631,14 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
             </div>
 
             {/* ── Body ────────────────────────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto">
+            <div className={embedded ? "" : "flex-1 overflow-y-auto"}>
                 <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
+                    {reviewerNote && (
+                        <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-slate-600">
+                            <ClipboardCheck className="h-4 w-4 shrink-0 text-blue-500" />
+                            <span><span className="font-semibold text-slate-800">{reviewerNote.examiner}</span> opens this Road Test Evaluation for <span className="font-semibold text-slate-800">{reviewerNote.driver}</span> — scores each section, then certifies the result.</span>
+                        </div>
+                    )}
                     {/* Hero: title + rating scale (+ driver details only if any are pre-heading) */}
                     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <div className="px-4 py-5 sm:px-6">

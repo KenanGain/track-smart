@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { FlaskConical, CarFront, FileText, ArrowRight, Briefcase, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { buildPrefill, PrefillProvider } from "./application-prefill";
+import { buildPrefill } from "./application-prefill";
 import { RecipientFormPreview, type RecipientDoc } from "./RecipientFormPreview";
-import { HiringFormView } from "./formRegistry";
+import { RoadTestPreview } from "./RoadTestPreview";
 import { useApplicants } from "./applicants.data";
 
 // The Safety Performance History (§391.23) forms an admin can open and test from Settings.
@@ -35,23 +35,20 @@ export function TestingFormsPage() {
 
     // Use the first applicant's data to pre-fill forms so they show realistic content.
     const prefill = applicants[0] ? buildPrefill(applicants[0]) : null;
+    const driverName = prefill?.fullName ?? "the applicant";
+
+    // Road Test is conducted internally by an examiner — Compose (assign) · Email · Recipient form.
+    if (openForm === "road-test") {
+        return <RoadTestPreview driverName={driverName} carrier={applicants[0]?.carrier ?? "Acme Logistics"} prefill={prefill} onBack={() => setOpenForm(null)} />;
+    }
 
     if (openForm) {
         const meta = TESTING_FORMS.find((f) => f.id === openForm);
-        // Road Test is conducted internally by an examiner (not emailed to a previous
-        // employer) — open the actual Road Test Evaluation so it can be filled & tested.
-        if (openForm === "road-test") {
-            return (
-                <PrefillProvider value={prefill}>
-                    <HiringFormView formId="road-test" onBack={() => setOpenForm(null)} />
-                </PrefillProvider>
-            );
-        }
         return (
             <RecipientFormPreview
                 formId={openForm}
                 label={meta?.label ?? "Form"}
-                applicantName={prefill?.fullName ?? "the applicant"}
+                applicantName={driverName}
                 prefill={prefill}
                 requestDocs={meta?.docs ?? []}
                 forms={TESTING_FORMS.filter((f) => f.group === meta?.group).map((f) => ({ key: f.id, label: f.label }))}
@@ -89,7 +86,7 @@ export function TestingFormsPage() {
 
                 <div className="mt-8 flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
                     <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                    <p>Opening a form shows the <span className="font-semibold text-slate-600">Email</span> tab (what the previous employer receives) and the <span className="font-semibold text-slate-600">Recipient form</span> tab (what they fill in and submit), pre-filled with the applicant's details.</p>
+                    <p>Opening a form shows the <span className="font-semibold text-slate-600">Email</span> tab (what the previous employer receives) and the <span className="font-semibold text-slate-600">Recipient form</span> tab (what they fill in and submit), pre-filled with the applicant's details. The <span className="font-semibold text-slate-600">Road Test</span> first assigns an examiner, then opens the evaluation form.</p>
                 </div>
             </div>
         </div>
