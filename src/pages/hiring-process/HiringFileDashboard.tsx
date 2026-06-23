@@ -219,12 +219,25 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
             updateOne(a.id, (prev) => ({ roadTest: { ...(prev.roadTest ?? {}), formValues: values, ...(fm ? { method: fm } : {}) } }));
         }}
         onSignOff={(info) => {
+        // NOTE: this runs after an early `return` above, so `setDoc` (declared later) is in the
+        // temporal dead zone here — do the doc-status update inline via updateOne instead.
         if (openForm === "road-test") {
             const m = info?.method ? ROAD_TEST_METHOD_BY_FORM[info.method] : undefined;
             const documents = info?.docs as RoadTestDoc[] | undefined;
-            updateOne(a.id, (prev) => ({ roadTest: { ...(prev.roadTest ?? {}), ...(m ? { method: m } : {}), ...(documents ? { documents } : {}), ...(info?.values ? { formValues: info.values } : {}) } }));
-            setDoc(openForm, "received", "Road test recorded");
-        } else setDoc(openForm, "verified", "Reviewed & signed");
+            updateOne(a.id, (prev) => ({
+                roadTest: { ...(prev.roadTest ?? {}), ...(m ? { method: m } : {}), ...(documents ? { documents } : {}), ...(info?.values ? { formValues: info.values } : {}) },
+                docs: { ...(prev.docs ?? {}), "road-test": "received" as DocStatus },
+                requests: (prev.requests ?? []).map((r) => (r.fid === "road-test" && r.status === "open" ? { ...r, status: "resolved" as const } : r)),
+                events: [{ id: `ev-${Date.now()}`, type: "doc" as const, text: `Road test recorded — ${stepName("road-test")}`, at: Date.now(), author: ACTOR }, ...prev.events],
+            }));
+        } else {
+            const fid = openForm;
+            updateOne(a.id, (prev) => ({
+                docs: { ...(prev.docs ?? {}), [fid]: "verified" as DocStatus },
+                requests: (prev.requests ?? []).map((r) => (r.fid === fid && r.status === "open" ? { ...r, status: "resolved" as const } : r)),
+                events: [{ id: `ev-${Date.now()}`, type: "doc" as const, text: `Reviewed & signed — ${stepName(fid)}`, at: Date.now(), author: ACTOR }, ...prev.events],
+            }));
+        }
     }} onBack={() => { setOpenForm(null); setFormPreview(false); }} /></PrefillProvider>;
     if (openConsent) {
         const allConsentIds = (steps.find((s) => s.kind === "app")?.formIds ?? []).filter((f) => stepGroup(f) === "Policy");
@@ -1946,7 +1959,7 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
                                     </div>
                                 )}
                                 {/* One entry point — open the evaluation form. The method (certify / licence / document)
-                                    is a section inside the form, completed by the examiner, then surfaced here once submitted. */}
+                                    is chosen by the examiner inside the form, then surfaced here once submitted. */}
                                 <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="min-w-0">
@@ -1955,21 +1968,6 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
                                         </div>
                                         <Button className="shrink-0" onClick={onOpenForm}><ClipboardCheck className="h-4 w-4" /> {hasDraft ? "Continue Review" : "Review"}</Button>
                                     </div>
-                                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                        {ROAD_TEST_METHODS.map((m) => {
-                                            const active = rt.method === m.id;
-                                            return (
-                                                <div key={m.id} className={cn("flex items-start gap-2 rounded-lg border px-3 py-2.5 transition", active ? "border-blue-500 bg-blue-50/60" : "border-slate-200 bg-white")}>
-                                                    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500")}><m.icon className="h-3.5 w-3.5" /></span>
-                                                    <div className="min-w-0">
-                                                        <p className="flex items-center gap-1.5 text-[12px] font-bold text-slate-700">{m.label}{active && <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Selected</span>}</p>
-                                                        <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{m.desc}</p>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <p className="mt-2.5 flex items-center gap-1.5 text-[11px] text-slate-400"><FileText className="h-3 w-3" /> These are sections inside the form — the examiner generates the certificate or uploads the document there, and it appears here once submitted.</p>
                                 </div>
                             </>
                         )}
