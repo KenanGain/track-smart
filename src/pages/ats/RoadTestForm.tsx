@@ -1,8 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ArrowLeft, Save, Download, Check, X, UploadCloud, FileText, ClipboardCheck,
-    ListChecks, Award, Eye, ChevronLeft, Printer, Sparkles, CreditCard, FileCheck2,
+    ArrowLeft, Save, Download, Check, X, UploadCloud, ClipboardCheck,
+    ListChecks, Award, Eye, ChevronLeft, Printer, Sparkles,
+    User, Truck, MapPin, GraduationCap,
 } from 'lucide-react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { cn } from '@/lib/utils';
@@ -12,31 +15,67 @@ import { generateApplicationFormPdf } from './generateApplicationFormPdf';
 import { PDF_TEMPLATES } from './ApplicationFormPrint';
 import { SignaturePad } from './SignaturePad';
 import { FileDropZone } from '@/components/compliance/FileDropZone';
-import { ComplianceUploadModal } from '@/components/compliance/ComplianceUploadModal';
-import type { UploadedDocument } from '@/types/key-numbers.types';
 import type { ApplicationFormDef, FormField } from './application-forms.data';
 import type { FieldValue } from './CustomFormWizard';
-import { usePrefill } from '../hiring-process/application-prefill';
 
 const CERT_FRAME = '#33337a'; // navy/indigo certificate frame (matches the branded certificate module)
 
-// The three §391.33 fulfilment methods (moved above the certification, drive what's shown).
-const METHOD_META: Record<string, { Icon: typeof Award; blurb: string }> = {
-    'Road test conducted (§391.31)': { Icon: Award, blurb: 'Conduct the test and issue the §391.31 Certification of Road Test below.' },
-    'License accepted as equivalent': { Icon: CreditCard, blurb: 'Accept a valid CDL as the equivalent — select the licence on file or upload a copy (§391.33(a)(1)).' },
-    'Prior certificate accepted as equivalent': { Icon: FileCheck2, blurb: 'Accept a prior road-test certificate from the last 3 years — upload a copy (§391.33(a)(2)).' },
-};
 
-/** Performance rating scale shown at the top of the evaluation. */
-const RATING_SCALE = [
-    { n: 1, label: 'Needs Improvement', desc: 'Requires full assistance · minimal progress' },
-    { n: 2, label: 'Fair', desc: 'Some ability with instructor assistance · slow progress' },
-    { n: 3, label: 'Good', desc: 'Able with very little assistance · good progress' },
-    { n: 4, label: 'Very Good', desc: 'No assistance required · independent' },
-    { n: 5, label: 'Excellent', desc: 'Exceeds expectations · confident and skilled' },
+// The top of the form (pre-heading fields) is split into labelled subsections.
+const TOP_SUBSECTIONS: { title: string; icon: typeof User; ids: string[] }[] = [
+    { title: 'Driver Information', icon: User, ids: ['f-ats-rt-driver', 'f-ats-rt-dob', 'f-ats-rt-address', 'f-ats-rt-license', 'f-ats-rt-state', 'f-ats-rt-class', 'f-ats-rt-endorsements', 'f-ats-rt-license-exp', 'f-ats-rt-ssn'] },
+    { title: 'Vehicle Information', icon: Truck, ids: ['f-ats-rt-tractor', 'f-ats-rt-vehicle-year', 'f-ats-rt-plate', 'f-ats-rt-vin', 'f-ats-rt-config', 'f-ats-rt-trailer', 'f-ats-rt-transmission', 'f-ats-rt-brakes', 'f-ats-rt-special-equip'] },
+    { title: 'Test Details', icon: ClipboardCheck, ids: ['f-ats-rt-date', 'f-ats-rt-length', 'f-ats-rt-weather', 'f-ats-rt-test-miles'] },
 ];
 
-const SCALE_TONE = ['', 'bg-rose-50 text-rose-600 border-rose-200', 'bg-amber-50 text-amber-600 border-amber-200', 'bg-sky-50 text-sky-600 border-sky-200', 'bg-blue-50 text-blue-600 border-blue-200', 'bg-emerald-50 text-emerald-600 border-emerald-200'];
+// ── Road test route map (Leaflet + OpenStreetMap) — click to plot waypoints ──
+type LatLng = { lat: number; lng: number };
+/** Total route distance in km (haversine over the plotted waypoints). */
+function routeKm(points: LatLng[]): number {
+    let m = 0;
+    for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
+        const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+        m += 2 * R * Math.asin(Math.sqrt(h));
+    }
+    return m / 1000;
+}
+function RouteMap({ points, onAdd }: { points: LatLng[]; onAdd: (p: LatLng) => void }) {
+    const elRef = useRef<HTMLDivElement>(null);
+    const mapRef = useRef<L.Map | null>(null);
+    const layerRef = useRef<L.LayerGroup | null>(null);
+    const onAddRef = useRef(onAdd);
+    onAddRef.current = onAdd;
+
+    // Initialise the map once.
+    useEffect(() => {
+        if (!elRef.current || mapRef.current) return;
+        const first = points[0];
+        const map = L.map(elRef.current, { center: first ? [first.lat, first.lng] : [43.6532, -79.3832], zoom: first ? 13 : 11, scrollWheelZoom: false });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+        layerRef.current = L.layerGroup().addTo(map);
+        map.on('click', (e: L.LeafletMouseEvent) => onAddRef.current({ lat: e.latlng.lat, lng: e.latlng.lng }));
+        mapRef.current = map;
+        setTimeout(() => map.invalidateSize(), 0);
+        return () => { map.remove(); mapRef.current = null; layerRef.current = null; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Redraw waypoints + route whenever the points change.
+    useEffect(() => {
+        const layer = layerRef.current; if (!layer) return;
+        layer.clearLayers();
+        if (points.length > 1) L.polyline(points.map((p) => [p.lat, p.lng]) as [number, number][], { color: '#2563eb', weight: 4 }).addTo(layer);
+        points.forEach((p, i) => {
+            const last = i === points.length - 1;
+            L.circleMarker([p.lat, p.lng], { radius: i === 0 || last ? 7 : 5, color: '#fff', weight: 2, fillColor: i === 0 ? '#16a34a' : last ? '#dc2626' : '#2563eb', fillOpacity: 1 }).addTo(layer);
+        });
+    }, [points]);
+
+    return <div ref={elRef} className="h-64 w-full" />;
+}
 
 const splitHeading = (label: string) => {
     const m = label.match(/^(Part\s*\d+)\s*[—-]\s*(.*)$/i);
@@ -52,7 +91,6 @@ const splitHeading = (label: string) => {
 type SubmitDoc = { label: string; fileName?: string; kind: string };
 export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initialValues, embedded, reviewerNote }: { appForm: ApplicationFormDef; onClose: () => void; onSubmit?: (info?: { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> }) => void; onSaveValues?: (values: Record<string, unknown>) => void; initialValues?: Record<string, unknown>; embedded?: boolean; reviewerNote?: { examiner: string; driver: string } }) {
     const [branding] = useCompanyBranding();
-    const pf = usePrefill();   // driver's application data (licences) when opened from the hiring process
     const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {});
     const [downloading, setDownloading] = useState(false);
     const [preview, setPreview] = useState(false);
@@ -61,7 +99,6 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const certRef = useRef<HTMLDivElement>(null);
     const [certDownloading, setCertDownloading] = useState(false);
-    const [licUploadOpen, setLicUploadOpen] = useState(false);
     const accent = branding.accentColor;
 
     const set = (id: string, v: unknown) => setValues((s) => ({ ...s, [id]: v }));
@@ -71,22 +108,29 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
         const cur = arr(id);
         set(id, cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt]);
     };
-    // Satisfactory (✓) lives in values[id]; unsatisfactory (✗) in values[id__x]. Mutually exclusive.
+    // Per-item rating: Satisfactory lives in values[id]; Unsatisfactory in values[id__x];
+    // Needs Training in values[id__t]. Mutually exclusive (one state per item).
     const xKey = (id: string) => `${id}__x`;
+    const tKey = (id: string) => `${id}__t`;
     const xArr = (id: string) => (Array.isArray(values[xKey(id)]) ? (values[xKey(id)] as string[]) : []);
-    const stateOf = (id: string, opt: string): 'sat' | 'unsat' | null =>
-        arr(id).includes(opt) ? 'sat' : xArr(id).includes(opt) ? 'unsat' : null;
-    const mark = (id: string, opt: string, state: 'sat' | 'unsat' | null) => {
+    const tArr = (id: string) => (Array.isArray(values[tKey(id)]) ? (values[tKey(id)] as string[]) : []);
+    const stateOf = (id: string, opt: string): 'sat' | 'unsat' | 'training' | null =>
+        arr(id).includes(opt) ? 'sat' : xArr(id).includes(opt) ? 'unsat' : tArr(id).includes(opt) ? 'training' : null;
+    const mark = (id: string, opt: string, state: 'sat' | 'unsat' | 'training' | null) => {
         const sat = arr(id).filter((x) => x !== opt);
         const unsat = xArr(id).filter((x) => x !== opt);
+        const training = tArr(id).filter((x) => x !== opt);
         if (state === 'sat') sat.push(opt);
         else if (state === 'unsat') unsat.push(opt);
+        else if (state === 'training') training.push(opt);
         set(id, sat);
         set(xKey(id), unsat);
+        set(tKey(id), training);
     };
     const markAll = (id: string, opts: string[], on: boolean) => {
         set(id, on ? [...opts] : []);
         set(xKey(id), []);
+        set(tKey(id), []);
     };
 
     // Headings whose content folds into the PREVIOUS section as a sub-heading
@@ -170,21 +214,12 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
     };
 
     // Summary of what the examiner produced — fed back to the hiring file on submit.
+    // The examiner form only conducts + certifies (§391.31); the §391.33 equivalents
+    // (licence / prior certificate) are collected on the hiring page instead.
     const buildSubmitInfo = (): { method?: string; docs?: SubmitDoc[]; values?: Record<string, unknown> } => {
-        const method = str('f-ats-rt-equiv-method') || equivSec?.fields.find((f) => f.id === 'f-ats-rt-equiv-method')?.options?.[0] || '';
-        const docs: SubmitDoc[] = [];
-        if (method === 'License accepted as equivalent') {
-            const licDocs = (Array.isArray(values['f-ats-rt-lic-docs']) ? values['f-ats-rt-lic-docs'] : []) as UploadedDocument[];
-            licDocs.forEach((d) => docs.push({ label: `Licence — ${d.slotLabel ?? 'copy'}`, fileName: d.fileName, kind: 'license' }));
-            const sel = str('f-ats-rt-equiv-license');
-            if (sel && licDocs.length === 0) docs.push({ label: `Licence on file: ${sel}`, kind: 'license' });
-        } else if (method === 'Prior certificate accepted as equivalent') {
-            if (str('f-ats-rt-equiv-doc')) docs.push({ label: 'Prior road-test certificate', fileName: str('f-ats-rt-equiv-doc'), kind: 'document' });
-        } else {
-            docs.push({ label: 'Certificate of Road Test (§391.31)', kind: 'certificate' });
-        }
+        const docs: SubmitDoc[] = [{ label: 'Certificate of Road Test (§391.31)', kind: 'certificate' }];
         arr('f-ats-rt-additional-docs').forEach((n) => docs.push({ label: 'Additional document', fileName: n, kind: 'additional' }));
-        return { method, docs, values };
+        return { method: 'Road test conducted (§391.31)', docs, values };
     };
 
     // Closing without submitting saves a draft so the filled form can be viewed/continued.
@@ -251,7 +286,8 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
         const total = cls.reduce((a, f) => a + f.options.length, 0);
         const sat = cls.reduce((a, f) => a + arr(f.id).length, 0);
         const unsat = cls.reduce((a, f) => a + xArr(f.id).length, 0);
-        const cardPct = total > 0 ? ((sat + unsat) / total) * 100 : 0;
+        const training = cls.reduce((a, f) => a + tArr(f.id).length, 0);
+        const cardPct = total > 0 ? ((sat + unsat + training) / total) * 100 : 0;
         return (
             <section key={sec.heading.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-3">
@@ -261,8 +297,9 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                             <h3 className="text-[13.5px] font-bold leading-tight text-slate-900">{title}</h3>
                         </div>
                         <span className="flex shrink-0 items-center gap-2 text-[11px] font-bold tabular-nums">
-                            <span className="text-emerald-600">✓ {sat}</span>
-                            <span className="text-rose-500">✗ {unsat}</span>
+                            <span className="inline-flex items-center gap-1 text-emerald-600"><span className="h-2 w-2 rounded-sm bg-emerald-500" /> {sat}</span>
+                            <span className="inline-flex items-center gap-1 text-amber-500"><span className="h-2 w-2 rounded-sm bg-amber-500" /> {training}</span>
+                            <span className="inline-flex items-center gap-1 text-rose-500"><span className="h-2 w-2 rounded-sm bg-rose-500" /> {unsat}</span>
                             <span className="text-slate-400">/ {total}</span>
                         </span>
                     </div>
@@ -271,6 +308,12 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                     </div>
                 </div>
                 <div className="space-y-3.5 p-4">
+                    {/* Legend — each item is marked Satisfactory, Needs Training or Unsatisfactory. */}
+                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] font-bold uppercase tracking-wide">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-600"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Satisfactory</span>
+                        <span className="inline-flex items-center gap-1.5 text-amber-500"><span className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Needs Training</span>
+                        <span className="inline-flex items-center gap-1.5 text-rose-500"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" /> Unsatisfactory</span>
+                    </div>
                     {cls.map((f) => <Checklist key={f.id} field={f} getState={(o) => stateOf(f.id, o)} onMark={(o, s) => mark(f.id, o, s)} onAll={(on) => markAll(f.id, f.options, on)} />)}
                 </div>
             </section>
@@ -349,178 +392,106 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
         );
     };
 
-    // ── Fulfilment (§391.33) — the three method options sit ABOVE the certification
-    //    and drive what's shown: issue certificate · accept licence · prior certificate. ──
+    // ── Road test route — a mapped-route widget: attach the route the driver took
+    //    plus the length of the test (route distance). ──
+    const renderRoute = () => {
+        const milesField = header.find((f) => f.id === 'f-ats-rt-test-miles');
+        const points = (Array.isArray(values['f-ats-rt-route-points']) ? values['f-ats-rt-route-points'] : []) as LatLng[];
+        const addPoint = (p: LatLng) => set('f-ats-rt-route-points', [...points, p]);
+        const undo = () => set('f-ats-rt-route-points', points.slice(0, -1));
+        const clear = () => set('f-ats-rt-route-points', []);
+        const km = routeKm(points).toFixed(1);
+        return (
+            <div className="mt-4 rounded-xl border border-slate-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <div className="flex items-center gap-1.5"><MapPin size={13} className="text-blue-500" /><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Road test route</p></div>
+                        <p className="mt-0.5 text-xs text-slate-500">Click the map to plot the route the driver took — add a point with each click.</p>
+                    </div>
+                    {points.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={undo} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft size={13} /> Undo</button>
+                            <button type="button" onClick={clear} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"><X size={13} /> Clear</button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Real interactive map (Leaflet + OpenStreetMap) — click to add waypoints */}
+                <div className="relative mt-3 overflow-hidden rounded-xl border border-slate-200">
+                    <RouteMap points={points} onAdd={addPoint} />
+                    <span className="pointer-events-none absolute left-2.5 top-2.5 z-[500] inline-flex items-center gap-1 rounded-md bg-white/90 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 shadow-sm"><MapPin size={11} className="text-blue-500" /> Mapped route</span>
+                    {points.length === 0 && (
+                        <div className="pointer-events-none absolute inset-x-0 top-2.5 z-[500] flex justify-center">
+                            <span className="rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm">Click the map to start plotting the route</span>
+                        </div>
+                    )}
+                    {points.length > 1 && (
+                        <span className="pointer-events-none absolute bottom-2.5 right-2.5 z-[500] inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white shadow-sm"><Check size={11} /> {points.length} points · ≈ {km} km</span>
+                    )}
+                </div>
+
+                {/* Length of the test (route distance) */}
+                {milesField && (
+                    <div className="mt-3 flex flex-wrap items-end gap-3">
+                        <div className="max-w-sm flex-1"><Field field={milesField} value={str(milesField.id)} onChange={(v) => set(milesField.id, v)} /></div>
+                        {points.length > 1 && (
+                            <button type="button" onClick={() => set(milesField.id, `${km} km`)} className="mb-0.5 inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-semibold text-slate-700 hover:bg-slate-50"><MapPin size={13} className="text-blue-500" /> Use route distance (≈ {km} km)</button>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // ── Certification of Road Test (§391.31) — the examiner conducts the test and
+    //    issues the branded certificate. The §391.33 equivalents (licence / prior
+    //    certificate) are collected on the hiring page, not here. ──
     const renderFulfilment = () => {
-        const methodField = equivSec?.fields.find((f) => f.id === 'f-ats-rt-equiv-method');
-        const options = methodField?.options ?? [];
-        const docField = equivSec?.fields.find((f) => f.id === 'f-ats-rt-equiv-doc');
-        const paras = equivSec?.fields.filter((f) => f.type === 'paragraph') ?? [];
-        const method = str('f-ats-rt-equiv-method') || options[0] || '';
-        const licenses = pf?.licenses ?? [];
-        const selectedLic = str('f-ats-rt-equiv-license');
-        const context = (text?: string) => text
-            ? <p className="whitespace-pre-line rounded-lg bg-slate-50 px-3.5 py-2.5 text-[12px] leading-relaxed text-slate-500">{text}</p>
-            : null;
         const certField = (label: string, id: string, type = 'text') => (
             <div>
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</label>
                 <input type={type} value={str(id)} onChange={(e) => set(id, e.target.value)} className={INPUT} />
             </div>
         );
-        const docUpload = (id: string) => (
-            <FileDropZone compact files={str(id) ? [{ id, fileName: str(id) }] : []}
-                onAdd={(list) => { const f = list?.[0]; if (f) set(id, f.name); }} onRemove={() => set(id, '')} />
-        );
         const addlDocs = arr('f-ats-rt-additional-docs');
-        const licDocs = (Array.isArray(values['f-ats-rt-lic-docs']) ? values['f-ats-rt-lic-docs'] : []) as UploadedDocument[];
-        const licDetail = licDocs[0];
         return (
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <SectionHeader num="" title="Road Test Fulfilment (§391.33)" instruction="Choose how the §391.31 road-test requirement is satisfied — this drives what you complete below." accent={accent} />
+                <SectionHeader num="" title="Certification of Road Test (§391.31)" instruction="Conduct the road test and issue the §391.31 Certification of Road Test below." accent={accent} />
                 <div className="space-y-5 p-4 sm:p-5">
-                    {/* The three significant method options */}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        {options.map((opt) => {
-                            const m = METHOD_META[opt];
-                            const Icon = m?.Icon ?? ClipboardCheck;
-                            const active = method === opt;
-                            return (
-                                <button key={opt} type="button" onClick={() => set('f-ats-rt-equiv-method', opt)}
-                                    className={cn('flex flex-col rounded-xl border p-3.5 text-left transition', active ? 'border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20' : 'border-slate-200 bg-white hover:bg-slate-50')}>
-                                    <span className="flex items-center gap-2">
-                                        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500')}><Icon size={16} /></span>
-                                        <span className="flex-1 text-[13px] font-bold leading-tight text-slate-800">{opt}</span>
-                                        {active && <Check size={15} className="shrink-0 text-blue-600" />}
-                                    </span>
-                                    {m?.blurb && <span className="mt-2 text-xs leading-relaxed text-slate-500">{m.blurb}</span>}
+                    {/* Issue certificate → branded Certificate of Road Test (watermark + branding) + examiner sign-off */}
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-3">
+                            {certField("Driver's name", 'f-ats-rt-cert-driver')}
+                            {certField('Date of road test', 'f-ats-rt-cert-date', 'date')}
+                            {certField('Approx. miles driven', 'f-ats-rt-approx-miles', 'number')}
+                            {certField('Type of power unit', 'f-ats-rt-power-unit')}
+                            {certField('Type of trailer(s)', 'f-ats-rt-trailer-type')}
+                            {certField('If passenger carrier, type of bus', 'f-ats-rt-bus-type')}
+                        </div>
+
+                        {/* Branded certificate preview (watermark + branding) */}
+                        <div>
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Certificate preview</p>
+                                <button type="button" disabled={certDownloading} onClick={downloadCertificate}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-bold text-white shadow-sm disabled:opacity-60" style={{ backgroundColor: accent }}>
+                                    <Download size={13} /> {certDownloading ? 'Generating…' : 'Download PDF'}
                                 </button>
-                            );
-                        })}
+                            </div>
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-200/60 p-3 shadow-inner">
+                                <div className="mx-auto" style={{ width: 960 }}>
+                                    <RoadTestCertificate innerRef={certRef} branding={branding}
+                                        driver={str('f-ats-rt-cert-driver')} date={str('f-ats-rt-cert-date')} miles={str('f-ats-rt-approx-miles')}
+                                        powerUnit={str('f-ats-rt-power-unit')} trailer={str('f-ats-rt-trailer-type')}
+                                        examiner={str('f-ats-rt-examiner')} title={str('f-ats-rt-examiner-title')}
+                                        examinerDate={str('f-ats-rt-examiner-date') || str('f-ats-rt-cert-date')} sig={str('f-ats-rt-sign')} />
+                                </div>
+                            </div>
+                            <p className="mt-2 text-[12px] text-slate-400">Logo, company name and address come from your company branding. Download exports a print-ready landscape PDF.</p>
+                        </div>
                     </div>
 
-                    {/* Issue certificate → branded Certificate of Road Test (watermark + branding) + examiner sign-off */}
-                    {method === 'Road test conducted (§391.31)' && (
-                        <div className="space-y-5">
-                            <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-3">
-                                {certField("Driver's name", 'f-ats-rt-cert-driver')}
-                                {certField('Date of road test', 'f-ats-rt-cert-date', 'date')}
-                                {certField('Approx. miles driven', 'f-ats-rt-approx-miles', 'number')}
-                                {certField('Type of power unit', 'f-ats-rt-power-unit')}
-                                {certField('Type of trailer(s)', 'f-ats-rt-trailer-type')}
-                                {certField('If passenger carrier, type of bus', 'f-ats-rt-bus-type')}
-                            </div>
-
-                            {/* Branded certificate preview (watermark + branding) */}
-                            <div>
-                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Certificate preview</p>
-                                    <button type="button" disabled={certDownloading} onClick={downloadCertificate}
-                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-bold text-white shadow-sm disabled:opacity-60" style={{ backgroundColor: accent }}>
-                                        <Download size={13} /> {certDownloading ? 'Generating…' : 'Download PDF'}
-                                    </button>
-                                </div>
-                                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-200/60 p-3 shadow-inner">
-                                    <div className="mx-auto" style={{ width: 960 }}>
-                                        <RoadTestCertificate innerRef={certRef} branding={branding}
-                                            driver={str('f-ats-rt-cert-driver')} date={str('f-ats-rt-cert-date')} miles={str('f-ats-rt-approx-miles')}
-                                            powerUnit={str('f-ats-rt-power-unit')} trailer={str('f-ats-rt-trailer-type')}
-                                            examiner={str('f-ats-rt-examiner')} title={str('f-ats-rt-examiner-title')}
-                                            examinerDate={str('f-ats-rt-examiner-date') || str('f-ats-rt-cert-date')} sig={str('f-ats-rt-sign')} />
-                                    </div>
-                                </div>
-                                <p className="mt-2 text-[12px] text-slate-400">Logo, company name and address come from your company branding. Download exports a print-ready landscape PDF.</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Licence accepted as equivalent → select from the application OR upload a copy */}
-                    {method === 'License accepted as equivalent' && (
-                        <div className="space-y-4">
-                            {context(paras[0]?.instruction)}
-                            {licenses.length > 0 && (
-                                <div>
-                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Select the licence on file (from the application)</p>
-                                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                        {licenses.map((l, i) => {
-                                            const id = l.number || `licence-${i + 1}`;
-                                            const on = selectedLic === id;
-                                            return (
-                                                <button key={id} type="button" onClick={() => set('f-ats-rt-equiv-license', on ? '' : id)}
-                                                    className={cn('flex items-start gap-3 rounded-xl border p-3 text-left transition', on ? 'border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20' : 'border-slate-200 bg-white hover:bg-slate-50')}>
-                                                    <span className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', on ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500')}><CreditCard size={16} /></span>
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="block truncate text-[13px] font-bold text-slate-800">{l.number || `Licence ${i + 1}`}</span>
-                                                        <span className="block truncate text-xs text-slate-500">{[l.cls, l.authority, l.exp ? `exp ${l.exp}` : ''].filter(Boolean).join(' · ')}</span>
-                                                    </span>
-                                                    {on && <Check size={16} className="mt-0.5 shrink-0 text-blue-600" />}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    <div className="my-3 flex items-center gap-3">
-                                        <div className="h-px flex-1 bg-slate-200" />
-                                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">licence details &amp; copy</span>
-                                        <div className="h-px flex-1 bg-slate-200" />
-                                    </div>
-                                </div>
-                            )}
-                            {/* Front / back images + issue, expiry, state & country — via the shared compliance upload module */}
-                            <div className="rounded-xl border border-slate-200 p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Licence copy &amp; details</p>
-                                        <p className="text-xs text-slate-500">Front &amp; back images, issue date, expiry date, issuing state and country.</p>
-                                    </div>
-                                    <button type="button" onClick={() => setLicUploadOpen(true)}
-                                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50">
-                                        <UploadCloud size={15} /> {licDocs.length ? 'Edit licence upload' : 'Upload licence'}
-                                    </button>
-                                </div>
-                                {licDocs.length > 0 && (
-                                    <div className="mt-3 space-y-2">
-                                        {licDocs.map((d) => (
-                                            <div key={d.id} className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-[13px]">
-                                                <Check size={14} className="shrink-0 text-emerald-600" />
-                                                <span className="min-w-0 truncate font-medium text-slate-800">{d.slotLabel ? `${d.slotLabel}: ` : ''}{d.fileName}</span>
-                                            </div>
-                                        ))}
-                                        {licDetail && (
-                                            <p className="text-xs text-slate-500">{[licDetail.issuingState, licDetail.issuingCountry, licDetail.issueDate ? `issued ${licDetail.issueDate}` : '', licDetail.expiryDate ? `expires ${licDetail.expiryDate}` : ''].filter(Boolean).join(' · ')}</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                            <ComplianceUploadModal
-                                isOpen={licUploadOpen}
-                                onClose={() => setLicUploadOpen(false)}
-                                title="Driver's Licence — accepted as road-test equivalent (§391.33)"
-                                numberOfSlots={2}
-                                slotLabels={['Front', 'Back']}
-                                issueDateRequired
-                                expiryRequired
-                                issueStateRequired
-                                issueCountryRequired
-                                existing={licDocs}
-                                onSave={(docs) => set('f-ats-rt-lic-docs', docs)}
-                            />
-                        </div>
-                    )}
-
-                    {/* Prior certificate accepted → upload a supporting document */}
-                    {method === 'Prior certificate accepted as equivalent' && (
-                        <div className="space-y-4">
-                            {context(paras[1]?.instruction)}
-                            {docField && (
-                                <div>
-                                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Prior road-test certificate copy</p>
-                                    {docUpload(docField.id)}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Additional supporting documents — applies to any method */}
+                    {/* Additional supporting documents */}
                     <div className="rounded-xl border border-slate-200 p-4">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Additional supporting documents (optional)</p>
                         <p className="mb-2 mt-0.5 text-xs text-slate-500">Attach any extra records related to the road test — e.g. medical card, training certificate or a prior-employer letter.</p>
@@ -603,32 +574,34 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                 </div>
             </header>
 
-            {/* ── Sticky score bar ────────────────────────────────────── */}
-            <div className="z-10 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6">
-                <div className="mx-auto flex max-w-6xl items-center gap-3 sm:gap-4">
-                    <div className={cn('flex items-baseline gap-1 rounded-lg border px-3 py-1', passed ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50')}>
-                        <span className={cn('text-xl font-bold tabular-nums leading-none', passed ? 'text-emerald-600' : 'text-slate-900')}>{finalScore}</span>
-                        <span className="text-[13px] font-semibold text-slate-400">/ {maxScore}</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-500">
-                            <span>Section ratings:{' '}
-                                {scored.map((s, i) => (
-                                    <span key={i} className="font-bold text-slate-700">{secScore(s) || '–'}{i < scored.length - 1 ? ' · ' : ''}</span>
-                                ))}
-                                <span className="ml-2 hidden text-slate-400 sm:inline">{evalItemsChecked}/{evalItemsTotal} items checked</span>
-                            </span>
-                            <span>{pct}% · pass {passMark}/{maxScore}</span>
+            {/* ── Sticky score bar (only when the form has scored evaluation sections) ── */}
+            {scored.length > 0 && (
+                <div className="z-10 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6">
+                    <div className="mx-auto flex max-w-6xl items-center gap-3 sm:gap-4">
+                        <div className={cn('flex items-baseline gap-1 rounded-lg border px-3 py-1', passed ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50')}>
+                            <span className={cn('text-xl font-bold tabular-nums leading-none', passed ? 'text-emerald-600' : 'text-slate-900')}>{finalScore}</span>
+                            <span className="text-[13px] font-semibold text-slate-400">/ {maxScore}</span>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div className={cn('h-full rounded-full transition-all duration-300', passed ? 'bg-emerald-500' : 'bg-blue-500')} style={{ width: `${pct}%` }} />
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-500">
+                                <span>Section ratings:{' '}
+                                    {scored.map((s, i) => (
+                                        <span key={i} className="font-bold text-slate-700">{secScore(s) || '–'}{i < scored.length - 1 ? ' · ' : ''}</span>
+                                    ))}
+                                    <span className="ml-2 hidden text-slate-400 sm:inline">{evalItemsChecked}/{evalItemsTotal} items checked</span>
+                                </span>
+                                <span>{pct}% · pass {passMark}/{maxScore}</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                                <div className={cn('h-full rounded-full transition-all duration-300', passed ? 'bg-emerald-500' : 'bg-blue-500')} style={{ width: `${pct}%` }} />
+                            </div>
                         </div>
+                        <span className={cn('inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-bold', passed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>
+                            {passed ? <><Award size={13} /> Pass</> : `Needs ${passMark}+`}
+                        </span>
                     </div>
-                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-bold', passed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>
-                        {passed ? <><Award size={13} /> Pass</> : `Needs ${passMark}+`}
-                    </span>
                 </div>
-            </div>
+            )}
 
             {/* ── Body ────────────────────────────────────────────────── */}
             <div className={embedded ? "" : "flex-1 overflow-y-auto"}>
@@ -636,7 +609,7 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                     {reviewerNote && (
                         <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-slate-600">
                             <ClipboardCheck className="h-4 w-4 shrink-0 text-blue-500" />
-                            <span><span className="font-semibold text-slate-800">{reviewerNote.examiner}</span> opens this Road Test Evaluation for <span className="font-semibold text-slate-800">{reviewerNote.driver}</span> — scores each section, then certifies the result.</span>
+                            <span><span className="font-semibold text-slate-800">{reviewerNote.examiner}</span> opens this Road Test Evaluation for <span className="font-semibold text-slate-800">{reviewerNote.driver}</span> — completes the road test, then certifies the result.</span>
                         </div>
                     )}
                     {/* Hero: title + rating scale (+ driver details only if any are pre-heading) */}
@@ -644,27 +617,42 @@ export function RoadTestForm({ appForm, onClose, onSubmit, onSaveValues, initial
                         <div className="px-4 py-5 sm:px-6">
                             <h2 className="text-center text-xl font-bold tracking-tight text-slate-900">ROAD TEST EVALUATION</h2>
                             <p className="mx-auto mt-1 max-w-2xl text-center text-[12px] leading-relaxed text-slate-500">
-                                Score each section out of 5. A minimum total of <span className="font-semibold text-slate-700">12 / 15</span> is required to pass.
+                                {scored.length > 0
+                                    ? <>Score each section out of 5. A minimum total of <span className="font-semibold text-slate-700">12 / 15</span> is required to pass.</>
+                                    : <>FMCSA §391.31 record of road test — complete the inspection checklist and certify the result below.</>}
                             </p>
-                            {/* Rating scale pills */}
-                            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                                {RATING_SCALE.map((r) => (
-                                    <div key={r.n} className={cn('rounded-lg border px-2.5 py-2 text-center', SCALE_TONE[r.n])}>
-                                        <div className="flex items-center justify-center gap-1.5">
-                                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/70 text-[12px] font-bold">{r.n}</span>
-                                            <span className="text-[12px] font-bold">{r.label}</span>
-                                        </div>
-                                        <p className="mt-1 text-[10px] leading-tight text-slate-500">{r.desc}</p>
-                                    </div>
-                                ))}
-                            </div>
                         </div>
                         {header.length > 0 && (
-                            <div className="border-t border-slate-100 px-4 py-5 sm:px-6">
-                                <p className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500"><FileText size={12} /> Driver & Equipment</p>
-                                <div className="grid grid-cols-1 gap-x-5 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                    {header.map((f) => <Field key={f.id} field={f} value={str(f.id)} onChange={(v) => set(f.id, v)} />)}
-                                </div>
+                            <div className="divide-y divide-slate-100 border-t border-slate-100">
+                                {TOP_SUBSECTIONS.map((sub) => {
+                                    const isTest = sub.title === 'Test Details';
+                                    // The route distance field is rendered inside the route widget, not the plain grid.
+                                    const fields = header.filter((f) => sub.ids.includes(f.id) && !(isTest && f.id === 'f-ats-rt-test-miles'));
+                                    if (fields.length === 0 && !isTest) return null;
+                                    return (
+                                        <div key={sub.title} className="px-4 py-5 sm:px-6">
+                                            <p className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500"><sub.icon size={12} /> {sub.title}</p>
+                                            {fields.length > 0 && (
+                                                <div className="grid grid-cols-1 gap-x-5 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                                                    {fields.map((f) => <Field key={f.id} field={f} value={str(f.id)} onChange={(v) => set(f.id, v)} />)}
+                                                </div>
+                                            )}
+                                            {isTest && renderRoute()}
+                                        </div>
+                                    );
+                                })}
+                                {(() => {
+                                    const grouped = new Set(TOP_SUBSECTIONS.flatMap((s) => s.ids));
+                                    const rest = header.filter((f) => !grouped.has(f.id));
+                                    if (rest.length === 0) return null;
+                                    return (
+                                        <div className="px-4 py-5 sm:px-6">
+                                            <div className="grid grid-cols-1 gap-x-5 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                                                {rest.map((f) => <Field key={f.id} field={f} value={str(f.id)} onChange={(v) => set(f.id, v)} />)}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         )}
                     </div>
@@ -867,15 +855,15 @@ function ChecklistInline({ field, checked, onToggle }: { field: FormField; check
     );
 }
 
-// ── Checklist with ✓ / ✗ per item ────────────────────────────────────────────
+// ── Checklist with Satisfactory / Needs Training / Unsatisfactory per item ────
 // Understands the road-test data shape: group rows ("1) Start the coupling task:")
 // render bold, lettered sub-steps ("a) …") indent, and the field instruction is a
 // highlighted criteria note (e.g. the manoeuvre-space rules). Each row can be
-// marked Satisfactory (✓ green) or Unsatisfactory (✗ red).
+// marked Satisfactory (green), Needs Training (amber) or Unsatisfactory (red).
 function Checklist({ field, getState, onMark, onAll, card }: {
     field: FormField;
-    getState: (opt: string) => 'sat' | 'unsat' | null;
-    onMark: (opt: string, state: 'sat' | 'unsat' | null) => void;
+    getState: (opt: string) => 'sat' | 'unsat' | 'training' | null;
+    onMark: (opt: string, state: 'sat' | 'unsat' | 'training' | null) => void;
     onAll: (on: boolean) => void;
     card?: boolean;
 }) {
@@ -884,7 +872,7 @@ function Checklist({ field, getState, onMark, onAll, card }: {
 
     const allBtn = (
         <button type="button" onClick={() => onAll(!allOn)} className="text-[10px] font-bold uppercase tracking-wide text-slate-400 hover:text-blue-600">
-            {allOn ? 'Clear' : 'All ✓'}
+            {allOn ? 'Clear' : 'All Sat.'}
         </button>
     );
 
@@ -898,7 +886,7 @@ function Checklist({ field, getState, onMark, onAll, card }: {
                 return (
                     <li key={o} className={cn('flex items-start gap-2 px-3 py-1.5', i > 0 && 'border-t border-slate-50',
                         isSub && 'pl-7', isGroup && 'bg-slate-50/70',
-                        st === 'sat' && 'bg-emerald-50/60', st === 'unsat' && 'bg-rose-50/60')}>
+                        st === 'sat' && 'bg-emerald-50/60', st === 'training' && 'bg-amber-50/60', st === 'unsat' && 'bg-rose-50/60')}>
                         <span className={cn('flex-1 pt-1 text-[12.5px] leading-snug',
                             isGroup ? 'font-bold text-slate-800' : st ? 'font-medium text-slate-800' : 'text-slate-600')}>{o}</span>
                         <div className="flex shrink-0 gap-1 pt-0.5">
@@ -906,6 +894,11 @@ function Checklist({ field, getState, onMark, onAll, card }: {
                                 className={cn('flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
                                     st === 'sat' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-slate-300 hover:border-emerald-400 hover:text-emerald-600')}>
                                 <Check size={13} strokeWidth={3} />
+                            </button>
+                            <button type="button" title="Needs Training" onClick={() => onMark(o, st === 'training' ? null : 'training')}
+                                className={cn('flex h-6 w-6 items-center justify-center rounded-md border transition-colors',
+                                    st === 'training' ? 'border-amber-500 bg-amber-500 text-white' : 'border-slate-300 bg-white text-slate-300 hover:border-amber-400 hover:text-amber-600')}>
+                                <GraduationCap size={13} />
                             </button>
                             <button type="button" title="Unsatisfactory" onClick={() => onMark(o, st === 'unsat' ? null : 'unsat')}
                                 className={cn('flex h-6 w-6 items-center justify-center rounded-md border transition-colors',

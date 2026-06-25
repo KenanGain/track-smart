@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, FileSearch, FileSignature, ClipboardCheck, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks, Eye } from "lucide-react";
+import { FileText, LayoutTemplate, Plus, Search, Check, ArrowRight, Info, X, Lock, FileSearch, FileSignature, ClipboardCheck, ClipboardList, ShieldCheck, ShieldAlert, FlaskConical, BadgeCheck, HeartPulse, CalendarCheck, DatabaseZap, ListChecks, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import { TemplateBuilder } from "./TemplateBuilder";
 import { TemplateTester } from "./TemplateTester";
 import { ChecklistBuilder } from "./ChecklistBuilder";
 import { useChecklists, totalChecklistItems, checklistName } from "./checklists.data";
+import { useQuizzes, QUIZ_CATEGORIES } from "./quizzes.data";
+import { QuizRunner } from "./QuizRunner";
 import { useHiringTemplates, totalForms, driverTypeName, type HiringTemplate } from "./hiring-templates.data";
 
 // Forms built so far. (Form builders are wired up per form as we add them.)
@@ -40,7 +42,7 @@ const FORMS = [
  * are wired up later.
  */
 
-type Tab = "forms" | "policy" | "templates" | "checklists";
+type Tab = "forms" | "policy" | "templates" | "checklists" | "quizzes";
 
 export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
     const [tab, setTab] = useState<Tab>("templates");
@@ -50,24 +52,31 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
     const [editTemplate, setEditTemplate] = useState<string | null>(null);
     const [testTemplate, setTestTemplate] = useState<HiringTemplate | null>(null);
     const [editChecklist, setEditChecklist] = useState<string | null>(null);
+    const [previewQuiz, setPreviewQuiz] = useState<string | null>(null);
     const { templates, remove: removeTemplate } = useHiringTemplates(carrierId);
     const { checklists, remove: removeChecklist } = useChecklists();
+    const { quizzes, remove: removeQuiz } = useQuizzes();
     // Only the workflow/onboarding policy documents — not the application consent forms.
     const policyForms = policyDocuments();
 
     if (testTemplate) return <TemplateTester template={testTemplate} onBack={() => setTestTemplate(null)} />;
     if (editTemplate !== null) return <TemplateBuilder templateId={editTemplate} carrierId={carrierId} onBack={() => setEditTemplate(null)} />;
     if (editChecklist !== null) return <ChecklistBuilder checklistId={editChecklist} onBack={() => setEditChecklist(null)} />;
+    if (previewQuiz !== null) {
+        const qz = quizzes.find((q) => q.id === previewQuiz);
+        if (qz) return <QuizRunner quiz={qz} mode="preview" onClose={() => setPreviewQuiz(null)} />;
+    }
     if (openForm !== null) return <HiringFormView formId={openForm} startPreview={openPreview} onBack={() => { setOpenForm(null); setOpenPreview(false); }} />;
 
     const TABS: { key: Tab; label: string; Icon: React.ElementType; count: number }[] = [
         { key: "templates", label: "Workflows", Icon: LayoutTemplate, count: templates.length },
         { key: "forms", label: "Forms", Icon: FileText, count: FORMS.length },
+        { key: "quizzes", label: "Quizzes", Icon: ClipboardList, count: quizzes.length },
         { key: "policy", label: "Policy", Icon: FileSignature, count: policyForms.length },
         { key: "checklists", label: "Checklists", Icon: ListChecks, count: checklists.length },
     ];
-    const tabCount = tab === "forms" ? FORMS.length : tab === "policy" ? policyForms.length : tab === "templates" ? templates.length : checklists.length;
-    const tabLabel = tab === "forms" ? "Forms" : tab === "policy" ? "Policy & Signature Forms" : tab === "templates" ? "Hiring Workflows" : "Approval Checklists";
+    const tabCount = tab === "forms" ? FORMS.length : tab === "quizzes" ? quizzes.length : tab === "policy" ? policyForms.length : tab === "templates" ? templates.length : checklists.length;
+    const tabLabel = tab === "forms" ? "Forms" : tab === "quizzes" ? "Driver Quizzes" : tab === "policy" ? "Policy & Signature Forms" : tab === "templates" ? "Hiring Workflows" : "Approval Checklists";
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -122,11 +131,13 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                                         setFlash(
                                             tab === "forms"
                                                 ? "The form builder is the next step — share the form details and we’ll build it here."
-                                                : "Policy & signature forms are config-driven — share the statement text and we’ll add it here.",
+                                                : tab === "quizzes"
+                                                    ? "Quizzes are seeded for now — share the questions and answers and we’ll add a new quiz here."
+                                                    : "Policy & signature forms are config-driven — share the statement text and we’ll add it here.",
                                         );
                                     }}
                                 >
-                                    <Plus className="h-4 w-4" /> {tab === "forms" ? "New Form" : tab === "policy" ? "New Policy" : tab === "templates" ? "New Workflow" : "New Checklist"}
+                                    <Plus className="h-4 w-4" /> {tab === "forms" ? "New Form" : tab === "quizzes" ? "New Quiz" : tab === "policy" ? "New Policy" : tab === "templates" ? "New Workflow" : "New Checklist"}
                                 </Button>
                             </div>
                         </div>
@@ -153,6 +164,47 @@ export function HiringBuilderPage({ carrierId }: { carrierId?: string }) {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        ) : tab === "quizzes" ? (
+                            <div>
+                                {(() => {
+                                    // Group quizzes by category, ordered by QUIZ_CATEGORIES (extras appended).
+                                    const order = [...QUIZ_CATEGORIES] as string[];
+                                    const cats = Array.from(new Set(quizzes.map((x) => x.category)))
+                                        .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+                                    return cats.map((cat) => {
+                                        const list = quizzes.filter((x) => x.category === cat);
+                                        return (
+                                            <div key={cat}>
+                                                <div className="flex items-center gap-2 border-y border-slate-100 bg-slate-50/80 px-5 py-2 first:border-t-0">
+                                                    <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{cat}</span>
+                                                    <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-200">{list.length}</span>
+                                                </div>
+                                                <div className="divide-y divide-slate-100">
+                                                    {list.map((qz) => (
+                                                        <div key={qz.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
+                                                            <div className="flex min-w-0 flex-1 items-center gap-4">
+                                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600"><ClipboardList className="h-5 w-5" /></div>
+                                                                <div className="min-w-0">
+                                                                    <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
+                                                                        {qz.title}
+                                                                        {qz.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
+                                                                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{qz.questions.length} questions · pass {qz.passPct}%</span>
+                                                                    </p>
+                                                                    {qz.description && <p className="truncate text-sm text-slate-500">{qz.description}</p>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex shrink-0 justify-end gap-2">
+                                                                <Button variant="outline" size="sm" onClick={() => setPreviewQuiz(qz.id)}><Eye className="h-4 w-4" /> Preview</Button>
+                                                                {!qz.locked && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete quiz “${qz.title}”?`)) removeQuiz(qz.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
                             </div>
                         ) : tab === "forms" ? (
                             <div className="divide-y divide-slate-100">

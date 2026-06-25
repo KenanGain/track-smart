@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronLeft, Plus, Trash2, ArrowUp, ArrowDown, Check, X, Lock, FileText } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowUp, ArrowDown, Check, X, Lock, FileText, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectBox } from "./FormKit";
-import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, stepFormMode, FULFILL_META, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, DRIVER_TYPES, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType, type FulfillMode } from "./hiring-templates.data";
+import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, stepFormMode, FULFILL_META, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, DRIVER_TYPES, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType, type FulfillMode, type QuizPick } from "./hiring-templates.data";
 import { useChecklists, checklistForDriverType } from "./checklists.data";
+import { useQuizzes, TEST_LENGTHS, testLength } from "./quizzes.data";
 
 const GROUP_TONE: Record<string, string> = { Core: "bg-blue-50 text-blue-600", Forms: "bg-emerald-50 text-emerald-600", Policy: "bg-violet-50 text-violet-600" };
 // Pickers: step 1 (Application) only takes consent forms; later steps take any form except the application itself.
@@ -39,6 +40,8 @@ function seedSteps(): TemplateStep[] {
 export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId: string; carrierId?: string; onBack: () => void }) {
     const { templates, save } = useHiringTemplates(carrierId);
     const { checklists } = useChecklists();
+    const { quizzes } = useQuizzes();
+    const quizById = (id: string) => quizzes.find((x) => x.id === id);
     const existing = templateId === "new" ? undefined : templates.find((t) => t.id === templateId);
 
     const [name, setName] = useState(existing?.name ?? "");
@@ -62,6 +65,11 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
     const addForm = (stepId: string, refId: string) => { if (refId) setSteps((l) => l.map((s) => (s.id === stepId && !s.formIds.includes(refId) ? { ...s, formIds: [...s.formIds, refId] } : s))); };
     const removeForm = (stepId: string, refId: string) => { if (refId === "application" || refId === "review") return; setSteps((l) => l.map((s) => { if (s.id !== stepId) return s; const fm = { ...(s.formModes ?? {}) }; delete fm[refId]; return { ...s, formIds: s.formIds.filter((f) => f !== refId), formModes: fm }; })); };
     const setFormMode = (stepId: string, fid: string, mode: FulfillMode) => setSteps((l) => l.map((s) => (s.id === stepId ? { ...s, formModes: { ...(s.formModes ?? {}), [fid]: mode } } : s)));
+    // Quizzes attached to a Knowledge Test step (formId "quiz") — the default test.
+    const setStepQuizzes = (stepId: string, fn: (q: QuizPick[]) => QuizPick[]) => setSteps((l) => l.map((s) => (s.id === stepId ? { ...s, quizzes: fn(s.quizzes ?? []) } : s)));
+    const addQuiz = (stepId: string, quizId: string, count: number) => { if (quizId) setStepQuizzes(stepId, (q) => (q.some((x) => x.quizId === quizId) ? q : [...q, { quizId, count }])); };
+    const removeQuiz = (stepId: string, quizId: string) => setStepQuizzes(stepId, (q) => q.filter((x) => x.quizId !== quizId));
+    const setQuizCount = (stepId: string, quizId: string, count: number) => setStepQuizzes(stepId, (q) => q.map((x) => (x.quizId === quizId ? { ...x, count } : x)));
 
     const onSave = () => {
         if (!name.trim()) { setError("Give the workflow a name."); return; }
@@ -176,6 +184,44 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
                                                 </div>
                                             );
                                         })}
+                                    </div>
+                                )}
+
+                                {/* Knowledge Test step — attach quizzes as the default test (which quiz + how many questions). */}
+                                {s.formIds.includes("quiz") && (
+                                    <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+                                        <div className="mb-2 flex items-center gap-2">
+                                            <ClipboardList className="h-4 w-4 text-sky-600" />
+                                            <span className="text-[11px] font-bold uppercase tracking-wide text-sky-700">Attached quizzes (default test)</span>
+                                        </div>
+                                        {(s.quizzes ?? []).length === 0 ? (
+                                            <p className="mb-2 text-xs text-slate-500">No quizzes attached yet — drivers will be assigned these by default. Add one below.</p>
+                                        ) : (
+                                            <div className="mb-2 space-y-1.5">
+                                                {(s.quizzes ?? []).map((qp) => {
+                                                    const qz = quizById(qp.quizId);
+                                                    if (!qz) return null;
+                                                    return (
+                                                        <div key={qp.quizId} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[13px]">
+                                                            <span className="min-w-0 flex-1 truncate font-medium text-slate-700">{qz.title} <span className="text-xs font-normal text-slate-400">· {qz.category}</span></span>
+                                                            <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-500">Test length
+                                                                <select value={testLength(qz, qp.count)} onChange={(e) => setQuizCount(s.id, qp.quizId, Number(e.target.value))}
+                                                                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-semibold text-slate-700 focus:border-blue-400 focus:outline-none">
+                                                                    {TEST_LENGTHS.filter((n) => n < qz.questions.length).map((n) => <option key={n} value={n}>{n} questions</option>)}
+                                                                    <option value={qz.questions.length}>All ({qz.questions.length})</option>
+                                                                </select>
+                                                            </label>
+                                                            <button type="button" onClick={() => removeQuiz(s.id, qp.quizId)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-rose-100 hover:text-rose-500"><X className="h-3 w-3" /></button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                        <div className="max-w-xs">
+                                            <SelectBox value="" placeholder="+ Attach a quiz…"
+                                                items={quizzes.filter((qz) => !(s.quizzes ?? []).some((x) => x.quizId === qz.id)).map((qz) => qz.title)}
+                                                onChange={(nm) => { const qz = quizzes.find((x) => x.title === nm); if (qz) addQuiz(s.id, qz.id, Math.min(20, qz.questions.length)); }} />
+                                        </div>
                                     </div>
                                 )}
 

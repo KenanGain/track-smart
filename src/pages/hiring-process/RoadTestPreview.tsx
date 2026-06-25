@@ -13,11 +13,13 @@ import { useCompanyBranding } from "../ats/company-branding.data";
  * previews the assignment they receive, and Recipient form is the actual
  * Road Test Evaluation the examiner fills.
  */
-export function RoadTestPreview({ driverName, carrier, prefill, onBack }: {
+export function RoadTestPreview({ driverName, carrier, prefill, onBack, initialValues, onSave }: {
     driverName: string; carrier: string; prefill: ApplicantPrefill | null; onBack: () => void;
+    initialValues?: Record<string, unknown>;
+    onSave?: (info: { status: "draft" | "submitted"; examiner?: string; values?: Record<string, unknown> }) => void;
 }) {
     const [branding] = useCompanyBranding();
-    const [tab, setTab] = useState<"compose" | "email" | "form">("compose");
+    const [tab, setTab] = useState<"compose" | "email" | "form">(initialValues ? "form" : "compose");
     const [sent, setSent] = useState<AssignExaminerPayload | null>(null);
     const company = branding.name || "Acme Logistics";
     const accent = branding.accentColor || "#2563eb";
@@ -105,15 +107,19 @@ export function RoadTestPreview({ driverName, carrier, prefill, onBack }: {
                 </div>
             ))}
 
-            {tab === "form" && (!sent ? <NeedAssign what="recipient form" /> : (
+            {tab === "form" && (!sent && !initialValues ? <NeedAssign what="recipient form" /> : (
                 <div className="px-4 py-8">
                     <div className="mx-auto max-w-5xl">
                         <div className="mb-3 flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-slate-600">
                             <ClipboardCheck className="h-4 w-4 shrink-0 text-blue-500" />
-                            <span><span className="font-semibold text-slate-800">{sent.name}</span> opens this Road Test Evaluation for <span className="font-semibold text-slate-800">{driverName}</span> — scores each section, then certifies the result.</span>
+                            <span><span className="font-semibold text-slate-800">{sent?.name ?? "The examiner"}</span> opens this Road Test Evaluation for <span className="font-semibold text-slate-800">{driverName}</span> — scores each section, then certifies the result.</span>
                         </div>
                         <PrefillProvider value={prefill}>
-                            <HiringFormView formId="road-test" embedded onBack={onBack} />
+                            <HiringFormView formId="road-test" embedded onBack={onBack}
+                                roadTestValues={initialValues}
+                                roadTestNote={{ examiner: sent?.name ?? "The examiner", driver: driverName }}
+                                onSaveValues={(values) => onSave?.({ status: "draft", examiner: sent?.name, values })}
+                                onSignOff={(info) => onSave?.({ status: "submitted", examiner: sent?.name, values: info?.values })} />
                         </PrefillProvider>
                     </div>
                 </div>

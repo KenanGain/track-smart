@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, Send, FileSearch, BadgeCheck, RotateCcw,
     AlertCircle, Clock, ExternalLink, Mail, Printer, Share2,
-    MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip, ClipboardCheck, CreditCard, Award,
+    MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip, ClipboardCheck, ClipboardList, CreditCard, Award,
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -32,6 +32,10 @@ import { PolicyDocument } from "./PolicyForm";
 import { POLICY_FORMS } from "./policy-forms.data";
 import { useCompanyBranding, type CompanyBranding } from "../ats/company-branding.data";
 import { AssignExaminerDialog } from "./AssignExaminerDialog";
+import { RoadTestEquivalent, type EquivalentResult } from "./RoadTestEquivalent";
+import { useQuizzes, getQuiz, quizTitle, testQuestions, testLength, testPassMark, TEST_LENGTHS } from "./quizzes.data";
+import type { QuizPick } from "./hiring-templates.data";
+import { QuizRunner, type QuizResult } from "./QuizRunner";
 import { FormDocument, THEMES, type DocSection, type ThemeKey } from "./FormDocument";
 import { ClassicSphForms, type ClassicSphData } from "./ClassicSphForms";
 
@@ -94,6 +98,9 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const [selected, setSelected] = useState(0);
     const [reqOpen, setReqOpen] = useState<Partial<AppRequest> | null>(null);
     const [note, setNote] = useState("");
+    const [equivReview, setEquivReview] = useState<"license" | "document" | null>(null);   // §391.33 equivalent review page
+    const [equivRequestKind, setEquivRequestKind] = useState<"license" | "document" | null>(null);   // which equivalent the open Ask/Order targets
+    const [quizRun, setQuizRun] = useState<{ quizId: string; mode: "take" | "review" } | null>(null);   // the quiz the driver is taking / being reviewed
 
     const a = applicants.find((x) => x.id === applicantId);
     if (!a) return <NotFound onBack={onBack} />;
@@ -112,13 +119,14 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const empFid = step?.formIds.find((f) => f === "dot-verification" || f === "employment-verification");
     const isEmpStep = !!empFid && pf.employment.length > 0;
     const isRoadTestStep = !!step && step.kind !== "review" && step.formIds.includes("road-test");
+    const isQuizStep = !!step && step.kind !== "review" && step.formIds.includes("quiz");
     const checklist = getChecklist(tpl?.checklistId);
     // Hiring review shows only Stage 1 (the hiring decision); later stages are completed in Onboarding.
     const reviewChecklist = checklist ? { ...checklist, stages: checklist.stages.slice(0, 1) } : undefined;
     const clState = a.checklistState ?? {};
     // The step's required items (forms + license uploads). Empty for review / employment steps (handled specially).
     // A license form holds a LIST of licenses → expand into one row per license.
-    const baseItems = step && step.kind !== "review" && !isEmpStep && !isRoadTestStep ? stepItems(step) : [];
+    const baseItems = step && step.kind !== "review" && !isEmpStep && !isRoadTestStep && !isQuizStep ? stepItems(step) : [];
     const items = baseItems.flatMap((it) => {
         if (it.fid !== "driver-license" || pf.licenses.length === 0) return [it];
         return pf.licenses.map((l, i) => ({ ...it, id: `driver-license:${i}`, label: `License ${i + 1}${l.number ? ` · ${l.number}` : ""}`, licIndex: i }));
@@ -239,6 +247,123 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
             }));
         }
     }} onBack={() => { setOpenForm(null); setFormPreview(false); }} /></PrefillProvider>;
+    if (quizRun) {
+        // Full-page quiz — the driver takes it (records the scored result) or HR reviews a submitted attempt.
+        // The assigned test only uses the first N questions (the chosen test length).
+        const fullQuiz = getQuiz(quizRun.quizId);
+        const testCount = a.quiz?.quizCounts?.[quizRun.quizId];
+        const quiz = fullQuiz ? { ...fullQuiz, questions: testQuestions(fullQuiz, testCount) } : undefined;
+        if (quiz) {
+            const recordQuizResult = (r: QuizResult) => {
+                updateOne(a.id, (prev) => {
+                    const results = { ...(prev.quiz?.results ?? {}), [r.quizId]: { score: r.score, total: r.total, passed: r.passed, answers: r.answers, at: r.at } };
+                    const assignedIds = prev.quiz?.assignedQuizIds ?? [];
+                    const allTaken = assignedIds.length > 0 && assignedIds.every((id) => results[id]);
+                    return {
+                        quiz: { ...(prev.quiz ?? {}), results },
+                        docs: allTaken ? { ...(prev.docs ?? {}), quiz: "received" as DocStatus } : prev.docs,
+                        events: [{ id: `ev-${Date.now()}`, type: "form" as const, text: `Driver completed quiz “${quizTitle(r.quizId)}” — ${r.score}/${r.total} (${r.passed ? "passed" : "did not pass"})`, at: Date.now(), author: ACTOR }, ...prev.events],
+                    };
+                });
+                setQuizRun(null);
+            };
+            return <QuizRunner quiz={quiz} mode={quizRun.mode} driverName={`${a.firstName} ${a.lastName}`}
+                initialAnswers={a.quiz?.results?.[quizRun.quizId]?.answers}
+                onClose={() => setQuizRun(null)} onSubmit={recordQuizResult} />;
+        }
+    }
+    if (equivReview) {
+        // Dedicated full page: review the uploaded §391.33 equivalent document + Reviewer Sign-Off.
+        const rtDocs = a.roadTest?.documents ?? [];
+        const fv = a.roadTest?.formValues ?? {};
+        type LicDoc = { id?: string; slotLabel?: string; fileName?: string; issueDate?: string; expiryDate?: string; issuingState?: string; issuingCountry?: string };
+        const licDocs = (Array.isArray(fv["f-ats-rt-lic-docs"]) ? fv["f-ats-rt-lic-docs"] : []) as LicDoc[];
+        const showLicence = equivReview === "license" && licDocs.length > 0;
+        const lic = licDocs[0];
+        const rtStep = steps.find((s) => s.formIds.includes("road-test"));
+        const confirmEquiv = (r: { sig: string; by: string; role: string; date: string }) => {
+            const signed: ReviewSignoff = { ...r, at: Date.now() };
+            updateOne(a.id, (prev) => ({
+                docs: { ...(prev.docs ?? {}), "road-test": "received" as DocStatus },
+                reviews: { ...(prev.reviews ?? {}), "road-test": signed },
+                stepStatus: rtStep ? { ...(prev.stepStatus ?? {}), [rtStep.id]: "complete" as StepStatus } : prev.stepStatus,
+                requests: (prev.requests ?? []).map((rq) => (rq.fid === "road-test" && rq.status === "open" ? { ...rq, status: "resolved" as const } : rq)),
+                events: [{ id: `ev-${Date.now()}`, type: "review" as const, text: "Reviewed & signed off the road test equivalent (§391.33)", at: Date.now(), author: ACTOR }, ...prev.events],
+            }));
+            setEquivReview(null);
+        };
+        return (
+            <div className="min-h-screen bg-slate-50">
+                <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-3">
+                    <button type="button" onClick={() => setEquivReview(null)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Road Test</button>
+                    <div className="ml-1 min-w-0">
+                        <h1 className="truncate text-sm font-bold text-slate-900">Review {equivReview === "license" ? "driver licence" : "prior certificate"} — §391.33 equivalent</h1>
+                        <p className="truncate text-xs text-slate-500">{a.firstName} {a.lastName}</p>
+                    </div>
+                </div>
+                <div className="mx-auto max-w-3xl space-y-5 px-6 py-8">
+                    {showLicence ? (
+                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3.5">
+                                <CreditCard className="h-4 w-4 text-blue-500" />
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Driver's licence — §391.33(a)(1)</p>
+                            </div>
+                            <div className="space-y-5 p-5">
+                                {/* Front / Back images */}
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {["Front", "Back"].map((slot) => {
+                                        const d = licDocs.find((x) => (x.slotLabel ?? "") === slot) ?? (slot === "Front" ? licDocs.find((x) => !x.slotLabel) : undefined);
+                                        return (
+                                            <div key={slot} className="overflow-hidden rounded-xl border border-slate-200">
+                                                <div className="border-b border-slate-100 bg-slate-50/70 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">{slot}</div>
+                                                <div className="flex h-44 flex-col items-center justify-center gap-1.5 bg-slate-100 text-slate-400">
+                                                    {d ? (<><CreditCard className="h-8 w-8" /><p className="max-w-[90%] truncate px-2 text-xs font-medium text-slate-600">{d.fileName}</p></>) : <span className="text-xs">Not provided</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {/* Licence details */}
+                                <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4">
+                                    {[["Issuing country", lic?.issuingCountry], ["State / Province", lic?.issuingState], ["Issue date", lic?.issueDate], ["Expiry date", lic?.expiryDate]].map(([label, value]) => (
+                                        <div key={label}>
+                                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+                                            <p className="mt-0.5 text-sm font-medium text-slate-800">{value || "—"}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+                    ) : (
+                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div className="border-b border-slate-100 px-5 py-3.5">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Uploaded document{rtDocs.length > 1 ? "s" : ""} · {rtDocs.length}</p>
+                            </div>
+                            <div className="space-y-2 p-5">
+                                {rtDocs.length === 0 && <p className="text-sm text-slate-400">No document uploaded.</p>}
+                                {rtDocs.map((d, i) => (
+                                    <div key={i} className="overflow-hidden rounded-xl border border-slate-200">
+                                        <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 ring-1 ring-slate-200"><FileText className="h-4 w-4" /></span>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-semibold text-slate-800">{d.label}</p>
+                                                <p className="truncate text-xs text-slate-500">{d.fileName || "Provided by the driver"}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex h-44 flex-col items-center justify-center gap-1.5 bg-slate-100 text-slate-400">
+                                            <FileText className="h-8 w-8" />
+                                            <p className="text-xs">{d.fileName || "Document preview"}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+                    <ReviewSignOff label="Road Test — Reviewer Sign-Off" signedNote="Equivalent reviewed & signed off" existing={a.reviews?.["road-test"]} onConfirm={confirmEquiv} />
+                </div>
+            </div>
+        );
+    }
     if (openConsent) {
         const allConsentIds = (steps.find((s) => s.kind === "app")?.formIds ?? []).filter((f) => stepGroup(f) === "Policy");
         const consentIds = consentFocus ? allConsentIds.filter((f) => f === consentFocus) : allConsentIds;
@@ -441,7 +566,30 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                                             events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed off the road test — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
                                         }))}
                                         onOpenForm={() => { setFormPreview(false); setOpenForm("road-test"); }}
-                                        onPreviewForm={() => { setFormPreview(true); setOpenForm("road-test"); }} />
+                                        onPreviewForm={() => { setFormPreview(true); setOpenForm("road-test"); }}
+                                        onCaptureEquivalent={(r) => {
+                                            // Capture the uploaded equivalent (method + docs) WITHOUT completing the step —
+                                            // HR completes it from the Review page (document + sign-off).
+                                            updateOne(a.id, (prev) => ({ roadTest: { ...(prev.roadTest ?? {}), method: r.method, documents: r.documents, formValues: { ...(prev.roadTest?.formValues ?? {}), ...r.values } } }));
+                                        }}
+                                        onReviewEquivalent={(k) => setEquivReview(k)}
+                                        onRequestEquivalent={(k) => {
+                                            setEquivRequestKind(k);
+                                            const what = k === "license" ? "Driver's Licence (front & back)" : "Prior Road-Test Certificate";
+                                            setReqOpen({ fid: "road-test", action: "Request", recipient: "Driver", to: a.email,
+                                                subject: `Please upload — ${what} (§391.33 road-test equivalent)`,
+                                                message: `Hi ${a.firstName},\n\nTo satisfy the FMCSA §391.33 road-test equivalent, please upload ${k === "license" ? "the front and back of your valid driver's licence" : "a copy of your prior §391.31 road-test certificate"} using the secure link below.\n\nThank you.` });
+                                        }} />
+                                ) : isQuizStep ? (
+                                    <QuizModule a={a} updateOne={updateOne} defaults={step.quizzes}
+                                        review={a.reviews?.["quiz"]}
+                                        onReview={(r) => updateOne(a.id, (prev) => ({
+                                            reviews: { ...(prev.reviews ?? {}), "quiz": r },
+                                            stepStatus: { ...(prev.stepStatus ?? {}), [step.id]: "complete" as StepStatus },
+                                            events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed off the driver quizzes — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
+                                        }))}
+                                        onTake={(quizId) => setQuizRun({ quizId, mode: "take" })}
+                                        onReviewResult={(quizId) => setQuizRun({ quizId, mode: "review" })} />
                                 ) : (
                                     <div className="space-y-2.5 p-5">
                                         {items.map((item) => (
@@ -497,7 +645,12 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                 </div>
             </div>
 
-            {reqOpen && <RequestDialog prefill={reqOpen} driverEmail={a.email} onClose={() => setReqOpen(null)} onSubmit={(req) => { submitRequest(req); setReqOpen(null); }} />}
+            {reqOpen && <RequestDialog prefill={reqOpen} driverEmail={a.email} onClose={() => { setReqOpen(null); setEquivRequestKind(null); }} onSubmit={(req) => {
+                submitRequest(req);
+                if (equivRequestKind) updateOne(a.id, (prev) => ({ roadTest: { ...(prev.roadTest ?? {}), equivRequested: Array.from(new Set([...(prev.roadTest?.equivRequested ?? []), equivRequestKind])) } }));
+                setEquivRequestKind(null);
+                setReqOpen(null);
+            }} />}
             {uploadFor && <UploadDialog item={uploadFor} onClose={() => setUploadFor(null)} onUpload={(name) => saveUpload(uploadFor, name)} />}
             {docPreview && (
                 <Dialog open onOpenChange={(o) => { if (!o) setDocPreview(null); }}>
@@ -1799,18 +1952,20 @@ function DocumentsRow({ items }: { items: DocRowItem[] }) {
 // ── Employment Verification module ───────────────────────────────────────────
 type UpdateFn = (id: string, patch: (prev: Applicant) => Partial<Applicant>) => void;
 
-// ── Road Test module — assign an examiner to take the driver's §391.31 road test,
-//    then satisfy it one of three ways: generate the certification (fill the Road
-//    Test Evaluation), accept a license as equivalent, or upload a supporting doc.
-//    Once recorded, the step moves to "Waiting for review" for HR (step status menu). ──
+// ── Road Test module — assign an examiner to conduct the driver's §391.31 road
+//    test (fill the Road Test Evaluation → issues the certificate), OR accept a
+//    §391.33 equivalent provided by the driver (a valid CDL or a prior road-test
+//    certificate, via RoadTestEquivalent). Once recorded the step moves to
+//    "Waiting for review" for HR (step status menu). ──
 const ROAD_TEST_METHODS: { id: RoadTestMethod; label: string; desc: string; icon: React.ElementType; actionLabel: string; uploadLabel?: string }[] = [
-    { id: "certify", label: "Generate Certification", desc: "Conduct the road test and fill the Road Test Evaluation — produces the §391.31 certificate.", icon: BadgeCheck, actionLabel: "Open Evaluation" },
-    { id: "license", label: "Upload License", desc: "Accept a valid CDL as the equivalent of the road test (§391.33).", icon: Upload, actionLabel: "Upload License", uploadLabel: "Road Test — License accepted as equivalent (§391.33)" },
-    { id: "document", label: "Upload Supporting Document", desc: "Attach a prior road-test certificate or other supporting document.", icon: Paperclip, actionLabel: "Upload Document", uploadLabel: "Road Test — Supporting document" },
+    { id: "certify", label: "Road test conducted (§391.31)", desc: "Conduct the road test and fill the Road Test Evaluation — produces the §391.31 certificate.", icon: BadgeCheck, actionLabel: "Open Evaluation" },
+    { id: "license", label: "Licence accepted as equivalent (§391.33)", desc: "Accept a valid CDL as the equivalent of the road test (§391.33).", icon: Upload, actionLabel: "Upload License", uploadLabel: "Road Test — License accepted as equivalent (§391.33)" },
+    { id: "document", label: "Prior certificate accepted (§391.33)", desc: "Attach a prior road-test certificate or other supporting document.", icon: Paperclip, actionLabel: "Upload Document", uploadLabel: "Road Test — Supporting document" },
 ];
 const ROAD_TEST_DOC_ICON: Record<string, React.ElementType> = { certificate: Award, license: CreditCard, document: FileText, additional: Paperclip };
-function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewForm }: {
+function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewForm, onCaptureEquivalent, onReviewEquivalent, onRequestEquivalent }: {
     a: Applicant; updateOne: UpdateFn; review?: ReviewSignoff; onReview: (r: ReviewSignoff) => void; onOpenForm: () => void; onPreviewForm: () => void;
+    onCaptureEquivalent: (r: EquivalentResult) => void; onReviewEquivalent: (kind: "license" | "document") => void; onRequestEquivalent: (kind: "license" | "document") => void;
 }) {
     const rt = a.roadTest ?? {};
     const status = a.docs?.["road-test"] ?? "pending";
@@ -1819,11 +1974,24 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
     const upload = (a.uploads ?? []).find((u) => u.id === "up:road-test");
     const assigned = !!rt.examiner;
     const [assignOpen, setAssignOpen] = useState(false);
+    // An equivalent that's been captured (uploaded) but not yet reviewed/recorded.
+    // Only count docs of the matching equivalent kind (ignore conduct certificates / extras).
+    const equivDocs = (rt.documents ?? []).filter((d) => d.kind === "license" || d.kind === "document");
+    const equivCaptured = !recorded && (rt.method === "license" || rt.method === "document") && equivDocs.length > 0
+        ? { kind: rt.method, documents: equivDocs }
+        : undefined;
     // What the examiner produced (from the form), else the quick module upload.
     const docsList: { label: string; fileName?: string; kind?: string }[] = (rt.documents && rt.documents.length) ? rt.documents : (upload ? [{ label: upload.label, fileName: upload.file, kind: "document" }] : []);
     const methodLabel = ROAD_TEST_METHODS.find((x) => x.id === rt.method)?.label;
-    const hasDraft = !!rt.formValues && Object.keys(rt.formValues).length > 0;
+    // A genuine conduct-evaluation draft (ignore equivalent-only metadata keys).
+    const EQUIV_KEYS = new Set(["f-ats-rt-equiv-method", "f-ats-rt-lic-docs", "f-ats-rt-prior-docs", "f-ats-rt-equiv-license", "f-ats-rt-equiv-doc"]);
+    const hasDraft = Object.keys(rt.formValues ?? {}).some((k) => !EQUIV_KEYS.has(k));
     const tiny = "h-7 shrink-0 gap-1 px-2 text-xs";
+    // How the road test was satisfied drives the completed-state actions: a §391.33
+    // equivalent (licence / prior cert) reviews on its own page (the uploaded document
+    // + sign-off), whereas a conducted §391.31 test opens the evaluation form + PDF.
+    const isEquivMethod = rt.method === "license" || rt.method === "document";
+    const openCompletedReview = isEquivMethod ? () => onReviewEquivalent(rt.method as "license" | "document") : onOpenForm;
 
     // Assign the examiner (selected user) and email them the assignment — logged as an open request.
     const onAssign = (v: { name: string; role: string; email: string; subject: string; message: string }) => {
@@ -1866,7 +2034,7 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
         <div className="space-y-4 p-5">
             <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600"><BadgeCheck className="h-4 w-4" /></span>
-                <p className="text-[13px] leading-relaxed text-slate-600">FMCSA §391.31 road test. Assign an examiner to take the driver's road test, complete it (generate a certification, accept a license as equivalent, or upload a supporting document), then HR reviews &amp; signs it off.</p>
+                <p className="text-[13px] leading-relaxed text-slate-600">FMCSA §391.31 road test. Assign an examiner to conduct the driver's road test and issue the §391.31 certificate — or accept a §391.33 equivalent (a valid CDL or a prior road-test certificate) provided by the driver — then HR reviews &amp; signs it off.</p>
             </div>
 
             <div>
@@ -1906,22 +2074,20 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
                             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">How is the road test satisfied?</p>
                             <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold", meta.badge)}><span className={cn("h-1.5 w-1.5 rounded-full", meta.dot)} /> {meta.label}</span>
                         </div>
-                        {!assigned ? (
-                            <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 py-3 text-[13px] text-slate-400">Assign an examiner above to begin the road test.</p>
-                        ) : recorded ? (
+                        {recorded ? (
                             <div className="space-y-3.5">
                                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div className="flex min-w-0 items-start gap-2.5">
                                             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><Check className="h-5 w-5" /></span>
                                             <div className="min-w-0">
-                                                <p className="text-[13px] font-bold text-emerald-800">Road test completed</p>
-                                                <p className="mt-0.5 text-xs text-emerald-700">By {rt.examiner || "examiner"}{methodLabel ? ` · ${methodLabel}` : ""}</p>
+                                                <p className="text-[13px] font-bold text-emerald-800">{rt.method === "certify" || !rt.method ? "Road test completed" : "Road test requirement satisfied"}</p>
+                                                <p className="mt-0.5 text-xs text-emerald-700">{rt.method === "certify" || !rt.method ? `By ${rt.examiner || "examiner"}${methodLabel ? ` · ${methodLabel}` : ""}` : methodLabel}</p>
                                             </div>
                                         </div>
                                         <div className="flex shrink-0 gap-2">
-                                            <Button variant="outline" className={cn(tiny, "bg-white")} onClick={onOpenForm}><Eye className="h-3.5 w-3.5" /> Review</Button>
-                                            <Button variant="outline" className={cn(tiny, "bg-white")} onClick={onPreviewForm}><FileText className="h-3.5 w-3.5" /> PDF</Button>
+                                            <Button variant="outline" className={cn(tiny, "bg-white")} onClick={openCompletedReview}><Eye className="h-3.5 w-3.5" /> Review</Button>
+                                            {!isEquivMethod && <Button variant="outline" className={cn(tiny, "bg-white")} onClick={onPreviewForm}><FileText className="h-3.5 w-3.5" /> PDF</Button>}
                                         </div>
                                     </div>
                                 </div>
@@ -1936,39 +2102,37 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
                                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500"><DocIcon className="h-4 w-4" /></span>
                                                         <div className="min-w-0 flex-1">
                                                             <p className="truncate text-[13px] font-semibold text-slate-800">{d.label}</p>
-                                                            <p className="truncate text-xs text-slate-500">{d.fileName || "Generated in the evaluation form"}</p>
+                                                            <p className="truncate text-xs text-slate-500">{d.fileName || (isEquivMethod ? "Provided by the driver" : "Generated in the evaluation form")}</p>
                                                         </div>
-                                                        <Button variant="outline" className={tiny} onClick={onOpenForm}><Eye className="h-3.5 w-3.5" /> View</Button>
+                                                        <Button variant="outline" className={tiny} onClick={openCompletedReview}><Eye className="h-3.5 w-3.5" /> View</Button>
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     </div>
                                 )}
-                                <button type="button" onClick={onOpenForm} className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700"><RotateCcw className="h-3.5 w-3.5" /> Reopen / edit the road test</button>
+                                <button type="button" onClick={openCompletedReview} className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700"><RotateCcw className="h-3.5 w-3.5" /> {isEquivMethod ? "Re-open the equivalent review" : "Reopen / edit the road test"}</button>
                             </div>
                         ) : (
                             <>
-                                {hasDraft && (
-                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2.5">
-                                        <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-800"><FileText className="h-4 w-4 text-amber-500" /> Road Test Evaluation — saved draft (not submitted){methodLabel ? ` · ${methodLabel}` : ""}</span>
-                                        <div className="flex gap-2">
-                                            <Button variant="outline" className={tiny} onClick={onOpenForm}><Eye className="h-3.5 w-3.5" /> Review</Button>
-                                            <Button variant="outline" className={tiny} onClick={onPreviewForm}><FileText className="h-3.5 w-3.5" /> PDF</Button>
-                                        </div>
-                                    </div>
-                                )}
-                                {/* One entry point — open the evaluation form. The method (certify / licence / document)
-                                    is chosen by the examiner inside the form, then surfaced here once submitted. */}
+                                {/* Conduct the road test — the examiner fills the evaluation and issues the §391.31 certificate. */}
                                 <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-slate-800">{hasDraft ? "Continue the Road Test Evaluation" : "Open the Road Test Evaluation"}</p>
-                                            <p className="mt-0.5 text-xs text-slate-500">{rt.examiner || "The examiner"} scores each §391.31 section and, inside the form, chooses how the road test is satisfied — then submits it back here.</p>
+                                            <p className="text-sm font-semibold text-slate-800">{hasDraft ? "Continue the Road Test Evaluation" : "Conduct the road test"}</p>
+                                            <p className="mt-0.5 text-xs text-slate-500">{assigned ? `${rt.examiner || "The examiner"} scores each §391.31 section and submits the certificate back here.` : "Assign an examiner above to conduct the §391.31 road test and issue the certificate."}</p>
                                         </div>
-                                        <Button className="shrink-0" onClick={onOpenForm}><ClipboardCheck className="h-4 w-4" /> {hasDraft ? "Continue Review" : "Review"}</Button>
+                                        {assigned ? (
+                                            <Button className="shrink-0" onClick={onOpenForm}><ClipboardCheck className="h-4 w-4" /> {hasDraft ? "Continue Review" : "Review"}</Button>
+                                        ) : (
+                                            <Button variant="outline" className="shrink-0" onClick={() => setAssignOpen(true)}><Send className="h-4 w-4" /> Assign examiner</Button>
+                                        )}
                                     </div>
                                 </div>
+
+                                {/* §391.33 equivalents — asked of the driver (no examiner road test needed). */}
+                                <RoadTestEquivalent captured={equivCaptured} requested={rt.equivRequested ?? []} onCapture={onCaptureEquivalent}
+                                    onReview={onReviewEquivalent} onRequest={onRequestEquivalent} />
                             </>
                         )}
                     </div>
@@ -1982,8 +2146,8 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
                         <div className="space-y-2.5">
                             <ReviewedBanner review={review} />
                             <div className="flex gap-2">
-                                <Button variant="outline" className={tiny} onClick={onOpenForm}><Eye className="h-3.5 w-3.5" /> Review</Button>
-                                <Button variant="outline" className={tiny} onClick={onPreviewForm}><FileText className="h-3.5 w-3.5" /> PDF</Button>
+                                <Button variant="outline" className={tiny} onClick={openCompletedReview}><Eye className="h-3.5 w-3.5" /> Review</Button>
+                                {!isEquivMethod && <Button variant="outline" className={tiny} onClick={onPreviewForm}><FileText className="h-3.5 w-3.5" /> PDF</Button>}
                             </div>
                         </div>
                     ) : (
@@ -2001,6 +2165,266 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
                     onAssign={onAssign}
                 />
             )}
+        </div>
+    );
+}
+
+// ── Test (Quiz) module — assign knowledge quizzes to the DRIVER, the driver takes
+//    them (scored multiple-choice), then HR reviews & signs off. Mirrors the Road
+//    Test module's 3-step timeline, but the assignment target is the driver. ──
+function QuizModule({ a, updateOne, defaults, review, onReview, onTake, onReviewResult }: {
+    a: Applicant; updateOne: UpdateFn; defaults?: QuizPick[]; review?: ReviewSignoff; onReview: (r: ReviewSignoff) => void;
+    onTake: (quizId: string) => void; onReviewResult: (quizId: string) => void;
+}) {
+    const { quizzes } = useQuizzes();
+    const qs = a.quiz ?? {};
+    const assignedIds = qs.assignedQuizIds ?? [];
+    const results = qs.results ?? {};
+    const status = a.docs?.["quiz"] ?? "pending";
+    const recorded = DONE_STATES.includes(status);
+    const meta = DOC_STATUS_META[status];
+    const assigned = assignedIds.length > 0;
+    const tiny = "h-7 shrink-0 gap-1 px-2 text-xs";
+    const quizById = (id: string) => quizzes.find((x) => x.id === id);
+    // Default test length when a quiz is first picked (20, or the whole quiz if shorter).
+    const defaultCount = (id: string) => Math.min(20, quizById(id)?.questions.length ?? 20);
+
+    // Assignment picker — which quizzes to send the driver, and how many questions each test draws.
+    // If nothing is assigned yet, pre-fill from the workflow step's attached default quizzes.
+    const defaultPicks = defaults ?? [];
+    const [picking, setPicking] = useState(!assigned);
+    const [pick, setPick] = useState<string[]>(assigned ? assignedIds : defaultPicks.map((d) => d.quizId));
+    const [counts, setCounts] = useState<Record<string, number>>(() => {
+        const base: Record<string, number> = { ...(qs.quizCounts ?? {}) };
+        if (!assigned) defaultPicks.forEach((d) => { if (base[d.quizId] == null) base[d.quizId] = d.count; });
+        return base;
+    });
+    const togglePick = (id: string) => setPick((p) => {
+        if (p.includes(id)) return p.filter((x) => x !== id);
+        setCounts((c) => (c[id] != null ? c : { ...c, [id]: defaultCount(id) }));
+        return [...p, id];
+    });
+    const setCount = (id: string, n: number) => setCounts((c) => ({ ...c, [id]: n }));
+    const cats = Array.from(new Set(quizzes.map((x) => x.category)));
+
+    // Clicking "Assign to driver" opens a compose popup previewing the email + secure
+    // link; sending from there is what actually assigns the quizzes and logs the request.
+    const [composeOpen, setComposeOpen] = useState(false);
+    const [subject, setSubject] = useState("");
+    const [message, setMessage] = useState("");
+    const link = `https://app.tracksmart.com/t/quiz/${a.id.slice(-6)}`;
+    const countOf = (id: string) => { const qz = quizById(id); return qz ? testLength(qz, counts[id]) : counts[id] ?? 0; };
+    const openCompose = () => {
+        if (pick.length === 0) return;
+        const n = pick.length;
+        setSubject(`Knowledge test — ${n} quiz${n === 1 ? "" : "zes"} to complete`);
+        setMessage(`Hi ${a.firstName},\n\nYou have been assigned ${n} knowledge test${n === 1 ? "" : "s"} to complete as part of your application:\n${pick.map((id) => `  • ${quizTitle(id)} — ${countOf(id)} questions`).join("\n")}\n\nOpen the secure link below to begin. Each test is multiple-choice and scored automatically.\n\n${link}\n\nThank you.`);
+        setComposeOpen(true);
+    };
+    const sendAssignment = () => {
+        const ids = [...pick];
+        const n = ids.length;
+        const quizCounts = Object.fromEntries(ids.map((id) => [id, countOf(id)]));
+        updateOne(a.id, (prev) => ({
+            quiz: { ...(prev.quiz ?? {}), assignedQuizIds: ids, quizCounts, assignedAt: Date.now() },
+            requests: [{ id: `rq-${Date.now()}`, fid: "quiz", status: "open" as const, at: Date.now(), by: ACTOR, action: "Request" as const, subject, recipient: "Driver" as const, to: prev.email, channel: "Email" as const, message }, ...(prev.requests ?? [])],
+            events: [{ id: `ev-${Date.now()}`, type: "request", text: `Assigned ${n} quiz${n === 1 ? "" : "zes"} to ${prev.firstName} ${prev.lastName} and emailed the secure link`, at: Date.now(), author: ACTOR }, ...prev.events],
+        }));
+        setComposeOpen(false);
+        setPicking(false);
+    };
+
+    const steps = [
+        { label: "Assign Test", done: assigned },
+        { label: "Driver Completes", done: recorded },
+        { label: "HR Review", done: !!review },
+    ];
+    const currentIdx = steps.findIndex((s) => !s.done);
+    const Row = ({ i, children }: { i: number; children: React.ReactNode }) => {
+        const s = steps[i];
+        const current = i === currentIdx;
+        return (
+            <div className="relative flex gap-4">
+                <div className="relative flex w-7 shrink-0 flex-col items-center">
+                    <span className={cn("z-10 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ring-4 ring-white",
+                        s.done ? "bg-emerald-500 text-white" : current ? "bg-blue-600 text-white" : "border-2 border-slate-200 bg-white text-slate-400")}>
+                        {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                    </span>
+                    {i < steps.length - 1 && <span className="w-0.5 flex-1 bg-slate-200" />}
+                </div>
+                <div className="min-w-0 flex-1 pb-5">
+                    <p className="mb-1.5 mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Step {i + 1} · {s.label}</p>
+                    {children}
+                </div>
+            </div>
+        );
+    };
+
+    const QuizResultRow = ({ id }: { id: string }) => {
+        const qz = quizById(id);
+        if (!qz) return null;
+        const r = results[id];
+        const cnt = testLength(qz, qs.quizCounts?.[id]);
+        return (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600"><ClipboardList className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-slate-800">{qz.title}</p>
+                    <p className="truncate text-xs text-slate-500">{cnt}-question test · pass {qz.passPct}% ({testPassMark(qz, qs.quizCounts?.[id])}/{cnt}){r ? ` · scored ${r.score}/${r.total}` : ""}</p>
+                </div>
+                {r ? (
+                    <>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", r.passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>{r.passed ? "Passed" : "Did not pass"}</span>
+                        <Button variant="outline" className={tiny} onClick={() => onReviewResult(id)}><Eye className="h-3.5 w-3.5" /> Review</Button>
+                        {!recorded && <Button variant="outline" className={tiny} onClick={() => onTake(id)}><RotateCcw className="h-3.5 w-3.5" /> Retake</Button>}
+                    </>
+                ) : (
+                    <Button className={tiny} onClick={() => onTake(id)}><ClipboardCheck className="h-3.5 w-3.5" /> Take quiz</Button>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="space-y-4 p-5">
+            <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600"><ClipboardList className="h-4 w-4" /></span>
+                <p className="text-[13px] leading-relaxed text-slate-600">Knowledge test. Assign one or more quizzes (multiple-choice) to the driver, the driver completes them online and they are scored automatically, then HR reviews the results &amp; signs off.</p>
+            </div>
+
+            <div>
+                {/* Step 1 — Assign quizzes to the driver */}
+                <Row i={0}>
+                    <div className="rounded-xl border border-slate-200 p-4">
+                        {assigned && !picking ? (
+                            <div>
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-slate-800">{assignedIds.length} quiz{assignedIds.length === 1 ? "" : "zes"} assigned to {a.firstName} {a.lastName}</p>
+                                    {!recorded && <Button variant="outline" size="sm" className="h-7 shrink-0 px-2.5 text-xs" onClick={() => { setPick(assignedIds); setPicking(true); }}>Edit assignment</Button>}
+                                </div>
+                                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                    {assignedIds.map((id) => {
+                                        const qz = quizById(id);
+                                        return (
+                                            <span key={id} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-medium text-slate-600"><ClipboardList className="h-3 w-3 text-slate-400" /> {quizTitle(id)} <span className="rounded-full bg-white px-1.5 text-[10px] font-bold text-blue-600">{qz ? testLength(qz, qs.quizCounts?.[id]) : qs.quizCounts?.[id]} Q</span></span>
+                                        );
+                                    })}
+                                </div>
+                                <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5" /> Link emailed to {a.email}</p>
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-sm font-semibold text-slate-800">Select quizzes for {a.firstName} {a.lastName}</p>
+                                <p className="mb-3 text-xs text-slate-500">Pick the knowledge tests the driver must complete, then email them the secure link.</p>
+                                <div className="space-y-3">
+                                    {cats.map((cat) => (
+                                        <div key={cat}>
+                                            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat}</p>
+                                            <div className="space-y-1.5">
+                                                {quizzes.filter((x) => x.category === cat).map((qz) => {
+                                                    const on = pick.includes(qz.id);
+                                                    return (
+                                                        <div key={qz.id}
+                                                            className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 transition", on ? "border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20" : "border-slate-200 bg-white hover:bg-slate-50")}>
+                                                            <button type="button" onClick={() => togglePick(qz.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                                                <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-md border", on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white text-transparent")}><Check className="h-3 w-3" /></span>
+                                                                <span className="min-w-0 flex-1">
+                                                                    <span className="block truncate text-[13px] font-semibold text-slate-800">{qz.title}</span>
+                                                                    <span className="block truncate text-xs text-slate-500">{qz.questions.length} questions available · pass {qz.passPct}%</span>
+                                                                </span>
+                                                            </button>
+                                                            {on && (
+                                                                <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                                                                    Test length
+                                                                    <select value={counts[qz.id] ?? defaultCount(qz.id)} onChange={(e) => setCount(qz.id, Number(e.target.value))}
+                                                                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[12px] font-semibold text-slate-700 focus:border-blue-400 focus:outline-none">
+                                                                        {TEST_LENGTHS.filter((n) => n < qz.questions.length).map((n) => <option key={n} value={n}>{n} questions</option>)}
+                                                                        <option value={qz.questions.length}>All ({qz.questions.length})</option>
+                                                                    </select>
+                                                                </label>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 flex items-center gap-2">
+                                    <Button className="shrink-0" disabled={pick.length === 0} onClick={openCompose}><Send className="h-4 w-4" /> Assign {pick.length > 0 ? `${pick.length} ` : ""}to driver</Button>
+                                    {assigned && <Button variant="outline" className="shrink-0" onClick={() => setPicking(false)}>Cancel</Button>}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </Row>
+
+                {/* Step 2 — Driver completes the quizzes */}
+                <Row i={1}>
+                    <div className="rounded-xl border border-slate-200 p-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Quiz results</p>
+                            <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold", meta.badge)}><span className={cn("h-1.5 w-1.5 rounded-full", meta.dot)} /> {meta.label}</span>
+                        </div>
+                        {!assigned ? (
+                            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">Assign quizzes above — the driver's results will appear here.</p>
+                        ) : (
+                            <div className="space-y-1.5">
+                                {assignedIds.map((id) => <QuizResultRow key={id} id={id} />)}
+                            </div>
+                        )}
+                    </div>
+                </Row>
+
+                {/* Step 3 — HR review & sign-off */}
+                <Row i={2}>
+                    {!recorded ? (
+                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">The driver must complete all assigned quizzes — HR can then review and sign it off.</p>
+                    ) : review ? (
+                        <div className="space-y-2.5">
+                            <ReviewedBanner review={review} />
+                        </div>
+                    ) : (
+                        <ReviewSignOff label="Knowledge Test — Reviewer Sign-Off" signedNote="Quiz results reviewed & signed off" onConfirm={(r) => onReview({ ...r, at: Date.now() })} />
+                    )}
+                </Row>
+            </div>
+
+            {/* Compose popup — preview the email + secure link before assigning to the driver */}
+            <Dialog open={composeOpen} onOpenChange={(o) => { if (!o) setComposeOpen(false); }}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader><DialogTitle>Send knowledge test to the driver</DialogTitle></DialogHeader>
+                    <div className="space-y-3.5 px-6 pb-6">
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-[13px]">
+                            <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                            <span className="text-slate-500">To</span>
+                            <span className="font-semibold text-slate-800">{a.firstName} {a.lastName}</span>
+                            <span className="text-slate-400">· {a.email}</span>
+                            <span className="ml-auto rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">Driver · Email</span>
+                        </div>
+                        <div>
+                            <Label className="mb-1 block text-xs font-semibold text-slate-600">Subject</Label>
+                            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="mb-1 block text-xs font-semibold text-slate-600">Message</Label>
+                            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={8} className="resize-y text-[13px]" />
+                        </div>
+                        <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
+                            <ExternalLink className="h-4 w-4 shrink-0 text-blue-500" />
+                            <span className="truncate text-[12px] font-medium text-blue-700">{link}</span>
+                            <span className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">Secure link</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {pick.map((id) => <span key={id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"><ClipboardList className="h-3 w-3 text-slate-400" /> {quizTitle(id)} · {countOf(id)} Q</span>)}
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button variant="outline" onClick={() => setComposeOpen(false)}>Cancel</Button>
+                            <Button onClick={sendAssignment}><Send className="h-4 w-4" /> Send &amp; assign</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

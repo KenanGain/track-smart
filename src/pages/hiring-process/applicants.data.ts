@@ -66,7 +66,13 @@ export type ReviewSignoff = { by: string; role: string; date: string; sig: strin
 // the driver, and how the requirement is satisfied (certify / license / document).
 export type RoadTestMethod = "certify" | "license" | "document";
 export type RoadTestDoc = { label: string; fileName?: string; kind: "certificate" | "license" | "document" | "additional" };
-export type RoadTestState = { examiner?: string; examinerRole?: string; examinerEmail?: string; assignedAt?: number; method?: RoadTestMethod; documents?: RoadTestDoc[]; formValues?: Record<string, unknown> };
+export type RoadTestState = { examiner?: string; examinerRole?: string; examinerEmail?: string; assignedAt?: number; method?: RoadTestMethod; documents?: RoadTestDoc[]; formValues?: Record<string, unknown>; equivRequested?: ("license" | "document")[] };
+
+// Test step — quizzes (multiple-choice knowledge tests) assigned to the DRIVER,
+// plus the driver's scored result per quiz.
+export type QuizAttempt = { score: number; total: number; passed: boolean; answers: Record<string, number>; at: number };
+// quizCounts: per assigned quiz, how many questions the assigned test draws (test length).
+export type QuizState = { assignedQuizIds?: string[]; quizCounts?: Record<string, number>; assignedAt?: number; results?: Record<string, QuizAttempt> };
 
 // Per-step review lifecycle: initial → waiting for review → reviewed → complete / incomplete
 export type StepStatus = "initial" | "waiting" | "reviewed" | "complete" | "incomplete";
@@ -132,6 +138,7 @@ export type Applicant = {
     requests?: AppRequest[];     // open / resolved requests raised on the file
     empChecks?: EmpCheck[];      // employment-verification state per previous employer
     roadTest?: RoadTestState;    // §391.31 road test — assigned examiner + fulfilment method
+    quiz?: QuizState;            // Test step — quizzes assigned to the driver + their results
     checklistState?: { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> }; // review checklist fill state
 };
 
