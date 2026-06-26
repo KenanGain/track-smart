@@ -72,7 +72,9 @@ export type RoadTestState = { examiner?: string; examinerRole?: string; examiner
 // plus the driver's scored result per quiz.
 export type QuizAttempt = { score: number; total: number; passed: boolean; answers: Record<string, number>; at: number };
 // quizCounts: per assigned quiz, how many questions the assigned test draws (test length).
-export type QuizState = { assignedQuizIds?: string[]; quizCounts?: Record<string, number>; assignedAt?: number; results?: Record<string, QuizAttempt> };
+// attempts: how many chances the driver has used per test (max 3). training: remedial
+// training assigned for a test the driver failed after using all chances.
+export type QuizState = { assignedQuizIds?: string[]; quizCounts?: Record<string, number>; assignedAt?: number; results?: Record<string, QuizAttempt>; attempts?: Record<string, number>; training?: Record<string, { assignedAt: number }> };
 
 // Per-step review lifecycle: initial → waiting for review → reviewed → complete / incomplete
 export type StepStatus = "initial" | "waiting" | "reviewed" | "complete" | "incomplete";

@@ -1,18 +1,35 @@
 import { useState } from "react";
-import { ChevronLeft, Plus, Trash2, ArrowUp, ArrowDown, Check, X, Lock, FileText, ClipboardList } from "lucide-react";
+import { ChevronLeft, Plus, Trash2, ArrowUp, ArrowDown, Check, X, Lock, FileText, ClipboardList, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectBox } from "./FormKit";
 import { useHiringTemplates, STEP_CATALOG, stepName, stepGroup, stepFormMode, FULFILL_META, makeAppStep, makeReviewStep, APP_STEP_TITLE, REVIEW_STEP_TITLE, DRIVER_TYPES, driverTypeName, type TemplateStep, type HiringTemplate, type DriverType, type FulfillMode, type QuizPick } from "./hiring-templates.data";
 import { useChecklists, checklistForDriverType } from "./checklists.data";
-import { useQuizzes, TEST_LENGTHS, testLength } from "./quizzes.data";
+import { useQuizzes, TEST_LENGTHS, testLength, QUIZ_CATEGORIES, type Quiz } from "./quizzes.data";
 
 const GROUP_TONE: Record<string, string> = { Core: "bg-blue-50 text-blue-600", Forms: "bg-emerald-50 text-emerald-600", Policy: "bg-violet-50 text-violet-600" };
 // Pickers: step 1 (Application) only takes consent forms; later steps take any form except the application itself.
 const CONSENT_NAMES = STEP_CATALOG.filter((c) => c.group === "Policy").map((c) => c.name);
 const STEP_NAMES = STEP_CATALOG.filter((c) => c.id !== "application").map((c) => c.name);
 const idForName = (name: string) => STEP_CATALOG.find((c) => c.name === name)?.id ?? "";
+
+// A plain-language summary of what a step does — shown under each step so it is
+// clear "what's going on" at every stage of the workflow.
+function stepPurpose(s: TemplateStep): string {
+    if (s.kind === "app") return "The driver fills out the application and signs the consent forms attached here. Always the first step.";
+    if (s.kind === "review") return "The hiring manager reviews the completed file against the approval checklist and finalizes the hire. Always the last step.";
+    const ids = s.formIds;
+    if (ids.length === 0) return "Empty step — add the forms, reports, tests or quizzes this step should collect.";
+    if (ids.includes("quiz")) return "Assign knowledge tests (quizzes) to the driver — multiple-choice, scored automatically, then HR reviews the results.";
+    if (ids.includes("road-test")) return "Assign an examiner and record the driver's road-test evaluation (or accept an equivalent).";
+    const reports = ids.filter((f) => stepGroup(f) === "Forms");
+    const policies = ids.filter((f) => stepGroup(f) === "Policy");
+    const parts: string[] = [];
+    if (reports.length) parts.push(`collects ${reports.map(stepName).join(", ")}`);
+    if (policies.length) parts.push(`the driver signs ${policies.map(stepName).join(", ")}`);
+    return `This step ${parts.join("; ")}.`;
+}
 
 let counter = 0;
 const newStepId = () => `s-${Date.now()}-${counter++}`;
@@ -37,11 +54,81 @@ function seedSteps(): TemplateStep[] {
     ]);
 }
 
+// Knowledge Test step editor — pick quizzes CATEGORY-WISE and set each test's
+// length (10/20/25/30/40 or All). Writes the step's attached `quizzes` (QuizPick[]).
+function QuizAttachEditor({ quizzes, picks, onAdd, onRemove, onCount }: {
+    quizzes: Quiz[]; picks: QuizPick[];
+    onAdd: (quizId: string, count: number) => void;
+    onRemove: (quizId: string) => void;
+    onCount: (quizId: string, count: number) => void;
+}) {
+    const picked = new Map(picks.map((p) => [p.quizId, p.count]));
+    const order = [...QUIZ_CATEGORIES] as string[];
+    const cats = Array.from(new Set(quizzes.map((x) => x.category)))
+        .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+    const firstSel = cats.find((c) => quizzes.some((q) => q.category === c && picked.has(q.id)));
+    const [open, setOpen] = useState<string | null>(firstSel ?? cats[0] ?? null);
+    return (
+        <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+            <div className="mb-1.5 flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-sky-600" />
+                <span className="text-[11px] font-bold uppercase tracking-wide text-sky-700">Knowledge test — select quizzes</span>
+                <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-sky-600">{picks.length} selected</span>
+            </div>
+            <p className="mb-2 text-xs text-slate-500">Pick quizzes by category and set how many questions each test draws (10–40). These are assigned to the driver by default at this step.</p>
+            <div className="space-y-1.5">
+                {cats.map((cat) => {
+                    const list = quizzes.filter((x) => x.category === cat);
+                    const sel = list.filter((q) => picked.has(q.id)).length;
+                    const expanded = open === cat;
+                    return (
+                        <div key={cat} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                            <button type="button" onClick={() => setOpen(expanded ? null : cat)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50">
+                                <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded ? "" : "-rotate-90")} />
+                                <span className="text-[13px] font-semibold text-slate-700">{cat}</span>
+                                <span className="ml-auto flex items-center gap-1.5">
+                                    {sel > 0 && <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">{sel} selected</span>}
+                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">{list.length}</span>
+                                </span>
+                            </button>
+                            {expanded && (
+                                <div className="space-y-1.5 border-t border-slate-100 p-2">
+                                    {list.map((qz) => {
+                                        const on = picked.has(qz.id);
+                                        return (
+                                            <div key={qz.id} className={cn("flex items-center gap-2 rounded-md border px-2.5 py-1.5", on ? "border-sky-400 bg-sky-50/70" : "border-slate-200 bg-white")}>
+                                                <button type="button" onClick={() => (on ? onRemove(qz.id) : onAdd(qz.id, Math.min(20, qz.questions.length)))} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                                                    <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", on ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white text-transparent")}><Check className="h-3 w-3" /></span>
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-[13px] font-medium text-slate-700">{qz.title}</span>
+                                                        <span className="block truncate text-[11px] text-slate-400">{qz.questions.length} questions available · pass {qz.passPct}%</span>
+                                                    </span>
+                                                </button>
+                                                {on && (
+                                                    <label className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-slate-400">Length
+                                                        <select value={testLength(qz, picked.get(qz.id))} onChange={(e) => onCount(qz.id, Number(e.target.value))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[12px] font-semibold text-slate-700 focus:border-blue-400 focus:outline-none">
+                                                            {TEST_LENGTHS.filter((n) => n < qz.questions.length).map((n) => <option key={n} value={n}>{n} Q</option>)}
+                                                            <option value={qz.questions.length}>All ({qz.questions.length})</option>
+                                                        </select>
+                                                    </label>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId: string; carrierId?: string; onBack: () => void }) {
     const { templates, save } = useHiringTemplates(carrierId);
     const { checklists } = useChecklists();
     const { quizzes } = useQuizzes();
-    const quizById = (id: string) => quizzes.find((x) => x.id === id);
     const existing = templateId === "new" ? undefined : templates.find((t) => t.id === templateId);
 
     const [name, setName] = useState(existing?.name ?? "");
@@ -127,6 +214,17 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
 
                 {/* Steps */}
                 <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <h2 className="text-sm font-bold text-slate-800">Workflow steps</h2>
+                            <p className="text-xs text-slate-500">Steps run top to bottom. {steps.length} step{steps.length === 1 ? "" : "s"} total.</p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">{steps.length} steps</span>
+                    </div>
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs leading-relaxed text-slate-600">
+                        <p className="mb-1 font-semibold text-slate-700">How this workflow runs</p>
+                        <span className="font-semibold text-slate-700">Step 1</span> is always the driver's application and the <span className="font-semibold text-slate-700">last step</span> is the manager review — these are locked. Add your own check modules in between (reports, background &amp; testing, road test, knowledge test, …). Use the <ArrowUp className="inline h-3 w-3" /> / <ArrowDown className="inline h-3 w-3" /> arrows to reorder a step and the <Trash2 className="inline h-3 w-3" /> icon to remove it. Inside each step, attach the forms, reports, tests or quizzes it should collect.
+                    </div>
                     {steps.map((s, i) => {
                         const isApp = s.kind === "app";
                         const isReview = s.kind === "review";
@@ -143,15 +241,16 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
                                     ) : (
                                         <Input value={s.title} onChange={(e) => patchStep(s.id, { title: e.target.value })} placeholder="Module name — e.g. License Check" className="h-9 flex-1 font-semibold" />
                                     )}
+                                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{s.formIds.length} {s.formIds.length === 1 ? "item" : "items"}</span>
                                     {!isLocked && <>
-                                        <button type="button" onClick={() => moveStep(i, -1)} disabled={i <= 1} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
-                                        <button type="button" onClick={() => moveStep(i, 1)} disabled={i >= steps.length - 2} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
-                                        <button type="button" onClick={() => removeStep(s.id)} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                                        <button type="button" title="Move step up" onClick={() => moveStep(i, -1)} disabled={i <= 1} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
+                                        <button type="button" title="Move step down" onClick={() => moveStep(i, 1)} disabled={i >= steps.length - 2} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
+                                        <button type="button" title="Remove this step" onClick={() => removeStep(s.id)} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
                                     </>}
+                                    {isLocked && <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-400"><Lock className="h-2.5 w-2.5" /> Locked</span>}
                                 </div>
 
-                                {isApp && <p className="mb-3 -mt-1 text-xs text-slate-400">The driver completes the application form for the selected driver type. Add the consent forms they sign alongside it.</p>}
-                                {isReview && <p className="mb-3 -mt-1 text-xs text-slate-400">The hiring manager reviews the completed file and finalizes the hire. Always the last step.</p>}
+                                <p className="mb-3 -mt-1 text-xs text-slate-500">{stepPurpose(s)}</p>
                                 {isReview && (
                                     <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
                                         <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-indigo-600">Approval Checklist</label>
@@ -187,53 +286,25 @@ export function TemplateBuilder({ templateId, carrierId, onBack }: { templateId:
                                     </div>
                                 )}
 
-                                {/* Knowledge Test step — attach quizzes as the default test (which quiz + how many questions). */}
+                                {/* Knowledge Test step — pick quizzes category-wise + set each test length. */}
                                 {s.formIds.includes("quiz") && (
-                                    <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
-                                        <div className="mb-2 flex items-center gap-2">
-                                            <ClipboardList className="h-4 w-4 text-sky-600" />
-                                            <span className="text-[11px] font-bold uppercase tracking-wide text-sky-700">Attached quizzes (default test)</span>
-                                        </div>
-                                        {(s.quizzes ?? []).length === 0 ? (
-                                            <p className="mb-2 text-xs text-slate-500">No quizzes attached yet — drivers will be assigned these by default. Add one below.</p>
-                                        ) : (
-                                            <div className="mb-2 space-y-1.5">
-                                                {(s.quizzes ?? []).map((qp) => {
-                                                    const qz = quizById(qp.quizId);
-                                                    if (!qz) return null;
-                                                    return (
-                                                        <div key={qp.quizId} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[13px]">
-                                                            <span className="min-w-0 flex-1 truncate font-medium text-slate-700">{qz.title} <span className="text-xs font-normal text-slate-400">· {qz.category}</span></span>
-                                                            <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-500">Test length
-                                                                <select value={testLength(qz, qp.count)} onChange={(e) => setQuizCount(s.id, qp.quizId, Number(e.target.value))}
-                                                                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-semibold text-slate-700 focus:border-blue-400 focus:outline-none">
-                                                                    {TEST_LENGTHS.filter((n) => n < qz.questions.length).map((n) => <option key={n} value={n}>{n} questions</option>)}
-                                                                    <option value={qz.questions.length}>All ({qz.questions.length})</option>
-                                                                </select>
-                                                            </label>
-                                                            <button type="button" onClick={() => removeQuiz(s.id, qp.quizId)} className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-rose-100 hover:text-rose-500"><X className="h-3 w-3" /></button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                        <div className="max-w-xs">
-                                            <SelectBox value="" placeholder="+ Attach a quiz…"
-                                                items={quizzes.filter((qz) => !(s.quizzes ?? []).some((x) => x.quizId === qz.id)).map((qz) => qz.title)}
-                                                onChange={(nm) => { const qz = quizzes.find((x) => x.title === nm); if (qz) addQuiz(s.id, qz.id, Math.min(20, qz.questions.length)); }} />
-                                        </div>
-                                    </div>
+                                    <QuizAttachEditor quizzes={quizzes} picks={s.quizzes ?? []}
+                                        onAdd={(id, c) => addQuiz(s.id, id, c)} onRemove={(id) => removeQuiz(s.id, id)} onCount={(id, c) => setQuizCount(s.id, id, c)} />
                                 )}
 
                                 {/* Add a form to this step */}
-                                <div className="max-w-xs">
-                                    <SelectBox value="" placeholder={isApp ? "+ Add a consent form…" : "+ Add a form to this module…"} items={isApp ? CONSENT_NAMES : STEP_NAMES} onChange={(nm) => addForm(s.id, idForName(nm))} />
+                                <div className="max-w-sm">
+                                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{isApp ? "Add a consent form" : "Add to this step"}</p>
+                                    <SelectBox value="" placeholder={isApp ? "+ Add a consent form the driver signs…" : "+ Add a form, report, test or check…"} items={isApp ? CONSENT_NAMES : STEP_NAMES} onChange={(nm) => addForm(s.id, idForName(nm))} />
                                 </div>
                             </div>
                         );
                     })}
 
-                    <button type="button" onClick={addStep} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"><Plus className="h-4 w-4" /> Add Check Module</button>
+                    <button type="button" onClick={addStep} className="flex w-full flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-blue-300 bg-white px-4 py-3 text-blue-600 transition hover:bg-blue-50">
+                        <span className="flex items-center gap-2 text-sm font-semibold"><Plus className="h-4 w-4" /> Add a step</span>
+                        <span className="text-[11px] font-normal text-blue-400">Inserts a new check module before the manager review</span>
+                    </button>
                 </div>
             </div>
         </div>

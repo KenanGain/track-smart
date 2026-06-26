@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, Send, FileSearch, BadgeCheck, RotateCcw,
     AlertCircle, Clock, ExternalLink, Mail, Printer, Share2,
-    MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip, ClipboardCheck, ClipboardList, CreditCard, Award,
+    MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip, ClipboardCheck, ClipboardList, CreditCard, Award, GraduationCap,
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -33,7 +33,7 @@ import { POLICY_FORMS } from "./policy-forms.data";
 import { useCompanyBranding, type CompanyBranding } from "../ats/company-branding.data";
 import { AssignExaminerDialog } from "./AssignExaminerDialog";
 import { RoadTestEquivalent, type EquivalentResult } from "./RoadTestEquivalent";
-import { useQuizzes, getQuiz, quizTitle, testQuestions, testLength, testPassMark, TEST_LENGTHS } from "./quizzes.data";
+import { useQuizzes, getQuiz, quizTitle, testQuestions, testLength, testPassMark, MAX_QUIZ_ATTEMPTS } from "./quizzes.data";
 import type { QuizPick } from "./hiring-templates.data";
 import { QuizRunner, type QuizResult } from "./QuizRunner";
 import { FormDocument, THEMES, type DocSection, type ThemeKey } from "./FormDocument";
@@ -120,6 +120,10 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const isEmpStep = !!empFid && pf.employment.length > 0;
     const isRoadTestStep = !!step && step.kind !== "review" && step.formIds.includes("road-test");
     const isQuizStep = !!step && step.kind !== "review" && step.formIds.includes("quiz");
+    // The Knowledge Test step's quizzes come straight from the workflow configuration
+    // (set in the builder) — there is no manual per-applicant assignment.
+    const quizStepDef = steps.find((s) => s.kind !== "review" && s.formIds.includes("quiz"));
+    const quizPicks = quizStepDef?.quizzes ?? [];
     const checklist = getChecklist(tpl?.checklistId);
     // Hiring review shows only Stage 1 (the hiring decision); later stages are completed in Onboarding.
     const reviewChecklist = checklist ? { ...checklist, stages: checklist.stages.slice(0, 1) } : undefined;
@@ -249,20 +253,24 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     }} onBack={() => { setOpenForm(null); setFormPreview(false); }} /></PrefillProvider>;
     if (quizRun) {
         // Full-page quiz — the driver takes it (records the scored result) or HR reviews a submitted attempt.
-        // The assigned test only uses the first N questions (the chosen test length).
+        // The test only uses the first N questions (the length set on the workflow step).
         const fullQuiz = getQuiz(quizRun.quizId);
-        const testCount = a.quiz?.quizCounts?.[quizRun.quizId];
+        const testCount = quizPicks.find((p) => p.quizId === quizRun.quizId)?.count ?? a.quiz?.quizCounts?.[quizRun.quizId];
         const quiz = fullQuiz ? { ...fullQuiz, questions: testQuestions(fullQuiz, testCount) } : undefined;
         if (quiz) {
             const recordQuizResult = (r: QuizResult) => {
                 updateOne(a.id, (prev) => {
                     const results = { ...(prev.quiz?.results ?? {}), [r.quizId]: { score: r.score, total: r.total, passed: r.passed, answers: r.answers, at: r.at } };
-                    const assignedIds = prev.quiz?.assignedQuizIds ?? [];
-                    const allTaken = assignedIds.length > 0 && assignedIds.every((id) => results[id]);
+                    // Count this attempt (capped at the max number of chances).
+                    const used = Math.min(MAX_QUIZ_ATTEMPTS, (prev.quiz?.attempts?.[r.quizId] ?? 0) + 1);
+                    const attempts = { ...(prev.quiz?.attempts ?? {}), [r.quizId]: used };
+                    // A test is "resolved" once the driver passes it or uses all their chances.
+                    const resolved = (p: { quizId: string }) => results[p.quizId]?.passed || (attempts[p.quizId] ?? 0) >= MAX_QUIZ_ATTEMPTS;
+                    const allResolved = quizPicks.length > 0 && quizPicks.every(resolved);
                     return {
-                        quiz: { ...(prev.quiz ?? {}), results },
-                        docs: allTaken ? { ...(prev.docs ?? {}), quiz: "received" as DocStatus } : prev.docs,
-                        events: [{ id: `ev-${Date.now()}`, type: "form" as const, text: `Driver completed quiz “${quizTitle(r.quizId)}” — ${r.score}/${r.total} (${r.passed ? "passed" : "did not pass"})`, at: Date.now(), author: ACTOR }, ...prev.events],
+                        quiz: { ...(prev.quiz ?? {}), results, attempts },
+                        docs: allResolved ? { ...(prev.docs ?? {}), quiz: "received" as DocStatus } : prev.docs,
+                        events: [{ id: `ev-${Date.now()}`, type: "form" as const, text: `Driver completed “${quizTitle(r.quizId)}” (attempt ${used}/${MAX_QUIZ_ATTEMPTS}) — ${r.score}/${r.total} (${r.passed ? "passed" : "did not pass"})`, at: Date.now(), author: ACTOR }, ...prev.events],
                     };
                 });
                 setQuizRun(null);
@@ -581,7 +589,7 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                                                 message: `Hi ${a.firstName},\n\nTo satisfy the FMCSA §391.33 road-test equivalent, please upload ${k === "license" ? "the front and back of your valid driver's licence" : "a copy of your prior §391.31 road-test certificate"} using the secure link below.\n\nThank you.` });
                                         }} />
                                 ) : isQuizStep ? (
-                                    <QuizModule a={a} updateOne={updateOne} defaults={step.quizzes}
+                                    <QuizModule a={a} updateOne={updateOne} picks={quizPicks}
                                         review={a.reviews?.["quiz"]}
                                         onReview={(r) => updateOne(a.id, (prev) => ({
                                             reviews: { ...(prev.reviews ?? {}), "quiz": r },
@@ -2172,70 +2180,65 @@ function RoadTestModule({ a, updateOne, review, onReview, onOpenForm, onPreviewF
 // ── Test (Quiz) module — assign knowledge quizzes to the DRIVER, the driver takes
 //    them (scored multiple-choice), then HR reviews & signs off. Mirrors the Road
 //    Test module's 3-step timeline, but the assignment target is the driver. ──
-function QuizModule({ a, updateOne, defaults, review, onReview, onTake, onReviewResult }: {
-    a: Applicant; updateOne: UpdateFn; defaults?: QuizPick[]; review?: ReviewSignoff; onReview: (r: ReviewSignoff) => void;
+function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewResult }: {
+    a: Applicant; updateOne: UpdateFn; picks: QuizPick[]; review?: ReviewSignoff; onReview: (r: ReviewSignoff) => void;
     onTake: (quizId: string) => void; onReviewResult: (quizId: string) => void;
 }) {
     const { quizzes } = useQuizzes();
     const qs = a.quiz ?? {};
-    const assignedIds = qs.assignedQuizIds ?? [];
     const results = qs.results ?? {};
     const status = a.docs?.["quiz"] ?? "pending";
     const recorded = DONE_STATES.includes(status);
     const meta = DOC_STATUS_META[status];
-    const assigned = assignedIds.length > 0;
     const tiny = "h-7 shrink-0 gap-1 px-2 text-xs";
     const quizById = (id: string) => quizzes.find((x) => x.id === id);
-    // Default test length when a quiz is first picked (20, or the whole quiz if shorter).
-    const defaultCount = (id: string) => Math.min(20, quizById(id)?.questions.length ?? 20);
 
-    // Assignment picker — which quizzes to send the driver, and how many questions each test draws.
-    // If nothing is assigned yet, pre-fill from the workflow step's attached default quizzes.
-    const defaultPicks = defaults ?? [];
-    const [picking, setPicking] = useState(!assigned);
-    const [pick, setPick] = useState<string[]>(assigned ? assignedIds : defaultPicks.map((d) => d.quizId));
-    const [counts, setCounts] = useState<Record<string, number>>(() => {
-        const base: Record<string, number> = { ...(qs.quizCounts ?? {}) };
-        if (!assigned) defaultPicks.forEach((d) => { if (base[d.quizId] == null) base[d.quizId] = d.count; });
-        return base;
-    });
-    const togglePick = (id: string) => setPick((p) => {
-        if (p.includes(id)) return p.filter((x) => x !== id);
-        setCounts((c) => (c[id] != null ? c : { ...c, [id]: defaultCount(id) }));
-        return [...p, id];
-    });
-    const setCount = (id: string, n: number) => setCounts((c) => ({ ...c, [id]: n }));
-    const cats = Array.from(new Set(quizzes.map((x) => x.category)));
+    // The tests for this step come STRAIGHT FROM THE WORKFLOW (set in the builder) —
+    // HR does not pick them here. `picks` = the quizzes attached to this Knowledge Test step.
+    const tests = picks.filter((p) => quizById(p.quizId));
+    const configured = tests.length > 0;
+    const countFor = (id: string) => tests.find((p) => p.quizId === id)?.count;
+    const lenOf = (id: string) => { const qz = quizById(id); return qz ? testLength(qz, countFor(id)) : 0; };
+    const sent = !!qs.assignedAt;
 
-    // Clicking "Assign to driver" opens a compose popup previewing the email + secure
-    // link; sending from there is what actually assigns the quizzes and logs the request.
+    // Attempts (chances) used per test and any remedial training assigned on failure.
+    const attempts = qs.attempts ?? {};
+    const training = qs.training ?? {};
+    const usedFor = (id: string) => attempts[id] ?? 0;
+    const passedFor = (id: string) => !!results[id]?.passed;
+    const outOfChances = (id: string) => !passedFor(id) && usedFor(id) >= MAX_QUIZ_ATTEMPTS;
+    const passedCount = tests.filter((p) => passedFor(p.quizId)).length;
+    const failedCount = tests.filter((p) => outOfChances(p.quizId)).length;
+    const assignTraining = (id: string) => updateOne(a.id, (prev) => ({
+        quiz: { ...(prev.quiz ?? {}), training: { ...(prev.quiz?.training ?? {}), [id]: { assignedAt: Date.now() } } },
+        events: [{ id: `ev-${Date.now()}`, type: "request" as const, text: `Assigned remedial training for failed test “${quizTitle(id)}” to ${prev.firstName} ${prev.lastName}`, at: Date.now(), author: ACTOR }, ...prev.events],
+    }));
+
+    // Optional: email the driver a secure link to begin. This does NOT change which tests
+    // are assigned — those are fixed by the workflow.
     const [composeOpen, setComposeOpen] = useState(false);
     const [subject, setSubject] = useState("");
     const [message, setMessage] = useState("");
     const link = `https://app.tracksmart.com/t/quiz/${a.id.slice(-6)}`;
-    const countOf = (id: string) => { const qz = quizById(id); return qz ? testLength(qz, counts[id]) : counts[id] ?? 0; };
     const openCompose = () => {
-        if (pick.length === 0) return;
-        const n = pick.length;
-        setSubject(`Knowledge test — ${n} quiz${n === 1 ? "" : "zes"} to complete`);
-        setMessage(`Hi ${a.firstName},\n\nYou have been assigned ${n} knowledge test${n === 1 ? "" : "s"} to complete as part of your application:\n${pick.map((id) => `  • ${quizTitle(id)} — ${countOf(id)} questions`).join("\n")}\n\nOpen the secure link below to begin. Each test is multiple-choice and scored automatically.\n\n${link}\n\nThank you.`);
+        const n = tests.length;
+        setSubject(`Knowledge test — ${n} test${n === 1 ? "" : "s"} to complete`);
+        setMessage(`Hi ${a.firstName},\n\nYou have ${n} knowledge test${n === 1 ? "" : "s"} to complete as part of your application:\n${tests.map((p) => `  • ${quizTitle(p.quizId)} — ${lenOf(p.quizId)} questions`).join("\n")}\n\nOpen the secure link below to begin. Each test is multiple-choice and scored automatically.\n\n${link}\n\nThank you.`);
         setComposeOpen(true);
     };
-    const sendAssignment = () => {
-        const ids = [...pick];
-        const n = ids.length;
-        const quizCounts = Object.fromEntries(ids.map((id) => [id, countOf(id)]));
+    const sendLink = () => {
+        const n = tests.length;
+        const quizCounts = Object.fromEntries(tests.map((p) => [p.quizId, lenOf(p.quizId)]));
         updateOne(a.id, (prev) => ({
-            quiz: { ...(prev.quiz ?? {}), assignedQuizIds: ids, quizCounts, assignedAt: Date.now() },
+            quiz: { ...(prev.quiz ?? {}), assignedQuizIds: tests.map((p) => p.quizId), quizCounts, assignedAt: Date.now() },
             requests: [{ id: `rq-${Date.now()}`, fid: "quiz", status: "open" as const, at: Date.now(), by: ACTOR, action: "Request" as const, subject, recipient: "Driver" as const, to: prev.email, channel: "Email" as const, message }, ...(prev.requests ?? [])],
-            events: [{ id: `ev-${Date.now()}`, type: "request", text: `Assigned ${n} quiz${n === 1 ? "" : "zes"} to ${prev.firstName} ${prev.lastName} and emailed the secure link`, at: Date.now(), author: ACTOR }, ...prev.events],
+            events: [{ id: `ev-${Date.now()}`, type: "request", text: `Emailed the secure knowledge-test link to ${prev.firstName} ${prev.lastName} (${n} test${n === 1 ? "" : "s"})`, at: Date.now(), author: ACTOR }, ...prev.events],
         }));
         setComposeOpen(false);
-        setPicking(false);
     };
 
     const steps = [
-        { label: "Assign Test", done: assigned },
+        { label: "Tests (from workflow)", done: configured },
         { label: "Driver Completes", done: recorded },
         { label: "HR Review", done: !!review },
     ];
@@ -2264,22 +2267,43 @@ function QuizModule({ a, updateOne, defaults, review, onReview, onTake, onReview
         const qz = quizById(id);
         if (!qz) return null;
         const r = results[id];
-        const cnt = testLength(qz, qs.quizCounts?.[id]);
+        const cnt = testLength(qz, countFor(id));
+        const used = usedFor(id);
+        const passed = passedFor(id);
+        const canTake = !passed && used < MAX_QUIZ_ATTEMPTS;   // chances remaining
+        const failedOut = outOfChances(id);
+        const trained = !!training[id];
         return (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600"><ClipboardList className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-slate-800">{qz.title}</p>
-                    <p className="truncate text-xs text-slate-500">{cnt}-question test · pass {qz.passPct}% ({testPassMark(qz, qs.quizCounts?.[id])}/{cnt}){r ? ` · scored ${r.score}/${r.total}` : ""}</p>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600"><ClipboardList className="h-4 w-4" /></span>
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold text-slate-800">{qz.title} <span className="ml-1 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{qz.category}</span></p>
+                        <p className="truncate text-xs text-slate-500">{cnt}-question test · pass {qz.passPct}% ({testPassMark(qz, countFor(id))}/{cnt}){r ? ` · best/last score ${r.score}/${r.total}` : ""}</p>
+                    </div>
+                    {/* Chances used */}
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", failedOut ? "bg-rose-100 text-rose-700" : used > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500")} title="Attempts used">{used}/{MAX_QUIZ_ATTEMPTS} chances</span>
+                    {/* Pass / fail / not started */}
+                    {r ? (
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>{passed ? "Passed" : "Did not pass"}</span>
+                    ) : (
+                        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-400">Not started</span>
+                    )}
+                    {r && <Button variant="outline" className={tiny} onClick={() => onReviewResult(id)}><Eye className="h-3.5 w-3.5" /> Review</Button>}
+                    {canTake && (
+                        used === 0
+                            ? <Button className={tiny} onClick={() => onTake(id)}><ClipboardCheck className="h-3.5 w-3.5" /> Take test</Button>
+                            : <Button variant="outline" className={tiny} onClick={() => onTake(id)}><RotateCcw className="h-3.5 w-3.5" /> Retake ({used + 1}/{MAX_QUIZ_ATTEMPTS})</Button>
+                    )}
                 </div>
-                {r ? (
-                    <>
-                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", r.passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>{r.passed ? "Passed" : "Did not pass"}</span>
-                        <Button variant="outline" className={tiny} onClick={() => onReviewResult(id)}><Eye className="h-3.5 w-3.5" /> Review</Button>
-                        {!recorded && <Button variant="outline" className={tiny} onClick={() => onTake(id)}><RotateCcw className="h-3.5 w-3.5" /> Retake</Button>}
-                    </>
-                ) : (
-                    <Button className={tiny} onClick={() => onTake(id)}><ClipboardCheck className="h-3.5 w-3.5" /> Take quiz</Button>
+                {/* Failed after all chances → assign training */}
+                {failedOut && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-rose-100 bg-rose-50/60 px-3 py-2">
+                        <span className="text-[12px] font-medium text-rose-700">Failed after {MAX_QUIZ_ATTEMPTS} attempts — no chances left.</span>
+                        {trained
+                            ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700"><Check className="h-3.5 w-3.5" /> Training assigned</span>
+                            : <Button className={cn(tiny, "bg-rose-600 hover:bg-rose-700")} onClick={() => assignTraining(id)}><GraduationCap className="h-3.5 w-3.5" /> Assign training</Button>}
+                    </div>
                 )}
             </div>
         );
@@ -2289,88 +2313,48 @@ function QuizModule({ a, updateOne, defaults, review, onReview, onTake, onReview
         <div className="space-y-4 p-5">
             <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600"><ClipboardList className="h-4 w-4" /></span>
-                <p className="text-[13px] leading-relaxed text-slate-600">Knowledge test. Assign one or more quizzes (multiple-choice) to the driver, the driver completes them online and they are scored automatically, then HR reviews the results &amp; signs off.</p>
+                <p className="text-[13px] leading-relaxed text-slate-600">Knowledge test. The tests below come from this workflow's Knowledge Test step. The driver completes them online and they are scored automatically, then HR reviews the results &amp; signs off.</p>
             </div>
 
             <div>
-                {/* Step 1 — Assign quizzes to the driver */}
+                {/* Step 1 — The tests configured on the workflow (no manual assignment here) */}
                 <Row i={0}>
                     <div className="rounded-xl border border-slate-200 p-4">
-                        {assigned && !picking ? (
+                        {!configured ? (
+                            <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-4 py-3 text-[13px] text-amber-700">No tests are set for this step yet. Add quizzes to the <span className="font-semibold">Knowledge Test</span> step in the workflow (Forms &amp; Workflow Builder).</p>
+                        ) : (
                             <div>
                                 <div className="flex items-center justify-between gap-3">
-                                    <p className="text-sm font-semibold text-slate-800">{assignedIds.length} quiz{assignedIds.length === 1 ? "" : "zes"} assigned to {a.firstName} {a.lastName}</p>
-                                    {!recorded && <Button variant="outline" size="sm" className="h-7 shrink-0 px-2.5 text-xs" onClick={() => { setPick(assignedIds); setPicking(true); }}>Edit assignment</Button>}
+                                    <p className="text-sm font-semibold text-slate-800">{tests.length} test{tests.length === 1 ? "" : "s"} for {a.firstName} {a.lastName}</p>
+                                    {!sent && <Button size="sm" className="h-7 shrink-0 gap-1 px-2.5 text-xs" onClick={openCompose}><Mail className="h-3.5 w-3.5" /> Email link to driver</Button>}
                                 </div>
-                                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                                    {assignedIds.map((id) => {
-                                        const qz = quizById(id);
+                                <p className="mb-2.5 mt-0.5 text-xs text-slate-500">These tests are set on the workflow — to change them, edit the Knowledge Test step in the builder.</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {tests.map((p) => {
+                                        const qz = quizById(p.quizId);
                                         return (
-                                            <span key={id} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-medium text-slate-600"><ClipboardList className="h-3 w-3 text-slate-400" /> {quizTitle(id)} <span className="rounded-full bg-white px-1.5 text-[10px] font-bold text-blue-600">{qz ? testLength(qz, qs.quizCounts?.[id]) : qs.quizCounts?.[id]} Q</span></span>
+                                            <span key={p.quizId} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-medium text-slate-600"><ClipboardList className="h-3 w-3 text-slate-400" /> {quizTitle(p.quizId)} <span className="rounded-full bg-white px-1.5 text-[10px] font-bold text-blue-600">{qz ? testLength(qz, p.count) : p.count} Q</span></span>
                                         );
                                     })}
                                 </div>
-                                <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5" /> Link emailed to {a.email}</p>
-                            </div>
-                        ) : (
-                            <div>
-                                <p className="text-sm font-semibold text-slate-800">Select quizzes for {a.firstName} {a.lastName}</p>
-                                <p className="mb-3 text-xs text-slate-500">Pick the knowledge tests the driver must complete, then email them the secure link.</p>
-                                <div className="space-y-3">
-                                    {cats.map((cat) => (
-                                        <div key={cat}>
-                                            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat}</p>
-                                            <div className="space-y-1.5">
-                                                {quizzes.filter((x) => x.category === cat).map((qz) => {
-                                                    const on = pick.includes(qz.id);
-                                                    return (
-                                                        <div key={qz.id}
-                                                            className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 transition", on ? "border-blue-500 bg-blue-50/60 ring-1 ring-blue-500/20" : "border-slate-200 bg-white hover:bg-slate-50")}>
-                                                            <button type="button" onClick={() => togglePick(qz.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                                                                <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-md border", on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white text-transparent")}><Check className="h-3 w-3" /></span>
-                                                                <span className="min-w-0 flex-1">
-                                                                    <span className="block truncate text-[13px] font-semibold text-slate-800">{qz.title}</span>
-                                                                    <span className="block truncate text-xs text-slate-500">{qz.questions.length} questions available · pass {qz.passPct}%</span>
-                                                                </span>
-                                                            </button>
-                                                            {on && (
-                                                                <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-500">
-                                                                    Test length
-                                                                    <select value={counts[qz.id] ?? defaultCount(qz.id)} onChange={(e) => setCount(qz.id, Number(e.target.value))}
-                                                                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[12px] font-semibold text-slate-700 focus:border-blue-400 focus:outline-none">
-                                                                        {TEST_LENGTHS.filter((n) => n < qz.questions.length).map((n) => <option key={n} value={n}>{n} questions</option>)}
-                                                                        <option value={qz.questions.length}>All ({qz.questions.length})</option>
-                                                                    </select>
-                                                                </label>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-3 flex items-center gap-2">
-                                    <Button className="shrink-0" disabled={pick.length === 0} onClick={openCompose}><Send className="h-4 w-4" /> Assign {pick.length > 0 ? `${pick.length} ` : ""}to driver</Button>
-                                    {assigned && <Button variant="outline" className="shrink-0" onClick={() => setPicking(false)}>Cancel</Button>}
-                                </div>
+                                {sent && <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"><Check className="h-3.5 w-3.5" /> Link emailed to {a.email}</p>}
                             </div>
                         )}
                     </div>
                 </Row>
 
-                {/* Step 2 — Driver completes the quizzes */}
+                {/* Step 2 — Driver completes the tests */}
                 <Row i={1}>
                     <div className="rounded-xl border border-slate-200 p-4">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Quiz results</p>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Test results</p>
                             <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold", meta.badge)}><span className={cn("h-1.5 w-1.5 rounded-full", meta.dot)} /> {meta.label}</span>
                         </div>
-                        {!assigned ? (
-                            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">Assign quizzes above — the driver's results will appear here.</p>
+                        {!configured ? (
+                            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">No tests configured — set them on the workflow's Knowledge Test step.</p>
                         ) : (
                             <div className="space-y-1.5">
-                                {assignedIds.map((id) => <QuizResultRow key={id} id={id} />)}
+                                {tests.map((p) => <QuizResultRow key={p.quizId} id={p.quizId} />)}
                             </div>
                         )}
                     </div>
@@ -2379,13 +2363,21 @@ function QuizModule({ a, updateOne, defaults, review, onReview, onTake, onReview
                 {/* Step 3 — HR review & sign-off */}
                 <Row i={2}>
                     {!recorded ? (
-                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">The driver must complete all assigned quizzes — HR can then review and sign it off.</p>
-                    ) : review ? (
-                        <div className="space-y-2.5">
-                            <ReviewedBanner review={review} />
-                        </div>
+                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">The driver must complete all the tests (pass, or use all {MAX_QUIZ_ATTEMPTS} chances) — HR can then review and sign it off.</p>
                     ) : (
-                        <ReviewSignOff label="Knowledge Test — Reviewer Sign-Off" signedNote="Quiz results reviewed & signed off" onConfirm={(r) => onReview({ ...r, at: Date.now() })} />
+                        <div className="space-y-2.5">
+                            {/* Results summary for the reviewer */}
+                            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px]">
+                                <span className="font-semibold text-slate-700">Results:</span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">{passedCount} passed</span>
+                                {failedCount > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">{failedCount} failed</span>}
+                                {tests.some((p) => training[p.quizId]) && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700"><GraduationCap className="h-3 w-3" /> training assigned</span>}
+                                <span className="ml-auto text-xs text-slate-400">{tests.length} test{tests.length === 1 ? "" : "s"} · up to {MAX_QUIZ_ATTEMPTS} chances each</span>
+                            </div>
+                            {review ? <ReviewedBanner review={review} /> : (
+                                <ReviewSignOff label="Knowledge Test — Reviewer Sign-Off" signedNote="Quiz results reviewed & signed off" onConfirm={(r) => onReview({ ...r, at: Date.now() })} />
+                            )}
+                        </div>
                     )}
                 </Row>
             </div>
@@ -2416,11 +2408,11 @@ function QuizModule({ a, updateOne, defaults, review, onReview, onTake, onReview
                             <span className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">Secure link</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                            {pick.map((id) => <span key={id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"><ClipboardList className="h-3 w-3 text-slate-400" /> {quizTitle(id)} · {countOf(id)} Q</span>)}
+                            {tests.map((p) => <span key={p.quizId} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"><ClipboardList className="h-3 w-3 text-slate-400" /> {quizTitle(p.quizId)} · {lenOf(p.quizId)} Q</span>)}
                         </div>
                         <div className="flex justify-end gap-2 pt-1">
                             <Button variant="outline" onClick={() => setComposeOpen(false)}>Cancel</Button>
-                            <Button onClick={sendAssignment}><Send className="h-4 w-4" /> Send &amp; assign</Button>
+                            <Button onClick={sendLink}><Send className="h-4 w-4" /> Send link</Button>
                         </div>
                     </div>
                 </DialogContent>
