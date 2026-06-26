@@ -84,6 +84,17 @@ export function totalForms(t: HiringTemplate): number {
 const st = (tplId: string, n: number, title: string, formIds: string[]): TemplateStep => ({ id: `${tplId}-st${n}`, title, formIds });
 // A Knowledge Test step that comes with quizzes attached as a default test.
 const quizStep = (tplId: string, n: number, quizzes: QuizPick[]): TemplateStep => ({ id: `${tplId}-st${n}`, title: "Knowledge Test", formIds: ["quiz"], quizzes });
+// One test from EVERY category — the default knowledge-test battery.
+const ALL_CATEGORY_QUIZZES: QuizPick[] = [
+    { quizId: "quiz-gk-1", count: 20 },        // General Knowledge
+    { quizId: "quiz-signs-1", count: 20 },     // Road Signs
+    { quizId: "quiz-class-1", count: 20 },     // Licence Classes
+    { quizId: "quiz-class-a-1", count: 20 },   // Class A
+    { quizId: "quiz-class-d-1", count: 20 },   // Class D
+    { quizId: "quiz-air-1", count: 20 },       // Air Brake
+    { quizId: "quiz-hos-1", count: 20 },       // Hours of Service
+    { quizId: "quiz-hazmat-1", count: 20 },    // HazMat
+];
 // A single-report step, titled by the report's short name (one form per step).
 const REPORT_TITLES: Record<string, string> = { psp: "PSP", mvr: "MVR", "driver-abstract": "Driver Abstract", cvdr: "CVDR", cda: "CDA", "cvdr-cda": "CVDR / CDA" };
 const rep = (tplId: string, n: number, fid: string): TemplateStep => ({ id: `${tplId}-st${n}`, title: REPORT_TITLES[fid] ?? stepName(fid), formIds: [fid] });
@@ -97,7 +108,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-us", 3, "mvr"),
             st("tpl-us", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-us", 5, "Road Test", ["road-test"]),
-            quizStep("tpl-us", 9, [{ quizId: "quiz-gk-1", count: 20 }, { quizId: "quiz-signs-1", count: 10 }]),
+            quizStep("tpl-us", 9, ALL_CATEGORY_QUIZZES),
             st("tpl-us", 6, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-us"),
         ],
@@ -109,7 +120,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-canada", 2, "driver-abstract"),  // Canada Abstract / CVOR
             st("tpl-canada", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-canada", 4, "Road Test", ["road-test"]),
-            quizStep("tpl-canada", 9, [{ quizId: "quiz-gk-1", count: 20 }, { quizId: "quiz-air-1", count: 20 }]),
+            quizStep("tpl-canada", 9, ALL_CATEGORY_QUIZZES),
             st("tpl-canada", 5, "Employment Verification", ["employment-verification"]),
             makeReviewStep("tpl-canada"),
         ],
@@ -123,7 +134,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-cross", 4, "cvdr-cda"),
             st("tpl-cross", 5, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-cross", 6, "Road Test", ["road-test"]),
-            quizStep("tpl-cross", 9, [{ quizId: "quiz-gk-1", count: 20 }, { quizId: "quiz-air-1", count: 20 }]),
+            quizStep("tpl-cross", 9, ALL_CATEGORY_QUIZZES),
             st("tpl-cross", 7, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-cross"),
         ],
@@ -135,7 +146,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-local", 2, "mvr"),
             st("tpl-local", 3, "Background & Testing", ["criminal-background", "substance-testing"]),
             st("tpl-local", 4, "Road Test", ["road-test"]),
-            quizStep("tpl-local", 9, [{ quizId: "quiz-gk-1", count: 20 }, { quizId: "quiz-signs-1", count: 10 }]),
+            quizStep("tpl-local", 9, ALL_CATEGORY_QUIZZES),
             st("tpl-local", 5, "Employment Verification", ["employment-verification"]),
             makeReviewStep("tpl-local"),
         ],
@@ -146,7 +157,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             makeAppStep("tpl-us-fast", ["mvr-release", "clearinghouse-consent", "substance-consent-release"]),
             rep("tpl-us-fast", 2, "mvr"),
             st("tpl-us-fast", 3, "Testing", ["substance-testing"]),
-            quizStep("tpl-us-fast", 9, [{ quizId: "quiz-gk-1", count: 20 }]),
+            quizStep("tpl-us-fast", 9, ALL_CATEGORY_QUIZZES),
             st("tpl-us-fast", 4, "Employment Verification", ["dot-verification"]),
             makeReviewStep("tpl-us-fast"),
         ],
@@ -158,7 +169,7 @@ const DEFAULT_TEMPLATES: HiringTemplate[] = [
             rep("tpl-oo", 2, "psp"),
             rep("tpl-oo", 3, "mvr"),
             st("tpl-oo", 4, "Background & Testing", ["criminal-background", "substance-testing"]),
-            quizStep("tpl-oo", 9, [{ quizId: "quiz-gk-1", count: 20 }, { quizId: "quiz-signs-1", count: 10 }]),
+            quizStep("tpl-oo", 9, ALL_CATEGORY_QUIZZES),
             st("tpl-oo", 5, "Employment Verification", ["dot-verification"]),
             st("tpl-oo", 6, "Medical & Compliance", ["medical-card", "annual-review"]),
             makeReviewStep("tpl-oo"),

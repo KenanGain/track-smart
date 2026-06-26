@@ -36,6 +36,7 @@ import { RoadTestEquivalent, type EquivalentResult } from "./RoadTestEquivalent"
 import { useQuizzes, getQuiz, quizTitle, testQuestions, testLength, testPassMark, MAX_QUIZ_ATTEMPTS } from "./quizzes.data";
 import type { QuizPick } from "./hiring-templates.data";
 import { QuizRunner, type QuizResult } from "./QuizRunner";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip } from "recharts";
 import { FormDocument, THEMES, type DocSection, type ThemeKey } from "./FormDocument";
 import { ClassicSphForms, type ClassicSphData } from "./ClassicSphForms";
 
@@ -2237,9 +2238,36 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
         setComposeOpen(false);
     };
 
+    // ── Detailed marksheet report (pie chart + per-category breakdown) ──
+    const [reportOpen, setReportOpen] = useState(false);
+    const band = (pct: number) => pct >= 80
+        ? { label: "Strong", color: "#10b981", chip: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500" }
+        : pct >= 50
+            ? { label: "Needs work", color: "#f59e0b", chip: "bg-amber-100 text-amber-700", bar: "bg-amber-500" }
+            : { label: "Weak", color: "#ef4444", chip: "bg-rose-100 text-rose-700", bar: "bg-rose-500" };
+    const report = useMemo(() => {
+        const cats: Record<string, { category: string; correct: number; total: number; tests: { id: string; title: string; score: number; total: number; pct: number; passed: boolean }[] }> = {};
+        let correct = 0, total = 0;
+        tests.forEach((p) => {
+            const qz = quizById(p.quizId);
+            if (!qz) return;
+            const r = results[p.quizId];
+            const tt = r?.total ?? testLength(qz, p.count);
+            const sc = r?.score ?? 0;
+            correct += sc; total += tt;
+            const c = cats[qz.category] ?? (cats[qz.category] = { category: qz.category, correct: 0, total: 0, tests: [] });
+            c.correct += sc; c.total += tt;
+            c.tests.push({ id: p.quizId, title: qz.title, score: sc, total: tt, pct: tt ? Math.round((sc / tt) * 100) : 0, passed: !!r?.passed });
+        });
+        const list = Object.values(cats).map((c) => ({ ...c, pct: c.total ? Math.round((c.correct / c.total) * 100) : 0 }));
+        return { list, correct, total, pct: total ? Math.round((correct / total) * 100) : 0, weak: list.filter((c) => c.pct < 80) };
+    }, [tests, results, quizzes]);
+    const pieData = report.list.map((c) => ({ name: c.category, value: c.total, pct: c.pct, score: c.correct, color: band(c.pct).color }));
+
     const steps = [
         { label: "Tests (from workflow)", done: configured },
         { label: "Driver Completes", done: recorded },
+        { label: "Marksheet", done: recorded },
         { label: "HR Review", done: !!review },
     ];
     const currentIdx = steps.findIndex((s) => !s.done);
@@ -2282,10 +2310,10 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
                         <p className="truncate text-xs text-slate-500">{cnt}-question test · pass {qz.passPct}% ({testPassMark(qz, countFor(id))}/{cnt}){r ? ` · best/last score ${r.score}/${r.total}` : ""}</p>
                     </div>
                     {/* Chances used */}
-                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", failedOut ? "bg-rose-100 text-rose-700" : used > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500")} title="Attempts used">{used}/{MAX_QUIZ_ATTEMPTS} chances</span>
+                    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", used > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500")} title="Attempts used">{used}/{MAX_QUIZ_ATTEMPTS} chances</span>
                     {/* Pass / fail / not started */}
                     {r ? (
-                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>{passed ? "Passed" : "Did not pass"}</span>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold", passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-200")}>{passed ? "Passed" : "Did not pass"}</span>
                     ) : (
                         <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-400">Not started</span>
                     )}
@@ -2296,13 +2324,13 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
                             : <Button variant="outline" className={tiny} onClick={() => onTake(id)}><RotateCcw className="h-3.5 w-3.5" /> Retake ({used + 1}/{MAX_QUIZ_ATTEMPTS})</Button>
                     )}
                 </div>
-                {/* Failed after all chances → assign training */}
+                {/* Out of chances → offer remedial training (constructive, not an error) */}
                 {failedOut && (
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-rose-100 bg-rose-50/60 px-3 py-2">
-                        <span className="text-[12px] font-medium text-rose-700">Failed after {MAX_QUIZ_ATTEMPTS} attempts — no chances left.</span>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-amber-800"><AlertCircle className="h-3.5 w-3.5" /> No chances left after {MAX_QUIZ_ATTEMPTS} attempts.</span>
                         {trained
                             ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700"><Check className="h-3.5 w-3.5" /> Training assigned</span>
-                            : <Button className={cn(tiny, "bg-rose-600 hover:bg-rose-700")} onClick={() => assignTraining(id)}><GraduationCap className="h-3.5 w-3.5" /> Assign training</Button>}
+                            : <Button className={cn(tiny, "bg-amber-500 text-white hover:bg-amber-600")} onClick={() => assignTraining(id)}><GraduationCap className="h-3.5 w-3.5" /> Assign training</Button>}
                     </div>
                 )}
             </div>
@@ -2360,20 +2388,69 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
                     </div>
                 </Row>
 
-                {/* Step 3 — HR review & sign-off */}
+                {/* Step 3 — Marksheet: the scored report card for every test */}
                 <Row i={2}>
                     {!recorded ? (
-                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">The driver must complete all the tests (pass, or use all {MAX_QUIZ_ATTEMPTS} chances) — HR can then review and sign it off.</p>
+                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">The marksheet appears once the driver completes all the tests (pass, or use all {MAX_QUIZ_ATTEMPTS} chances).</p>
+                    ) : (
+                        <div className="overflow-hidden rounded-xl border border-slate-200">
+                            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50/80 px-4 py-2.5">
+                                <ClipboardCheck className="h-4 w-4 text-slate-400" />
+                                <p className="text-[13px] font-semibold text-slate-700">Marksheet — {a.firstName} {a.lastName}</p>
+                                <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">{passedCount} passed</span>
+                                {failedCount > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-inset ring-rose-200">{failedCount} failed</span>}
+                                <Button size="sm" className="h-7 shrink-0 gap-1 px-2.5 text-xs" onClick={() => setReportOpen(true)}><Eye className="h-3.5 w-3.5" /> View report</Button>
+                            </div>
+                            <table className="w-full text-[13px]">
+                                <thead>
+                                    <tr className="border-b border-slate-200 bg-white text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                        <th className="px-4 py-2 font-bold">Test</th>
+                                        <th className="px-3 py-2 font-bold">Category</th>
+                                        <th className="px-3 py-2 text-center font-bold">Score</th>
+                                        <th className="px-3 py-2 text-center font-bold">Pass mark</th>
+                                        <th className="px-3 py-2 text-center font-bold">Chances</th>
+                                        <th className="px-3 py-2 text-center font-bold">Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {tests.map((p) => {
+                                        const qz = quizById(p.quizId);
+                                        if (!qz) return null;
+                                        const r = results[p.quizId];
+                                        const cnt = testLength(qz, p.count);
+                                        const passed = passedFor(p.quizId);
+                                        const used = usedFor(p.quizId);
+                                        const trained = !!training[p.quizId];
+                                        return (
+                                            <tr key={p.quizId} className="border-b border-slate-100 last:border-0">
+                                                <td className="px-4 py-2.5 font-semibold text-slate-800">{qz.title}</td>
+                                                <td className="px-3 py-2.5 text-slate-500">{qz.category}</td>
+                                                <td className="px-3 py-2.5 text-center font-bold text-slate-700">{r ? `${r.score}/${r.total}` : "—"}</td>
+                                                <td className="px-3 py-2.5 text-center text-slate-500">{testPassMark(qz, p.count)}/{cnt}</td>
+                                                <td className="px-3 py-2.5 text-center"><span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", used > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500")}>{used}/{MAX_QUIZ_ATTEMPTS}</span></td>
+                                                <td className="px-3 py-2.5 text-center">
+                                                    {passed
+                                                        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700"><Check className="h-3 w-3" /> Pass</span>
+                                                        : <span className="inline-flex flex-col items-center gap-1"><span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-600 ring-1 ring-inset ring-rose-200">Fail</span>{trained && <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700"><GraduationCap className="h-2.5 w-2.5" /> training</span>}</span>}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </Row>
+
+                {/* Step 4 — HR review & sign-off */}
+                <Row i={3}>
+                    {!recorded ? (
+                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px] text-slate-400">Once the marksheet is complete, HR can review the results and sign it off.</p>
                     ) : (
                         <div className="space-y-2.5">
-                            {/* Results summary for the reviewer */}
-                            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-[13px]">
-                                <span className="font-semibold text-slate-700">Results:</span>
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">{passedCount} passed</span>
-                                {failedCount > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700">{failedCount} failed</span>}
-                                {tests.some((p) => training[p.quizId]) && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700"><GraduationCap className="h-3 w-3" /> training assigned</span>}
-                                <span className="ml-auto text-xs text-slate-400">{tests.length} test{tests.length === 1 ? "" : "s"} · up to {MAX_QUIZ_ATTEMPTS} chances each</span>
-                            </div>
+                            {tests.some((p) => training[p.quizId]) && (
+                                <p className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[12px] font-medium text-amber-700"><GraduationCap className="h-3.5 w-3.5" /> Remedial training assigned for one or more failed tests.</p>
+                            )}
                             {review ? <ReviewedBanner review={review} /> : (
                                 <ReviewSignOff label="Knowledge Test — Reviewer Sign-Off" signedNote="Quiz results reviewed & signed off" onConfirm={(r) => onReview({ ...r, at: Date.now() })} />
                             )}
@@ -2413,6 +2490,101 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
                         <div className="flex justify-end gap-2 pt-1">
                             <Button variant="outline" onClick={() => setComposeOpen(false)}>Cancel</Button>
                             <Button onClick={sendLink}><Send className="h-4 w-4" /> Send link</Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Detailed report — pie chart of category performance + where the driver needs work */}
+            <Dialog open={reportOpen} onOpenChange={(o) => { if (!o) setReportOpen(false); }}>
+                <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader><DialogTitle>Knowledge test report — {a.firstName} {a.lastName}</DialogTitle></DialogHeader>
+                    <div className="max-h-[72vh] space-y-4 overflow-y-auto px-6 pb-6">
+                        {/* Overall score + pie */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="flex flex-col justify-center rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Overall score</p>
+                                <p className="mt-1 text-3xl font-extrabold text-slate-800">{report.correct}<span className="text-lg font-bold text-slate-400">/{report.total}</span></p>
+                                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                                    <div className={cn("h-full rounded-full", band(report.pct).bar)} style={{ width: `${report.pct}%` }} />
+                                </div>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", band(report.pct).chip)}>{report.pct}% · {band(report.pct).label}</span>
+                                    <span className="text-[11px] text-slate-400">{passedCount} of {tests.length} tests passed</span>
+                                </div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 p-2">
+                                <p className="px-2 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">By category</p>
+                                <div className="h-[150px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={32} outerRadius={58} paddingAngle={2} strokeWidth={2}>
+                                                {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                                            </Pie>
+                                            <RTooltip formatter={(_v, _n, p: any) => [`${p.payload.score}/${p.payload.value} (${p.payload.pct}%)`, p.payload.name]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 px-2 pb-1">
+                                    {pieData.map((d, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600"><span className="h-2 w-2 rounded-full" style={{ background: d.color }} /> {d.name}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Legend */}
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-[11px] font-medium text-slate-500">
+                            <span>Marking band:</span>
+                            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: "#10b981" }} /> Strong (≥80%)</span>
+                            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: "#f59e0b" }} /> Needs work (50–79%)</span>
+                            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: "#ef4444" }} /> Weak (&lt;50%)</span>
+                        </div>
+
+                        {/* Per-category breakdown — where the driver needs work */}
+                        <div className="space-y-2.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Section breakdown</p>
+                            {report.list.map((c) => {
+                                const b = band(c.pct);
+                                return (
+                                    <div key={c.category} className="rounded-xl border border-slate-200 p-3.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="h-3 w-3 rounded-full" style={{ background: b.color }} />
+                                            <p className="text-[13px] font-semibold text-slate-800">{c.category}</p>
+                                            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", b.chip)}>{c.pct}% · {b.label}</span>
+                                            <span className="ml-auto text-[13px] font-bold text-slate-700">{c.correct}/{c.total}</span>
+                                        </div>
+                                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                                            <div className={cn("h-full rounded-full", b.bar)} style={{ width: `${c.pct}%` }} />
+                                        </div>
+                                        <div className="mt-2.5 space-y-1.5">
+                                            {c.tests.map((t) => (
+                                                <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50/70 px-2.5 py-1.5">
+                                                    <ClipboardList className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                                    <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-700">{t.title}</span>
+                                                    <span className="shrink-0 text-[12px] font-bold text-slate-600">{t.score}/{t.total}</span>
+                                                    <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold", t.passed ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700")}>{t.passed ? "Pass" : "Fail"}</span>
+                                                    <Button variant="outline" className="h-6 shrink-0 gap-1 px-2 text-[11px]" onClick={() => { setReportOpen(false); onReviewResult(t.id); }}><Eye className="h-3 w-3" /> Marking</Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Where we need work — actionable summary */}
+                        {report.weak.length > 0 && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                                <p className="flex items-center gap-1.5 text-[12px] font-bold text-amber-800"><AlertCircle className="h-3.5 w-3.5" /> Where this driver needs work</p>
+                                <p className="mt-1 text-[12px] leading-relaxed text-amber-700">
+                                    {report.weak.map((c) => `${c.category} (${c.pct}%)`).join(", ")} — below the 80% pass mark. Consider assigning remedial training for these sections.
+                                </p>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end pt-1">
+                            <Button variant="outline" onClick={() => setReportOpen(false)}>Close</Button>
                         </div>
                     </div>
                 </DialogContent>
