@@ -56,6 +56,8 @@ export const STEP_CATALOG: { id: string; name: string; group: "Core" | "Forms" |
     { id: "criminal-background", name: "Criminal Background Check", group: "Forms" },
     { id: "substance-testing", name: "Substance Testing", group: "Forms" },
     { id: "employment-verification", name: "Employment Verification", group: "Forms" },
+    { id: "safety-performance-history", name: "Safety & Performance History", group: "Forms" },
+    { id: "old-safety-performance-history", name: "Old Safety & Performance History", group: "Forms" },
     { id: "dot-verification", name: "DOT / Employment Verification", group: "Forms" },
     { id: "road-test", name: "Road Test Evaluation", group: "Forms" },
     { id: "quiz", name: "Test (Quiz / Assessment)", group: "Forms" },

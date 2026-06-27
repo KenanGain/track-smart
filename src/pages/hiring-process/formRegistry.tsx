@@ -8,6 +8,7 @@ import { CVDR_CDA_TYPE } from "./screening-reports.data";
 import { CriminalBackgroundForm } from "./CriminalBackgroundForm";
 import { SubstanceTestingForm } from "./SubstanceTestingForm";
 import { AccidentHistoryForm } from "./AccidentHistoryForm";
+import { SafetyPerformanceHistoryForm } from "./SafetyPerformanceHistoryForm";
 import { DrugAlcoholHistoryForm } from "./DrugAlcoholHistoryForm";
 import { DotVerificationForm } from "./DotVerificationForm";
 import { MedicalCardForm } from "./MedicalCardForm";
@@ -16,6 +17,7 @@ import { ClearinghouseQueryForm } from "./ClearinghouseQueryForm";
 import { PolicyForm } from "./PolicyForm";
 import { POLICY_FORMS } from "./policy-forms.data";
 import { RoadTestForm } from "../ats/RoadTestForm";
+import { CustomFormWizard } from "../ats/CustomFormWizard";
 import { loadApplicationForms } from "../ats/application-forms.data";
 
 function StepPlaceholder({ title, desc, onBack }: { title: string; desc: string; onBack: () => void }) {
@@ -49,6 +51,17 @@ export function HiringFormView({ formId, onBack, embedded, startPreview, onSignO
     if (formId === "criminal-background") return <CriminalBackgroundForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "substance-testing") return <SubstanceTestingForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "accident-history") return <AccidentHistoryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+    if (formId === "safety-performance-history") return <SafetyPerformanceHistoryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
+
+    // The legacy "Previous Employer & Safety History" ATS form, surfaced as the classic
+    // Safety & Performance History document (the original gray-table layout).
+    if (formId === "old-safety-performance-history") {
+        const appForm = loadApplicationForms().find((f) => f.id === "form-ats-employment-verification");
+        if (appForm) {
+            if (embedded) return <StepInfo embedded title="Old Safety & Performance History" desc="The legacy Previous Employer & Safety History form. Open it from Settings → Hiring → Forms to preview or fill." onBack={onBack} />;
+            return <CustomFormWizard appForm={appForm} onClose={onBack} />;
+        }
+    }
     if (formId === "drug-alcohol-history") return <DrugAlcoholHistoryForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "dot-verification") return <DotVerificationForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;
     if (formId === "medical-card") return <MedicalCardForm onBack={onBack} embedded={embedded} startPreview={startPreview} />;

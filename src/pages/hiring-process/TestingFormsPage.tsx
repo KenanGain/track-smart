@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FlaskConical, CarFront, FileText, ArrowRight, Briefcase, ClipboardCheck, Trash2, Eye, Inbox } from "lucide-react";
+import { FlaskConical, FileText, ArrowRight, Briefcase, ClipboardCheck, Trash2, Eye, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { buildPrefill } from "./application-prefill";
@@ -12,14 +12,6 @@ import { useSavedTestForms, type SavedTestForm } from "./testing-saved-forms.dat
 // Each form is emailed with a checklist of supporting documents the previous employer is
 // asked to attach, alongside the secure form link.
 const TESTING_FORMS: { id: string; label: string; desc: string; Icon: typeof FlaskConical; group: string; docs: RecipientDoc[] }[] = [
-    { id: "accident-history", label: "Accident History", desc: "§391.23 safety performance — accident history.", Icon: CarFront, group: "Safety Performance History", docs: [
-        { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
-        { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
-    ] },
-    { id: "drug-alcohol-history", label: "Drug & Alcohol History", desc: "§391.23 safety performance — DOT testing history.", Icon: FlaskConical, group: "Safety Performance History", docs: [
-        { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
-        { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
-    ] },
     { id: "employment-verification", label: "Employment Verification", desc: "§391.23 employment verification — previous employer confirmation.", Icon: Briefcase, group: "Employment", docs: [
         { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
         { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
@@ -29,7 +21,7 @@ const TESTING_FORMS: { id: string; label: string; desc: string; Icon: typeof Fla
     ] },
 ];
 
-const GROUPS = ["Safety Performance History", "Employment", "Road Test"];
+const GROUPS = ["Employment", "Road Test"];
 
 export function TestingFormsPage() {
     const { applicants } = useApplicants();
