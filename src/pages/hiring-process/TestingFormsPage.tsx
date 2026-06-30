@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { FlaskConical, FileText, ArrowRight, Briefcase, ClipboardCheck, Trash2, Eye, Inbox } from "lucide-react";
+import { FlaskConical, FileText, ArrowRight, Briefcase, ClipboardCheck, ShieldCheck, Award, Trash2, Eye, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { buildPrefill } from "./application-prefill";
 import { RecipientFormPreview, type RecipientDoc } from "./RecipientFormPreview";
 import { RoadTestPreview } from "./RoadTestPreview";
+import { InsurancePreview } from "./InsurancePreview";
 import { useApplicants } from "./applicants.data";
 import { useSavedTestForms, type SavedTestForm } from "./testing-saved-forms.data";
 
@@ -16,12 +17,17 @@ const TESTING_FORMS: { id: string; label: string; desc: string; Icon: typeof Fla
         { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
         { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
     ] },
+    { id: "safety-performance-history", label: "Request for Employment and Safety Performance History", desc: "§391.23 — full employment & safety performance history completed by the previous employer.", Icon: ShieldCheck, group: "Employment", docs: [
+        { key: "experience-letter", label: "Employer Experience Letter", note: "Signed letter confirming the driver's employment and experience." },
+        { key: "insurance-letter", label: "Insurance Experience Letter", note: "Letter confirming insurance / loss history while employed." },
+    ] },
     { id: "road-test", label: "Road Test Evaluation", desc: "FMCSA §391.31 — open and fill the examiner's evaluation form (scored sections + certification).", Icon: ClipboardCheck, group: "Road Test", docs: [
         { key: "road-test-certificate", label: "Road Test Certificate", note: "Signed §391.31 record / certificate of road test." },
     ] },
+    { id: "insurance-policy", label: "Adding to Insurance", desc: "Send the completed hiring file to the insurance agent so they can add the driver to the policy.", Icon: Award, group: "Insurance", docs: [] },
 ];
 
-const GROUPS = ["Employment", "Road Test"];
+const GROUPS = ["Employment", "Road Test", "Insurance"];
 
 export function TestingFormsPage() {
     const { applicants } = useApplicants();
@@ -47,6 +53,11 @@ export function TestingFormsPage() {
             save({ formId: "road-test", label: "Road Test Evaluation", driverName, status: "draft", values: {} });
         }
     }, [prefill, driverName, save, saved]);
+
+    // Adding to Insurance — send the hiring file to the insurance agent · Email · Recipient form.
+    if (openForm === "insurance-policy") {
+        return <InsurancePreview driverName={driverName} carrier={applicants[0]?.carrier ?? "Acme Logistics"} prefill={prefill} onBack={closeForm} />;
+    }
 
     // Road Test is conducted internally by an examiner — Compose (assign) · Email · Recipient form.
     if (openForm === "road-test") {

@@ -121,6 +121,7 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const isEmpStep = !!empFid && pf.employment.length > 0;
     const isRoadTestStep = !!step && step.kind !== "review" && step.formIds.includes("road-test");
     const isQuizStep = !!step && step.kind !== "review" && step.formIds.includes("quiz");
+    const isInsuranceStep = !!step && step.kind !== "review" && step.formIds.includes("insurance-policy");
     // The Knowledge Test step's quizzes come straight from the workflow configuration
     // (set in the builder) — there is no manual per-applicant assignment.
     const quizStepDef = steps.find((s) => s.kind !== "review" && s.formIds.includes("quiz"));
@@ -131,7 +132,7 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const clState = a.checklistState ?? {};
     // The step's required items (forms + license uploads). Empty for review / employment steps (handled specially).
     // A license form holds a LIST of licenses → expand into one row per license.
-    const baseItems = step && step.kind !== "review" && !isEmpStep && !isRoadTestStep && !isQuizStep ? stepItems(step) : [];
+    const baseItems = step && step.kind !== "review" && !isEmpStep && !isRoadTestStep && !isQuizStep && !isInsuranceStep ? stepItems(step) : [];
     const items = baseItems.flatMap((it) => {
         if (it.fid !== "driver-license" || pf.licenses.length === 0) return [it];
         return pf.licenses.map((l, i) => ({ ...it, id: `driver-license:${i}`, label: `License ${i + 1}${l.number ? ` · ${l.number}` : ""}`, licIndex: i }));
@@ -190,6 +191,11 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                 events: [{ id: `ev-${Date.now()}`, type: "review", text: allReviewed ? `Reviewed & signed all employment history — ${r.by}` : `Reviewed & signed employer ${check?.employer ?? idx + 1} — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
             };
         });
+        // Per-form reviewer sign-off (Employment Verification / Safety Performance History) — keyed per form.
+        const reviewEmpForm = (formId: string, r: ReviewSignoff) => updateOne(a.id, (prev) => ({
+            reviews: { ...(prev.reviews ?? {}), [`employment:${empReview}:form:${formId}`]: r },
+            events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed ${formId === "employment-verification" ? "Employment Verification" : "Request for Employment and Safety Performance History"} — ${check?.employer ?? ""} — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
+        }));
         // One-click fulfilment for the actionable checklist items on the review page.
         const fulfill = (kind: "send" | "respond" | "verify" | "doc", docKey?: string, attempt?: number) => updateOne(a.id, (prev) => {
             if (kind === "doc" && docKey) return { docs: { ...(prev.docs ?? {}), [docKey]: "received" as DocStatus }, events: [{ id: `ev-${Date.now()}`, type: "doc", text: `Marked received — ${docKey.split(":").slice(-1)[0]} (${check.employer})`, at: Date.now(), author: ACTOR }, ...prev.events] };
@@ -222,7 +228,7 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
             events: [{ id: `ev-${Date.now()}`, type: "request", text: `Sent ${p.docLabel} to ${p.org || p.to || "third party"} for verification`, at: Date.now(), author: ACTOR }, ...prev.events],
         }));
         if (!check) { setEmpReview(null); return null; }
-        return <EmploymentReviewView a={a} check={check} filled={pf.employment[idx]} index={idx} total={checks.length} existingReview={a.reviews?.[`employment:${empReview}`]} remarks={a.remarks.filter((r) => r.formId === `employment:${empReview}`)} onAddRemark={(t) => addReviewNote(`employment:${empReview}`, check?.employer ?? "Employer", t)} onFulfill={fulfill} onRequest={sendEmpRequest} onSendDoc={sendDocThirdParty} onBack={() => setEmpReview(null)} onReview={reviewEmp} />;
+        return <EmploymentReviewView a={a} check={check} filled={pf.employment[idx]} index={idx} total={checks.length} existingReview={a.reviews?.[`employment:${empReview}`]} remarks={a.remarks.filter((r) => r.formId === `employment:${empReview}`)} onAddRemark={(t) => addReviewNote(`employment:${empReview}`, check?.employer ?? "Employer", t)} onFulfill={fulfill} onRequest={sendEmpRequest} onSendDoc={sendDocThirdParty} onBack={() => setEmpReview(null)} onReview={reviewEmp} onReviewForm={reviewEmpForm} />;
     }
     if (openForm) return <PrefillProvider value={buildPrefill(a)}><HiringFormView formId={openForm} startPreview={formPreview} roadTestValues={a.roadTest?.formValues}
         roadTestNote={openForm === "road-test" && a.roadTest?.examiner ? { examiner: a.roadTest.examiner, driver: `${a.firstName} ${a.lastName}`.trim() } : undefined}
@@ -599,6 +605,14 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                                         }))}
                                         onTake={(quizId) => setQuizRun({ quizId, mode: "take" })}
                                         onReviewResult={(quizId) => setQuizRun({ quizId, mode: "review" })} />
+                                ) : isInsuranceStep ? (
+                                    <InsurancePolicyModule a={a} steps={steps} updateOne={updateOne}
+                                        review={a.reviews?.["insurance-policy"]}
+                                        onReview={(r) => updateOne(a.id, (prev) => ({
+                                            reviews: { ...(prev.reviews ?? {}), "insurance-policy": { ...r, at: Date.now() } },
+                                            stepStatus: { ...(prev.stepStatus ?? {}), [step.id]: "complete" as StepStatus },
+                                            events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed off the insurance step — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
+                                        }))} />
                                 ) : (
                                     <div className="space-y-2.5 p-5">
                                         {items.map((item) => (
@@ -985,9 +999,9 @@ function LicenseReviewView({ a, pf, focusIndex, existingReview, remarks, onAddRe
 // "Traditional" renders the verbatim FMCSA paper forms (filled + signed); other themes render
 // the styled key-value document.
 function ReturnedFormPage({ title, subtitle, sections, classic, formPage, branding, onBack }: {
-    title: string; subtitle?: string; sections: DocSection[]; classic: ClassicSphData; formPage: "accident" | "drug"; branding: CompanyBranding; onBack: () => void;
+    title: string; subtitle?: string; sections: DocSection[]; classic: ClassicSphData; formPage?: "accident" | "drug"; branding: CompanyBranding; onBack: () => void;
 }) {
-    const [theme, setTheme] = useState<ThemeKey>("traditional");
+    const [theme, setTheme] = useState<ThemeKey>("standard");
     const [downloading, setDownloading] = useState(false);
     const [shared, setShared] = useState(false);
     const docRef = useRef<HTMLDivElement>(null);
@@ -1033,7 +1047,7 @@ function ReturnedFormPage({ title, subtitle, sections, classic, formPage, brandi
             </div>
             <div className="px-4 py-8">
                 <div ref={docRef} className={cn("mx-auto max-w-[820px]", theme === "traditional" && "bg-white p-6 shadow-lg")}>
-                    {theme === "traditional"
+                    {theme === "traditional" && formPage
                         ? <ClassicSphForms data={classic} branding={branding} page={formPage} />
                         : <FormDocument title={title} subtitle={subtitle} sections={sections} theme={theme} branding={branding} />}
                 </div>
@@ -1042,26 +1056,16 @@ function ReturnedFormPage({ title, subtitle, sections, classic, formPage, brandi
     );
 }
 
-function EmploymentReviewView({ a, check, filled, index, total, existingReview, remarks, onAddRemark, onFulfill, onRequest, onSendDoc, onBack, onReview }: {
-    a: Applicant; check: EmpCheck; filled?: PrefillEmployer; index: number; total: number; existingReview?: ReviewSignoff;
-    remarks: Remark[]; onAddRemark: (text: string) => void;
-    onFulfill: (kind: "send" | "respond" | "verify" | "doc", docKey?: string, attempt?: number) => void;
-    onRequest: (req: { to: string; subject: string; message: string; verifyData?: boolean; docKeys?: string[]; docLabels?: string[] }) => void;
-    onSendDoc: (p: { docLabel: string; org: string; to: string }) => void;
-    onBack: () => void; onReview: (r: ReviewSignoff) => void;
+// Per-form review — opened from "Forms Sent — Review". Shows the form's information, the
+// document list, the requests & responses, the verification activity, a review checklist,
+// and a reviewer sign-off (persisted per form). Each form gets its own review + PDF.
+function FormReviewView({ formId, formLabel, check, filled, docs, existingReview, onReview, onBack, onPdf }: {
+    formId: string; formLabel: string; a: Applicant; check: EmpCheck; filled?: PrefillEmployer;
+    docs: { key: string; label: string; status: DocStatus; source: "driver" | "employer" }[];
+    existingReview?: ReviewSignoff; onReview: (r: { sig: string; by: string; role: string; date: string }) => void;
+    onBack: () => void; onPdf: () => void;
 }) {
-    const [preview, setPreview] = useState<{ label: string } | null>(null);
-    // `only` pre-checks a single document; otherwise every employer-sourced, not-yet-received letter.
-    const [reqOpen, setReqOpen] = useState<{ only?: string } | null>(null);
-    const [sendDoc, setSendDoc] = useState<{ label: string } | null>(null);
-    const [openResp, setOpenResp] = useState<number | null>(null);   // which request row is expanded
-    const [viewForm, setViewForm] = useState<"accident" | "drug" | null>(null);   // which returned form to view
-    const [branding] = useCompanyBranding();
-    const openReq = (docKey?: string) => setReqOpen({ only: docKey });
-    const tinyBtn = "h-7 gap-1 px-2.5 text-xs";
-    const statusLabel: Record<string, string> = { pending: "Not requested", sent: `Sent · ${check.attempts.length}/${EMP_MAX_ATTEMPTS}`, responded: "Responded", verified: "Verified" };
-    const dateOf = (ts?: number) => ts ? new Date(ts).toLocaleDateString() : "—";
-    // What the driver filled in the application for this employer (with proper From / To dates).
+    // Employer details — exactly what the driver provided in the application.
     const filledRows = [
         { label: "Employer", value: filled?.employer ?? check.employer }, { label: "Position", value: filled?.position ?? check.position },
         { label: "From", value: filled?.from ?? "" }, { label: "To", value: filled?.to ?? "" },
@@ -1069,6 +1073,115 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
         { label: "Reason for Leaving", value: filled?.reason ?? "" }, { label: "Terminated / Discharged / Laid Off", value: filled?.terminated ?? "" },
         { label: "Current Employer", value: filled?.current ?? "" }, { label: "Operated Commercial Motor Vehicle", value: filled?.operatedCMV ?? "" },
     ];
+    const checklist = [
+        { label: "Employer name provided", ok: !!(filled?.employer ?? check.employer) },
+        { label: "Position provided", ok: !!(filled?.position ?? check.position) },
+        { label: "Employment dates (from / to) provided", ok: !!(filled?.from || filled?.to) },
+        { label: "Telephone provided", ok: !!filled?.telephone },
+        { label: "Employer address provided", ok: !!filled?.address },
+        { label: "Reason for leaving provided", ok: !!filled?.reason },
+        { label: "Terminated / discharged / laid off answered", ok: !!filled?.terminated },
+        { label: "Current-employer question answered", ok: !!filled?.current },
+        { label: "Operated commercial motor vehicle answered", ok: !!filled?.operatedCMV },
+        ...docs.map((d) => ({ label: `${d.label} received`, ok: DONE_STATES.includes(d.status) })),
+        { label: "Employment dates & position verified", ok: check.status === "verified" },
+        { label: "Reviewer sign-off completed", ok: !!existingReview },
+    ];
+    const Card = ({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) => (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">{title}</h2>{right}
+            </div>
+            {children}
+        </div>
+    );
+    return (
+        <div className="min-h-screen bg-slate-50">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Back</button>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={onPdf}><FileText className="h-4 w-4" /> PDF</Button>
+            </div>
+            <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
+                <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Form Review · {check.employer}</p>
+                    <h1 className="text-2xl font-bold text-slate-900">{formLabel}</h1>
+                    <p className="mt-1 text-sm text-slate-500">Review the form information, documents and checklist, then sign off below.</p>
+                </div>
+                {existingReview && <ReviewedBanner review={existingReview} />}
+
+                {/* Employer Details — exactly as the driver provided */}
+                <Card title="Employer Details — as the driver provided">
+                    <div className="grid gap-4 p-5 sm:grid-cols-2">
+                        {filledRows.map((r, ri) => <RoField key={ri} label={r.label} value={r.value} />)}
+                    </div>
+                </Card>
+
+                {/* Verified By — the previous-employer representative who confirmed the employment (Employment Verification only) */}
+                {formId === "employment-verification" && (
+                    <Card title="Verified By">
+                        <div className="grid gap-4 p-5 sm:grid-cols-2">
+                            {[
+                                { label: "Name", value: "Dana Whitfield" }, { label: "Title", value: "Safety Manager" },
+                                { label: "Company", value: filled?.employer ?? check.employer }, { label: "Telephone", value: filled?.telephone ?? "" },
+                                { label: "Address", value: filled?.address ?? "" }, { label: "Date Signed", value: check.respondedAt ? new Date(check.respondedAt).toLocaleDateString() : "—" },
+                            ].map((r, ri) => <RoField key={ri} label={r.label} value={r.value} />)}
+                            <div className="sm:col-span-2">
+                                <p className="text-xs font-semibold text-slate-500">Signature</p>
+                                <span className="mt-1.5 inline-block rounded border border-slate-200 bg-white px-4 py-1.5 text-lg italic text-slate-800" style={{ fontFamily: "'Segoe Script','Brush Script MT','Snell Roundhand',cursive" }}>Dana Whitfield</span>
+                            </div>
+                        </div>
+                    </Card>
+                )}
+
+                {/* Document list */}
+                <Card title="Documents">
+                    <ul className="divide-y divide-slate-100">
+                        {docs.length === 0 ? <li className="px-5 py-4 text-sm text-slate-400">No verification documents required.</li> : docs.map((d) => (
+                            <li key={d.key} className="flex items-center gap-3 px-5 py-3">
+                                <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{d.label}</span>
+                                <span className="text-[11px] text-slate-400">{d.source === "employer" ? "From employer" : "Driver provides"}</span>
+                                <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", DONE_STATES.includes(d.status) ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-200")}>{DONE_STATES.includes(d.status) ? "Received" : "Missing"}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </Card>
+
+                {/* Review checklist */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Review checklist — {check.employer}</p>
+                    <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">{checklist.map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} />)}</ul>
+                </div>
+
+                {/* Reviewer sign-off — persisted per form */}
+                <ReviewSignOff label={`I have reviewed the ${formLabel} for ${check.employer}.`} signedNote="Form reviewed & signed" existing={existingReview} onConfirm={onReview} />
+            </div>
+        </div>
+    );
+}
+
+function EmploymentReviewView({ a, check, filled, index, total, existingReview, remarks, onAddRemark, onFulfill, onRequest, onSendDoc, onBack, onReview, onReviewForm }: {
+    a: Applicant; check: EmpCheck; filled?: PrefillEmployer; index: number; total: number; existingReview?: ReviewSignoff;
+    remarks: Remark[]; onAddRemark: (text: string) => void;
+    onFulfill: (kind: "send" | "respond" | "verify" | "doc", docKey?: string, attempt?: number) => void;
+    onRequest: (req: { to: string; subject: string; message: string; verifyData?: boolean; docKeys?: string[]; docLabels?: string[] }) => void;
+    onSendDoc: (p: { docLabel: string; org: string; to: string }) => void;
+    onBack: () => void; onReview: (r: ReviewSignoff) => void;
+    onReviewForm: (formId: string, r: ReviewSignoff) => void;
+}) {
+    const [preview, setPreview] = useState<{ label: string } | null>(null);
+    // `only` pre-checks a single document; otherwise every employer-sourced, not-yet-received letter.
+    const [reqOpen, setReqOpen] = useState<{ only?: string } | null>(null);
+    const [sendDoc, setSendDoc] = useState<{ label: string } | null>(null);
+    const [openResp, setOpenResp] = useState<number | null>(null);   // which request row is expanded
+    const [viewForm, setViewForm] = useState(false);   // open the combined returned-forms view
+    const [viewFormId, setViewFormId] = useState<{ id: string; pdf: boolean } | null>(null);   // view one form (form layout or PDF)
+    const [formReview, setFormReview] = useState<string | null>(null);   // open a per-form review (info + docs + checklist + reviewer)
+    const [branding] = useCompanyBranding();
+    const openReq = (docKey?: string) => setReqOpen({ only: docKey });
+    const tinyBtn = "h-7 gap-1 px-2.5 text-xs";
+    const statusLabel: Record<string, string> = { pending: "Not requested", sent: `Sent · ${check.attempts.length}/${EMP_MAX_ATTEMPTS}`, responded: "Responded", verified: "Verified" };
+    const dateOf = (ts?: number) => ts ? new Date(ts).toLocaleDateString() : "—";
     const verifyRows = [
         { label: "Verification Status", value: statusLabel[check.status] ?? check.status }, { label: "Contact", value: check.email || "—" },
         { label: "Attempts", value: `${check.attempts.length} / ${EMP_MAX_ATTEMPTS}` }, { label: "Responded", value: dateOf(check.respondedAt) },
@@ -1099,6 +1212,13 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
         { label: "Current-employer question answered", ok: !!filled?.current },
         { label: "Operated commercial motor vehicle answered", ok: !!filled?.operatedCMV },
     ];
+    // The two forms we send — tier-2, each reviewed individually (Forms Sent — Review).
+    const SENT_FORMS = [
+        ["employment-verification", "Employment Verification"],
+        ["safety-performance-history", "Request for Employment and Safety Performance History"],
+    ] as const;
+    const formReviewOf = (id: string) => a.reviews?.[`employment:${check.id}:form:${id}`];
+    const allFormsReviewed = SENT_FORMS.every(([id]) => !!formReviewOf(id));
     const baseChecks: { label: string; ok: boolean; actionLabel?: string; onAction?: () => void }[] = [
         ...fieldChecks,
         ...docs.map((d) => ({
@@ -1107,6 +1227,7 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
             onAction: () => (d.source === "employer" ? openReq(d.key) : onFulfill("doc", `doc:${check.id}:${d.key}`)),
         })),
         { label: "Employment dates & position verified", ok: check.status === "verified", actionLabel: "Verify", onAction: () => onFulfill("verify") },
+        { label: "Both sent forms reviewed", ok: allFormsReviewed, actionLabel: allFormsReviewed ? undefined : "Review forms", onAction: allFormsReviewed ? undefined : () => setFormReview(SENT_FORMS.find(([id]) => !formReviewOf(id))![0]) },
         { label: "Reviewer sign-off completed", ok: !!existingReview },
     ];
     // ── The employer's returned §391.23 form (shown once they've responded) ──
@@ -1162,24 +1283,74 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
         street: filled?.address ?? "", cityStateZip: "", telephone: filled?.telephone ?? "",
         name: "Dana Whitfield", title: "Safety Manager", date: dateOf(check.respondedAt), sig: sigDataUrl,
     };
-    // The returned form rendered as a themed, printable §391.23 document.
+    // The two forms we send the employer, returned and combined into one document:
+    // (1) Employment Verification (§391.23) and (2) Request for Employment and Safety
+    // Performance History (driving experience, equipment, U/S/G/E evaluation, §40.25
+    // testing history, incidents & violations).
+    const evalRows: [string, string][] = [
+        ["Takes Care of Assigned Equipment", "Good"], ["Attitude", "Excellent"], ["Aptitude", "Satisfactory"], ["Compliance", "Good"],
+        ["Reliability", "Excellent"], ["Dependability", "Good"], ["Logbook", "Satisfactory"], ["Communication", "Good"],
+        ["Client Courtesy", "Excellent"], ["Follows Instructions", "Good"], ["Equipment Handling", "Good"], ["Equipment Cleanliness", "Satisfactory"],
+        ["Conflicts (Resolution/Handling)", "Good"],
+    ];
     const respSections: DocSection[] = [
-        { title: "Safety Performance History (§391.23)", groups: [{ rows: responseRows.map((r) => ({ label: r.label, value: r.value })) }] },
+        { title: "Employment Verification (§391.23)", groups: [{ rows: responseRows.map((r) => ({ label: r.label, value: r.value })) }] },
+        { title: "Safety & Performance — Driving Experience & Equipment", groups: [{ rows: [
+            { label: "Driving experience", value: "Canada, Local, USA Eastern" },
+            { label: "Equipment operated", value: "Tractor Semi Trailer, Cargo Tank" },
+            { label: "Approximate miles", value: "120,000" },
+            { label: "Would rehire?", value: "Upon Review" },
+        ] }] },
+        { title: "Performance Evaluation (U / S / G / E)", groups: [{ rows: evalRows.map(([label, value]) => ({ label, value })) }] },
+        { title: "DOT Drug & Alcohol Testing History (§40.25)", groups: [{ rows: [
+            { label: "Subject to DOT testing", value: "Yes" },
+            { label: "Testing period", value: `${filled?.from ?? "—"} to ${filled?.to ?? "—"}` },
+            { label: "Alcohol test result ≥ 0.04", value: "No" },
+            { label: "Positive / adulterated drug test", value: "No" },
+            { label: "Refused a required test", value: "No" },
+            { label: "Other Part 382 / Part 40 violations", value: "No" },
+            { label: "Completed a SAP-prescribed program", value: "N/A" },
+            { label: "Subsequent positive after SAP", value: "No" },
+        ] }] },
+        { title: "Incidents", groups: [{ rows: [{ label: "Incidents", value: "None reported" }] }] },
+        { title: "Violations", groups: [{ rows: [{ label: "Violations", value: "None reported" }] }] },
         { title: "Completed By", groups: [{ rows: [...completedByRows.map((r) => ({ label: r.label, value: r.value })), { label: "Signature", value: "Dana Whitfield (electronically signed)" }], images: sigDataUrl ? [sigDataUrl] : undefined }] },
         ...(attachedDocs.length ? [{ title: "Documents Attached", groups: [{ rows: attachedDocs.map((d) => ({ label: d.label, value: "Attached by employer" })) }] }] : []),
     ];
 
     // Dedicated returned-form page (replaces the review view while open).
+    // View one of the forms — as the fillable form (Review) or as the PDF document (PDF).
+    if (viewFormId) {
+        return (
+            <PrefillProvider value={buildPrefill(a)}>
+                <HiringFormView formId={viewFormId.id} startPreview={viewFormId.pdf} onBack={() => setViewFormId(null)} />
+            </PrefillProvider>
+        );
+    }
+
+    // Per-form review — the form's information + documents + requests/responses + activity + checklist + reviewer.
+    if (formReview) {
+        const fLabel = formReview === "employment-verification" ? "Employment Verification" : "Request for Employment and Safety Performance History";
+        return (
+            <FormReviewView
+                formId={formReview} formLabel={fLabel} a={a} check={check} filled={filled} docs={docs}
+                existingReview={a.reviews?.[`employment:${check.id}:form:${formReview}`]}
+                onReview={(r) => onReviewForm(formReview, { ...r, at: Date.now() })}
+                onBack={() => setFormReview(null)}
+                onPdf={() => setViewFormId({ id: formReview, pdf: true })}
+            />
+        );
+    }
+
     if (viewForm) {
         return (
             <ReturnedFormPage
-                title="Safety Performance History — Returned Form"
+                title="Employment & Safety Performance History — Returned Forms"
                 subtitle={`${filled?.employer ?? check.employer} · ${a.firstName} ${a.lastName}`}
                 sections={respSections}
                 classic={classicData}
-                formPage={viewForm}
                 branding={branding}
-                onBack={() => setViewForm(null)}
+                onBack={() => setViewForm(false)}
             />
         );
     }
@@ -1200,19 +1371,54 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                         <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 font-semibold text-blue-700"><span className="text-[10px] font-bold uppercase tracking-wide text-blue-400">From</span> {filled?.from || "—"}</span>
                         <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 font-semibold text-blue-700"><span className="text-[10px] font-bold uppercase tracking-wide text-blue-400">To</span> {filled?.to || "—"}</span>
                     </div>
-                    <p className="mt-2 text-sm text-slate-500">Review the employer details, the verification documents and the checklist, then sign off below.</p>
+                    <p className="mt-2 text-sm text-slate-500">Process review — monitor the entire verification: requests &amp; responses, the forms sent, documents and activity, then sign off below. Each form sent is reviewed on its own under <span className="font-semibold text-slate-600">Forms Sent — Review</span>.</p>
                 </div>
 
                 {existingReview && <ReviewedBanner review={existingReview} />}
 
-                {/* What the driver filled in the application */}
+                {/* The two forms we send the employer — review each filled form on its own (tier 2), or the combined data */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Forms Sent — Review</h2>
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", allFormsReviewed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{SENT_FORMS.filter(([id]) => formReviewOf(id)).length} / {SENT_FORMS.length} reviewed</span>
+                        </div>
+                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2.5 text-xs" onClick={() => setViewForm(true)}><Eye className="h-3.5 w-3.5" /> View combined</Button>
+                    </div>
+                    <p className="border-b border-slate-100 bg-slate-50/40 px-5 py-2 text-xs text-slate-500">Each form is reviewed on its own — open <span className="font-semibold text-slate-600">Review</span> for the form's details, documents, review checklist and a per-form sign-off.</p>
+                    <ul className="divide-y divide-slate-100">
+                        {SENT_FORMS.map(([id, lbl]) => {
+                            const rev = formReviewOf(id);
+                            return (
+                            <li key={id} className="flex items-center gap-3 px-5 py-3">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><ClipboardCheck className="h-4 w-4" /></span>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-slate-800">{lbl}</p>
+                                    <p className={cn("text-xs", rev ? "text-emerald-600" : "text-slate-400")}>{rev ? `Reviewed by ${rev.by} · ${relativeTime(rev.at)}` : "Not reviewed yet"}</p>
+                                </div>
+                                <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", rev ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>{rev ? "Reviewed" : "Pending"}</span>
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                    <Button size="sm" className="h-8 gap-1.5" onClick={() => setFormReview(id)}><BadgeCheck className="h-4 w-4" /> Review</Button>
+                                    <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setViewFormId({ id, pdf: true })}><FileText className="h-4 w-4" /> PDF</Button>
+                                </div>
+                            </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+
+                {/* Verification documents — driver-provided letters or asked from the employer, side by side */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{index + 1}</span>
-                        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Employer Details — as the driver provided</h2>
+                        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Verification Documents</h2>
                     </div>
-                    <div className="grid gap-4 p-5 sm:grid-cols-2">
-                        {filledRows.map((r, ri) => <RoField key={ri} label={r.label} value={r.value} />)}
+                    <div className="grid gap-3 p-5 sm:grid-cols-2">
+                        {docs.map((d, di) => <EmployerDocTile key={di} label={d.label} status={d.status} source={d.source}
+                            onView={() => setPreview({ label: d.label })}
+                            onReplace={() => onFulfill("doc", `doc:${check.id}:${d.key}`)}
+                            onSend={() => setSendDoc({ label: d.label })}
+                            onAsk={() => openReq(d.key)}
+                            onUpload={() => onFulfill("doc", `doc:${check.id}:${d.key}`)} />)}
                     </div>
                 </div>
 
@@ -1249,7 +1455,7 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                                             <div className="border-t border-slate-100 bg-slate-50/40 px-5 py-4">
                                                 {responded ? (
                                                     <div className="space-y-4">
-                                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Returned form · Safety Performance History (§391.23)</p>
+                                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Returned forms · Employment &amp; Safety Performance History</p>
                                                         <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
                                                             {responseRows.map((r, ri) => (
                                                                 <div key={ri} className="border-b border-slate-100 pb-2">
@@ -1271,14 +1477,18 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Forms (2)</p>
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Forms returned (2)</p>
+                                                                <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setViewForm(true)}><Eye className="h-3.5 w-3.5" /> View combined</Button>
+                                                            </div>
                                                             <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                                                {([["accident", "Accident History (§391.23)"], ["drug", "Drug & Alcohol History (§391.23)"]] as const).map(([k, lbl]) => (
-                                                                    <li key={k} className="flex items-center gap-3 px-4 py-2.5">
+                                                                {([["employment-verification", "Employment Verification"], ["safety-performance-history", "Request for Employment and Safety Performance History"]] as const).map(([id, lbl]) => (
+                                                                    <li key={id} className="flex items-center gap-3 px-4 py-2.5">
                                                                         <FileText className="h-4 w-4 shrink-0 text-blue-500" />
                                                                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{lbl}</span>
                                                                         <span className="text-[11px] font-semibold text-emerald-600">Completed</span>
-                                                                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setViewForm(k)}><Eye className="h-3.5 w-3.5" /> View</Button>
+                                                                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setFormReview(id)}><BadgeCheck className="h-3.5 w-3.5" /> Review</Button>
+                                                                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setViewFormId({ id, pdf: true })}><FileText className="h-3.5 w-3.5" /> PDF</Button>
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -1319,21 +1529,6 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                             })}
                         </ul>
                     )}
-                </div>
-
-                {/* Verification documents — driver-provided letters or asked from the employer, side by side */}
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
-                        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Verification Documents</h2>
-                    </div>
-                    <div className="grid gap-3 p-5 sm:grid-cols-2">
-                        {docs.map((d, di) => <EmployerDocTile key={di} label={d.label} status={d.status} source={d.source}
-                            onView={() => setPreview({ label: d.label })}
-                            onReplace={() => onFulfill("doc", `doc:${check.id}:${d.key}`)}
-                            onSend={() => setSendDoc({ label: d.label })}
-                            onAsk={() => openReq(d.key)}
-                            onUpload={() => onFulfill("doc", `doc:${check.id}:${d.key}`)} />)}
-                    </div>
                 </div>
 
                 {/* Verification status — actionable: send the request (editable email), record the response, verify. */}
@@ -1387,7 +1582,7 @@ function EmploymentReviewView({ a, check, filled, index, total, existingReview, 
                     <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">{baseChecks.map((c, ci) => <CheckLine key={ci} ok={c.ok} label={c.label} actionLabel={c.actionLabel} onAction={c.onAction} />)}</ul>
                 </div>
                 <ReviewRemarks remarks={remarks} onAdd={onAddRemark} />
-                <ReviewSignOff label={`I have reviewed the employment verification for ${check.employer}.`} signedNote="Employment reviewed & signed" existing={existingReview} onConfirm={(r) => onReview({ ...r, at: Date.now() })} />
+                <ReviewSignOff label={`I have reviewed the entire employment-verification process for ${check.employer} — requests & responses, both forms sent, documents and activity.`} signedNote="Process reviewed & signed" existing={existingReview} onConfirm={(r) => onReview({ ...r, at: Date.now() })} />
             </div>
 
             {preview && (
@@ -1672,7 +1867,7 @@ function ApplicationFormView({ title, subtitle, badge, sections, fileName, focus
 }
 
 // ── Request dialog ────────────────────────────────────────────────────────────
-function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, lockAction, onClose, onSubmit }: { prefill: Partial<AppRequest>; driverEmail: string; recipients?: RequestRecipient[]; lockAction?: boolean; onClose: () => void; onSubmit: (r: Partial<AppRequest>) => void }) {
+function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, lockAction, attachments, attachmentsTitle, onClose, onSubmit }: { prefill: Partial<AppRequest>; driverEmail: string; recipients?: RequestRecipient[]; lockAction?: boolean; attachments?: { label: string; ready: boolean }[]; attachmentsTitle?: string; onClose: () => void; onSubmit: (r: Partial<AppRequest>) => void }) {
     const formLabel = prefill.fid ? stepName(prefill.fid) : "this item";
     const [action, setAction] = useState<RequestAction>(prefill.action ?? "Request");
     const [recipient, setRecipient] = useState<RequestRecipient>(prefill.recipient ?? recipients[0]);
@@ -1681,6 +1876,8 @@ function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, 
     const [subject, setSubject] = useState(prefill.subject ?? "");
     const [message, setMessage] = useState(prefill.message ?? "");
     const [dueDate, setDueDate] = useState("");
+    // Package attachments — a checklist, every item checked on by default.
+    const [attachChecked, setAttachChecked] = useState<Record<string, boolean>>(() => Object.fromEntries((attachments ?? []).map((at) => [at.label, true])));
 
     // Switching the action re-templates the recipient + copy (kept editable).
     const onAction = (act: RequestAction) => {
@@ -1743,6 +1940,29 @@ function RequestDialog({ prefill, driverEmail, recipients = GENERIC_RECIPIENTS, 
                         <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Subject</Label>
                         <Input className="mt-1.5" value={subject} onChange={(e) => setSubject(e.target.value)} />
                     </div>
+                    {attachments && attachments.length > 0 && (
+                        <div>
+                            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">{attachmentsTitle ?? "Attached — filled forms & data"}</Label>
+                            <ul className="mt-1.5 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
+                                {attachments.map((at) => {
+                                    const on = attachChecked[at.label] ?? true;
+                                    return (
+                                        <li key={at.label}>
+                                            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-sm transition hover:bg-slate-50">
+                                                <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", on ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white")}>{on && <Check className="h-3 w-3" strokeWidth={3} />}</span>
+                                                <input type="checkbox" checked={on} onChange={(e) => setAttachChecked((s) => ({ ...s, [at.label]: e.target.checked }))} className="hidden" />
+                                                <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                                <span className="min-w-0 flex-1 truncate text-slate-700">{at.label}</span>
+                                                {at.ready
+                                                    ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600"><Check className="h-3.5 w-3.5" /> Attached</span>
+                                                    : <span className="text-[11px] font-semibold text-amber-600">To follow</span>}
+                                            </label>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                    )}
                     <div>
                         <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Message</Label>
                         <Textarea className="mt-1.5 resize-none" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} />
@@ -2593,45 +2813,480 @@ function QuizModule({ a, updateOne, picks, review, onReview, onTake, onReviewRes
     );
 }
 
+// ── Insurance Policy step ────────────────────────────────────────────────────
+// Bundle the driver's completed hiring forms & documents and send them to the
+// insurance agent so the agent can add the driver to the carrier's policy:
+// Employment Application · recent Abstract/MVR, PSP, CVDR/CDA (whichever applies) ·
+// Employment & Insurance Experience Letters. Anything missing can be ordered by
+// the agent from the other insurance company.
+function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
+    a: Applicant; steps: HiringTemplate["steps"]; updateOne: UpdateFn;
+    review?: ReviewSignoff; onReview: (r: { sig: string; by: string; role: string; date: string }) => void;
+}) {
+    const pf = buildPrefill(a);
+    const [reqOpen, setReqOpen] = useState(false);
+    const [reqDoc, setReqDoc] = useState<{ key: string; label: string } | null>(null);   // request a missing package item
+    const [agentReqOpen, setAgentReqOpen] = useState(false);   // simulate: agent requests documents
+    const [agentReqSel, setAgentReqSel] = useState<Record<string, boolean>>({});
+    const [sendAgentFor, setSendAgentFor] = useState<{ key: string; label: string } | null>(null);   // send a requested document to the agent
+    const [viewForm, setViewForm] = useState<string | null>(null);   // view a package form (PDF document)
+    const [viewDoc, setViewDoc] = useState<string | null>(null);     // view a package document (letter) preview
+    const [addOpen, setAddOpen] = useState(false);                    // mark driver added — capture policy details
+    const [addPolicyNo, setAddPolicyNo] = useState("");
+    const [addCoverage, setAddCoverage] = useState("");
+    const [addEffective, setAddEffective] = useState("");
+    const [addAgent, setAddAgent] = useState("");
+
+    // Recent driving-record reports — only the ones this workflow actually runs.
+    const REPORTS: { fid: string; label: string }[] = [
+        { fid: "mvr", label: "MVR — Motor Vehicle Record" },
+        { fid: "driver-abstract", label: "Driver Abstract" },
+        { fid: "psp", label: "PSP — Pre-Employment Screening" },
+        { fid: "cvdr-cda", label: "CVDR / CDA" },
+        { fid: "cvdr", label: "CVDR" },
+        { fid: "cda", label: "CDA" },
+    ];
+    const stepFids = new Set(steps.flatMap((s) => s.formIds));
+    const reportItems = REPORTS.filter((r) => stepFids.has(r.fid));
+    // Consent / authorization forms signed by the driver during the application.
+    const consentFids = steps.flatMap((s) => s.formIds).filter((f) => stepGroup(f) === "Policy" && f !== "insurance-policy");
+    const consentsReady: DocStatus = consentFids.length > 0 && a.submission?.length ? "received" : "pending";
+    // Employer letters are aggregated across every previous employer.
+    const letterStatus = (key: string): DocStatus => {
+        const ss = pf.employment.map((_, i) => a.docs?.[`doc:emp-${i}:${key}`] ?? "pending");
+        return ss.length && ss.some((s) => DONE_STATES.includes(s)) ? "received" : "pending";
+    };
+    type PkgItem = { key: string; label: string; note: string; status: DocStatus };
+    const items: PkgItem[] = [
+        { key: "application", label: "Employment Application", note: "Completed application", status: a.submission?.length ? "received" : "pending" },
+        ...(consentFids.length ? [{ key: "consents", label: "Consent Forms", note: `${consentFids.length} signed authorization${consentFids.length === 1 ? "" : "s"}`, status: consentsReady }] : []),
+        ...reportItems.map((r) => ({ key: r.fid, label: r.label, note: "Most recent on file", status: (a.docs?.[r.fid] ?? "pending") as DocStatus })),
+        { key: "doc:experience", label: "Employment Experience Letter", note: "From previous employer(s)", status: letterStatus("experience") },
+        { key: "doc:insurance", label: "Insurance Experience Letter", note: "From previous insurer(s)", status: letterStatus("insurance") },
+    ];
+    const isReady = (s: DocStatus) => DONE_STATES.includes(s);
+    const readyCount = items.filter((it) => isReady(it.status)).length;
+    const missing = items.filter((it) => !isReady(it.status));
+    // View a package item — form-backed items open as a PDF document; letters/consents show a preview.
+    const FORM_VIEW_KEYS = ["application", "mvr", "driver-abstract", "psp", "cvdr-cda", "cvdr", "cda"];
+    const viewItem = (it: { key: string; label: string }) => FORM_VIEW_KEYS.includes(it.key) ? setViewForm(it.key) : setViewDoc(it.label);
+
+    const sentReqs = (a.requests ?? []).filter((r) => r.fid === "insurance-policy").sort((x, y) => y.at - x.at);
+    const sent = sentReqs[0];
+    const addedToInsurance = a.docs?.["insurance-policy"] === "verified";
+
+    // Default message — lists the package we're sending the agent (missing items noted as to-follow).
+    const includedLabels = items.filter((it) => isReady(it.status)).map((it) => it.label);
+    const missingLabels = missing.map((it) => it.label);
+    const defaultMessage = [
+        "Hi,", "",
+        `Please add ${a.firstName} ${a.lastName} to our insurance policy. Attached is the completed hiring file:`,
+        ...includedLabels.map((l) => `  • ${l}`),
+        ...(missingLabels.length ? ["", "The following are still being obtained and will be forwarded as soon as they are available:", ...missingLabels.map((l) => `  • ${l}`)] : []),
+        "", "Please let me know if you need anything further.", "", "Thank you,", a.carrier,
+    ].join("\n");
+
+    const sendPackage = (req: Partial<AppRequest>) => updateOne(a.id, (prev) => ({
+        docs: { ...(prev.docs ?? {}), "insurance-policy": "requested" as DocStatus },
+        requests: [{ id: `rq-${Date.now()}`, fid: "insurance-policy", status: "open" as const, at: Date.now(), by: ACTOR, subject: req.subject ?? `Add driver to policy — ${a.firstName} ${a.lastName}`, recipient: (req.recipient ?? "Provider / Agency") as RequestRecipient, to: req.to, channel: (req.channel ?? "Email") as RequestChannel, message: req.message ?? "" }, ...(prev.requests ?? [])],
+        events: [{ id: `ev-${Date.now()}`, type: "request" as const, text: `Sent insurance package to ${req.to || "the insurance agent"}`, at: Date.now(), author: ACTOR }, ...prev.events],
+    }));
+    const markAdded = (d: { policyNo: string; coverage: string; effective: string; agent: string }) => updateOne(a.id, (prev) => ({
+        docs: { ...(prev.docs ?? {}), "insurance-policy": "verified" as DocStatus },
+        requests: [
+            { id: `rq-${Date.now()}`, fid: "insurance-added", status: "resolved" as const, at: Date.now(), by: "Insurance Agent", subject: `Driver added — Policy ${d.policyNo || "—"}`, recipient: "Provider / Agency" as RequestRecipient, channel: "Email" as RequestChannel, message: JSON.stringify(d) },
+            ...(prev.requests ?? []).map((r) => r.fid === "insurance-policy" ? { ...r, status: "resolved" as const } : r),
+        ],
+        events: [{ id: `ev-${Date.now()}`, type: "doc" as const, text: `Insurance agent added the driver to the policy${d.policyNo ? ` · Policy ${d.policyNo}` : ""}`, at: Date.now(), author: "Insurance Agent" }, ...prev.events],
+    }));
+    // Request a missing package item from the driver / employer / provider.
+    const requestDoc = (label: string, req: Partial<AppRequest>) => updateOne(a.id, (prev) => ({
+        requests: [{ id: `rq-${Date.now()}`, fid: req.fid, status: "open" as const, at: Date.now(), by: ACTOR, subject: req.subject ?? `Request — ${label}`, recipient: (req.recipient ?? "Provider / Agency") as RequestRecipient, to: req.to, channel: (req.channel ?? "Email") as RequestChannel, message: req.message ?? "" }, ...(prev.requests ?? [])],
+        events: [{ id: `ev-${Date.now()}`, type: "request" as const, text: `Requested ${label}${req.to ? ` from ${req.to}` : ""}`, at: Date.now(), author: ACTOR }, ...prev.events],
+    }));
+
+    // ── Insurance-agent activity ──────────────────────────────────────────────
+    // Documents the agent commonly asks back from the carrier.
+    const AGENT_DOCS = [
+        { key: "coi", label: "Certificate of Insurance" },
+        { key: "license-copy", label: "Driver's License (copy)" },
+        { key: "medical-card", label: "Medical Examiner's Card" },
+        { key: "mvr-recent", label: "Recent MVR" },
+    ];
+    const reqsAll = a.requests ?? [];
+    const agentReviewReq = reqsAll.find((r) => r.fid === "insurance-agent-review");
+    const addedReq = reqsAll.find((r) => r.fid === "insurance-added");
+    const policyInfo = addedReq ? (() => { try { return JSON.parse(addedReq.message) as { policyNo: string; coverage: string; effective: string; agent: string }; } catch { return null; } })() : null;
+    const agentDocReqs = reqsAll.filter((r) => r.fid?.startsWith("insurance-agent-doc:"))
+        .map((r) => ({ key: r.fid!.slice("insurance-agent-doc:".length), label: r.subject, at: r.at, sent: r.status === "resolved" }))
+        .sort((x, y) => y.at - x.at);
+    // The agent activity timeline (newest first). Pending doc requests carry an inline Send action.
+    const agentActivity: { at: number; title: string; detail: string; dot: string; sendKey?: string; sendLabel?: string }[] = [
+        ...sentReqs.map((r) => ({ at: r.at, title: `Package sent to ${r.to || "the insurance agent"}`, detail: "Hiring file forwarded to the agent", dot: "bg-amber-500" })),
+        ...(agentReviewReq ? [{ at: agentReviewReq.at, title: "Insurance agent reviewed the file", detail: "Reviewed the attached forms & data", dot: "bg-blue-500" }] : []),
+        ...agentDocReqs.map((d) => ({ at: d.at, title: `Agent requested — ${d.label}`, detail: d.sent ? "Sent to the agent" : "Awaiting — send the document", dot: d.sent ? "bg-emerald-500" : "bg-rose-500", sendKey: d.sent ? undefined : d.key, sendLabel: d.sent ? undefined : d.label })),
+        ...(addedReq ? [{ at: addedReq.at, title: "Driver added to the policy", detail: policyInfo?.policyNo ? `Policy ${policyInfo.policyNo}${policyInfo.coverage ? ` · ${policyInfo.coverage}` : ""}` : "Confirmed by the insurance agent", dot: "bg-emerald-500" }] : []),
+    ].sort((x, y) => y.at - x.at);
+    const docsSent = agentDocReqs.filter((d) => d.sent).length;
+
+    // Agent reviews the hiring file.
+    const agentReview = () => updateOne(a.id, (prev) => ({
+        requests: [{ id: `rq-${Date.now()}`, fid: "insurance-agent-review", status: "resolved" as const, at: Date.now(), by: "Insurance Agent", subject: "Reviewed the hiring file", recipient: "Provider / Agency" as RequestRecipient, channel: "Email" as RequestChannel, message: "" }, ...(prev.requests ?? [])],
+        events: [{ id: `ev-${Date.now()}`, type: "review" as const, text: "Insurance agent reviewed the hiring file", at: Date.now(), author: "Insurance Agent" }, ...prev.events],
+    }));
+    // Agent requests one or more documents back from the carrier.
+    const agentRequest = (keys: string[]) => updateOne(a.id, (prev) => {
+        const now = Date.now();
+        const reqs = keys.map((k, i) => ({ id: `rq-${now}-${i}`, fid: `insurance-agent-doc:${k}`, status: "open" as const, at: now + i, by: "Insurance Agent", subject: AGENT_DOCS.find((d) => d.key === k)?.label ?? k, recipient: "Provider / Agency" as RequestRecipient, channel: "Email" as RequestChannel, message: "" }));
+        const evs = keys.map((k, i) => ({ id: `ev-${now}-${i}`, type: "request" as const, text: `Insurance agent requested — ${AGENT_DOCS.find((d) => d.key === k)?.label ?? k}`, at: now + i, author: "Insurance Agent" }));
+        return { requests: [...reqs, ...(prev.requests ?? [])], events: [...evs, ...prev.events] };
+    });
+    // Send a requested document to the agent.
+    const sendAgentDoc = (key: string, label: string, to?: string) => updateOne(a.id, (prev) => ({
+        requests: (prev.requests ?? []).map((r) => r.fid === `insurance-agent-doc:${key}` ? { ...r, status: "resolved" as const } : r),
+        events: [{ id: `ev-${Date.now()}`, type: "doc" as const, text: `Sent ${label} to the insurance agent${to ? ` · ${to}` : ""}`, at: Date.now(), author: ACTOR }, ...prev.events],
+    }));
+    // Seed a full sample scenario so every case can be tested.
+    const loadSample = () => updateOne(a.id, (prev) => {
+        const now = Date.now(); const H = 3600000;
+        const keep = (prev.requests ?? []).filter((r) => !(r.fid === "insurance-policy" || r.fid?.startsWith("insurance-agent") || r.fid === "insurance-added"));
+        return {
+            docs: { ...(prev.docs ?? {}), "insurance-policy": "requested" as DocStatus },
+            requests: [
+                { id: `rq-${now}`, fid: "insurance-policy", status: "open" as const, at: now - 30 * H, by: ACTOR, subject: `Add driver to policy — ${a.firstName} ${a.lastName}`, recipient: "Provider / Agency" as RequestRecipient, to: "agent@insurer.com", channel: "Email" as RequestChannel, message: "" },
+                { id: `rq-${now + 1}`, fid: "insurance-agent-review", status: "resolved" as const, at: now - 20 * H, by: "Insurance Agent", subject: "Reviewed the hiring file", recipient: "Provider / Agency" as RequestRecipient, channel: "Email" as RequestChannel, message: "" },
+                { id: `rq-${now + 2}`, fid: "insurance-agent-doc:coi", status: "open" as const, at: now - 10 * H, by: "Insurance Agent", subject: "Certificate of Insurance", recipient: "Provider / Agency" as RequestRecipient, channel: "Email" as RequestChannel, message: "" },
+                { id: `rq-${now + 3}`, fid: "insurance-agent-doc:medical-card", status: "resolved" as const, at: now - 8 * H, by: "Insurance Agent", subject: "Medical Examiner's Card", recipient: "Provider / Agency" as RequestRecipient, channel: "Email" as RequestChannel, message: "" },
+                ...keep,
+            ],
+            events: [
+                { id: `ev-${now}`, type: "request" as const, text: "Sent insurance package to agent@insurer.com", at: now - 30 * H, author: ACTOR },
+                { id: `ev-${now + 1}`, type: "review" as const, text: "Insurance agent reviewed the hiring file", at: now - 20 * H, author: "Insurance Agent" },
+                { id: `ev-${now + 2}`, type: "request" as const, text: "Insurance agent requested — Certificate of Insurance", at: now - 10 * H, author: "Insurance Agent" },
+                { id: `ev-${now + 3}`, type: "doc" as const, text: "Sent Medical Examiner's Card to the insurance agent", at: now - 8 * H, author: ACTOR },
+                ...prev.events,
+            ],
+        };
+    });
+
+    // View a package form as its PDF document.
+    if (viewForm) {
+        return (
+            <PrefillProvider value={pf}>
+                <HiringFormView formId={viewForm} startPreview onBack={() => setViewForm(null)} />
+            </PrefillProvider>
+        );
+    }
+
+    // View a package document (experience letters / consents) on its own dedicated page.
+    if (viewDoc) {
+        return (
+            <div className="min-h-screen bg-slate-50">
+                <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-6 py-3">
+                    <button type="button" onClick={() => setViewDoc(null)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Insurance package</button>
+                </div>
+                <div className="mx-auto max-w-3xl px-6 py-8">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">Insurance Package · Document</p>
+                    <h1 className="mt-1 text-2xl font-bold text-slate-900">{viewDoc}</h1>
+                    <p className="mt-1 text-sm text-slate-500">Document on file for {a.firstName} {a.lastName}, included in the insurance package.</p>
+                    <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-500"><FileText className="h-8 w-8" /></div>
+                        <p className="mt-4 text-base font-semibold text-slate-700">{viewDoc}</p>
+                        <p className="mt-1 text-sm text-slate-400">Document preview unavailable in this prototype.</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4 p-5">
+            <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/60 px-4 py-3">
+                <Award className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                <p className="text-sm text-slate-600">Send the completed hiring file to the insurance agent so they can add <span className="font-semibold text-slate-700">{a.firstName} {a.lastName}</span> to the policy. Include the application, the recent driving-record reports and the experience letters — <span className="font-semibold text-slate-700">Request</span> any missing item from the driver, previous employer or provider.</p>
+            </div>
+
+            {/* The package — forms & documents collected through the hiring process */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Insurance Package</h2>
+                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", readyCount === items.length ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{readyCount} / {items.length} ready</span>
+                </div>
+                <ul className="divide-y divide-slate-100">
+                    {items.map((it) => (
+                        <li key={it.key} className="flex items-center gap-3 px-5 py-3">
+                            <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-slate-700">{it.label}</p>
+                                <p className="text-xs text-slate-400">{it.note}</p>
+                            </div>
+                            <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", isReady(it.status) ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-200")}>{isReady(it.status) ? "Ready" : "Missing"}</span>
+                            <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => viewItem(it)}><Eye className="h-3.5 w-3.5" /> View</Button>
+                            {!isReady(it.status) && <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => setReqDoc({ key: it.key, label: it.label })}><Send className="h-3.5 w-3.5" /> Request</Button>}
+                        </li>
+                    ))}
+                </ul>
+                {missing.length > 0 && (
+                    <p className="border-t border-slate-100 bg-amber-50/60 px-5 py-2.5 text-xs text-amber-800"><AlertCircle className="mr-1 inline h-3.5 w-3.5 align-text-bottom" />{missing.length} item{missing.length === 1 ? "" : "s"} missing — use <span className="font-semibold">Request</span> to ask the driver, previous employer or provider to supply {missing.length === 1 ? "it" : "them"}.</p>
+                )}
+            </div>
+
+            {/* Send to agent / status */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Insurance Agent</h2>
+                    {!addedToInsurance && <Button size="sm" className="h-8 gap-1.5" onClick={() => setReqOpen(true)}><Send className="h-4 w-4" /> {sent ? "Resend package" : "Send package to agent"}</Button>}
+                </div>
+                <div className="space-y-4 px-5 py-4">
+                    {addedToInsurance ? (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                                <BadgeCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+                                <p className="text-sm font-semibold text-emerald-800">Driver added to the insurance policy.</p>
+                            </div>
+                            {policyInfo && (policyInfo.policyNo || policyInfo.coverage || policyInfo.effective || policyInfo.agent) && (
+                                <div className="mt-2.5 grid gap-x-6 gap-y-1.5 border-t border-emerald-200/70 pt-2.5 text-xs sm:grid-cols-2">
+                                    <p><span className="text-slate-500">Policy #:</span> <span className="font-semibold text-slate-700">{policyInfo.policyNo || "—"}</span></p>
+                                    <p><span className="text-slate-500">Coverage:</span> <span className="font-semibold text-slate-700">{policyInfo.coverage || "—"}</span></p>
+                                    <p><span className="text-slate-500">Effective:</span> <span className="font-semibold text-slate-700">{policyInfo.effective || "—"}</span></p>
+                                    <p><span className="text-slate-500">Agent:</span> <span className="font-semibold text-slate-700">{policyInfo.agent || "—"}</span></p>
+                                </div>
+                            )}
+                        </div>
+                    ) : sent ? (
+                        <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-3">
+                            <Mail className="h-5 w-5 shrink-0 text-blue-600" />
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-slate-800">Package sent to {sent.to || "the insurance agent"}</p>
+                                <p className="text-xs text-slate-500">{relativeTime(sent.at)} · {sentReqs.length} time{sentReqs.length === 1 ? "" : "s"} · {agentReviewReq ? "reviewed by agent" : "awaiting review"}</p>
+                            </div>
+                            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}><Check className="h-4 w-4" /> Mark driver added</Button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3 text-sm text-slate-500">
+                            <Clock className="h-4 w-4 shrink-0 text-slate-400" />
+                            <p>Not sent yet. Use <span className="font-semibold text-slate-600">Send package to agent</span> above to forward the hiring file to your insurance agent.</p>
+                        </div>
+                    )}
+
+                    {/* Insurance agent activity log — pending document requests get an inline Send */}
+                    {agentActivity.length > 0 && (
+                        <div className="overflow-hidden rounded-xl border border-slate-200">
+                            <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Insurance Agent Activity</p>
+                                {agentDocReqs.length > 0 && <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", docsSent === agentDocReqs.length ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600 ring-1 ring-inset ring-rose-200")}>{docsSent}/{agentDocReqs.length} docs sent</span>}
+                            </div>
+                            <ol className="p-4">
+                                {agentActivity.map((ev, ai) => (
+                                    <li key={ai} className="relative flex gap-3 pb-4 last:pb-0">
+                                        <div className="relative flex w-3 shrink-0 flex-col items-center">
+                                            <span className={cn("z-10 mt-1 h-3 w-3 rounded-full ring-4 ring-white", ev.dot)} />
+                                            {ai < agentActivity.length - 1 && <span className="w-0.5 flex-1 bg-slate-200" />}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <p className="text-sm font-semibold text-slate-800">{ev.title}</p>
+                                                <span className="text-xs text-slate-400">{relativeTime(ev.at)}</span>
+                                            </div>
+                                            <div className="mt-0.5 flex items-center justify-between gap-2">
+                                                <p className="text-xs text-slate-500">{ev.detail}</p>
+                                                {ev.sendKey && <Button size="sm" className="h-7 shrink-0 gap-1 px-2.5 text-xs" onClick={() => setSendAgentFor({ key: ev.sendKey!, label: ev.sendLabel! })}><Send className="h-3.5 w-3.5" /> Send</Button>}
+                                            </div>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+                    )}
+
+                    {/* Simulate the agent — drive every case for testing */}
+                    {!addedToInsurance && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-2.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Simulate</span>
+                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2.5 text-xs" disabled={!sent || !!agentReviewReq} onClick={agentReview}><Eye className="h-3.5 w-3.5" /> Reviewed</Button>
+                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2.5 text-xs" disabled={!sent} onClick={() => { setAgentReqSel({}); setAgentReqOpen(true); }}><Send className="h-3.5 w-3.5" /> Requests docs</Button>
+                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2.5 text-xs" onClick={loadSample}><RotateCcw className="h-3.5 w-3.5" /> Sample data</Button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Reviewer sign-off — completes the step */}
+            <ReviewSignOff label={`I have sent ${a.firstName} ${a.lastName}'s hiring file to the insurance agent and confirmed the driver is added to the policy.`} signedNote="Insurance step reviewed & signed" existing={review} onConfirm={onReview} />
+
+            {reqOpen && (
+                <RequestDialog
+                    recipients={["Provider / Agency"]}
+                    lockAction
+                    driverEmail=""
+                    attachmentsTitle="Filled forms & data in this package"
+                    attachments={items.map((it) => ({ label: it.label, ready: isReady(it.status) }))}
+                    prefill={{ fid: "insurance-policy", action: "Request", recipient: "Provider / Agency", to: sent?.to ?? "", subject: `Add driver to policy — ${a.firstName} ${a.lastName}`, message: defaultMessage }}
+                    onClose={() => setReqOpen(false)}
+                    onSubmit={(req) => { sendPackage(req); setReqOpen(false); }}
+                />
+            )}
+
+            {/* Request a missing package item — driver, previous employer or provider */}
+            {reqDoc && (() => {
+                const isLetter = reqDoc.key.startsWith("doc:");
+                const isReport = ["mvr", "driver-abstract", "psp", "cvdr-cda", "cvdr", "cda"].includes(reqDoc.key);
+                const recipient: RequestRecipient = isLetter ? "Previous Employer" : isReport ? "Provider / Agency" : "Driver";
+                return (
+                    <RequestDialog
+                        driverEmail={a.email}
+                        prefill={{ fid: reqDoc.key, action: isReport ? "Order" : "Request", recipient,
+                            to: recipient === "Driver" ? a.email : "",
+                            subject: `${isReport ? "Order" : "Request"} — ${reqDoc.label} · ${a.firstName} ${a.lastName}`,
+                            message: `Hi,\n\nFor the insurance file of ${a.firstName} ${a.lastName}, please ${isReport ? "order and provide" : "provide"} the following:\n\n  • ${reqDoc.label}\n\nThank you,\n${a.carrier}` }}
+                        onClose={() => setReqDoc(null)}
+                        onSubmit={(req) => { requestDoc(reqDoc.label, req); setReqDoc(null); }}
+                    />
+                );
+            })()}
+
+            {/* Simulate: the agent requests documents back from the carrier */}
+            {agentReqOpen && (
+                <Dialog open onOpenChange={(o) => { if (!o) setAgentReqOpen(false); }}>
+                    <DialogContent className="max-w-md p-0">
+                        <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><Send className="h-4 w-4" /></span> Agent requests documents</DialogTitle>
+                            <p className="text-sm font-normal text-slate-500">Pick which documents the insurance agent is asking back from you.</p>
+                        </DialogHeader>
+                        <div className="space-y-2 px-6 py-5">
+                            {AGENT_DOCS.map((d) => {
+                                const already = agentDocReqs.some((x) => x.key === d.key);
+                                return (
+                                    <label key={d.key} className={cn("flex cursor-pointer items-center gap-2.5 rounded-lg border px-4 py-2.5 text-sm", already ? "border-slate-100 bg-slate-50 text-slate-400" : "border-slate-200 text-slate-700 hover:border-slate-300")}>
+                                        <input type="checkbox" disabled={already} checked={already || !!agentReqSel[d.key]} onChange={(e) => setAgentReqSel((s) => ({ ...s, [d.key]: e.target.checked }))} />
+                                        {d.label}{already && <span className="ml-auto text-[11px] font-semibold">Already requested</span>}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                            <Button variant="outline" onClick={() => setAgentReqOpen(false)}>Cancel</Button>
+                            <Button disabled={!AGENT_DOCS.some((d) => agentReqSel[d.key] && !agentDocReqs.some((x) => x.key === d.key))} onClick={() => { agentRequest(AGENT_DOCS.filter((d) => agentReqSel[d.key] && !agentDocReqs.some((x) => x.key === d.key)).map((d) => d.key)); setAgentReqOpen(false); }}><Send className="h-4 w-4" /> Request</Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {/* Mark driver added — capture the policy details from the agent */}
+            {addOpen && (
+                <Dialog open onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
+                    <DialogContent className="max-w-md p-0">
+                        <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><BadgeCheck className="h-4 w-4" /></span> Driver added to policy</DialogTitle>
+                            <p className="text-sm font-normal text-slate-500">Record the policy details the agent confirmed for {a.firstName} {a.lastName}.</p>
+                        </DialogHeader>
+                        <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
+                            <div>
+                                <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Policy Number</Label>
+                                <Input className="mt-1.5" value={addPolicyNo} onChange={(e) => setAddPolicyNo(e.target.value)} placeholder="e.g. GWC-44821-07" />
+                            </div>
+                            <div>
+                                <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Coverage Type</Label>
+                                <select value={addCoverage} onChange={(e) => setAddCoverage(e.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700">
+                                    <option value="">Please choose</option>
+                                    {["Liability", "Physical Damage", "Liability + Physical Damage", "Non-Trucking Liability"].map((o) => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Effective Date</Label>
+                                <Input type="date" className="mt-1.5" value={addEffective} onChange={(e) => setAddEffective(e.target.value)} />
+                            </div>
+                            <div>
+                                <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Agent Name</Label>
+                                <Input className="mt-1.5" value={addAgent} onChange={(e) => setAddAgent(e.target.value)} placeholder="Full name" />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+                            <Button onClick={() => { markAdded({ policyNo: addPolicyNo, coverage: addCoverage, effective: addEffective, agent: addAgent }); setAddOpen(false); }}><Check className="h-4 w-4" /> Confirm added</Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {/* Send a requested document to the agent — upload + send */}
+            {sendAgentFor && (
+                <SendToAgentDialog
+                    docLabel={sendAgentFor.label}
+                    to={sent?.to ?? ""}
+                    brandName={a.carrier}
+                    onClose={() => setSendAgentFor(null)}
+                    onSend={(to) => { sendAgentDoc(sendAgentFor.key, sendAgentFor.label, to); setSendAgentFor(null); }}
+                />
+            )}
+        </div>
+    );
+}
+
+// Upload a requested document and send it to the insurance agent.
+function SendToAgentDialog({ docLabel, to, brandName, onClose, onSend }: { docLabel: string; to: string; brandName: string; onClose: () => void; onSend: (to: string) => void }) {
+    const [email, setEmail] = useState(to);
+    const [file, setFile] = useState("");
+    const [message, setMessage] = useState(`Hi,\n\nPlease find attached the ${docLabel} you requested.\n\nThank you,\n${brandName}`);
+    return (
+        <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+            <DialogContent className="max-w-md p-0">
+                <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                    <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><Send className="h-4 w-4" /></span> Send document to agent</DialogTitle>
+                    <p className="text-sm font-normal text-slate-500">Attach the <span className="font-semibold text-slate-700">{docLabel}</span> and send it to the insurance agent.</p>
+                </DialogHeader>
+                <div className="space-y-4 px-6 py-5">
+                    {file ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600"><FileText className="h-4 w-4" /></span>
+                            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{file}</p>
+                            <button type="button" onClick={() => setFile("")} className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700">Replace</button>
+                        </div>
+                    ) : (
+                        <button type="button" onClick={() => setFile(`${docLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`)} className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-7 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+                            <span className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400"><Upload className="h-5 w-5" /></span>
+                            <span className="text-sm font-bold text-blue-600">Click to upload</span>
+                            <span className="text-xs text-slate-400">PNG, JPG or PDF · max 10MB</span>
+                        </button>
+                    )}
+                    <div>
+                        <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Agent email</Label>
+                        <Input className="mt-1.5" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="agent@insurer.com" />
+                    </div>
+                    <div>
+                        <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Message</Label>
+                        <Textarea className="mt-1.5 resize-none" rows={4} value={message} onChange={(e) => setMessage(e.target.value)} />
+                    </div>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                    <Button variant="outline" onClick={onClose}>Cancel</Button>
+                    <Button disabled={!file} onClick={() => onSend(email)}><Send className="h-4 w-4" /> Send to agent</Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, onReviewEmployer, reviews }: { a: Applicant; fid: string; employment: PrefillEmployer[]; unemployment: PrefillUnemployment[]; updateOne: UpdateFn; onPdf: () => void; onReviewEmployer: (c: EmpCheck) => void; reviews?: Record<string, ReviewSignoff> }) {
     const [mailFor, setMailFor] = useState<EmpCheck | null>(null);
     const [docMailFor, setDocMailFor] = useState<{ id: string; label: string } | null>(null);   // verification doc being asked of the employer
     const [docView, setDocView] = useState<string | null>(null);   // verification doc being viewed
     const [gapView, setGapView] = useState<PrefillUnemployment | null>(null);   // unemployment gap being viewed
+    const [gapReview, setGapReview] = useState<{ u: PrefillUnemployment; idx: number } | null>(null);   // unemployment gap being reviewed (inline sign-off)
+    const [viewFormId, setViewFormId] = useState<string | null>(null);   // consent / form viewed as a filled, locked document
     const base: EmpCheck[] = employment.map((e, i) => ({ id: `emp-${i}`, employer: e.employer, position: e.position, dates: e.dates, email: "", attempts: [], status: "pending" }));
     const checks = base.map((b) => (a.empChecks ?? []).find((c) => c.id === b.id) ?? b);
     const yearOf = (d: string) => { const m = (d || "").match(/\d{4}/g); return m ? Math.max(...m.map(Number)) : 0; };
     // Build one timeline interleaving employers and unemployment gaps, newest first.
-    type TL = { kind: "emp"; check: EmpCheck; year: number } | { kind: "gap"; u: PrefillUnemployment; year: number };
+    type TL = { kind: "emp"; check: EmpCheck; year: number } | { kind: "gap"; u: PrefillUnemployment; gapIdx: number; year: number };
     const timeline: TL[] = [
         ...checks.map((c) => ({ kind: "emp" as const, check: c, year: yearOf(c.dates) })),
-        ...unemployment.map((u) => ({ kind: "gap" as const, u, year: yearOf(u.dates) })),
+        ...unemployment.map((u, gi) => ({ kind: "gap" as const, u, gapIdx: gi, year: yearOf(u.dates) })),
     ].sort((x, y) => y.year - x.year);
     const DOT: Record<string, string> = { pending: "bg-slate-300", sent: "bg-amber-500", responded: "bg-blue-500", verified: "bg-emerald-500" };
     // Per verification-doc type, how it's provided — configured in the application builder.
     const docMode = (key: string): "off" | "upload" | "ask" => a.employerDocModes?.[key] ?? "ask";
     const activeDocs = EMPLOYER_DOC_ITEMS.filter((d) => docMode(d.key) !== "off");
-    // The documents this employer is being asked to provide (used in the request email) — only the "ask employer" ones.
-    const docsToRequest = (c: EmpCheck) => activeDocs.filter((d) => docMode(d.key) === "ask" && !DONE_STATES.includes(a.docs?.[`doc:${c.id}:${d.key}`] ?? "pending")).map((d) => d.label);
-    const requestMessage = (c: EmpCheck) => {
-        const docs = docsToRequest(c);
-        const period = c.dates ? ` (${c.dates})` : "";
-        return [
-            `Dear ${c.employer},`,
-            ``,
-            `We are completing an employment verification for ${a.firstName} ${a.lastName}, who has listed your company as a previous employer.`,
-            ``,
-            `Position: ${c.position || "Driver"}`,
-            `Employment period: ${c.dates || "—"}`,
-            ``,
-            `Please confirm the above employment${period} and complete the attached §391.23 verification form.`,
-            docs.length ? `\nThe applicant has also requested the following documents from you:\n${docs.map((d) => `  • ${d}`).join("\n")}` : ``,
-            ``,
-            `Thank you,`,
-            `${ACTOR} — Hiring Manager`,
-        ].filter((l) => l !== undefined).join("\n");
-    };
-
     const aggregateDoc = (next: EmpCheck[]): DocStatus => next.every((c) => c.status === "verified") ? "verified" : next.every((c) => c.status === "responded" || c.status === "verified") ? "received" : next.some((c) => c.attempts.length > 0) ? "requested" : "pending";
     const writeDocs = (prev: Applicant, next: EmpCheck[]) => ({ ...(prev.docs ?? {}), [fid]: aggregateDoc(next) });
 
@@ -2643,6 +3298,11 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
             events: [{ id: `ev-${Date.now()}`, type: "request", text: `Sent employment verification to ${check.employer} (attempt ${check.attempts.length + 1}/${EMP_MAX_ATTEMPTS}) via ${req.channel}`, at: Date.now(), author: ACTOR }, ...prev.events],
         }));
     };
+    // Review an unemployment gap inline — sign off right here on the timeline.
+    const reviewGap = (idx: number, u: PrefillUnemployment, r: { sig: string; by: string; role: string; date: string }) => updateOne(a.id, (prev) => ({
+        reviews: { ...(prev.reviews ?? {}), [`employment:gap:${idx}`]: { ...r, at: Date.now() } },
+        events: [{ id: `ev-${Date.now()}`, type: "review" as const, text: `Reviewed the unemployment gap (${u.from || "—"} to ${u.to || "—"}) — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
+    }));
     // Verification documents — the driver uploads them, or we ask the employer (per builder config).
     const setDocStatus = (docId: string, to: DocStatus, verb: string, label: string) => updateOne(a.id, (prev) => ({ docs: { ...(prev.docs ?? {}), [docId]: to }, events: [{ id: `ev-${Date.now()}`, type: "doc", text: `${verb} — ${label}`, at: Date.now(), author: ACTOR }, ...prev.events] }));
     const sendDoc = (req: Partial<AppRequest>, doc: { id: string; label: string }) => updateOne(a.id, (prev) => ({
@@ -2650,6 +3310,15 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
         requests: [{ id: `rq-${Date.now()}`, fid: doc.id, status: "open" as const, at: Date.now(), by: ACTOR, subject: req.subject ?? `Request — ${doc.label}`, recipient: "Previous Employer" as const, to: req.to, channel: req.channel ?? "Email", message: req.message ?? "" }, ...(prev.requests ?? [])],
         events: [{ id: `ev-${Date.now()}`, type: "request", text: `Asked employer for ${doc.label} via ${req.channel}`, at: Date.now(), author: ACTOR }, ...prev.events],
     }));
+
+    // View a consent / form as a filled, locked document (the §391.23 authorization, etc.).
+    if (viewFormId) {
+        return (
+            <PrefillProvider value={buildPrefill(a)}>
+                <HiringFormView formId={viewFormId} startPreview onBack={() => setViewFormId(null)} />
+            </PrefillProvider>
+        );
+    }
 
     return (
         <div className="space-y-3 p-5">
@@ -2661,6 +3330,7 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                 {timeline.map((item, i) => {
                     const last = i === timeline.length - 1;
                     if (item.kind === "gap") {
+                        const gapRev = reviews?.[`employment:gap:${item.gapIdx}`];
                         return (
                             <div key={`gap-${i}`} className="relative flex gap-4">
                                 <div className="relative flex w-4 shrink-0 flex-col items-center">
@@ -2678,9 +3348,13 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                                             <div className="flex shrink-0 items-center gap-1.5">
                                                 <Button variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setGapView(item.u)}><Eye className="h-3.5 w-3.5" /> View</Button>
                                                 <Button variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={onPdf}><FileText className="h-3.5 w-3.5" /> PDF</Button>
+                                                <Button className="h-7 gap-1 px-2 text-xs" onClick={() => setGapReview({ u: item.u, idx: item.gapIdx })}><BadgeCheck className="h-3.5 w-3.5" /> {gapRev ? "Re-review" : "Review"}</Button>
                                             </div>
                                         </div>
                                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                            {gapRev
+                                                ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><BadgeCheck className="h-3.5 w-3.5" /> Reviewed by {gapRev.by} · {gapRev.date}</span>
+                                                : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Not reviewed</span>}
                                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500"><span className="text-[10px] uppercase tracking-wide text-slate-400">From</span> {item.u.from || "—"}</span>
                                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500"><span className="text-[10px] uppercase tracking-wide text-slate-400">To</span> {item.u.to || "—"}</span>
                                         </div>
@@ -2717,7 +3391,38 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                 })}
             </div>
 
-            {mailFor && <RequestDialog recipients={["Previous Employer"]} lockAction prefill={{ fid, action: "Request", recipient: "Previous Employer", to: mailFor.email, subject: `Employment verification — ${mailFor.employer} · ${a.firstName} ${a.lastName}`, message: requestMessage(mailFor) }} driverEmail={a.email} onClose={() => setMailFor(null)} onSubmit={(req) => { send(mailFor, req); setMailFor(null); }} />}
+            {mailFor && (
+                <EmployerRequestDialog
+                    employerName={mailFor.employer}
+                    applicantName={`${a.firstName} ${a.lastName}`}
+                    period={mailFor.dates}
+                    brandName={a.carrier}
+                    attemptLabel={`attempt ${mailFor.attempts.length + 1} of ${EMP_MAX_ATTEMPTS}`}
+                    prefill={{ email: mailFor.email }}
+                    docs={activeDocs.map((d) => {
+                        const done = DONE_STATES.includes(a.docs?.[`doc:${mailFor.id}:${d.key}`] ?? "pending");
+                        return { key: d.key, label: d.label, preselected: docMode(d.key) === "ask" && !done, received: done };
+                    })}
+                    consent={{ label: "Safety Performance History — Investigation Authorization (signed)", note: `Signed by ${a.firstName} ${a.lastName} · 49 CFR §391.23`, onView: () => setViewFormId("sph-investigation-auth") }}
+                    forms={[
+                        { key: "employment-verification", label: "Employment Verification", preselected: true },
+                        { key: "safety-performance-history", label: "Request for Employment and Safety Performance History", preselected: true },
+                    ]}
+                    dataRows={[
+                        { label: "Employer", value: mailFor.employer },
+                        { label: "Position", value: mailFor.position },
+                        { label: "Employment dates", value: mailFor.dates },
+                    ]}
+                    defaultSubject={`Safety Performance History request — ${a.firstName} ${a.lastName}`}
+                    intro={`${a.carrier} is completing a Safety Performance History review (FMCSA §391.23) for ${a.firstName} ${a.lastName}, who has listed your company as a previous employer. To complete our records, we are requesting the following:`}
+                    onClose={() => setMailFor(null)}
+                    onSend={({ docKeys, to, subject, message }) => {
+                        send(mailFor, { to, subject, message, channel: "Email" });
+                        docKeys.forEach((k) => setDocStatus(`doc:${mailFor.id}:${k}`, "requested", "Requested from employer", `${EMPLOYER_DOC_ITEMS.find((d) => d.key === k)?.label ?? k} — ${mailFor.employer}`));
+                        setMailFor(null);
+                    }}
+                />
+            )}
             {docMailFor && <RequestDialog recipients={["Previous Employer"]} lockAction prefill={{ fid: docMailFor.id, action: "Request", recipient: "Previous Employer", subject: `Request — ${docMailFor.label}`, message: `Please provide the ${docMailFor.label} for ${a.firstName} ${a.lastName}. The applicant advised they do not have a copy.` }} driverEmail={a.email} onClose={() => setDocMailFor(null)} onSubmit={(req) => { sendDoc(req, docMailFor); setDocMailFor(null); }} />}
 
             {/* Verification document preview */}
@@ -2753,6 +3458,30 @@ function EmploymentModule({ a, fid, employment, unemployment, updateOne, onPdf, 
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Unemployment / gap review — sign off inline, right here on the timeline */}
+            {gapReview && (
+                <Dialog open onOpenChange={(o) => { if (!o) setGapReview(null); }}>
+                    <DialogContent className="max-w-lg p-0">
+                        <DialogHeader className="border-b border-slate-200 px-6 py-4 text-left">
+                            <DialogTitle className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white"><BadgeCheck className="h-4 w-4" /></span> Review Unemployment Gap</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 px-6 py-5">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">From</p><p className="text-sm font-semibold text-slate-700">{gapReview.u.from || "—"}</p></div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">To</p><p className="text-sm font-semibold text-slate-700">{gapReview.u.to || "—"}</p></div>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Explanation</p><p className="text-sm text-slate-600">{gapReview.u.comments || "—"}</p></div>
+                            <ReviewSignOff
+                                label="I have reviewed this unemployment / gap period."
+                                signedNote="Gap reviewed & signed"
+                                existing={reviews?.[`employment:gap:${gapReview.idx}`]}
+                                onConfirm={(r) => { reviewGap(gapReview.idx, gapReview.u, r); setGapReview(null); }}
+                            />
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
         </div>
     );
 }
@@ -2771,9 +3500,9 @@ function EmployerCard({ c, docs, docsDone = 0, docsTotal = 0, review, onSend, on
                     <p className="truncate font-semibold text-slate-900">{c.employer}</p>
                     <p className="truncate text-xs text-slate-500">{[c.position, c.dates].filter(Boolean).join(" · ") || "Previous employer"}</p>
                 </div>
-                {/* Three actions in the top-right corner: View · PDF · Send request */}
+                {/* Three actions in the top-right corner: Review · PDF · Send request */}
                 <div className="flex shrink-0 items-center gap-1.5">
-                    <Button variant="outline" className={tiny} onClick={onView}><Eye className="h-3.5 w-3.5" /> View</Button>
+                    <Button variant="outline" className={tiny} onClick={onView}><BadgeCheck className="h-3.5 w-3.5" /> Review</Button>
                     <Button variant="outline" className={tiny} onClick={onPdf}><FileText className="h-3.5 w-3.5" /> PDF</Button>
                     {c.status !== "verified" && <Button className={tiny} disabled={maxed} onClick={onSend}><Send className="h-3.5 w-3.5" /> {c.attempts.length ? `Resend` : "Send request"}</Button>}
                 </div>

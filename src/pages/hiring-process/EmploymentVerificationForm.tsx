@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCompanyBranding } from "../ats/company-branding.data";
-import { Field, ReviewSignOff, newSignOff, type SignOffData } from "./FormKit";
+import { Field, Grid, SignaturePad, todayISO, ReviewSignOff, newSignOff, type SignOffData } from "./FormKit";
 import { FormScaffold } from "./FormScaffold";
 import { EmployerRequestDialog } from "./EmployerRequestDialog";
 import { SendDocumentDialog } from "./SendDocumentDialog";
@@ -80,6 +80,13 @@ export function EmploymentVerificationForm({ onBack, embedded, startPreview }: {
     const [data, setData] = useState<EmpV[]>(() => employers.map(newEmpV));
     const [gapData, setGapData] = useState<boolean[]>(() => gaps.map(() => false));
     const [comments, setComments] = useState("");
+    // Verified By — the previous-employer representative who confirmed the employment.
+    const [vbName, setVbName] = useState("");
+    const [vbCompany, setVbCompany] = useState("");
+    const [vbAddress, setVbAddress] = useState("");
+    const [vbTelephone, setVbTelephone] = useState("");
+    const [vbSig, setVbSig] = useState("");
+    const [vbDate, setVbDate] = useState(todayISO());
     const [signoff, setSignoff] = useState<SignOffData>(newSignOff());
     const [reqOpen, setReqOpen] = useState<{ empIdx: number; only?: DocKey } | null>(null);
     const [sendDoc, setSendDoc] = useState<{ empIdx: number; label: string } | null>(null);
@@ -110,6 +117,8 @@ export function EmploymentVerificationForm({ onBack, embedded, startPreview }: {
             return v;
         }));
         setGapData(gaps.map(() => true));
+        const rep = employers[0];
+        setVbName("Dana Whitfield"); setVbCompany(rep?.employer ?? ""); setVbAddress(rep?.address ?? ""); setVbTelephone(rep?.telephone ?? "");
         setComments("Employment history confirmed against the application. Driver-provided letters verified; remaining documents requested from and received by the previous employer. Gap explanations reviewed.");
     };
 
@@ -152,6 +161,14 @@ export function EmploymentVerificationForm({ onBack, embedded, startPreview }: {
             title: `Employment Gap — ${[g.from, g.to].filter(Boolean).join(" – ") || `Period ${i + 1}`}`,
             groups: [{ rows: [{ label: "Period", value: g.dates || [g.from, g.to].filter(Boolean).join(" – ") }, { label: "Explanation", value: g.comments }, { label: "Gap explained & verified", value: gapData[i] ? "Yes" : "No" }] }],
         })),
+        ...(vbName || vbCompany || vbSig ? [{ title: "Verified By", groups: [{
+            rows: [
+                { label: "Name", value: vbName }, { label: "Company", value: vbCompany },
+                { label: "Address", value: vbAddress }, { label: "Telephone", value: vbTelephone },
+                { label: "Date Signed", value: vbDate },
+            ],
+            images: vbSig ? [vbSig] : undefined,
+        }] }] : []),
         ...(comments ? [{ title: "Comments", groups: [{ rows: [{ label: "Comments", value: comments }] }] }] : []),
         { title: "Reviewer Sign-Off", groups: [signoff.done
             ? { rows: [{ label: "Reviewed by", value: signoff.name }, { label: "Title", value: signoff.role }, { label: "Date", value: signoff.date }, { label: "Status", value: "Reviewed & signed" }], images: signoff.sig ? [signoff.sig] : undefined }
@@ -282,6 +299,24 @@ export function EmploymentVerificationForm({ onBack, embedded, startPreview }: {
                     <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={gapData[i]} onChange={(ev) => setGapData((d) => d.map((x, idx) => (idx === i ? ev.target.checked : x)))} /> Gap explanation reviewed &amp; verified.</label>
                 </div>
             ))}
+
+            {/* Verified By — the previous-employer representative who confirmed the employment */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Verified By</h2>
+                </div>
+                <div className="space-y-5 p-5">
+                    <p className="text-xs text-slate-500">The previous-employer representative who confirmed this employment — include any required DOT drug or alcohol testing information obtained in the 3 years prior to the application date.</p>
+                    <Grid>
+                        <Field label="Name"><Input value={vbName} onChange={(e) => setVbName(e.target.value)} placeholder="Full name" /></Field>
+                        <Field label="Company"><Input value={vbCompany} onChange={(e) => setVbCompany(e.target.value)} placeholder="Company" /></Field>
+                    </Grid>
+                    <Field label="Address"><Input value={vbAddress} onChange={(e) => setVbAddress(e.target.value)} placeholder="Address" /></Field>
+                    <Field label="Telephone"><Input type="tel" value={vbTelephone} onChange={(e) => setVbTelephone(e.target.value)} placeholder="(555) 000-0000" /></Field>
+                    <Field label="Signature"><SignaturePad onChange={setVbSig} /></Field>
+                    <Field label="Date Signed"><Input type="date" value={vbDate} onChange={(e) => setVbDate(e.target.value)} /></Field>
+                </div>
+            </div>
 
             <div>
                 <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Comments</p>

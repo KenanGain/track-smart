@@ -30,6 +30,11 @@ export function RecipientFormPreview({ formId, label, applicantName, prefill, re
     const [submitted, setSubmitted] = useState(false);
     const [uploaded, setUploaded] = useState<Record<string, boolean>>({});
     const [activeFormId, setActiveFormId] = useState(formId);
+    const [viewConsent, setViewConsent] = useState(false);   // view the driver's signed §391.23 authorization
+
+    // The driver's signed Safety Performance History authorization — attached to every request.
+    const CONSENT_FORM_ID = "sph-investigation-auth";
+    const CONSENT_LABEL = "Safety Performance History — Investigation Authorization";
 
     const formsList = forms && forms.length ? forms : [{ key: formId, label }];
     const company = branding.name || "Acme Logistics";
@@ -83,6 +88,15 @@ export function RecipientFormPreview({ formId, label, applicantName, prefill, re
         </div>
     );
 
+    // The driver's signed authorization — opened read-only from the request / email / recipient form.
+    if (viewConsent) {
+        return (
+            <PrefillProvider value={prefill}>
+                <HiringFormView formId={CONSENT_FORM_ID} startPreview onBack={() => setViewConsent(false)} />
+            </PrefillProvider>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-100">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
@@ -108,9 +122,10 @@ export function RecipientFormPreview({ formId, label, applicantName, prefill, re
                         period={period}
                         brandName={company}
                         docs={requestDocs.map((d) => ({ key: d.key, label: d.label, preselected: true }))}
-                        forms={formsList.map((f) => ({ key: f.key, label: f.label, preselected: f.key === formId }))}
+                        forms={formsList.map((f) => ({ key: f.key, label: f.label, preselected: true }))}
                         dataRows={dataRows}
                         prefill={{ email: "hr@previous-employer.com", phone: emp?.telephone, address: emp?.address }}
+                        consent={{ label: `${CONSENT_LABEL} (signed)`, note: `Signed by ${applicantName} · 49 CFR §391.23`, onView: () => setViewConsent(true) }}
                         onClose={onBack}
                         onSend={(payload) => { setSent(payload); setTab("email"); }}
                     />
@@ -160,6 +175,19 @@ export function RecipientFormPreview({ formId, label, applicantName, prefill, re
                                     </ul>
                                 </div>
                             )}
+
+                            {/* Attached — the driver's signed §391.23 authorization */}
+                            <div className="mt-5 overflow-hidden rounded-xl border border-emerald-200">
+                                <p className="border-b border-emerald-100 bg-emerald-50/70 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">Attached — driver's authorization</p>
+                                <div className="flex items-center gap-3 px-4 py-3">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600"><ShieldCheck className="h-4 w-4" /></span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-slate-800">{CONSENT_LABEL} (signed)</p>
+                                        <p className="truncate text-xs text-slate-500">{applicantName} authorized this release · 49 CFR §391.23</p>
+                                    </div>
+                                    <button type="button" onClick={() => setViewConsent(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" /> View</button>
+                                </div>
+                            </div>
 
                             {/* Secure links — one per form; documents are attached on its own link */}
                             <div className="mt-6 space-y-2.5">
@@ -214,6 +242,13 @@ export function RecipientFormPreview({ formId, label, applicantName, prefill, re
                         <div className="px-6 py-6 sm:px-8">
                             <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-slate-600">
                                 <span className="font-semibold text-slate-800">{company}</span> has asked you to complete this for <span className="font-semibold text-slate-800">{applicantName}</span>, who has listed your company as a previous employer. Please attach the requested documents{includeForm ? " and complete the form" : ""} below.
+                            </div>
+
+                            {/* Driver's signed authorization — viewable proof of release */}
+                            <div className="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600"><ShieldCheck className="h-4 w-4" /></span>
+                                <p className="min-w-0 flex-1 text-sm text-slate-600"><span className="font-semibold text-slate-800">{applicantName}</span> has signed an authorization releasing this safety-performance history (49 CFR §391.23).</p>
+                                <button type="button" onClick={() => setViewConsent(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" /> View authorization</button>
                             </div>
 
                             {/* Requested documents — attach the letters/records */}

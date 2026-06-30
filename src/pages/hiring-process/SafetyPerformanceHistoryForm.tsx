@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useCompanyBranding } from "../ats/company-branding.data";
 import {
-    Field, Grid, SelectBox, YesNo, MonthYear, CheckRows, CheckLine,
-    CompletedByCertification, newCompletedBy, formatAddress, type CompletedBy,
+    Field, Grid, SelectBox, YesNo, YesNoField, MonthYear, CheckRows, CheckLine, RevealPanel,
+    AddressFields, emptyAddress, formatAddress, type Address,
+    SignaturePad, todayISO, ReviewSignOff, newSignOff, type SignOffData,
 } from "./FormKit";
 import { FormScaffold, SectionTitle } from "./FormScaffold";
 import { usePrefill, primaryLicense } from "./application-prefill";
@@ -21,7 +22,6 @@ import type { DocSection } from "./FormDocument";
  * previous employer adds. Completed by the previous employer / reviewed internally.
  */
 
-const STATUSES = ["Pending", "Sent", "Responded", "Verified"];
 const EMPLOYMENT_TYPES = ["Full Time", "Part Time", "Casual", "Owner Operator", "Seasonal"];
 const REHIRE = ["Yes", "No", "Upon Review"];
 const REASONS_LEAVING = ["Resignation", "Discharged", "Lay Off", "Contract Ended", "Better Opportunity", "Retired", "Other"];
@@ -41,7 +41,16 @@ const REGIONS = [
     "Alberta", "British Columbia", "Manitoba", "New Brunswick", "Newfoundland and Labrador", "Nova Scotia", "Ontario", "Prince Edward Island", "Quebec", "Saskatchewan",
     "California", "Florida", "Illinois", "Indiana", "Michigan", "New York", "Ohio", "Pennsylvania", "Texas", "Washington", "Other",
 ];
-const COUNTRIES = ["Canada", "United States"];
+
+// DOT Drug & Alcohol Testing History (§40.25) — six questions the previous DOT employer answers.
+const DOT_QUESTIONS: { label: string; hint?: string }[] = [
+    { label: "Has this person had an alcohol test with the result of 0.04 or higher alcohol concentration?" },
+    { label: "Has this person tested positive, or adulterated or substituted a test specimen for controlled substances?" },
+    { label: "Has this person refused to submit to a post-accident, random, reasonable suspicion, or follow-up alcohol or controlled substance test?" },
+    { label: "Has this person committed other violations of Subpart B of Part 382, or Part 40?" },
+    { label: "If this person has violated a DOT drug and alcohol regulation, did this person complete a SAP-prescribed rehabilitation program in your employ, including return-to-duty and follow-up tests?", hint: "If yes, please send documentation back with this form." },
+    { label: "For a driver who successfully completed a SAP's rehabilitation referral and remained in your employ, did this driver subsequently have an alcohol test result of 0.04 or greater, a verified positive drug test, or refuse to be tested?" },
+];
 
 const RATING_OPTS = [
     { k: "U", name: "Unsatisfactory", on: "bg-rose-500" },
@@ -104,12 +113,6 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
     const pf = usePrefill();
     const idRef = useRef(1);
 
-    // Header / verification
-    const [referenceNo, setReferenceNo] = useState("");
-    const [status, setStatus] = useState("");
-    const [dadProcessed, setDadProcessed] = useState("");
-    const [dadRequestNo, setDadRequestNo] = useState("");
-
     // Previous employer
     const [employer, setEmployer] = useState("");
     const [attention, setAttention] = useState("");
@@ -117,12 +120,7 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
     const [phone, setPhone] = useState("");
     const [fax, setFax] = useState("");
     const [email, setEmail] = useState("");
-    const [address1, setAddress1] = useState("");
-    const [address2, setAddress2] = useState("");
-    const [postalCode, setPostalCode] = useState("");
-    const [city, setCity] = useState("");
-    const [province, setProvince] = useState("");
-    const [country, setCountry] = useState("Canada");
+    const [employerAddress, setEmployerAddress] = useState<Address>(() => ({ ...emptyAddress(), country: "Canada" }));
 
     // Driver employment
     const [applicantName, setApplicantName] = useState(pf?.fullName ?? "");
@@ -140,15 +138,30 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
 
     // Experience / equipment / evaluation
     const [experience, setExperience] = useState<string[]>([]);
-    const [equipment, setEquipment] = useState("");
+    const [equipment, setEquipment] = useState<string[]>([]);
     const [evaluation, setEvaluation] = useState<Record<string, string>>({});
+
+    // DOT Drug & Alcohol Testing History (§40.25)
+    const [dotSubject, setDotSubject] = useState("");
+    const [dotFrom, setDotFrom] = useState("");
+    const [dotTo, setDotTo] = useState("");
+    const [dotAnswers, setDotAnswers] = useState<string[]>(Array(DOT_QUESTIONS.length).fill(""));
+    const setDotAnswer = (i: number, v: string) => setDotAnswers((a) => a.map((x, idx) => (idx === i ? v : x)));
+
+    // Verified By (respondent)
+    const [vbName, setVbName] = useState("");
+    const [vbCompany, setVbCompany] = useState("");
+    const [vbAddress, setVbAddress] = useState("");
+    const [vbTelephone, setVbTelephone] = useState("");
+    const [vbSig, setVbSig] = useState("");
+    const [vbDate, setVbDate] = useState(todayISO());
 
     // Repeatable incidents & violations
     const [incidents, setIncidents] = useState<Incident[]>([]);
     const [violations, setViolations] = useState<Violation[]>([]);
     const [editing, setEditing] = useState<number[]>([]);
     const [remarks, setRemarks] = useState("");
-    const [completed, setCompleted] = useState<CompletedBy>(newCompletedBy());
+    const [signoff, setSignoff] = useState<SignOffData>(newSignOff());
 
     const isEditing = (id: number) => editing.includes(id);
     const startEdit = (id: number) => setEditing((p) => [...p, id]);
@@ -167,23 +180,22 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
     const reasonLabel = reasonLeaving === "Other" && reasonOther ? `Other — ${reasonOther}` : reasonLeaving;
 
     const fillSample = () => {
-        setReferenceNo("10893"); setStatus("Verified"); setDadProcessed("No"); setDadRequestNo("");
         setEmployer("Emterra Environmental"); setAttention("Zo T."); setContactTitle("Safety Coordinator");
         setPhone("778 401 4431"); setFax(""); setEmail("safety@emterra.example");
-        setAddress1("411 Glendale Ave"); setAddress2(""); setPostalCode("L2P 3Y1"); setCity("St Catharines"); setProvince("Ontario"); setCountry("Canada");
+        setEmployerAddress({ street: "411 Glendale Ave", city: "St Catharines", state: "Ontario", zip: "L2P 3Y1", country: "Canada" });
         setApplicantName(pf?.fullName ?? "Amarjeet Rozra"); setWasEmployed("Yes"); setLicence(primaryLicense(pf)?.number ?? "R69340370011019");
         setApproxMiles("120,000"); setWorkStart("2021-02"); setWorkEnd("2024-01"); setYearsExp("3.00"); setPositionDesc("AZ Driver");
         setEmploymentType("Full Time"); setRehire("Upon Review"); setReasonLeaving("Other"); setReasonOther("Relocated");
-        setExperience(["Canada", "Local", "USA Eastern"]); setEquipment("Tractor Semi Trailer");
+        setExperience(["Canada", "Local", "USA Eastern"]); setEquipment(["Tractor Semi Trailer", "Cargo Tank"]);
         setEvaluation(Object.fromEntries(EVAL_CRITERIA.map((c, i) => [c, ["G", "E", "S", "G", "E", "G", "S"][i % 7]])));
+        setDotSubject("Yes"); setDotFrom("2021-02-01"); setDotTo("2024-01-31"); setDotAnswers(Array(DOT_QUESTIONS.length).fill("No"));
+        setVbName("Zo T."); setVbCompany("Emterra Environmental"); setVbAddress("411 Glendale Ave, St Catharines, ON L2P 3Y1"); setVbTelephone("778 401 4431");
         setIncidents([{ id: idRef.current++, date: "2023-06", type: "Property Damage Only", location: "I-80 near mile 210", city: "Des Moines", region: "Other", commercial: "Yes", atFault: "No", ticketed: "No", towed: "No", hazmat: "No", chemicalSpill: "No", fatalities: "0", injuries: "0", details: "Minor backing incident in yard; no injuries." }]);
         setViolations([{ id: idRef.current++, date: "2022-11", region: "Ontario", category: "Speeding", oos: "No", charges: ["Speeding"], commercial: "Yes", demerits: "3", penalties: ["Fine"], fineAmount: "$100 – $250", comments: "" }]);
         setEditing([]);
         setRemarks("Driver maintained a good safety record during employment.");
-        setCompleted((c) => ({ ...c, company: "Emterra Environmental", telephone: "778 401 4431", address: { street: "411 Glendale Ave", city: "St Catharines", state: "Ontario", zip: "L2P 3Y1", country: "Canada" } }));
     };
 
-    const addrOk = !!completed.address.street && !!completed.address.city && !!completed.address.state;
     const ratedCount = EVAL_CRITERIA.filter((c) => evaluation[c]).length;
     const checks = [
         { label: "Previous employer recorded", ok: !!employer },
@@ -191,21 +203,17 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
         { label: "Employment dates recorded", ok: !!workStart && !!workEnd },
         { label: "Reason for leaving & rehire recorded", ok: !!reasonLeaving && !!rehire },
         { label: "Performance evaluation completed", ok: ratedCount === EVAL_CRITERIA.length },
+        { label: "DOT drug & alcohol testing history recorded", ok: !!dotSubject },
         { label: "Incidents & violations reviewed", ok: editing.length === 0 },
-        { label: "Company & address recorded", ok: !!completed.company && addrOk },
-        { label: embedded ? "Certified & signed" : "Reviewer sign-off completed", ok: completed.done },
+        { label: "Verified-by details recorded", ok: !!vbName },
+        { label: embedded ? "Certified & signed" : "Reviewer sign-off completed", ok: signoff.done },
     ];
 
     const sections: DocSection[] = [
-        { title: "Safety & Performance History", groups: [{ rows: [
-            { label: "Reference #", value: referenceNo }, { label: "Status of the Verification", value: status },
-            { label: "D.A.D Processed", value: dadProcessed }, { label: "D.A.D Request #", value: dadRequestNo },
-        ] }] },
         { title: "Previous Employer Information", groups: [{ rows: [
             { label: "Employer / Contractor", value: employer }, { label: "Attention", value: attention }, { label: "Contact Title", value: contactTitle },
             { label: "Phone", value: phone }, { label: "Fax", value: fax }, { label: "Email", value: email },
-            { label: "Address 1", value: address1 }, { label: "Address 2", value: address2 },
-            { label: "Postal Code", value: postalCode }, { label: "City", value: city }, { label: "Province", value: province }, { label: "Country", value: country },
+            { label: "Address", value: formatAddress(employerAddress) },
         ] }] },
         { title: "Driver Information", groups: [{ rows: [
             { label: "Applicant Name", value: applicantName }, { label: "Was employed here?", value: wasEmployed },
@@ -215,8 +223,15 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
             { label: "Would You Rehire?", value: rehire }, { label: "Reason For Leaving", value: reasonLabel },
         ] }] },
         { title: "Driving Experience", groups: [{ rows: [{ label: "Regions", value: experience.join(", ") || "—" }] }] },
-        { title: "Equipment Operated", groups: [{ rows: [{ label: "Equipment Operated Most", value: equipment }] }] },
+        { title: "Equipment Operated", groups: [{ rows: [{ label: "Equipment Operated", value: equipment.join(", ") }] }] },
         { title: "Evaluation (U / S / G / E)", groups: [{ rows: EVAL_CRITERIA.map((c) => ({ label: c, value: evaluation[c] ? RATING_NAME[evaluation[c]] : "—" })) }] },
+        { title: "DOT Drug & Alcohol Testing History (§40.25)", groups: [{ rows: [
+            { label: "Subject to DOT testing", value: dotSubject },
+            ...(dotSubject === "Yes" ? [
+                { label: "Testing period from", value: dotFrom }, { label: "Testing period to", value: dotTo },
+                ...DOT_QUESTIONS.map((q, i) => ({ label: q.label, value: dotAnswers[i] })),
+            ] : []),
+        ] }] },
         { title: "Incidents", groups: incidents.length ? [{ table: {
             headers: ["#", "Date", "Type", "Location", "At Fault", "Ticketed", "Injuries", "Fatalities"],
             rows: incidents.map((a, i) => [String(i + 1), mY(a.date), a.type, [a.location, a.city, a.region].filter(Boolean).join(", "), a.atFault, a.ticketed, a.injuries || "0", a.fatalities || "0"]),
@@ -225,12 +240,17 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
             headers: ["#", "Date", "Region", "Category", "Charges", "OOS", "Demerits", "Penalty"],
             rows: violations.map((v, i) => [String(i + 1), mY(v.date), v.region, v.category, v.charges.join(", "), v.oos, v.demerits || "—", v.penalties.join(", ")]),
         } }] : [{ rows: [{ label: "Violations", value: "None reported" }] }] },
+        { title: "Verified By", groups: [{
+            rows: [
+                { label: "Name", value: vbName }, { label: "Company", value: vbCompany },
+                { label: "Address", value: vbAddress }, { label: "Telephone", value: vbTelephone },
+                { label: "Date Signed", value: vbDate },
+            ],
+            images: vbSig ? [vbSig] : undefined,
+        }] },
         ...(remarks ? [{ title: "Remarks", groups: [{ rows: [{ label: "Remarks", value: remarks }] }] }] : []),
-        { title: "Completed By", groups: [{ rows: [
-            { label: "Company", value: completed.company }, { label: "Address", value: formatAddress(completed.address) }, { label: "Telephone", value: completed.telephone },
-        ] }] },
-        { title: embedded ? "Certification" : "Reviewer Sign-Off", groups: [completed.done
-            ? { rows: [{ label: embedded ? "Completed by" : "Reviewed by", value: completed.name }, { label: "Title", value: completed.role }, { label: "Date", value: completed.date }, { label: "Status", value: embedded ? "Completed & signed" : "Reviewed & signed" }], images: completed.sig ? [completed.sig] : undefined }
+        { title: embedded ? "Certification" : "Reviewer Sign-Off", groups: [signoff.done
+            ? { rows: [{ label: embedded ? "Completed by" : "Reviewed by", value: signoff.name }, { label: "Title", value: signoff.role }, { label: "Date", value: signoff.date }, { label: "Status", value: embedded ? "Completed & signed" : "Reviewed & signed" }], images: signoff.sig ? [signoff.sig] : undefined }
             : { rows: [{ label: "Status", value: "Pending — not yet signed" }] }] },
     ];
 
@@ -243,21 +263,10 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
 
     return (
         <FormScaffold
-            title="Safety & Performance History" Icon={ShieldCheck} onBack={onBack} onFillSample={fillSample} embedded={embedded} startPreview={startPreview} sheet
-            docTitle="Safety and Performance History" docSubtitle={applicantName || pf?.fullName || undefined} sections={sections} branding={branding} fileName="safety-performance-history.pdf"
+            title="Request for Employment and Safety Performance History" Icon={ShieldCheck} onBack={onBack} onFillSample={fillSample} embedded={embedded} startPreview={startPreview} sheet
+            docTitle="Request for Employment and Safety Performance History" docSubtitle={applicantName || pf?.fullName || undefined} sections={sections} branding={branding} fileName="safety-performance-history.pdf"
             intro={<>Consolidated previous-employer safety reference. Confirm the employer &amp; employment details, rate the driver's performance, then add any <span className="font-semibold">incidents</span> and <span className="font-semibold">violations</span> on file. Completed by the previous employer and reviewed internally.</>}
         >
-            {/* Header / verification */}
-            <div>
-                <SectionTitle>Safety &amp; Performance History</SectionTitle>
-                <Grid>
-                    <Field label="Reference #"><Input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. 10893" /></Field>
-                    <Field label="Status of the Verification"><SelectBox value={status} onChange={setStatus} items={STATUSES} placeholder="Choose status" /></Field>
-                    <Field label="D.A.D Processed"><YesNo value={dadProcessed} onChange={setDadProcessed} /></Field>
-                    <Field label="D.A.D Request #"><Input value={dadRequestNo} onChange={(e) => setDadRequestNo(e.target.value)} placeholder="Request number" /></Field>
-                </Grid>
-            </div>
-
             {/* Previous employer */}
             <div>
                 <SectionTitle>Previous Employer Information</SectionTitle>
@@ -269,13 +278,8 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
                         <Field label="Phone"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 000-0000" /></Field>
                         <Field label="Fax"><Input value={fax} onChange={(e) => setFax(e.target.value)} placeholder="Fax number" /></Field>
                         <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" /></Field>
-                        <Field label="Address 1"><Input value={address1} onChange={(e) => setAddress1(e.target.value)} placeholder="Street address" /></Field>
-                        <Field label="Address 2"><Input value={address2} onChange={(e) => setAddress2(e.target.value)} placeholder="Suite / unit (optional)" /></Field>
-                        <Field label="Postal Code"><Input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="A1A 1A1" /></Field>
-                        <Field label="City"><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" /></Field>
-                        <Field label="Province / State"><SelectBox value={province} onChange={setProvince} items={REGIONS} placeholder="Choose region" /></Field>
-                        <Field label="Country"><SelectBox value={country} onChange={setCountry} items={COUNTRIES} placeholder="Choose country" /></Field>
                     </Grid>
+                    <AddressFields value={employerAddress} onChange={setEmployerAddress} />
                 </div>
             </div>
 
@@ -310,7 +314,32 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
             {/* Equipment operated */}
             <div>
                 <SectionTitle>Equipment Operated</SectionTitle>
-                <Field label="Equipment Operated Most"><SelectBox value={equipment} onChange={setEquipment} items={EQUIPMENT} placeholder="Choose equipment" /></Field>
+                <Field label="Equipment Operated (select all that apply)"><Chips items={EQUIPMENT} selected={equipment} onToggle={(v) => setEquipment((a) => toggleArr(a, v))} /></Field>
+            </div>
+
+            {/* DOT Drug & Alcohol Testing History (§40.25) */}
+            <div>
+                <SectionTitle>DOT Drug &amp; Alcohol Testing History (§40.25)</SectionTitle>
+                <p className="mb-3 text-xs text-slate-500">Required by 49 CFR §40.25. To be completed by the previous DOT-regulated employer. Answer &quot;Yes&quot; below to record the testing history.</p>
+                <YesNoField label="Was the driver subject to Department of Transportation testing requirements while employed by this employer?" value={dotSubject} onChange={setDotSubject} />
+                {dotSubject === "Yes" && (
+                    <div className="mt-4">
+                        <RevealPanel title="Driver was subject to Department of Transportation testing requirements during the following period:">
+                            <Grid>
+                                <Field label="From"><Input type="date" value={dotFrom} onChange={(e) => setDotFrom(e.target.value)} className="bg-white" /></Field>
+                                <Field label="To"><Input type="date" value={dotTo} onChange={(e) => setDotTo(e.target.value)} className="bg-white" /></Field>
+                            </Grid>
+                            <div className="space-y-2">
+                                {DOT_QUESTIONS.map((q, i) => (
+                                    <div key={i}>
+                                        <YesNoField label={q.label} value={dotAnswers[i]} onChange={(v) => setDotAnswer(i, v)} />
+                                        {q.hint && <p className="mt-1 px-1 text-xs text-slate-400">{q.hint}</p>}
+                                    </div>
+                                ))}
+                            </div>
+                        </RevealPanel>
+                    </div>
+                )}
             </div>
 
             {/* Evaluation */}
@@ -352,9 +381,9 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
                                     <Field label="State / Prov" required><SelectBox value={a.region} onChange={(v) => setInc(a.id, { region: v })} items={REGIONS} placeholder="Please choose" /></Field>
                                 </Grid>
                                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-                                    <Field label="Were you in a commercial vehicle?" required><YesNo value={a.commercial} onChange={(v) => setInc(a.id, { commercial: v })} /></Field>
-                                    <Field label="Were you at fault?" required><YesNo value={a.atFault} onChange={(v) => setInc(a.id, { atFault: v })} /></Field>
-                                    <Field label="Were you ticketed?" required><YesNo value={a.ticketed} onChange={(v) => setInc(a.id, { ticketed: v })} /></Field>
+                                    <Field label="Was the driver in a commercial vehicle?" required><YesNo value={a.commercial} onChange={(v) => setInc(a.id, { commercial: v })} /></Field>
+                                    <Field label="Was the driver at fault?" required><YesNo value={a.atFault} onChange={(v) => setInc(a.id, { atFault: v })} /></Field>
+                                    <Field label="Was the driver ticketed?" required><YesNo value={a.ticketed} onChange={(v) => setInc(a.id, { ticketed: v })} /></Field>
                                     <Field label="Was any vehicle towed away?"><YesNo value={a.towed} onChange={(v) => setInc(a.id, { towed: v })} /></Field>
                                     <Field label="Hazmat accident / incident"><YesNo value={a.hazmat} onChange={(v) => setInc(a.id, { hazmat: v })} /></Field>
                                     <Field label="Chemical spill?"><YesNo value={a.chemicalSpill} onChange={(v) => setInc(a.id, { chemicalSpill: v })} /></Field>
@@ -417,7 +446,7 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
                                 </Grid>
                                 <Field label="Charge / Description (select all that apply)" required><Chips items={CHARGES} selected={v.charges} onToggle={(c) => setVio(v.id, { charges: toggleArr(v.charges, c) })} /></Field>
                                 <Grid>
-                                    <Field label="Were you in a commercial vehicle?" required><YesNo value={v.commercial} onChange={(val) => setVio(v.id, { commercial: val })} /></Field>
+                                    <Field label="Was the driver in a commercial vehicle?" required><YesNo value={v.commercial} onChange={(val) => setVio(v.id, { commercial: val })} /></Field>
                                     <Field label="Demerit points"><Input type="number" min={0} value={v.demerits} onChange={(e) => setVio(v.id, { demerits: e.target.value })} placeholder="e.g. 2" /></Field>
                                 </Grid>
                                 <Field label="Penalty / Fine (select all that apply)" required><Chips items={PENALTIES} selected={v.penalties} onToggle={(p) => setVio(v.id, { penalties: toggleArr(v.penalties, p) })} /></Field>
@@ -453,24 +482,38 @@ export function SafetyPerformanceHistoryForm({ onBack, embedded, startPreview }:
                 </div>
             </div>
 
+            {/* Verified By (respondent) */}
+            <div>
+                <SectionTitle>Verified By</SectionTitle>
+                <p className="mb-3 text-xs text-slate-500">In answering these questions, include any required DOT drug or alcohol testing information obtained from previous employers in the 3 years prior to the application date shown on page 1.</p>
+                <div className="space-y-5">
+                    <Grid>
+                        <Field label="Name"><Input value={vbName} onChange={(e) => setVbName(e.target.value)} placeholder="Full name" /></Field>
+                        <Field label="Company"><Input value={vbCompany} onChange={(e) => setVbCompany(e.target.value)} placeholder="Company" /></Field>
+                    </Grid>
+                    <Field label="Address"><Input value={vbAddress} onChange={(e) => setVbAddress(e.target.value)} placeholder="Address" /></Field>
+                    <Field label="Telephone"><Input type="tel" value={vbTelephone} onChange={(e) => setVbTelephone(e.target.value)} placeholder="(555) 000-0000" /></Field>
+                    <Field label="Signature"><SignaturePad onChange={setVbSig} /></Field>
+                    <Field label="Date Signed"><Input type="date" value={vbDate} onChange={(e) => setVbDate(e.target.value)} /></Field>
+                </div>
+            </div>
+
             {/* Remarks */}
             <div>
                 <SectionTitle>Any Other Remarks</SectionTitle>
                 <Textarea rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Any other remarks…" className="resize-none" />
             </div>
 
-            {embedded ? (
-                <CompletedByCertification value={completed} onChange={setCompleted} />
-            ) : (
-                <CompletedByCertification
-                    value={completed} onChange={setCompleted} checklist={reviewChecklist}
-                    kicker="Completed By"
-                    certKicker="Reviewer Sign-Off"
-                    certHeading="I have reviewed and completed the safety & performance history above."
-                    certSubtext="Confirm you have reviewed the form above. Your name, title, date and signature are recorded on file."
-                    nameLabel="Reviewer name" buttonLabel="Confirm review & sign" signedLabel="Reviewed & signed" signedByLabel="Reviewed by"
-                />
-            )}
+            {!embedded && reviewChecklist}
+            <ReviewSignOff
+                heading={embedded ? "I certify the information above is true and complete." : "I have reviewed and completed the safety & performance history above."}
+                value={signoff} onChange={setSignoff}
+                kicker={embedded ? "Certification" : "Reviewer Sign-Off"}
+                nameLabel={embedded ? "Your name" : "Reviewer name"}
+                buttonLabel={embedded ? "Complete & sign" : "Confirm review & sign"}
+                signedLabel={embedded ? "Completed & signed" : "Reviewed & signed"}
+                signedByLabel={embedded ? "Completed by" : "Reviewed by"}
+            />
         </FormScaffold>
     );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, FileText, ClipboardCheck } from "lucide-react";
+import { Send, FileText, ClipboardCheck, ShieldCheck, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +25,7 @@ export type EmployerRequestPayload = {
 };
 
 export function EmployerRequestDialog({
-    employerName, applicantName, period, brandName, attemptLabel, docs, forms = [], dataRows, defaultVerifyData, prefill, inline, sendLabel, defaultSubject, intro, onClose, onSend,
+    employerName, applicantName, period, brandName, attemptLabel, docs, forms = [], dataRows, defaultVerifyData, prefill, inline, sendLabel, defaultSubject, intro, consent, onClose, onSend,
 }: {
     employerName: string;
     applicantName: string;
@@ -41,6 +41,7 @@ export function EmployerRequestDialog({
     sendLabel?: string;                        // override the primary button label
     defaultSubject?: string;                   // override the starting subject line
     intro?: string;                            // override the opening sentence of the message
+    consent?: { label: string; note?: string; onView: () => void };   // the driver's signed authorization, attached to the request
     onClose: () => void;
     onSend: (payload: EmployerRequestPayload) => void;
 }) {
@@ -68,9 +69,10 @@ export function EmployerRequestDialog({
             ? ["", `Please also complete the following form(s) online using the secure link in this email:`, "", formLines].join("\n")
             : "";
         const opening = intro ?? `We are completing an employment verification for ${applicantName}${period ? ` (employed ${period})` : ""}.`;
+        const consentBlock = consent ? `\n\n${applicantName}'s signed Safety Performance History authorization (49 CFR §391.23) is attached for your records.` : "";
         return [
             `Dear ${employerName || "Employer"},`, ``,
-            `${opening}${docBlock}${formBlock}${dataBlock}`, ``,
+            `${opening}${docBlock}${formBlock}${dataBlock}${consentBlock}`, ``,
             `Thank you,`, brandName,
         ].join("\n");
     };
@@ -124,6 +126,20 @@ export function EmployerRequestDialog({
                             ))}
                         </div>
                     </div>
+
+                    {consent && (
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Consent forms <span className="font-normal normal-case text-slate-400">— signed by the driver, attached to this request</span></p>
+                            <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                                <div className="flex items-center gap-3 px-3.5 py-2.5">
+                                    <Checkbox checked disabled className="opacity-70" />
+                                    <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500" />
+                                    <button type="button" onClick={consent.onView} className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-700 hover:text-blue-600">{consent.label}</button>
+                                    <button type="button" onClick={consent.onView} className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"><Eye className="h-3.5 w-3.5" /> View</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {forms.length > 0 && (
                         <div>

@@ -106,6 +106,38 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         sample: { licenseNumber: "D1234-5678-90", state: "Illinois", expiration: "2027-03-04", date: "2026-06-05" },
     },
     {
+        id: "insurance-policy",
+        title: "Driver Insurance",
+        accentTitle: "Policy Acknowledgment",
+        theme: "blue",
+        kind: "policy",
+        blurb: "Driver acknowledges the carrier's insurance coverage requirements and records their insurability details.",
+        body: [
+            { h: "MOTOR CARRIER INSURANCE POLICY:" },
+            { p: "As a condition of operating a commercial motor vehicle for {company} (“the Company”), every driver must be and remain insurable under the Company's motor-vehicle liability and physical-damage insurance. The Company maintains the minimum levels of financial responsibility required by the FMCSA (49 CFR Part 387) and applicable state law." },
+            { h: "DRIVER ACKNOWLEDGMENT:" },
+            { p: "I understand that my authority to operate a commercial motor vehicle for the Company depends on my remaining insurable under the Company's policy. I authorize the Company to share my driving record and the information below with its insurer for the purpose of determining and maintaining my insurability." },
+            { ol: [
+                "I will immediately notify the Company of any accident, citation, claim, or change to my driving record or license status that may affect my insurability.",
+                "I understand that if the Company's insurer declines to cover me, or rates me as uninsurable, the Company may be unable to continue my employment as a driver.",
+                "I certify that the insurance information I have provided below is true and complete to the best of my knowledge.",
+            ] },
+        ],
+        fieldsTitle: "Insurance Details",
+        fields: [
+            { key: "insurer", label: "Insurance Company", kind: "text" },
+            { key: "policyNumber", label: "Policy Number", kind: "text" },
+            { key: "coverageType", label: "Coverage Type", kind: "choice", options: ["Liability", "Physical Damage", "Liability + Physical Damage", "Non-Trucking Liability"] },
+            { key: "effective", label: "Effective Date", kind: "date" },
+            { key: "expiration", label: "Expiration Date", kind: "date" },
+        ],
+        signers: [
+            { key: "signature", label: "Driver Signature", kind: "sign" },
+            { key: "date", label: "Date", kind: "date" },
+        ],
+        sample: { insurer: "Great West Casualty", policyNumber: "GWC-44821-07", coverageType: "Liability + Physical Damage", effective: "2026-01-01", expiration: "2026-12-31", date: "2026-06-05" },
+    },
+    {
         id: "on-duty-hours",
         title: "Driver Statement of",
         accentTitle: "On-Duty Hours",
