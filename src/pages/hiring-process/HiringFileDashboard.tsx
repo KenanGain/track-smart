@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, Send, FileSearch, BadgeCheck, RotateCcw,
     AlertCircle, Clock, ExternalLink, Mail, Printer, Share2,
-    MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip, ClipboardCheck, ClipboardList, CreditCard, Award, GraduationCap,
+    MessageSquarePlus, FileText, StickyNote, Upload, Download, Eye, Calendar, Paperclip, ClipboardCheck, ClipboardList, CreditCard, Award, GraduationCap, PenLine,
 } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -27,7 +27,7 @@ import { EmployerDocTile } from "./EmployerDocTile";
 import { ThemedDocumentViewer } from "./ThemedDocumentViewer";
 import { HiringPdfReview } from "./HiringPdfReview";
 import { PrefillProvider, buildPrefill, splitDates, type PrefillEmployer, type PrefillUnemployment, type ApplicantPrefill } from "./application-prefill";
-import { SignaturePad } from "./FormKit";
+import { SignatureCreator } from "./SignatureCreator";
 import { PolicyDocument } from "./PolicyForm";
 import { POLICY_FORMS } from "./policy-forms.data";
 import { useCompanyBranding, type CompanyBranding } from "../ats/company-branding.data";
@@ -739,6 +739,7 @@ function ReviewSignOff({ label, signedNote, existing, onConfirm }: { label: stri
     const [role, setRole] = useState(existing?.role ?? "Hiring Manager");
     const [date, setDate] = useState(existing?.date ?? todayISO());
     const [sig, setSig] = useState(existing?.sig ?? "");
+    const [sigOpen, setSigOpen] = useState(false);
     const [done, setDone] = useState(!!existing);
     return (
         <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
@@ -762,8 +763,20 @@ function ReviewSignOff({ label, signedNote, existing, onConfirm }: { label: stri
                         <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Title / role</Label><Input value={role} onChange={(e) => setRole(e.target.value)} /></div>
                         <div><Label className="mb-1 block text-xs font-semibold text-slate-600">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
                     </div>
-                    <div className="mt-4"><Label className="mb-1 block text-xs font-semibold text-slate-600">Signature</Label><SignaturePad onChange={setSig} /></div>
+                    <div className="mt-4">
+                        <Label className="mb-1 block text-xs font-semibold text-slate-600">Signature</Label>
+                        {sig ? (
+                            <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                                <img src={sig} alt="signature" className="h-14 rounded border border-slate-200 bg-white" />
+                                <Button variant="outline" size="sm" onClick={() => setSigOpen(true)}><PenLine className="h-4 w-4" /> Change signature</Button>
+                                <button type="button" onClick={() => setSig("")} className="text-xs font-semibold text-slate-400 hover:text-rose-500">Clear</button>
+                            </div>
+                        ) : (
+                            <button type="button" onClick={() => setSigOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50/50 px-4 py-4 text-sm font-semibold text-slate-500 transition hover:border-blue-300 hover:text-blue-600"><PenLine className="h-4 w-4" /> Add your signature</button>
+                        )}
+                    </div>
                     <Button className="mt-4" disabled={!sig || !name.trim()} onClick={() => { onConfirm({ sig, by: name.trim(), role: role.trim(), date }); setDone(true); }}><Check className="h-4 w-4" /> Confirm review &amp; sign</Button>
+                    {sigOpen && <SignatureCreator title="Add your signature" hideSave onApply={(dataUrl) => { setSig(dataUrl); setSigOpen(false); }} onClose={() => setSigOpen(false)} />}
                 </>
             )}
         </div>
@@ -2851,18 +2864,19 @@ function InsurancePolicyModule({ a, steps, updateOne, review, onReview }: {
     // Consent / authorization forms signed by the driver during the application.
     const consentFids = steps.flatMap((s) => s.formIds).filter((f) => stepGroup(f) === "Policy" && f !== "insurance-policy");
     const consentsReady: DocStatus = consentFids.length > 0 && a.submission?.length ? "received" : "pending";
-    // Employer letters are aggregated across every previous employer.
-    const letterStatus = (key: string): DocStatus => {
-        const ss = pf.employment.map((_, i) => a.docs?.[`doc:emp-${i}:${key}`] ?? "pending");
-        return ss.length && ss.some((s) => DONE_STATES.includes(s)) ? "received" : "pending";
-    };
+    // Experience letters — one Employment + one Insurance letter per previous employer.
+    const employers = pf.employment.length ? pf.employment : [{ employer: "Previous Employer", dates: "" } as PrefillEmployer];
+    const empName = (e: PrefillEmployer, i: number) => e.employer || `Employer ${i + 1}`;
+    const letterItems = employers.flatMap((e, i) => [
+        { key: `doc:emp-${i}:experience`, label: `Employment Experience Letter — ${empName(e, i)}`, note: e.dates || "From previous employer", status: (a.docs?.[`doc:emp-${i}:experience`] ?? "pending") as DocStatus },
+        { key: `doc:emp-${i}:insurance`, label: `Insurance Experience Letter — ${empName(e, i)}`, note: e.dates || "From previous insurer", status: (a.docs?.[`doc:emp-${i}:insurance`] ?? "pending") as DocStatus },
+    ]);
     type PkgItem = { key: string; label: string; note: string; status: DocStatus };
     const items: PkgItem[] = [
         { key: "application", label: "Employment Application", note: "Completed application", status: a.submission?.length ? "received" : "pending" },
         ...(consentFids.length ? [{ key: "consents", label: "Consent Forms", note: `${consentFids.length} signed authorization${consentFids.length === 1 ? "" : "s"}`, status: consentsReady }] : []),
         ...reportItems.map((r) => ({ key: r.fid, label: r.label, note: "Most recent on file", status: (a.docs?.[r.fid] ?? "pending") as DocStatus })),
-        { key: "doc:experience", label: "Employment Experience Letter", note: "From previous employer(s)", status: letterStatus("experience") },
-        { key: "doc:insurance", label: "Insurance Experience Letter", note: "From previous insurer(s)", status: letterStatus("insurance") },
+        ...letterItems,
     ];
     const isReady = (s: DocStatus) => DONE_STATES.includes(s);
     const readyCount = items.filter((it) => isReady(it.status)).length;

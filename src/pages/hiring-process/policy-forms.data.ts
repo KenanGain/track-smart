@@ -147,7 +147,6 @@ export const POLICY_FORMS: PolicyFormDef[] = [
         body: [
             { h: "INSTRUCTIONS:" },
             { p: "Motor carriers, when using a driver for the first time, must obtain from the driver a signed statement giving the total time on-duty during the immediately preceding 7 days and the time at which the driver was last relieved from duty prior to beginning work for the carrier, as required by Section 395.8(j)(2) of the Federal Motor Carrier Safety Regulations." },
-            { p: "This form should be completed on the day the driver is scheduled to begin driving a commercial motor vehicle, and must be kept on file for at least 6 months." },
         ],
         onDuty: true,
         signers: [

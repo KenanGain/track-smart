@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock, FileCheck2, Loader2, ShieldCheck, ThumbsUp, X } from "lucide-react";
 import { APPLICATION_FORMS } from "./ApplicationSettingsPage";
+import { getOnbWorkflow, type OnboardingState } from "./onboarding.data";
 
 // Hiring Process applicants — localStorage-backed so the list board and the
 // applicant detail page stay in sync (status changes, remarks, reissue).
@@ -142,6 +143,7 @@ export type Applicant = {
     roadTest?: RoadTestState;    // §391.31 road test — assigned examiner + fulfilment method
     quiz?: QuizState;            // Test step — quizzes assigned to the driver + their results
     checklistState?: { fields?: Record<string, string>; items?: Record<string, boolean>; sigs?: Record<string, string> }; // review checklist fill state
+    onboarding?: OnboardingState;   // post-hire onboarding progress (forms / contract / quiz / training)
 };
 
 export const formName = (id: string) => APPLICATION_FORMS.find((f) => f.id === id)?.name ?? id;
@@ -428,9 +430,43 @@ const SEED: Applicant[] = [
             signedAt: "05/31/2026",
         },
     ),
+    ...onboardingSeed(),
 ];
 
-const KEY = "hp_applicants_v12";
+// ── Hired drivers currently in Onboarding ────────────────────────────────────
+// Approved applicants (status "approved") with an onboarding state at various
+// stages, so the Onboarding monitor list has real data to work with.
+function onboardingSeed(): Applicant[] {
+    // Each seeded driver is assigned a concrete workflow; their signed sets are
+    // built from THAT workflow so the workflow-driven steps show real progress.
+    const WF_FOR: Record<string, string> = { us: "onbwf-us", canada: "onbwf-canada", "cross-border": "onbwf-owner-op", local: "onbwf-standard" };
+    const passResults = (ids: string[]) => Object.fromEntries(ids.map((id) => [id, { score: 20, total: 20, passed: true, at: NOW - 3 * D }]));
+    const passAttempts = (ids: string[]) => Object.fromEntries(ids.map((id) => [id, 1]));
+    const review = { by: ACTOR, role: "Hiring Manager", date: "2026-07-06", at: NOW - 1 * D };
+
+    const mk = (id: string, first: string, last: string, carrier: string, carrierId: string, position: string, formId: string, phone: string, invitedAt: string,
+        stage: "start" | "policy" | "mid" | "complete") => {
+        const wfId = WF_FOR[formId] ?? "onbwf-standard";
+        const wf = getOnbWorkflow(wfId);
+        const onb: OnboardingState = { startedAt: NOW - 4 * D, workflowId: wfId };
+        if (wf) {
+            if (stage === "policy" || stage === "mid" || stage === "complete") onb.signedContracts = [...wf.policyForms];
+            if (stage === "mid" || stage === "complete") { onb.signedForms = [...wf.forms]; onb.signedDocs = [...wf.documents]; onb.quizResults = passResults(wf.quizzes); onb.quizAttempts = passAttempts(wf.quizzes); }
+            if (stage === "complete") onb.reviews = { checklist: review };
+        }
+        return seedApplicant({ id, firstName: first, lastName: last, email: `${first.toLowerCase()}.${last.toLowerCase()}@example.com`, formId, carrier, carrierId, template: "Complete Driver Hiring (Default)", status: "approved", stepsDone: 12, stepsTotal: 12, invitedAt, updatedAt: NOW - 1 * D, position, phone, onboarding: onb });
+    };
+
+    return [
+        mk("onb1", "Ethan", "Brooks", "Acme Logistics", "acct-001", "OTR Driver", "us", "(312) 555-0201", "Jun 20, 2026", "start"),
+        mk("onb2", "Maria", "Lopez", "Acme Logistics", "acct-001", "Regional Driver", "us", "(312) 555-0202", "Jun 18, 2026", "policy"),
+        mk("onb3", "David", "Kim", "Acme Logistics", "acct-001", "Local Driver", "local", "(312) 555-0203", "Jun 15, 2026", "mid"),
+        mk("onb4", "Aisha", "Rahman", "Acme Logistics", "acct-001", "OTR Driver", "us", "(312) 555-0204", "Jun 10, 2026", "complete"),
+        mk("onb5", "Liam", "Carter", "Cascade Freight", "acct-002", "Cross-Border Driver", "cross-border", "(206) 555-0205", "Jun 17, 2026", "policy"),
+    ];
+}
+
+const KEY = "hp_applicants_v14";
 
 function read(): Applicant[] {
     if (typeof window === "undefined") return SEED;

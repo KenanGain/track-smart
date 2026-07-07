@@ -3,10 +3,17 @@ import { Check, FileText, Search, MessageSquarePlus, ChevronDown, ClipboardList,
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useApplicants, ACTOR, type Applicant, type AppStatus } from "./applicants.data";
-import { useHiringTemplates, type HiringTemplate } from "./hiring-templates.data";
+import { useApplicants, ACTOR, type Applicant, type AppStatus, type AppRequest, type DocStatus, type RequestAction, type RequestRecipient } from "./applicants.data";
+import { useHiringTemplates, stepName, type HiringTemplate } from "./hiring-templates.data";
+import { AskDriverDialog, type AskGroup, type AskResult } from "./AskDriverDialog";
+import { RemarkDialog } from "./RemarkDialog";
+import { AssignReviewDialog, type AssignReviewPayload } from "./AssignReviewDialog";
 
 const HP_FILE = "/hiring-process/hiring";
+
+const DONE_STATES: DocStatus[] = ["received", "verified", "skipped"];
+// Forms that are actioned by a third party (examiner / employer / insurer), not the driver.
+const NON_DRIVER_FIDS = new Set(["road-test", "insurance-policy", "employment-verification", "dot-verification"]);
 
 // Friendly phase label per status (the manager's view of where the driver is).
 const PHASE: Record<AppStatus, { label: string; dot: string; text: string }> = {
@@ -28,6 +35,7 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
     const { applicants, updateOne } = useApplicants();
     const { templates } = useHiringTemplates(carrierId);
     const [query, setQuery] = useState("");
+    const [dialog, setDialog] = useState<{ a: Applicant; tpl?: HiringTemplate; mode: "ask" | "review" | "remark" } | null>(null);
 
     // Each applicant follows their OWN template's custom steps.
     const resolveTemplate = (a: Applicant): HiringTemplate | undefined =>
@@ -73,10 +81,14 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
                                     <ApplicantRow key={a.id} a={a} steps={steps} templateName={tpl?.name ?? "—"}
                                         current={currentIndexOf(a, steps.length)}
                                         onOpen={() => onNavigate(`${HP_FILE}/${a.id}`)}
-                                        onAction={(kind, label) => updateOne(a.id, (prev) => ({
-                                            remarks: [{ id: `rm-${Date.now()}`, text: label, at: new Date().toLocaleString(), author: ACTOR }, ...prev.remarks],
-                                            events: [{ id: `ev-${Date.now()}`, type: kind, text: label, at: Date.now(), author: ACTOR }, ...prev.events],
-                                        }))}
+                                        onAction={(kind, label) => {
+                                            if (kind === "ask") { setDialog({ a, tpl, mode: "ask" }); return; }
+                                            if (kind === "review") { setDialog({ a, tpl, mode: "review" }); return; }
+                                            if (kind === "remark") { setDialog({ a, tpl, mode: "remark" }); return; }
+                                            updateOne(a.id, (prev) => ({
+                                                events: [{ id: `ev-${Date.now()}`, type: kind, text: label, at: Date.now(), author: ACTOR }, ...prev.events],
+                                            }));
+                                        }}
                                     />
                                 );
                             })}
@@ -84,8 +96,89 @@ export function HiringMonitorPage({ onNavigate, carrierId }: { onNavigate: (path
                     )}
                 </div>
             </div>
+
+            {dialog && dialog.mode === "remark" && (
+                <RemarkDialog subtitle={`Add an internal remark against ${dialog.a.firstName} ${dialog.a.lastName}.`}
+                    onClose={() => setDialog(null)}
+                    onSubmit={(text) => {
+                        const driver = dialog.a; const now = Date.now();
+                        updateOne(driver.id, (prev) => ({
+                            remarks: [{ id: `rm-${now}`, text, at: new Date().toLocaleString(), author: ACTOR }, ...prev.remarks],
+                            events: [{ id: `ev-${now}`, type: "note", text: `Remark: ${text}`, at: now, author: ACTOR }, ...prev.events],
+                        }));
+                        setDialog(null);
+                    }} />
+            )}
+
+            {dialog && dialog.mode === "ask" && (() => {
+                const driver = dialog.a;
+                const name = `${driver.firstName} ${driver.lastName}`;
+                const groups = hiringAskGroups(driver, dialog.tpl);
+                const labelMap = Object.fromEntries(groups.flatMap((g) => g.items.map((i) => [i.id, i.label] as const)));
+                return (
+                    <AskDriverDialog driverName={name} driverEmail={driver.email} groups={groups}
+                        subtitle={`Ask ${name} to complete forms, documents & signatures.`}
+                        onClose={() => setDialog(null)}
+                        onSend={(r) => { sendHiringAsk(updateOne, driver, r, labelMap, "Request", "Driver"); setDialog(null); }} />
+                );
+            })()}
+
+            {dialog && dialog.mode === "review" && (() => {
+                const driver = dialog.a;
+                const scopes = (dialog.tpl?.steps ?? []).filter((s) => s.kind !== "review").map((s) => ({ id: s.id, label: s.title }));
+                return (
+                    <AssignReviewDialog driverName={`${driver.firstName} ${driver.lastName}`} carrier={carrierId} context="hiring file" scopes={scopes}
+                        onClose={() => setDialog(null)}
+                        onAssign={(v) => { assignHiringReview(updateOne, driver, v); setDialog(null); }} />
+                );
+            })()}
         </div>
     );
+}
+
+// Assign a hiring manager to review this applicant's file — logged as an open Review request.
+function assignHiringReview(updateOne: (id: string, fn: (prev: Applicant) => Partial<Applicant>) => void, a: Applicant, v: AssignReviewPayload) {
+    updateOne(a.id, (prev) => {
+        const now = Date.now();
+        const req: AppRequest = { id: `rq-${now}`, action: "Review", recipient: "Hiring Manager", to: v.email, channel: "Email", subject: v.subject, message: v.message, status: "open", at: now, by: ACTOR };
+        return {
+            requests: [req, ...(prev.requests ?? [])],
+            events: [{ id: `ev-${now}`, type: "request", text: `Assigned review (${v.scopeLabel}) to ${v.name}${v.role ? ` (${v.role})` : ""} · ${v.email}`, at: now, author: ACTOR }, ...prev.events],
+        };
+    });
+}
+
+// Build the requestable-item groups for an applicant from their template steps.
+function hiringAskGroups(a: Applicant, tpl?: HiringTemplate): AskGroup[] {
+    const docs = a.docs ?? {};
+    return (tpl?.steps ?? [])
+        .filter((s) => s.kind !== "review")
+        .map((s) => ({
+            title: s.title,
+            items: s.formIds
+                .filter((fid) => !NON_DRIVER_FIDS.has(fid))
+                .map((fid) => ({ id: fid, label: stepName(fid), done: DONE_STATES.includes(docs[fid]) })),
+        }))
+        .filter((g) => g.items.length > 0);
+}
+
+// Record an "ask driver" / "assign review" send — mark each doc requested and log open requests.
+function sendHiringAsk(updateOne: (id: string, fn: (prev: Applicant) => Partial<Applicant>) => void, a: Applicant, r: AskResult, labelMap: Record<string, string>, action: RequestAction, recipient: RequestRecipient) {
+    updateOne(a.id, (prev) => {
+        const docs = { ...(prev.docs ?? {}) };
+        const now = Date.now();
+        const reqs: AppRequest[] = r.itemIds.map((fid, i) => {
+            if (action === "Request" && !DONE_STATES.includes(docs[fid])) docs[fid] = "requested";
+            return { id: `rq-${now}-${i}`, fid, action, recipient, to: r.to, channel: r.channel, subject: `${r.subject} — ${labelMap[fid] ?? fid}`, message: r.message, status: "open", at: now, by: ACTOR };
+        });
+        const n = r.itemIds.length;
+        const summary = action === "Review" ? `Assigned ${n} item${n === 1 ? "" : "s"} for review to ${r.to || recipient}` : n ? `Asked ${a.firstName} for ${n} item${n === 1 ? "" : "s"}` : `Sent ${a.firstName} a note`;
+        return {
+            docs,
+            requests: [...reqs, ...(prev.requests ?? [])],
+            events: [{ id: `ev-${now}`, type: "request", text: `${summary} via ${r.channel}: “${r.subject}”`, at: now, author: ACTOR }, ...prev.events],
+        };
+    });
 }
 
 function currentIndexOf(a: Applicant, numSteps: number): number {
@@ -181,6 +274,7 @@ function AskOrderMenu({ stepLabel, count, onAction }: { stepLabel: string; count
     ];
     if (/record|psp|mvr|abstract|background|testing|screen|driving/.test(lower)) actions.push({ kind: "order", label: `Order ${stepLabel} report`, Icon: FileSearch });
     if (/employ|verif/.test(lower)) actions.push({ kind: "verify", label: "Verify employment", Icon: BadgeCheck });
+    actions.push({ kind: "review", label: "Assign for review", Icon: BadgeCheck });
     actions.push({ kind: "remark", label: "Add a remark", Icon: MessageSquarePlus });
 
     return (

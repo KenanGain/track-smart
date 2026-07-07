@@ -29,14 +29,19 @@ export function InsurancePreview({ driverName, carrier, prefill, onBack }: {
 
     // The filled forms & data bundled for the agent. The recent reports are listed as
     // "whichever applies" — the live hiring file narrows these to the workflow's reports.
+    // Experience letters — one Employment + one Insurance letter per previous employer.
+    const emps = prefill?.employment?.length ? prefill.employment : [{ employer: "Previous Employer", dates: "" }];
+    const letterEntries = emps.flatMap((e, i) => [
+        { label: `Employment Experience Letter — ${e.employer || `Employer ${i + 1}`}`, note: e.dates || "From previous employer" },
+        { label: `Insurance Experience Letter — ${e.employer || `Employer ${i + 1}`}`, note: e.dates || "From previous insurer" },
+    ]);
     const PACKAGE: { label: string; note: string; formId?: string }[] = [
         { label: "Employment Application", note: "Completed application", formId: "application" },
         { label: "Consent Forms", note: "Signed authorizations (FCRA, MVR release, Clearinghouse…)", formId: "fcra-disclosure" },
         { label: "MVR — Motor Vehicle Record", note: "Most recent on file", formId: "mvr" },
         { label: "PSP — Pre-Employment Screening", note: "Most recent on file", formId: "psp" },
         { label: "Driver Abstract / CVDR / CDA", note: "Whichever applies to the driver's jurisdiction", formId: "driver-abstract" },
-        { label: "Employment Experience Letter", note: "From previous employer(s)" },
-        { label: "Insurance Experience Letter", note: "From previous insurer(s)" },
+        ...letterEntries,
     ];
     const defaultMessage = [
         "Hi,", "",
@@ -115,7 +120,7 @@ export function InsurancePreview({ driverName, carrier, prefill, onBack }: {
         </div>
     );
 
-    const PackageList = ({ tone = "slate", actions }: { tone?: "slate" | "accent"; actions?: boolean }) => (
+    const PackageList = ({ tone = "slate", actions, view }: { tone?: "slate" | "accent"; actions?: boolean; view?: boolean }) => (
         <div className="overflow-hidden rounded-xl border border-slate-200">
             <p className="border-b border-slate-100 bg-slate-50/70 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Filled forms &amp; data attached</p>
             <ul className="divide-y divide-slate-100">
@@ -134,6 +139,7 @@ export function InsurancePreview({ driverName, carrier, prefill, onBack }: {
                         ) : (
                             <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => setDocView(p.label)}><Eye className="h-3.5 w-3.5" /> View</Button>
                         ))}
+                        {view && <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" onClick={() => p.formId ? setOpenForm({ id: p.formId, pdf: false }) : setDocView(p.label)}><Eye className="h-3.5 w-3.5" /> View</Button>}
                     </li>
                 ))}
             </ul>

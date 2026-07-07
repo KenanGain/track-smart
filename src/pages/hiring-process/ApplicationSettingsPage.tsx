@@ -146,17 +146,20 @@ const newDrivingExp = (): DrivingExp => ({
 });
 
 // Motor Vehicle Record - yes/no questions; "Yes" reveals Month/Year + explanation.
-const MVR_QUESTIONS = [
+// `upload` → "Yes" also asks for an attestation document. `noDetails` → just Yes/No
+// (no Month/Year + explain). `showWhen` → only shown when that question is "Yes".
+const MVR_QUESTIONS: { id: string; label: string; upload?: boolean; noDetails?: boolean; showWhen?: string }[] = [
     { id: "denied", label: "Has any license, permit or privilege ever been denied, suspended or revoked for any reason?" },
     { id: "convictedSuspension", label: "Have you ever been convicted of driving during license suspension or revocation, or driving without a valid license or an expired license, or are any charges pending?" },
     { id: "alcoholOffense", label: "Have you ever been convicted for any alcohol or controlled substance related offense while operating a motor vehicle, or are any charges pending?" },
     { id: "illegalSubstance", label: "Have you ever been convicted for possession, sale or transfer of an illegal substance (including but not limited to, marijuana, amphetamines, or derivatives thereof) while on duty, or are any charges pending?" },
     { id: "recklessDriving", label: "Have you ever been convicted of reckless driving, careless driving or careless operation of a motor vehicle, or are any charges pending?" },
-    { id: "testedPositive", label: "Have you ever tested positive, or refused to test on a pre-employment drug or alcohol test by an employer to whom you applied, but did not obtain safety-sensitive transportation work covered by DOT agency drug and alcohol testing rules in past three years, or have you ever tested positive or refused to test on any DOT-mandated drug or alcohol test?" },
+    { id: "testedPositive", label: "Have you ever tested positive, or refused to test on a pre-employment drug or alcohol test by an employer to whom you applied, but did not obtain safety-sensitive transportation work covered by DOT agency drug and alcohol testing rules in past three years, or have you ever tested positive or refused to test on any DOT-mandated drug or alcohol test?", upload: true },
+    { id: "returnToDuty", label: "If yes, have you successfully completed the return-to-duty process?", showWhen: "testedPositive", upload: true },
 ];
-type MvrAnswer = { answer: string; my: DateMY; explain: string };
+type MvrAnswer = { answer: string; my: DateMY; explain: string; doc: string };
 const newMvrState = (): Record<string, MvrAnswer> =>
-    Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "", my: { ...emptyMY }, explain: "" }]));
+    Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "", my: { ...emptyMY }, explain: "", doc: "" }]));
 
 const CHARGE_DESCRIPTIONS = [
     "Speeding", "Improper Lane Change", "Failure to Yield", "Following Too Closely",
@@ -889,7 +892,7 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
         setPreferredContact("Primary Phone"); setBestTime("Any");
         setLicenses([{ number: "D1234-5678-90", country: config.defaultCountry, authority: st, exp: { m: "03", d: "04", y: "2027" }, medicalExp: { m: "06", d: "30", y: "2026" }, current: "Yes", commercial: "Yes", licenseClass: "Class A", endorsements: ["HazMat", "Tanker"], frontImage: "license-front.jpg", backImage: "license-back.jpg" }]);
         setDrivingExp([{ equipmentClass: "Tractor-trailer", freightTypes: ["Van", "Reefer"], regions: ["USA", "Border"], from: "2021-01-01", to: "2024-03-01", miles: "250000", ownerOperator: "No" }]);
-        setMvr(Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "No", my: { ...emptyMY }, explain: "" }])));
+        setMvr(Object.fromEntries(MVR_QUESTIONS.map((q) => [q.id, { answer: "No", my: { ...emptyMY }, explain: "", doc: "" }])));
         setHadAccidents("Yes");
         setAccidents([{ date: { m: "06", y: "2023" }, type: "Rear-end collision", hazmat: "No", towed: "No", chemicalSpill: "No", address: "1420 W Industrial Pkwy, Springfield, IL 62704", city: "Springfield", state: st, commercial: "Yes", atFault: "No", ticketed: "No", fatalities: "0", injuries: "0", detail: "Minor rear-end at low speed; no injuries." }]);
         setHadViolations("Yes");
@@ -1129,17 +1132,38 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
             ),
         },
         {
-            key: "disqualification", title: "License Disqualification", fields: MVR_QUESTIONS.length, render: () => (
+            key: "disqualification", title: "License Disqualification", fields: MVR_QUESTIONS.filter((q) => !q.showWhen).length, render: () => (
                 <div className="space-y-6">
                     {MVR_QUESTIONS.map((q) => {
                         const a = mvr[q.id];
+                        // Conditional follow-up questions only show when their parent is "Yes".
+                        if (q.showWhen && mvr[q.showWhen]?.answer !== "Yes") return null;
                         return (
                             <div key={q.id} className="space-y-3">
                                 <Field label={q.label} required><YesNo value={a.answer} onChange={(v) => setMvrAnswer(q.id, { answer: v })} /></Field>
                                 {a.answer === "Yes" && (
                                     <div className="space-y-3 border-l-2 border-blue-100 pl-4">
-                                        <Field label="Month / Year"><DateDuo value={a.my} years={HIST_YEARS} onChange={(v) => setMvrAnswer(q.id, { my: v })} /></Field>
-                                        <Field label="Please Explain"><Textarea value={a.explain} onChange={(e) => setMvrAnswer(q.id, { explain: e.target.value })} /></Field>
+                                        {!q.noDetails && <>
+                                            <Field label="Month / Year"><DateDuo value={a.my} years={HIST_YEARS} onChange={(v) => setMvrAnswer(q.id, { my: v })} /></Field>
+                                            <Field label="Please Explain"><Textarea value={a.explain} onChange={(e) => setMvrAnswer(q.id, { explain: e.target.value })} /></Field>
+                                        </>}
+                                        {q.upload && (
+                                            <Field label="Attestation document">
+                                                {a.doc ? (
+                                                    <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+                                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600"><FileText className="h-4 w-4" /></span>
+                                                        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{a.doc}</p>
+                                                        <button type="button" onClick={() => setMvrAnswer(q.id, { doc: "" })} className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-700">Replace</button>
+                                                    </div>
+                                                ) : (
+                                                    <button type="button" onClick={() => setMvrAnswer(q.id, { doc: `${q.id}-attestation.pdf` })} className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-4 py-7 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+                                                        <span className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400"><Upload className="h-5 w-5" /></span>
+                                                        <span className="text-sm font-bold text-blue-600">Click to upload</span>
+                                                        <span className="text-xs text-slate-400">PNG, JPG or PDF · max 10MB</span>
+                                                    </button>
+                                                )}
+                                            </Field>
+                                        )}
                                     </div>
                                 )}
                             </div>

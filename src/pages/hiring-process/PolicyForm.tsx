@@ -218,10 +218,10 @@ export const PolicyDocument = forwardRef<HTMLDivElement, { def: PolicyFormDef; v
                                     </tr>
                                 </tbody>
                             </table>
-                            <p className={cn("mt-4 text-[13px] leading-relaxed", mono ? "text-black" : "text-slate-600")}>I hereby certify that the information given above is correct to the best of my knowledge and belief and that I was last relieved from work at:</p>
+                            <p className={cn("mt-4 text-[13px] leading-relaxed", mono ? "text-black" : "text-slate-600")}>I was relieved from the work by my current employer at:</p>
                             <div className="mt-3 grid grid-cols-2 gap-4">
                                 <SignLine field={{ key: "lastTime", label: "Time" }} values={values} sigs={sigs} mono={mono} />
-                                <SignLine field={{ key: "lastOn", label: "On" }} values={values} sigs={sigs} mono={mono} />
+                                <SignLine field={{ key: "lastOn", label: "Date" }} values={values} sigs={sigs} mono={mono} />
                             </div>
                         </div>
                     )}
@@ -490,9 +490,10 @@ export const PolicyForm = forwardRef<PolicyFormHandle, { def: PolicyFormDef; onB
                                     </table>
                                 </div>
                                 <p className="text-sm text-slate-500">Total hours worked: <span className="font-bold text-slate-800">{DAYS.reduce((s, d) => s + (Number(values[`day${d}_hrs`]) || 0), 0)}</span></p>
+                                <p className="text-sm leading-relaxed text-slate-600">I was relieved from the work by my current employer at:</p>
                                 <Grid>
-                                    <Field label="Last relieved — Time"><Input value={values.lastTime || ""} onChange={(e) => set("lastTime", e.target.value)} placeholder="e.g. 18:00" /></Field>
-                                    <Field label="Last relieved — On (date)"><Input type="date" value={values.lastOn || ""} onChange={(e) => set("lastOn", e.target.value)} /></Field>
+                                    <Field label="Time"><Input value={values.lastTime || ""} onChange={(e) => set("lastTime", e.target.value)} placeholder="e.g. 18:00" /></Field>
+                                    <Field label="Date"><Input type="date" value={values.lastOn || ""} onChange={(e) => set("lastOn", e.target.value)} /></Field>
                                 </Grid>
                             </div>
                         </Section>

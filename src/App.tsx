@@ -52,18 +52,20 @@ import { IssueHiringPage } from '@/pages/ats/IssueHiringPage'
 import { HiringFormsPage } from '@/pages/ats/HiringFormsPage'
 import { ApplicantPortalPage } from '@/pages/ats/ApplicantPortalPage'
 import { ApplicationDetailPage } from '@/pages/ats/ApplicationDetailPage'
-import { HiringProcessPlaceholder } from '@/pages/hiring-process/HiringProcessPlaceholder'
 import { ApplicationSettingsPage, ApplicationFormPage } from '@/pages/hiring-process/ApplicationSettingsPage'
 import { ApplicationFormPreviewPage } from '@/pages/hiring-process/ApplicationFormPreview'
 import { HiringFormView } from '@/pages/hiring-process/formRegistry'
 import { PolicyForm } from '@/pages/hiring-process/PolicyForm'
 import { OnboardingSetupPage } from '@/pages/hiring-process/OnboardingSetupPage'
 import { POLICY_FORMS } from '@/pages/hiring-process/policy-forms.data'
+import { getOnboardingFormDef } from '@/pages/hiring-process/onboarding.data'
 import { ApplicationsHiringPage } from '@/pages/hiring-process/ApplicationsHiringPage'
 import { ApplicantDetailPage } from '@/pages/hiring-process/ApplicantDetailPage'
 import { HiringBuilderPage } from '@/pages/hiring-process/HiringBuilderPage'
 import { HiringMonitorPage } from '@/pages/hiring-process/HiringMonitorPage'
 import { HiringFileDashboard } from '@/pages/hiring-process/HiringFileDashboard'
+import { OnboardingPage } from '@/pages/hiring-process/OnboardingPage'
+import { OnboardingFileDashboard } from '@/pages/hiring-process/OnboardingFileDashboard'
 import { TestingFormsPage } from '@/pages/hiring-process/TestingFormsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
@@ -497,7 +499,10 @@ function App() {
             return <HiringFileDashboard applicantId={path.slice("/hiring-process/hiring/".length)} onBack={() => handleNavigate("/hiring-process/hiring")} />
         }
         if (path === "/hiring-process/onboarding") {
-            return <HiringProcessPlaceholder title="Onboarding" />
+            return <OnboardingPage onNavigate={handleNavigate} carrierId={selectedAccount?.id} />
+        }
+        if (path.startsWith("/hiring-process/onboarding/")) {
+            return <OnboardingFileDashboard applicantId={path.slice("/hiring-process/onboarding/".length)} onBack={() => handleNavigate("/hiring-process/onboarding")} />
         }
         if (path === "/settings/hiring-process/applications" || path.startsWith("/settings/hiring-process/applications?")) {
             const tab = new URLSearchParams(path.split("?")[1] || "").get("tab") || undefined
@@ -517,12 +522,13 @@ function App() {
             return <HiringBuilderPage carrierId={selectedAccount?.id} />
         }
         if (path === "/settings/hiring-process/onboarding") {
-            return <OnboardingSetupPage onNavigate={handleNavigate} />
+            return <OnboardingSetupPage onNavigate={handleNavigate} carrierId={selectedAccount?.id} />
         }
         if (path.startsWith("/settings/hiring-process/policy/")) {
-            const policyId = path.slice("/settings/hiring-process/policy/".length)
-            const def = POLICY_FORMS.find((f) => f.id === policyId)
-            if (def) return <PolicyForm def={def} onBack={() => handleNavigate("/settings/hiring-process/onboarding")} />
+            const [policyId, query] = path.slice("/settings/hiring-process/policy/".length).split("?")
+            const pdf = new URLSearchParams(query ?? "").get("pdf") === "1"
+            const def = POLICY_FORMS.find((f) => f.id === policyId) ?? getOnboardingFormDef(policyId)
+            if (def) return <PolicyForm def={def} startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/onboarding")} />
         }
         if (path === "/settings/hiring-process/testing-forms") {
             return <TestingFormsPage />
