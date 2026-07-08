@@ -1,21 +1,22 @@
 import { useState } from "react";
 import {
     ChevronLeft, ChevronDown, Check, X, Send, FileText, RotateCcw, CircleCheck, Clock,
-    Workflow as WorkflowIcon, Activity as ActivityIcon, StickyNote, Bell,
+    Workflow as WorkflowIcon, Activity as ActivityIcon, StickyNote, Bell, AlertCircle,
     Eye, FileSearch, ClipboardCheck, ClipboardList, BadgeCheck, PenLine, Inbox, ListChecks,
     Mail, MessageSquarePlus, Clock3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useApplicants, formName, relativeTime, ACTOR } from "./applicants.data";
+import { useApplicants, formName, relativeTime, ACTOR, STEP_STATUS_META, type StepStatus } from "./applicants.data";
 import { useOnboardingQuizzes } from "./onboarding-quizzes.data";
 import { useOnbWorkflows, resolveOnbWorkflow, onbSteps, onbProgress, ONB_STEP_META, onbDriverTypeName, MAX_ONB_QUIZ_ATTEMPTS, type OnbWorkflow } from "./onboarding.data";
 import { policyDocuments } from "./policy-forms.data";
 import { PolicyForm } from "./PolicyForm";
 import { QuizRunner } from "./QuizRunner";
 import { DocSignReview } from "./DocSignReview";
-import { SignatureCreator } from "./SignatureCreator";
+import { SignaturePad } from "./FormKit";
+import { AssignReviewDialog, type AssignReviewPayload } from "./AssignReviewDialog";
 import { useDocTemplates, type DocTemplate } from "./document-templates.data";
 import { useChecklists, totalChecklistItems } from "./checklists.data";
 import {
@@ -49,6 +50,7 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
     const [quizRun, setQuizRun] = useState<{ quizId: string; mode: "take" | "review" } | null>(null);
     const [wfPicker, setWfPicker] = useState(false);
     const [reqTarget, setReqTarget] = useState<ReqTarget | null>(null);
+    const [reviewTarget, setReviewTarget] = useState<ReqTarget | null>(null);
     const [remarkFor, setRemarkFor] = useState<string | null>(null);
 
     if (!a) return (
@@ -78,11 +80,30 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
         `Reviewed & signed off — ${label} (${r.by})`,
     );
 
+    // Manual per-step review status (Initial / Waiting / Reviewed / Complete / Incomplete).
+    const stepStatusOf = (kind: OnbStepKind): StepStatus => onb.stepStatus?.[kind] ?? (steps.find((s) => s.kind === kind)?.status === "complete" ? "complete" : "initial");
+    const setStepStatus = (kind: OnbStepKind, to: StepStatus) => setOnb(
+        (prev) => ({ ...prev, stepStatus: { ...(prev.stepStatus ?? {}), [kind]: to } }),
+        `Step status set — ${ONB_STEP_META[kind].title}: ${STEP_STATUS_META[to].label}`,
+    );
+    // Header bits threaded into the active step module (hiring-style card header).
+    const activeStatus = STEP_STATUS_META[stepStatusOf(activeKind)];
+    const hdr: StepHeader = {
+        stepLabel: `Step ${activeIdx + 1} of ${total}`,
+        statusPill: <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold", activeStatus.tone)}><span className={cn("h-1.5 w-1.5 rounded-full", activeStatus.dot)} /> {activeStatus.label}</span>,
+        statusMenu: <StepStatusMenu current={stepStatusOf(activeKind)} onSet={(to) => setStepStatus(activeKind, to)} />,
+    };
+
     // PDF documents attached to the assigned workflow.
     const wfDocs = (wf?.documents ?? []).map((id) => templates.find((t) => t.id === id)).filter(Boolean) as DocTemplate[];
 
     // ── Order / Request — ask anyone (driver, HR, a provider…) to complete an item ──
-    const openReq = (t: ReqTarget) => setReqTarget(t);
+    // Per-item Ask/Order → the recipient-picker request form; Review → the hiring-manager picker.
+    const openReq = (t: ReqTarget) => (t.action === "Review" ? setReviewTarget(t) : setReqTarget(t));
+    const assignReview = (t: ReqTarget, v: AssignReviewPayload) => setOnb(
+        (prev) => ({ ...prev, requests: [{ id: `orq-${Date.now()}`, itemId: t.itemId, itemLabel: t.itemLabel, action: "Review", recipient: "Hiring Manager", to: v.email, channel: "Email", subject: v.subject, message: v.message, status: "open", at: Date.now(), by: ACTOR }, ...(prev.requests ?? [])] }),
+        `Assigned review to ${v.name}${v.role ? ` (${v.role})` : ""} — ${t.itemLabel}`,
+    );
     const openRequests = (onb.requests ?? []).filter((r) => r.status === "open");
     const submitRequest = (r: Omit<OnbRequest, "id" | "status" | "at" | "by">) => setOnb((prev) => {
         const req: OnbRequest = { ...r, id: `orq-${Date.now()}`, status: "open", at: Date.now(), by: ACTOR };
@@ -207,31 +228,30 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
                 {/* Main grid — same responsive sizing as the hiring file */}
                 <div className="flex flex-col gap-5 lg:flex-row">
                     <div className="min-w-0 flex-1 space-y-4">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Step {activeIdx + 1} of {total}</p>
                         {activeKind === "policy" && (
                             <FormListStep kind="policy" items={(wf?.policyForms ?? []).map((id) => ({ id, label: policyLabel(id), desc: policyDesc(id), defId: id }))}
                                 signedSet={new Set(onb.signedContracts ?? [])} docState={onb.docState ?? {}} setKey="signedContracts"
                                 setOnb={setOnb} onOpen={setDocView} review={onb.reviews?.policy} onSign={(r) => signStep("policy", "policy forms", r)}
-                                onAsk={(item, action) => openReq({ itemId: item.id, itemLabel: item.label, action })} onRemark={(label) => setRemarkFor(label)} />
+                                onAsk={(item, action) => openReq({ itemId: item.id, itemLabel: item.label, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
                         )}
                         {activeKind === "forms" && (
                             <FormListStep kind="forms" items={(wf?.forms ?? []).map((id) => { const f = ONBOARDING_FORMS.find((x) => x.id === id); return { id, label: f?.label ?? id, desc: f?.desc ?? "", defId: id }; })}
                                 signedSet={new Set(onb.signedForms ?? [])} docState={onb.docState ?? {}} setKey="signedForms"
                                 setOnb={setOnb} onOpen={setDocView} review={onb.reviews?.forms} onSign={(r) => signStep("forms", "onboarding forms", r)}
-                                onAsk={(item, action) => openReq({ itemId: item.id, itemLabel: item.label, action })} onRemark={(label) => setRemarkFor(label)} />
+                                onAsk={(item, action) => openReq({ itemId: item.id, itemLabel: item.label, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
                         )}
                         {activeKind === "documents" && (
                             <DocumentsStep docs={wfDocs} signedDocs={new Set(onb.signedDocs ?? [])} docState={onb.docState ?? {}}
                                 setOnb={setOnb} onReviewDoc={setDocReview} review={onb.reviews?.documents} onSign={(r) => signStep("documents", "documents", r)}
-                                onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} onRemark={(label) => setRemarkFor(label)} />
+                                onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
                         )}
                         {activeKind === "quiz" && (
                             <QuizStep quizIds={wf?.quizzes ?? []} quizzes={quizzes} results={onb.quizResults ?? {}} attempts={onb.quizAttempts ?? {}}
                                 onRun={(id, mode) => setQuizRun({ quizId: id, mode })} review={onb.reviews?.quiz} onSign={(r) => signStep("quiz", "post-orientation quiz", r)}
-                                onAsk={(quiz, action) => openReq({ itemId: quiz.id, itemLabel: quiz.title, action })} onRemark={(label) => setRemarkFor(label)} />
+                                onAsk={(quiz, action) => openReq({ itemId: quiz.id, itemLabel: quiz.title, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
                         )}
                         {activeKind === "checklist" && (
-                            <ChecklistStep checklist={checklists.find((c) => c.id === wf?.checklistId)} review={onb.reviews?.checklist} onSign={(r) => signStep("checklist", "final checklist", r)} />
+                            <ChecklistStep checklist={checklists.find((c) => c.id === wf?.checklistId)} review={onb.reviews?.checklist} onSign={(r) => signStep("checklist", "final checklist", r)} hdr={hdr} />
                         )}
 
                         <NotesCard notes={onb.notes ?? []} onAdd={(text) => setOnb((p) => ({ ...p, notes: [{ id: `n-${Date.now()}`, text, at: Date.now(), by: ACTOR }, ...(p.notes ?? [])] }))} />
@@ -254,6 +274,12 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
                     onSubmit={(r) => { submitRequest(r); setReqTarget(null); }} />
             )}
 
+            {reviewTarget && (
+                <AssignReviewDialog driverName={`${a.firstName} ${a.lastName}`} carrier={a.carrierId} context={reviewTarget.itemLabel}
+                    onClose={() => setReviewTarget(null)}
+                    onAssign={(v) => { assignReview(reviewTarget, v); setReviewTarget(null); }} />
+            )}
+
             {remarkFor !== null && (
                 <RemarkDialog label={remarkFor} onClose={() => setRemarkFor(null)}
                     onSubmit={(text) => { addRemark(remarkFor, text); setRemarkFor(null); }} />
@@ -262,6 +288,45 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
     );
 }
 
+
+// Manual step-status dropdown (Initial / Waiting for review / Reviewed / Complete / Incomplete).
+const STEP_STATUS_FLOW: { value: StepStatus; icon: React.ElementType }[] = [
+    { value: "initial", icon: RotateCcw },
+    { value: "waiting", icon: Clock },
+    { value: "reviewed", icon: BadgeCheck },
+    { value: "complete", icon: Check },
+    { value: "incomplete", icon: AlertCircle },
+];
+function StepStatusMenu({ current, onSet }: { current: StepStatus; onSet: (to: StepStatus) => void }) {
+    const [open, setOpen] = useState(false);
+    const cur = STEP_STATUS_META[current];
+    return (
+        <div className="relative">
+            <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)}>
+                <span className={cn("h-2 w-2 rounded-full", cur.dot)} /> {cur.label} <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+            </Button>
+            {open && (
+                <>
+                    <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+                    <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Set step status</p>
+                        {STEP_STATUS_FLOW.map(({ value, icon: Icon }) => {
+                            const m = STEP_STATUS_META[value];
+                            const active = value === current;
+                            return (
+                                <button key={value} type="button" onClick={() => { onSet(value); setOpen(false); }}
+                                    className={cn("flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50", active ? "font-semibold text-slate-900" : "text-slate-700")}>
+                                    <Icon className={cn("h-4 w-4", active ? "text-blue-600" : "text-slate-400")} /> {m.label}
+                                    {active && <Check className="ml-auto h-4 w-4 text-blue-600" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
 
 // ── Header / sidebar bits ─────────────────────────────────────────────────────
 function StatusBadge({ done, complete }: { done: number; complete: boolean }) {
@@ -324,20 +389,34 @@ function onbDocLabelBadge(signed: boolean, state?: OnbDocState) {
     return { label: "Pending", cls: "bg-slate-100 text-slate-500" };
 }
 
-function ModuleShell({ Icon, title, desc, action, children }: { Icon: React.ElementType; title: string; desc: string; action?: React.ReactNode; children: React.ReactNode }) {
+function ModuleShell({ Icon, stepLabel, title, desc, statusPill, action, statusMenu, children }: {
+    Icon: React.ElementType; stepLabel?: string; title: string; desc: string;
+    statusPill?: React.ReactNode; action?: React.ReactNode; statusMenu?: React.ReactNode; children: React.ReactNode;
+}) {
     return (
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500"><Icon className="h-5 w-5" /></div>
-                    <div><h2 className="text-base font-bold text-slate-900">{title}</h2><p className="text-sm text-slate-500">{desc}</p></div>
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500"><Icon className="h-5 w-5" /></div>
+                <div className="min-w-0">
+                    {stepLabel && <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{stepLabel}</p>}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-base font-bold text-slate-900">{title}</h2>
+                        {statusPill}
+                    </div>
+                    <p className="text-sm text-slate-500">{desc}</p>
                 </div>
-                {action}
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                    {action}
+                    {statusMenu}
+                </div>
             </div>
             <div className="p-5">{children}</div>
         </section>
     );
 }
+
+// Shared header props threaded from the dashboard into each step module.
+type StepHeader = { stepLabel: string; statusPill: React.ReactNode; statusMenu: React.ReactNode };
 
 type SetOnb = (fn: (prev: OnboardingState) => OnboardingState, note?: string) => void;
 const TINY = "h-8 shrink-0 justify-center gap-1 px-2.5 text-xs";
@@ -383,13 +462,12 @@ function OnbDocRow({ item, kind, signed, state, onReview, onPdf, onAsk, onRemark
     );
 }
 
-// Reviewer sign-off — signature captured in the SignatureCreator popup.
+// Reviewer sign-off — signature captured inline via the Draw/Type SignaturePad.
 function StepReview({ label, review, onSign }: { label: string; review?: OnbReview; onSign: SignFn }) {
     const [name, setName] = useState(ACTOR);
     const [role, setRole] = useState("Hiring Manager");
     const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
     const [sig, setSig] = useState("");
-    const [sigOpen, setSigOpen] = useState(false);
     if (review) return (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
             <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700"><BadgeCheck className="h-4 w-4" /> Reviewed &amp; signed off</p>
@@ -413,28 +491,19 @@ function StepReview({ label, review, onSign }: { label: string; review?: OnbRevi
             </div>
             <div className="mt-3">
                 <label className="mb-1 block text-xs font-semibold text-slate-600">Signature</label>
-                {sig ? (
-                    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                        <img src={sig} alt="signature" className="h-14 rounded border border-slate-200 bg-white" />
-                        <Button variant="outline" size="sm" onClick={() => setSigOpen(true)}><PenLine className="h-4 w-4" /> Change signature</Button>
-                        <button type="button" onClick={() => setSig("")} className="text-xs font-semibold text-slate-400 hover:text-rose-500">Clear</button>
-                    </div>
-                ) : (
-                    <button type="button" onClick={() => setSigOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50/50 px-4 py-4 text-sm font-semibold text-slate-500 transition hover:border-blue-300 hover:text-blue-600"><PenLine className="h-4 w-4" /> Add your signature</button>
-                )}
+                <SignaturePad label="Your signature" onChange={setSig} />
             </div>
             <Button size="sm" className="mt-3" disabled={!sig || !name.trim()} onClick={() => onSign({ by: name.trim(), role: role.trim(), date, sig })}><PenLine className="h-4 w-4" /> Confirm review &amp; sign</Button>
-            {sigOpen && <SignatureCreator title="Add your signature" hideSave onApply={(dataUrl) => { setSig(dataUrl); setSigOpen(false); }} onClose={() => setSigOpen(false)} />}
         </div>
     );
 }
 
 // ── Step modules ──────────────────────────────────────────────────────────────
 // Policy forms + Onboarding forms — both are PolicyForm-backed signable lists.
-function FormListStep({ kind, items, signedSet, docState, setKey, setOnb, onOpen, review, onSign, onAsk, onRemark }: {
+function FormListStep({ kind, items, signedSet, docState, setKey, setOnb, onOpen, review, onSign, onAsk, onRemark, hdr }: {
     kind: "policy" | "forms"; items: DocItem[]; signedSet: Set<string>; docState: Record<string, OnbDocState>;
     setKey: "signedContracts" | "signedForms"; setOnb: SetOnb; onOpen: (v: DocView) => void; review?: OnbReview; onSign: SignFn;
-    onAsk: (item: DocItem, action: OnbRequestAction) => void; onRemark: (label: string) => void;
+    onAsk: (item: DocItem, action: OnbRequestAction) => void; onRemark: (label: string) => void; hdr: StepHeader;
 }) {
     const meta = ONB_STEP_META[kind];
     const toggle = (item: DocItem) => setOnb((prev) => {
@@ -444,7 +513,7 @@ function FormListStep({ kind, items, signedSet, docState, setKey, setOnb, onOpen
     }, signedSet.has(item.id) ? undefined : `${kind === "policy" ? "Policy form" : "Onboarding form"} signed — ${item.label}`);
 
     return (
-        <ModuleShell Icon={meta.Icon} title={meta.title} desc={meta.desc}
+        <ModuleShell Icon={meta.Icon} stepLabel={hdr.stepLabel} title={meta.title} desc={meta.desc} statusPill={hdr.statusPill} statusMenu={hdr.statusMenu}
             action={<span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{items.filter((i) => signedSet.has(i.id)).length} / {items.length} signed</span>}>
             {items.length === 0 ? <EmptyRow text="No items in this step for the assigned workflow." /> : (
                 <div className="space-y-2.5">
@@ -462,10 +531,10 @@ function FormListStep({ kind, items, signedSet, docState, setKey, setOnb, onOpen
 }
 
 // Documents & sign — PDF e-sign templates; Review opens the field-check view.
-function DocumentsStep({ docs, signedDocs, docState, setOnb, onReviewDoc, review, onSign, onAsk, onRemark }: {
+function DocumentsStep({ docs, signedDocs, docState, setOnb, onReviewDoc, review, onSign, onAsk, onRemark, hdr }: {
     docs: DocTemplate[]; signedDocs: Set<string>; docState: Record<string, OnbDocState>;
     setOnb: SetOnb; onReviewDoc: (t: DocTemplate) => void; review?: OnbReview; onSign: SignFn;
-    onAsk: (t: DocTemplate, action: OnbRequestAction) => void; onRemark: (label: string) => void;
+    onAsk: (t: DocTemplate, action: OnbRequestAction) => void; onRemark: (label: string) => void; hdr: StepHeader;
 }) {
     const meta = ONB_STEP_META.documents;
     const toggle = (t: DocTemplate) => setOnb((prev) => {
@@ -475,7 +544,7 @@ function DocumentsStep({ docs, signedDocs, docState, setOnb, onReviewDoc, review
     }, signedDocs.has(t.id) ? undefined : `Document e-signed — ${t.name}`);
 
     return (
-        <ModuleShell Icon={meta.Icon} title={meta.title} desc={meta.desc}
+        <ModuleShell Icon={meta.Icon} stepLabel={hdr.stepLabel} title={meta.title} desc={meta.desc} statusPill={hdr.statusPill} statusMenu={hdr.statusMenu}
             action={<span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{docs.filter((t) => signedDocs.has(t.id)).length} / {docs.length} signed</span>}>
             {docs.length === 0 ? <EmptyRow text="No PDF documents on the assigned workflow." /> : (
                 <div className="space-y-2.5">
@@ -506,15 +575,15 @@ function DocumentsStep({ docs, signedDocs, docState, setOnb, onReviewDoc, review
 }
 
 // Post-orientation quiz — tests come from the workflow; Take test / Retake / Review.
-function QuizStep({ quizIds, quizzes, results, attempts, onRun, review, onSign, onAsk, onRemark }: {
+function QuizStep({ quizIds, quizzes, results, attempts, onRun, review, onSign, onAsk, onRemark, hdr }: {
     quizIds: string[]; quizzes: { id: string; title: string; category: string; passPct: number; questions: unknown[] }[];
     results: Record<string, { score: number; total: number; passed: boolean }>; attempts: Record<string, number>;
     onRun: (id: string, mode: "take" | "review") => void; review?: OnbReview; onSign: SignFn;
-    onAsk: (quiz: { id: string; title: string }, action: OnbRequestAction) => void; onRemark: (label: string) => void;
+    onAsk: (quiz: { id: string; title: string }, action: OnbRequestAction) => void; onRemark: (label: string) => void; hdr: StepHeader;
 }) {
     const meta = ONB_STEP_META.quiz;
     return (
-        <ModuleShell Icon={meta.Icon} title={meta.title} desc={meta.desc}>
+        <ModuleShell Icon={meta.Icon} stepLabel={hdr.stepLabel} title={meta.title} desc={meta.desc} statusPill={hdr.statusPill} statusMenu={hdr.statusMenu}>
             {quizIds.length === 0 ? <EmptyRow text="No quizzes on the assigned workflow." /> : (
                 <div className="space-y-2.5">
                     {quizIds.map((id) => {
@@ -554,10 +623,10 @@ function QuizStep({ quizIds, quizzes, results, attempts, onRun, review, onSign, 
 }
 
 // Final checklist — reviewer confirms & signs off (this completes the step).
-function ChecklistStep({ checklist, review, onSign }: { checklist?: { id: string; name: string; description?: string; stages: unknown[] }; review?: OnbReview; onSign: SignFn }) {
+function ChecklistStep({ checklist, review, onSign, hdr }: { checklist?: { id: string; name: string; description?: string; stages: unknown[] }; review?: OnbReview; onSign: SignFn; hdr: StepHeader }) {
     const meta = ONB_STEP_META.checklist;
     return (
-        <ModuleShell Icon={meta.Icon} title={meta.title} desc={meta.desc}>
+        <ModuleShell Icon={meta.Icon} stepLabel={hdr.stepLabel} title={meta.title} desc={meta.desc} statusPill={hdr.statusPill} statusMenu={hdr.statusMenu}>
             {checklist ? (
                 <div className="flex items-center gap-4 rounded-xl border border-slate-200 px-4 py-3.5">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><ListChecks className="h-5 w-5" /></span>

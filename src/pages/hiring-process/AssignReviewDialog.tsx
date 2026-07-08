@@ -28,31 +28,34 @@ export function AssignReviewDialog({ driverName, carrier, context = "file", scop
     }, [carrier]);
 
     // Summarize a selection into a short label + a sentence fragment for the copy.
-    const summarize = (ids: Set<string>): { label: string; text: string } => {
-        if (scopes.length === 0 || ids.size === scopes.length) return { label: `Entire ${context}`, text: `the entire ${context}` };
-        if (ids.size === 0) return { label: "No steps selected", text: "no steps yet" };
-        if (ids.size === 1) { const s = scopes.find((x) => ids.has(x.id))!; return { label: s.label, text: `the “${s.label}” step` }; }
+    // No scopes = a single-item review (per-document); the item IS the context.
+    const summarize = (ids: Set<string>): { entire: boolean; label: string; text: string } => {
+        if (scopes.length === 0) return { entire: false, label: context, text: `the ${context}` };
+        if (ids.size === scopes.length) return { entire: true, label: `Entire ${context}`, text: `the entire ${context}` };
+        if (ids.size === 0) return { entire: false, label: "No steps selected", text: "no steps yet" };
+        if (ids.size === 1) { const s = scopes.find((x) => ids.has(x.id))!; return { entire: false, label: s.label, text: `the “${s.label}” step` }; }
         const names = scopes.filter((x) => ids.has(x.id)).map((x) => x.label).join(", ");
-        return { label: `${ids.size} steps`, text: `${ids.size} steps (${names})` };
+        return { entire: false, label: `${ids.size} steps`, text: `${ids.size} steps (${names})` };
     };
     const msgFor = (txt: string) => `Hi,\n\nYou have been assigned to review ${txt} for ${driverName}. Please review the submitted forms, documents and signatures and confirm everything meets requirements.\n\nThank you,\n${ACTOR}`;
+    const subjOf = (s: { entire: boolean; label: string }) => `Review — ${driverName}${s.entire ? "" : ` · ${s.label}`}`;
 
     const [checked, setChecked] = useState<Set<string>>(() => new Set(scopes.map((s) => s.id)));
     const [userId, setUserId] = useState("");
     const [name, setName] = useState("");
     const [role, setRole] = useState("");
     const [email, setEmail] = useState("");
-    const [subject, setSubject] = useState(`Review — ${driverName}`);
-    const [message, setMessage] = useState(msgFor(`the entire ${context}`));
+    const initSummary = summarize(new Set(scopes.map((s) => s.id)));
+    const [subject, setSubject] = useState(subjOf(initSummary));
+    const [message, setMessage] = useState(msgFor(initSummary.text));
 
     const allSelected = scopes.length > 0 && checked.size === scopes.length;
     const summary = summarize(checked);
 
     const applyScope = (next: Set<string>) => {
         setChecked(next);
-        const all = scopes.length === 0 || next.size === scopes.length;
         const s = summarize(next);
-        setSubject(`Review — ${driverName}${all ? "" : ` · ${s.label}`}`);
+        setSubject(subjOf(s));
         setMessage(msgFor(s.text));
     };
     const toggle = (id: string) => { const n = new Set(checked); n.has(id) ? n.delete(id) : n.add(id); applyScope(n); };
@@ -86,7 +89,7 @@ export function AssignReviewDialog({ driverName, carrier, context = "file", scop
                             {scopes.length > 0 && <span className="text-[11px] font-semibold text-slate-400">{checked.size}/{scopes.length} steps</span>}
                         </div>
                         {scopes.length === 0 ? (
-                            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 px-4 py-4 text-center text-sm text-slate-400">The entire {context} will be assigned for review.</div>
+                            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 px-4 py-4 text-center text-sm text-slate-500">Assigning review of <span className="font-semibold text-slate-700">{context}</span>.</div>
                         ) : (
                             <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
                                 <li>

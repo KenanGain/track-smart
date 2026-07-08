@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FileText, FileSignature, BookOpenCheck, PenLine, ListChecks } from "lucide-react";
 import { TRAINING_TYPES, TRAINING_CATEGORIES } from "@/data/training.data";
 import { policyDocuments, type PolicyFormDef, type PolicyField } from "./policy-forms.data";
+import type { StepStatus } from "./applicants.data";
 
 // ── Onboarding (post-hire) ───────────────────────────────────────────────────
 // After a driver is hired (application approved) they move into Onboarding.
@@ -207,6 +208,7 @@ export type OnboardingState = {
     quizAttempts?: Record<string, number>;    // chances used per quiz
     trainings?: AssignedTraining[];
     reviews?: Record<string, OnbReview>;      // reviewer sign-off keyed by step id
+    stepStatus?: Record<string, StepStatus>;  // manual per-step review lifecycle (keyed by OnbStepKind)
     requests?: OnbRequest[];                  // open/resolved order-request records
     events?: { id: string; text: string; at: number }[];
     notes?: { id: string; text: string; at: number; by: string }[];

@@ -149,29 +149,46 @@ export function UploadBox({ label, value, onChange }: { label: string; value: st
     );
 }
 
-/** Draw-to-sign pad (mouse + touch). Emits a data-URL on each stroke. */
+// Handwriting fonts offered in Type mode (matches SignatureCreator).
+const SIG_FONTS = [
+    "'Segoe Script', cursive",
+    "'Brush Script MT', cursive",
+    "'Snell Roundhand', 'Apple Chancery', cursive",
+    "'Lucida Handwriting', cursive",
+    "'Gabriola', cursive",
+    "'Ink Free', cursive",
+    "'Bradley Hand', cursive",
+    "'Segoe Print', cursive",
+    "'Comic Sans MS', cursive",
+];
+
+/** Sign by drawing (default) or typing a name and picking a handwriting font. Emits a data-URL. */
 export function SignaturePad({ label = "Signature", onChange }: { label?: string; onChange: (v: string) => void }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const drawing = useRef(false);
     const [mode, setMode] = useState<"draw" | "type">("draw");
     const [typed, setTyped] = useState("");
+    const [fontIdx, setFontIdx] = useState(0);
     const point = (e: React.PointerEvent<HTMLCanvasElement>) => { const r = canvasRef.current!.getBoundingClientRect(); const sx = canvasRef.current!.width / r.width, sy = canvasRef.current!.height / r.height; return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy }; };
     const start = (e: React.PointerEvent<HTMLCanvasElement>) => { if (mode !== "draw") return; const ctx = canvasRef.current?.getContext("2d"); if (!ctx) return; drawing.current = true; const p = point(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
     const move = (e: React.PointerEvent<HTMLCanvasElement>) => { if (!drawing.current) return; const ctx = canvasRef.current?.getContext("2d"); if (!ctx) return; const p = point(e); ctx.lineTo(p.x, p.y); ctx.strokeStyle = "#1e293b"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.stroke(); };
     const end = () => { if (drawing.current) { drawing.current = false; const c = canvasRef.current; if (c) onChange(c.toDataURL()); } };
-    // Render a typed name onto the canvas in a script font → signature image.
-    const renderTyped = (name: string) => {
+    // Render a typed name onto the canvas in the chosen handwriting font → signature image.
+    const renderTyped = (name: string, idx: number) => {
         const c = canvasRef.current; const ctx = c?.getContext("2d");
         if (!c || !ctx) return;
         ctx.clearRect(0, 0, c.width, c.height);
         if (name.trim()) {
             ctx.fillStyle = "#1e293b";
-            ctx.font = "52px 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive";
+            let size = 60;
+            ctx.font = `${size}px ${SIG_FONTS[idx]}`;
+            while (ctx.measureText(name).width > c.width - 48 && size > 22) { size -= 4; ctx.font = `${size}px ${SIG_FONTS[idx]}`; }
             ctx.textBaseline = "middle";
             ctx.fillText(name, 24, c.height / 2);
             onChange(c.toDataURL());
         } else { onChange(""); }
     };
+    const pickFont = (i: number) => { setFontIdx(i); renderTyped(typed, i); };
     const clearCanvas = () => { const c = canvasRef.current; const ctx = c?.getContext("2d"); if (c && ctx) ctx.clearRect(0, 0, c.width, c.height); };
     const clear = () => { clearCanvas(); setTyped(""); onChange(""); };
     const switchMode = (m: "draw" | "type") => { setMode(m); clearCanvas(); setTyped(""); onChange(""); };
@@ -189,12 +206,22 @@ export function SignaturePad({ label = "Signature", onChange }: { label?: string
                 </div>
             </div>
             {mode === "type" && (
-                <Input value={typed} onChange={(e) => { setTyped(e.target.value); renderTyped(e.target.value); }} placeholder="Type your full name" className="mb-2 bg-white" />
+                <>
+                    <Input value={typed} onChange={(e) => { setTyped(e.target.value); renderTyped(e.target.value, fontIdx); }} placeholder="Type your full name" className="mb-2 bg-white" autoFocus />
+                    <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {SIG_FONTS.map((f, i) => (
+                            <button key={i} type="button" onClick={() => pickFont(i)}
+                                className={cn("flex h-12 items-center justify-center overflow-hidden rounded-lg border px-2 transition", fontIdx === i ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300" : "border-slate-200 bg-white hover:border-slate-300")}>
+                                <span className="truncate text-xl leading-none text-slate-800" style={{ fontFamily: f }}>{typed.trim() || "Signature"}</span>
+                            </button>
+                        ))}
+                    </div>
+                </>
             )}
             <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
                 <canvas ref={canvasRef} width={680} height={150} onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end} className={cn("block w-full", mode === "draw" ? "touch-none" : "pointer-events-none")} style={{ height: 150 }} />
             </div>
-            <p className="mt-1 text-xs text-slate-400">{mode === "draw" ? "Draw your signature above using your mouse or finger." : "Your typed name is rendered as your signature above."}</p>
+            <p className="mt-1 text-xs text-slate-400">{mode === "draw" ? "Draw your signature above using your mouse or finger." : "Type your name, then pick a handwriting style — it's rendered as your signature above."}</p>
         </div>
     );
 }
