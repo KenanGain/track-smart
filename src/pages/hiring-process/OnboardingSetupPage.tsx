@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, FileText, FileSignature, FileCheck2, ClipboardList, ListChecks, Workflow as WorkflowIcon, Lock, Eye, Plus, FlaskConical, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, FileText, FileSignature, FileCheck2, ClipboardList, ListChecks, GraduationCap, KeyRound, Workflow as WorkflowIcon, Lock, Eye, Plus, FlaskConical, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { cn } from "@/lib/utils";
 import { policyDocuments, THEME_HEX } from "./policy-forms.data";
-import { ONBOARDING_FORMS, useOnbWorkflows, type OnbWorkflow } from "./onboarding.data";
+import { ONBOARDING_FORMS, TRAINING_TYPES, TRAINING_CATEGORIES, useOnbWorkflows, useAccessoryChecklists, type OnbWorkflow, type AccessoryChecklist } from "./onboarding.data";
 import { OnbWorkflowBuilder } from "./OnbWorkflowBuilder";
 import { OnbWorkflowTester } from "./OnbWorkflowTester";
+import { AccessoryChecklistBuilder } from "./AccessoryChecklistBuilder";
+import { AccessoryChecklistPreview } from "./AccessoryChecklistPreview";
 import { useOnboardingQuizzes, ONB_QUIZ_CATEGORIES } from "./onboarding-quizzes.data";
 import type { Quiz } from "./quizzes.data";
 import { QuizRunner } from "./QuizRunner";
@@ -24,7 +26,9 @@ import { DocumentTemplateBuilder } from "./DocumentTemplateBuilder";
  * quizzes (see onboarding-quizzes.data.ts).
  */
 
-type Tab = "workflow" | "policy" | "onboarding" | "documents" | "quizzes" | "checklists";
+type Tab = "workflow" | "policy" | "onboarding" | "documents" | "quizzes" | "training" | "accessories" | "checklists";
+
+const ACTIVE_TRAININGS = TRAINING_TYPES.filter((t) => t.status === "active");
 
 // Policy statements removed from the onboarding form per requirements.
 const HIDDEN_ONBOARDING = new Set(["insurance-policy", "ctpat-cross-border-security", "drug-alcohol-policy-receipt"]);
@@ -38,10 +42,14 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
     const [newQuiz, setNewQuiz] = useState(false);
     const [editWorkflow, setEditWorkflow] = useState<string | null>(null);
     const [testWorkflow, setTestWorkflow] = useState<string | null>(null);
+    const [editAccessoryChecklist, setEditAccessoryChecklist] = useState<string | null>(null);
+    const [previewAccessoryChecklist, setPreviewAccessoryChecklist] = useState<string | null>(null);
+    const [accessoryPreviewMode, setAccessoryPreviewMode] = useState<"pdf" | "form">("pdf");
     const { quizzes, remove: removeQuiz, save: saveQuiz } = useOnboardingQuizzes();
     const { checklists, remove: removeChecklist } = useChecklists();
     const { templates: docTemplates, save: saveDoc, remove: removeDoc } = useDocTemplates();
     const { workflows, save: saveWorkflow, remove: removeWorkflow } = useOnbWorkflows();
+    const { checklists: accessoryChecklists, save: saveAccessoryChecklist, remove: removeAccessoryChecklist } = useAccessoryChecklists();
 
     const docs = policyDocuments().filter((d) => !HIDDEN_ONBOARDING.has(d.id));
     const openDoc = (id: string, pdf?: boolean) => onNavigate(`/settings/hiring-process/policy/${id}${pdf ? "?pdf=1" : ""}`);
@@ -53,6 +61,11 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
     if (editChecklist !== null) return <ChecklistBuilder checklistId={editChecklist} onBack={() => setEditChecklist(null)} />;
     if (editDoc !== null) return <DocumentTemplateBuilder templateId={editDoc} startPreview={docPreview} carrierId={carrierId} onSave={saveDoc} onBack={() => { setEditDoc(null); setDocPreview(false); }} />;
     if (editWorkflow !== null) return <OnbWorkflowBuilder workflowId={editWorkflow} onSave={saveWorkflow} onBack={() => setEditWorkflow(null)} />;
+    if (editAccessoryChecklist !== null) return <AccessoryChecklistBuilder checklistId={editAccessoryChecklist} onSave={saveAccessoryChecklist} onBack={() => setEditAccessoryChecklist(null)} />;
+    if (previewAccessoryChecklist !== null) {
+        const c = accessoryChecklists.find((x) => x.id === previewAccessoryChecklist);
+        if (c) return <AccessoryChecklistPreview checklist={c} mode={accessoryPreviewMode} onBack={() => setPreviewAccessoryChecklist(null)} />;
+    }
     if (testWorkflow !== null) {
         const w = workflows.find((x) => x.id === testWorkflow);
         if (w) return <OnbWorkflowTester workflow={w} onBack={() => setTestWorkflow(null)} />;
@@ -64,6 +77,8 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
         { id: "onboarding", label: "Onboarding forms", icon: FileText, count: ONBOARDING_FORMS.length },
         { id: "documents", label: "Documents & sign", icon: FileCheck2, count: docTemplates.length },
         { id: "quizzes", label: "Quizzes", icon: ClipboardList, count: quizzes.length },
+        { id: "training", label: "Training", icon: GraduationCap, count: ACTIVE_TRAININGS.length },
+        { id: "accessories", label: "Accessories", icon: KeyRound, count: accessoryChecklists.length },
         { id: "checklists", label: "Checklist", icon: ListChecks, count: checklists.length },
     ];
 
@@ -71,22 +86,25 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
         <div className="min-h-screen bg-slate-50">
             {/* Header band */}
             <div className="border-b border-slate-200 bg-white">
-                <div className="mx-auto max-w-5xl px-6 py-6">
+                <div className="mx-auto max-w-[1440px] px-6 py-6">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Driver Hiring · Onboarding</p>
                     <h1 className="mt-1 text-2xl font-semibold text-slate-900">Onboarding Setup</h1>
                     <p className="mt-1 max-w-2xl text-sm text-slate-500">Configure what a newly-hired driver completes during onboarding.</p>
                 </div>
-                <div className="mx-auto max-w-5xl px-6">
-                    <SubTabs tabs={TABS} activeId={tab} onChange={setTab} bordered={false} />
+                <div className="mx-auto max-w-[1440px] px-6">
+                    <SubTabs tabs={TABS} activeId={tab} onChange={setTab} bordered={false} size="sm" fill />
                 </div>
             </div>
 
-            <div className="mx-auto max-w-5xl px-6 py-8">
+            <div className="mx-auto max-w-[1440px] px-6 py-8">
                 {tab === "workflow" && <WorkflowTab workflows={workflows} onNew={() => setEditWorkflow("new")} onEdit={(id) => setEditWorkflow(id)} onRemove={removeWorkflow} onTest={(id) => setTestWorkflow(id)} />}
                 {tab === "policy" && <PolicyTab docs={docs} openDoc={openDoc} />}
                 {tab === "onboarding" && <OnboardingFormsTab openDoc={openDoc} />}
                 {tab === "documents" && <DocumentsTab templates={docTemplates} onNew={() => setEditDoc("new")} onEdit={(id) => setEditDoc(id)} onPreview={(id) => { setDocPreview(true); setEditDoc(id); }} onRemove={removeDoc} />}
                 {tab === "quizzes" && <QuizzesTab quizzes={quizzes} onPreview={setPreviewQuiz} onRemove={removeQuiz} onNew={() => setNewQuiz(true)} />}
+                {tab === "training" && <TrainingTab />}
+                {tab === "accessories" && <AccessoriesTab checklists={accessoryChecklists} onEdit={setEditAccessoryChecklist} onRemove={removeAccessoryChecklist}
+                    onPreview={(id, mode) => { setAccessoryPreviewMode(mode); setPreviewAccessoryChecklist(id); }} />}
                 {tab === "checklists" && <ChecklistsTab checklists={checklists} onEdit={setEditChecklist} onRemove={removeChecklist} />}
             </div>
 
@@ -95,7 +113,7 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
     );
 }
 
-// ── Workflow list — same list-view shell as the hiring Workflows tab ──────────
+// ── Workflow list ─────────────────────────────────────────────────────────────
 function WorkflowTab({ workflows, onNew, onEdit, onRemove, onTest }: { workflows: OnbWorkflow[]; onNew: () => void; onEdit: (id: string) => void; onRemove: (id: string) => void; onTest: (id: string) => void }) {
     return (
         <ListCard title="Onboarding Workflows" count={workflows.length} searchPlaceholder="Search workflows…"
@@ -110,7 +128,7 @@ function WorkflowTab({ workflows, onNew, onEdit, onRemove, onTest }: { workflows
             ) : (
                 <div className="divide-y divide-slate-100">
                     {workflows.map((w) => {
-                        const steps: [string, number][] = [["Policy forms", w.policyForms?.length ?? 0], ["Onboarding forms", w.forms.length], ["Documents", w.documents.length], ["Quizzes", w.quizzes.length], ["Checklist", w.checklistId ? 1 : 0]];
+                        const steps: [string, number][] = [["Policy forms", w.policyForms?.length ?? 0], ["Onboarding forms", w.forms.length], ["Documents", w.documents.length], ["Quizzes", w.quizzes.length], ["Training", w.trainings?.length ?? 0], ["Accessories", w.accessoryChecklistId ? 1 : 0], ["Checklist", w.checklistId ? 1 : 0]];
                         const totalItems = steps.reduce((n, [, c]) => n + c, 0);
                         return (
                             <div key={w.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
@@ -119,7 +137,7 @@ function WorkflowTab({ workflows, onNew, onEdit, onRemove, onTest }: { workflows
                                     <div className="min-w-0">
                                         <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
                                             {w.name || "Untitled workflow"}
-                                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">5 steps · {totalItems} items</span>
+                                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">7 steps · {totalItems} items</span>
                                             {w.checklistId && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"><ListChecks className="h-2.5 w-2.5" /> Checklist</span>}
                                         </p>
                                         {w.description && <p className="truncate text-sm text-slate-500">{w.description}</p>}
@@ -146,9 +164,9 @@ function WorkflowTab({ workflows, onNew, onEdit, onRemove, onTest }: { workflows
     );
 }
 
-// Shared list-view shell — matches the hiring Forms & Workflow Builder cards
+// Shared list-view shell — matches the hiring Forms & Workflow Builder card
 // (white card, toolbar with title + count + search + action, divided rows).
-function ListCard({ title, count, searchPlaceholder, action, children }: { title: string; count: number; searchPlaceholder: string; action: React.ReactNode; children: React.ReactNode }) {
+function ListCard({ title, count, searchPlaceholder, action, children }: { title: string; count: number; searchPlaceholder: string; action?: React.ReactNode; children: React.ReactNode }) {
     return (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -221,7 +239,7 @@ function DocActions({ id, openDoc }: { id: string; openDoc: (id: string, pdf?: b
 
 function PolicyTab({ docs, openDoc }: { docs: ReturnType<typeof policyDocuments>; openDoc: (id: string, pdf?: boolean) => void }) {
     return (
-        <ListCard title="Policy forms" count={docs.length} searchPlaceholder="Search policy forms…" action={null}>
+        <ListCard title="Policy forms" count={docs.length} searchPlaceholder="Search policy forms…">
             <div className="divide-y divide-slate-100">
                 {docs.map((d) => (
                     <div key={d.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
@@ -244,7 +262,7 @@ function PolicyTab({ docs, openDoc }: { docs: ReturnType<typeof policyDocuments>
 
 function OnboardingFormsTab({ openDoc }: { openDoc: (id: string, pdf?: boolean) => void }) {
     return (
-        <ListCard title="Onboarding forms" count={ONBOARDING_FORMS.length} searchPlaceholder="Search onboarding forms…" action={null}>
+        <ListCard title="Onboarding forms" count={ONBOARDING_FORMS.length} searchPlaceholder="Search onboarding forms…">
             <div className="divide-y divide-slate-100">
                 {ONBOARDING_FORMS.map((f) => (
                     <div key={f.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
@@ -289,23 +307,25 @@ function DocumentsTab({ templates, onNew, onEdit, onPreview, onRemove }: { templ
     const startIdx = (safePage - 1) * pageSize;
     const paged = shown.slice(startIdx, startIdx + pageSize);
     return (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            {/* Single toolbar — the tab already provides the "Documents & sign" heading */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-4">
-                <div className="relative min-w-[180px] flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search templates…" className="h-9 pl-9" />
-                    {q && <button type="button" onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-slate-700">Documents &amp; sign<span className="ml-2 font-normal text-slate-400">{templates.length}</span></p>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-56">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search templates…" className="h-9 pl-9" />
+                        {q && <button type="button" onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
+                    </div>
+                    <div className="flex shrink-0 items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                        {DOC_FILTERS.map((f) => (
+                            <button key={f.id} type="button" onClick={() => setFilter(f.id)}
+                                className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition", filter === f.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                    <Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> New template</Button>
                 </div>
-                <div className="flex shrink-0 items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                    {DOC_FILTERS.map((f) => (
-                        <button key={f.id} type="button" onClick={() => setFilter(f.id)}
-                            className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition", filter === f.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>
-                            {f.label}
-                        </button>
-                    ))}
-                </div>
-                <Button size="sm" className="ml-auto" onClick={onNew}><Plus className="h-4 w-4" /> New template</Button>
             </div>
 
             {templates.length === 0 ? (
@@ -321,9 +341,9 @@ function DocumentsTab({ templates, onNew, onEdit, onPreview, onRemove }: { templ
                 </div>
             ) : (
                 <>
-                    <div className="divide-y divide-slate-100 px-4">
+                    <div className="divide-y divide-slate-100 px-5">
                         {paged.map((t) => (
-                            <div key={t.id} className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-center">
+                            <div key={t.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
                                 <div className="flex min-w-0 flex-1 items-center gap-4">
                                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500"><FileSignature className="h-5 w-5" /></div>
                                     <div className="min-w-0">
@@ -343,7 +363,7 @@ function DocumentsTab({ templates, onNew, onEdit, onPreview, onRemove }: { templ
                         ))}
                     </div>
                     {/* Pagination footer */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm">
                         <div className="flex items-center gap-2 text-slate-500">
                             <span>Rows</span>
                             <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700">
@@ -371,10 +391,9 @@ function QuizzesTab({ quizzes, onPreview, onRemove, onNew }: { quizzes: ReturnTy
     const cats = Array.from(new Set(quizzes.map((x) => x.category)))
         .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
     return (
-        <SectionCard Icon={ClipboardList} tint="bg-sky-50 text-sky-500" title="Quizzes"
-            desc="Onboarding knowledge checks — assigned as the driver's post-orientation quiz. Separate from the hiring quizzes." count={`${quizzes.length} quizzes`}
+        <ListCard title="Quizzes" count={quizzes.length} searchPlaceholder="Search quizzes…"
             action={<Button size="sm" onClick={onNew}><Plus className="h-4 w-4" /> New Quiz</Button>}>
-            <div className="-mx-5 -mb-5">
+            <div>
                 {cats.map((cat) => {
                     const list = quizzes.filter((x) => x.category === cat);
                     return (
@@ -408,19 +427,94 @@ function QuizzesTab({ quizzes, onPreview, onRemove, onNew }: { quizzes: ReturnTy
                     );
                 })}
             </div>
-        </SectionCard>
+        </ListCard>
+    );
+}
+
+// ── Training (catalog, grouped by category) ──────────────────────────────────
+function TrainingTab() {
+    const cats = TRAINING_CATEGORIES.filter((c) => ACTIVE_TRAININGS.some((t) => t.category === c));
+    return (
+        <ListCard title="Training" count={ACTIVE_TRAININGS.length} searchPlaceholder="Search training…">
+            <div>
+                {cats.map((cat) => {
+                    const list = ACTIVE_TRAININGS.filter((t) => t.category === cat);
+                    return (
+                        <div key={cat}>
+                            <div className="flex items-center gap-2 border-y border-slate-100 bg-slate-50/80 px-5 py-2 first:border-t-0">
+                                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{cat}</span>
+                                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-200">{list.length}</span>
+                            </div>
+                            <div className="divide-y divide-slate-100 px-5">
+                                {list.map((t) => (
+                                    <div key={t.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+                                        <div className="flex min-w-0 flex-1 items-center gap-4">
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><GraduationCap className="h-5 w-5" /></div>
+                                            <div className="min-w-0">
+                                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
+                                                    {t.name}
+                                                    {t.defaultMandatory && <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">Mandatory</span>}
+                                                    {t.defaultAssessment?.enabled && <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-600">Assessment {t.defaultAssessment.passingScore}%</span>}
+                                                </p>
+                                                <p className="truncate text-sm text-slate-500">Due in {t.defaultDueDays} days · {t.defaultDeliveryModes.map((m) => m.replace(/_/g, " ")).join(", ")}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </ListCard>
+    );
+}
+
+// ── Accessories ──────────────────────────────────────────────────────────────
+// Named accessory checklists (keys, devices, cards, PPE…). Create as many as you
+// need and attach one per onboarding workflow's Accessories step; the driver then
+// verifies what they received.
+function AccessoriesTab({ checklists, onEdit, onPreview, onRemove }: { checklists: AccessoryChecklist[]; onEdit: (id: string) => void; onPreview: (id: string, mode: "pdf" | "form") => void; onRemove: (id: string) => void }) {
+    return (
+        <ListCard title="Accessory checklists" count={checklists.length} searchPlaceholder="Search accessory checklists…"
+            action={<Button size="sm" onClick={() => onEdit("new")}><Plus className="h-4 w-4" /> New Checklist</Button>}>
+            <div className="divide-y divide-slate-100">
+                {checklists.length === 0 && <p className="px-5 py-10 text-center text-sm text-slate-400">No accessory checklists yet — create one to attach to a workflow.</p>}
+                {checklists.map((c) => (
+                    <div key={c.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
+                        <div className="flex min-w-0 flex-1 items-center gap-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><KeyRound className="h-5 w-5" /></div>
+                            <div className="min-w-0">
+                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
+                                    {c.name}
+                                    {c.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
+                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{c.items.length} item{c.items.length === 1 ? "" : "s"}</span>
+                                </p>
+                                {c.description && <p className="truncate text-sm text-slate-500">{c.description}</p>}
+                            </div>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => onPreview(c.id, "form")}><FlaskConical className="h-4 w-4" /> Test</Button>
+                            <Button variant="outline" size="sm" onClick={() => onPreview(c.id, "pdf")}><Eye className="h-4 w-4" /> PDF view</Button>
+                            <Button variant="outline" size="sm" onClick={() => onPreview(c.id, "form")}>Open form <ArrowRight className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="sm" onClick={() => onEdit(c.id)}>Edit</Button>
+                            <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete accessory checklist “${c.name}”?`)) onRemove(c.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </ListCard>
     );
 }
 
 // ── Checklist ────────────────────────────────────────────────────────────────
 function ChecklistsTab({ checklists, onEdit, onRemove }: { checklists: ReturnType<typeof useChecklists>["checklists"]; onEdit: (id: string) => void; onRemove: (id: string) => void }) {
     return (
-        <SectionCard Icon={ListChecks} tint="bg-emerald-50 text-emerald-500" title="Checklist"
-            desc="Review checklists used to confirm the driver's onboarding is complete." count={`${checklists.length} checklists`}
+        <ListCard title="Checklist" count={checklists.length} searchPlaceholder="Search checklists…"
             action={<Button size="sm" onClick={() => onEdit("new")}><Plus className="h-4 w-4" /> New Checklist</Button>}>
             <div className="divide-y divide-slate-100">
                 {checklists.map((c) => (
-                    <div key={c.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+                    <div key={c.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
                         <div className="flex min-w-0 flex-1 items-center gap-4">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><ListChecks className="h-5 w-5" /></div>
                             <div className="min-w-0">
@@ -439,24 +533,6 @@ function ChecklistsTab({ checklists, onEdit, onRemove }: { checklists: ReturnTyp
                     </div>
                 ))}
             </div>
-        </SectionCard>
-    );
-}
-
-// ── Shared card shell ────────────────────────────────────────────────────────
-function SectionCard({ Icon, tint, title, desc, count, action, children }: { Icon: React.ElementType; tint: string; title: string; desc: string; count?: string; action?: React.ReactNode; children: React.ReactNode }) {
-    return (
-        <section>
-            <div className="mb-3 flex items-center gap-2.5">
-                <div className={cn("flex h-9 w-9 items-center justify-center rounded-xl", tint)}><Icon className="h-5 w-5" /></div>
-                <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-                    <p className="text-xs text-slate-500">{desc}</p>
-                </div>
-                {count && <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">{count}</span>}
-                {action && <div className={cn("shrink-0", count ? "ml-2" : "ml-auto")}>{action}</div>}
-            </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white p-5 shadow-sm">{children}</div>
-        </section>
+        </ListCard>
     );
 }

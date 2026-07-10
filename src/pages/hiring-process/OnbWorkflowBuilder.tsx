@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { ChevronLeft, Check, X, FileText, FileSignature, FilePlus2, ClipboardList, ListChecks, Info } from "lucide-react";
+import { ChevronLeft, Check, X, FileText, FileSignature, FilePlus2, ClipboardList, ListChecks, GraduationCap, KeyRound, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { policyDocuments } from "./policy-forms.data";
-import { ONBOARDING_FORMS, ONB_DRIVER_TYPES, getOnbWorkflow, blankOnbWorkflow, type OnbWorkflow } from "./onboarding.data";
+import { ONBOARDING_FORMS, ONB_DRIVER_TYPES, TRAINING_TYPES, useAccessoryChecklists, getOnbWorkflow, blankOnbWorkflow, type OnbWorkflow } from "./onboarding.data";
 import { useDocTemplates } from "./document-templates.data";
 import { useOnboardingQuizzes } from "./onboarding-quizzes.data";
 import { useChecklists } from "./checklists.data";
@@ -18,11 +18,14 @@ export function OnbWorkflowBuilder({ workflowId, onBack, onSave }: { workflowId:
     const { templates } = useDocTemplates();
     const { quizzes } = useOnboardingQuizzes();
     const { checklists } = useChecklists();
+    const { checklists: accessoryChecklists } = useAccessoryChecklists();
 
     const policyPool: PoolItem[] = policyDocuments().filter((d) => !HIDDEN.has(d.id)).map((d) => ({ id: d.id, label: `${d.title} ${d.accentTitle}` }));
     const formPool: PoolItem[] = ONBOARDING_FORMS.map((f) => ({ id: f.id, label: f.label }));
     const docPool: PoolItem[] = templates.map((t) => ({ id: t.id, label: t.name }));
     const quizPool: PoolItem[] = quizzes.map((q) => ({ id: q.id, label: q.title }));
+    const trainingPool: PoolItem[] = TRAINING_TYPES.filter((t) => t.status === "active").map((t) => ({ id: t.id, label: `${t.name} · ${t.category}` }));
+    const accessoryChecklistPool: PoolItem[] = accessoryChecklists.map((c) => ({ id: c.id, label: `${c.name} · ${c.items.length} item${c.items.length === 1 ? "" : "s"}` }));
     const checklistPool: PoolItem[] = checklists.map((c) => ({ id: c.id, label: c.name }));
 
     const set = (patch: Partial<OnbWorkflow>) => setWf((w) => ({ ...w, ...patch }));
@@ -81,7 +84,7 @@ export function OnbWorkflowBuilder({ workflowId, onBack, onSave }: { workflowId:
                         <h2 className="text-sm font-bold text-slate-800">Workflow steps</h2>
                         <p className="text-xs text-slate-500">Steps run top to bottom. Mirrors the Onboarding Setup tabs.</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">5 steps</span>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">7 steps</span>
                 </div>
 
                 <div className="flex items-start gap-2.5 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm text-blue-900">
@@ -106,7 +109,16 @@ export function OnbWorkflowBuilder({ workflowId, onBack, onSave }: { workflowId:
                     attached={wf.quizzes} pool={quizPool} addLabel="Add a quiz…"
                     onAdd={(id) => set({ quizzes: [...wf.quizzes, id] })}
                     onRemove={(id) => set({ quizzes: wf.quizzes.filter((x) => x !== id) })} />
-                <ChecklistStep n={5} value={wf.checklistId} pool={checklistPool} onChange={(id) => set({ checklistId: id })} />
+                <WorkflowStep n={5} Icon={GraduationCap} title="Training" desc="Safety & compliance training courses the driver must complete." addTitle="Add a training course"
+                    attached={wf.trainings} pool={trainingPool} addLabel="Add a training course…"
+                    onAdd={(id) => set({ trainings: [...wf.trainings, id] })}
+                    onRemove={(id) => set({ trainings: wf.trainings.filter((x) => x !== id) })} />
+                <SelectStep n={6} Icon={KeyRound} title="Accessories hand-over" desc="Keys, devices & equipment issued to the driver, then verified by them."
+                    attachLabel="Attach an accessory checklist" selectedLabel="checklist" value={wf.accessoryChecklistId} pool={accessoryChecklistPool}
+                    emptyHint="No accessory checklists yet — create one in the Accessories tab." onChange={(id) => set({ accessoryChecklistId: id })} />
+                <SelectStep n={7} Icon={ListChecks} title="Checklist" desc="Final review checklist to confirm onboarding is complete."
+                    attachLabel="Attach a checklist" selectedLabel="checklist" value={wf.checklistId} pool={checklistPool}
+                    emptyHint="No checklists yet — create one in the Checklist tab." onChange={(id) => set({ checklistId: id })} />
 
                 <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
                     <Button variant="outline" onClick={onBack}>Cancel</Button>
@@ -163,23 +175,28 @@ function WorkflowStep({ n, Icon, title, desc, attached, pool, addLabel, addTitle
     );
 }
 
-function ChecklistStep({ n, value, pool, onChange }: { n: number; value: string | null; pool: PoolItem[]; onChange: (id: string | null) => void }) {
+// A step that attaches ONE item (a checklist) rather than a list — used for both
+// the accessory checklist and the final review checklist.
+function SelectStep({ n, Icon, title, desc, attachLabel, selectedLabel, emptyHint, value, pool, onChange }: {
+    n: number; Icon: React.ElementType; title: string; desc: string; attachLabel: string; selectedLabel: string; emptyHint: string;
+    value: string | null; pool: PoolItem[]; onChange: (id: string | null) => void;
+}) {
     const selected = pool.find((p) => p.id === value);
     return (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <StepHeader n={n} Icon={ListChecks} title="Checklist" desc="Final review checklist to confirm onboarding is complete." badge={selected ? "1 selected" : "none"} />
+            <StepHeader n={n} Icon={Icon} title={title} desc={desc} badge={selected ? "1 selected" : "none"} />
             <div className="space-y-2 p-5">
                 {selected ? (
                     <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
-                        <ListChecks className="h-4 w-4 shrink-0 text-emerald-500" />
+                        <Icon className="h-4 w-4 shrink-0 text-emerald-500" />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{selected.label}</span>
                         <button type="button" onClick={() => onChange(null)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600"><X className="h-4 w-4" /></button>
                     </div>
-                ) : <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-4 text-center text-sm text-slate-400">No checklist attached.</p>}
+                ) : <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-4 text-center text-sm text-slate-400">No {selectedLabel} attached.</p>}
                 <div className="pt-1">
-                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Attach a checklist</p>
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{attachLabel}</p>
                     <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-                        <option value="">{pool.length ? "Select a checklist…" : "No checklists yet — create one in the Checklist tab"}</option>
+                        <option value="">{pool.length ? `Select a ${selectedLabel}…` : emptyHint}</option>
                         {pool.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                 </div>

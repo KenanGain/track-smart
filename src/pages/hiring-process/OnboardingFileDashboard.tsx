@@ -3,18 +3,19 @@ import {
     ChevronLeft, ChevronDown, Check, X, Send, FileText, RotateCcw, CircleCheck, Clock,
     Workflow as WorkflowIcon, Activity as ActivityIcon, StickyNote, Bell, AlertCircle,
     Eye, FileSearch, ClipboardCheck, ClipboardList, BadgeCheck, PenLine, Inbox, ListChecks,
-    Mail, MessageSquarePlus, Clock3,
+    Mail, MessageSquarePlus, Clock3, GraduationCap, KeyRound, UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useApplicants, formName, relativeTime, ACTOR, STEP_STATUS_META, type StepStatus } from "./applicants.data";
 import { useOnboardingQuizzes } from "./onboarding-quizzes.data";
-import { useOnbWorkflows, resolveOnbWorkflow, onbSteps, onbProgress, ONB_STEP_META, onbDriverTypeName, MAX_ONB_QUIZ_ATTEMPTS, type OnbWorkflow } from "./onboarding.data";
+import { useOnbWorkflows, resolveOnbWorkflow, onbSteps, onbProgress, ONB_STEP_META, onbDriverTypeName, MAX_ONB_QUIZ_ATTEMPTS, getTrainingType, makeAssignedTraining, useAccessoryChecklists, TRAINING_STATUS_META, type OnbWorkflow, type AssignedTraining, type AccessoryCheck, type AccessoryChecklist, type AccessoryChecklistItem } from "./onboarding.data";
 import { policyDocuments } from "./policy-forms.data";
 import { PolicyForm } from "./PolicyForm";
 import { QuizRunner } from "./QuizRunner";
 import { DocSignReview } from "./DocSignReview";
+import { AccessoryChecklistPreview } from "./AccessoryChecklistPreview";
 import { SignaturePad } from "./FormKit";
 import { AssignReviewDialog, type AssignReviewPayload } from "./AssignReviewDialog";
 import { useDocTemplates, type DocTemplate } from "./document-templates.data";
@@ -43,6 +44,7 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
     const { quizzes } = useOnboardingQuizzes();
     const { templates } = useDocTemplates();
     const { checklists } = useChecklists();
+    const { checklists: accessoryChecklists } = useAccessoryChecklists();
     const a = applicants.find((x) => x.id === applicantId);
     const [active, setActive] = useState<OnbStepKind | null>(null);
     const [docView, setDocView] = useState<DocView | null>(null);
@@ -52,6 +54,7 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
     const [reqTarget, setReqTarget] = useState<ReqTarget | null>(null);
     const [reviewTarget, setReviewTarget] = useState<ReqTarget | null>(null);
     const [remarkFor, setRemarkFor] = useState<string | null>(null);
+    const [accForm, setAccForm] = useState<null | "handover" | "verify" | "pdf">(null);
 
     if (!a) return (
         <div className="min-h-screen bg-slate-50 p-8">
@@ -96,6 +99,25 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
 
     // PDF documents attached to the assigned workflow.
     const wfDocs = (wf?.documents ?? []).map((id) => templates.find((t) => t.id === id)).filter(Boolean) as DocTemplate[];
+    // Accessory items come from the checklist attached to the workflow.
+    const accessoryChecklist = accessoryChecklists.find((c) => c.id === wf?.accessoryChecklistId);
+    const accessoryItems: AccessoryChecklistItem[] = accessoryChecklist?.items ?? [];
+    const accessoryChecklistName = accessoryChecklist?.name ?? "Accessories hand-over";
+
+    // Save a completed accessory checklist form (staff hand-over or driver verify) —
+    // marks the checked items + records the signer on that phase.
+    const submitAccessoryForm = (mode: "handover" | "verify", checkedIds: string[], r: { by: string; role: string; date: string; sig: string }) => setOnb((prev) => {
+        const cur = { ...(prev.accessories ?? {}) };
+        accessoryItems.forEach((it) => {
+            const on = checkedIds.includes(it.id);
+            const rec = { ...cur[it.id] };
+            if (mode === "handover") { rec.handedOver = on; rec.handedAt = on ? Date.now() : undefined; }
+            else { rec.verified = on; rec.verifiedAt = on ? Date.now() : undefined; }
+            cur[it.id] = rec;
+        });
+        const key = mode === "handover" ? "accessories-handover" : "accessories-driver";
+        return { ...prev, accessories: cur, reviews: { ...(prev.reviews ?? {}), [key]: { by: r.by, role: r.role, date: r.date, sig: r.sig, at: Date.now() } } };
+    }, mode === "handover" ? `Accessories handed over & signed (${r.by})` : `Driver verified accessories & signed (${r.by})`);
 
     // ── Order / Request — ask anyone (driver, HR, a provider…) to complete an item ──
     // Per-item Ask/Order → the recipient-picker request form; Review → the hiring-manager picker.
@@ -141,6 +163,15 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
         if (def) return <PolicyForm def={def} startPreview={docView.pdf} onBack={() => setDocView(null)} />;
     }
     if (docReview) return <DocSignReview template={docReview} driverName={`${a.firstName} ${a.lastName}`} onBack={() => setDocReview(null)} />;
+    if (accForm === "pdf") {
+        const cl: AccessoryChecklist = accessoryChecklist ?? { id: "acc-onb", name: accessoryChecklistName, items: accessoryItems };
+        return <AccessoryChecklistPreview checklist={cl} mode="pdf" onBack={() => setAccForm(null)} />;
+    }
+    if (accForm) return (
+        <AccessoryChecklistForm mode={accForm} checklistName={accessoryChecklistName} items={accessoryItems} state={onb.accessories ?? {}}
+            driverName={`${a.firstName} ${a.lastName}`} existing={accForm === "handover" ? onb.reviews?.["accessories-handover"] : onb.reviews?.["accessories-driver"]}
+            onBack={() => setAccForm(null)} onSubmit={(ids, r) => { submitAccessoryForm(accForm, ids, r); setAccForm(null); }} />
+    );
     if (quizRun) {
         const quiz = quizzes.find((q) => q.id === quizRun.quizId);
         if (quiz) return (
@@ -200,6 +231,8 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
                             <span><span className="font-bold text-slate-600">{(wf.policyForms?.length ?? 0) + wf.forms.length}</span> forms</span>
                             <span><span className="font-bold text-slate-600">{wf.documents.length}</span> docs</span>
                             <span><span className="font-bold text-slate-600">{wf.quizzes.length}</span> quiz</span>
+                            <span><span className="font-bold text-slate-600">{wf.trainings?.length ?? 0}</span> training</span>
+                            <span><span className="font-bold text-slate-600">{accessoryItems.length}</span> accessories</span>
                         </div>
                         <Button variant="outline" size="sm" className="shrink-0" onClick={() => setWfPicker(true)}><WorkflowIcon className="h-4 w-4" /> {onb.workflowId ? "Change" : "Assign"}</Button>
                     </div>
@@ -249,6 +282,17 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
                             <QuizStep quizIds={wf?.quizzes ?? []} quizzes={quizzes} results={onb.quizResults ?? {}} attempts={onb.quizAttempts ?? {}}
                                 onRun={(id, mode) => setQuizRun({ quizId: id, mode })} review={onb.reviews?.quiz} onSign={(r) => signStep("quiz", "post-orientation quiz", r)}
                                 onAsk={(quiz, action) => openReq({ itemId: quiz.id, itemLabel: quiz.title, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
+                        )}
+                        {activeKind === "training" && (
+                            <TrainingStep trainingIds={wf?.trainings ?? []} assigned={onb.trainings ?? []} setOnb={setOnb}
+                                review={onb.reviews?.training} onSign={(r) => signStep("training", "training", r)}
+                                onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
+                        )}
+                        {activeKind === "accessories" && (
+                            <AccessoriesStep items={accessoryItems} state={onb.accessories ?? {}} sentAt={onb.accessoriesSentAt} checklistName={accessoryChecklistName} setOnb={setOnb}
+                                handoverReview={onb.reviews?.["accessories-handover"]} driverReview={onb.reviews?.["accessories-driver"]}
+                                review={onb.reviews?.accessories} onSign={(r) => signStep("accessories", "accessories hand-over", r)} onOpenForm={setAccForm}
+                                onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
                         )}
                         {activeKind === "checklist" && (
                             <ChecklistStep checklist={checklists.find((c) => c.id === wf?.checklistId)} review={onb.reviews?.checklist} onSign={(r) => signStep("checklist", "final checklist", r)} hdr={hdr} />
@@ -619,6 +663,278 @@ function QuizStep({ quizIds, quizzes, results, attempts, onRun, review, onSign, 
             )}
             <StepReview label="post-orientation quiz" review={review} onSign={onSign} />
         </ModuleShell>
+    );
+}
+
+// Training — safety & compliance courses assigned by the workflow; mark each complete.
+function TrainingStep({ trainingIds, assigned, setOnb, review, onSign, onAsk, onRemark, hdr }: {
+    trainingIds: string[]; assigned: AssignedTraining[]; setOnb: SetOnb; review?: OnbReview; onSign: SignFn;
+    onAsk: (t: { id: string; name: string }, action: OnbRequestAction) => void; onRemark: (label: string) => void; hdr: StepHeader;
+}) {
+    const meta = ONB_STEP_META.training;
+    const byId = new Map(assigned.map((t) => [t.id, t]));
+    const doneCount = trainingIds.filter((id) => byId.get(id)?.status === "completed").length;
+    const setStatus = (id: string, name: string, status: AssignedTraining["status"] | "reset") => setOnb((prev) => {
+        const list = (prev.trainings ?? []).filter((t) => t.id !== id);
+        if (status === "reset") return { ...prev, trainings: list };
+        const base = makeAssignedTraining(id, status) ?? { id, name, category: "", mandatory: false, dueDays: 0, assignedAt: Date.now(), status };
+        return { ...prev, trainings: [...list, { ...base, status, completedAt: status === "completed" ? Date.now() : undefined }] };
+    }, status === "reset" ? undefined : `Training ${status === "completed" ? "completed" : status === "in_progress" ? "started" : "assigned"} — ${name}`);
+
+    return (
+        <ModuleShell Icon={meta.Icon} stepLabel={hdr.stepLabel} title={meta.title} desc={meta.desc} statusPill={hdr.statusPill} statusMenu={hdr.statusMenu}
+            action={<span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{doneCount} / {trainingIds.length} completed</span>}>
+            {trainingIds.length === 0 ? <EmptyRow text="No training courses on the assigned workflow." /> : (
+                <div className="space-y-2.5">
+                    {trainingIds.map((id) => {
+                        const t = getTrainingType(id);
+                        const name = t?.name ?? id;
+                        const cur = byId.get(id);
+                        const status = cur?.status;
+                        const m = status ? TRAINING_STATUS_META[status] : { label: "Not started", badge: "bg-slate-100 text-slate-500", dot: "bg-slate-300" };
+                        const done = status === "completed";
+                        return (
+                            <div key={id} className="rounded-xl border border-slate-200">
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+                                    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", done ? "bg-emerald-50 text-emerald-600" : "bg-indigo-50 text-indigo-500")}>{done ? <Check className="h-4 w-4" /> : <GraduationCap className="h-4 w-4" />}</span>
+                                    <div className="min-w-0 flex-1 basis-40">
+                                        <p className="truncate text-sm font-semibold text-slate-800">{name} {t?.defaultMandatory && <span className="ml-1 rounded-full bg-rose-50 px-1.5 text-[10px] font-semibold text-rose-600">Mandatory</span>}</p>
+                                        <p className="truncate text-xs text-slate-400">{t?.category ?? "Training"}{t ? ` · due in ${t.defaultDueDays}d` : ""}</p>
+                                    </div>
+                                    <span className={cn("w-[92px] shrink-0 rounded-full py-1 text-center text-[11px] font-semibold", m.badge)}>{m.label}</span>
+                                    {!done && !status && <Button variant="outline" className={cn(TINY, "w-[84px]")} onClick={() => setStatus(id, name, "in_progress")}><Clock className="h-3.5 w-3.5" /> Start</Button>}
+                                    <AskOrderMenu kind="training" onPick={(action) => onAsk({ id, name }, action)} onRemark={() => onRemark(name)} />
+                                    <Button variant={done ? "outline" : "default"} className={cn(TINY, "w-[124px]")} onClick={() => setStatus(id, name, done ? "reset" : "completed")}>
+                                        {done ? <><RotateCcw className="h-3.5 w-3.5" /> Undo</> : <><Check className="h-3.5 w-3.5" /> Mark complete</>}
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            <StepReview label="training" review={review} onSign={onSign} />
+        </ModuleShell>
+    );
+}
+
+// Accessories hand-over — a signable checklist form in two phases:
+//   1) staff open the checklist, tick each item handed over and sign it (can also
+//      ask someone to review the list), then send it to the driver;
+//   2) the driver opens the same checklist, confirms what they received and signs.
+function AccessoriesStep({ items, state, sentAt, checklistName, setOnb, handoverReview, driverReview, review, onSign, onOpenForm, onAsk, onRemark, hdr }: {
+    items: AccessoryChecklistItem[]; state: Record<string, AccessoryCheck>; sentAt?: number; checklistName: string; setOnb: SetOnb;
+    handoverReview?: OnbReview; driverReview?: OnbReview; review?: OnbReview; onSign: SignFn; onOpenForm: (mode: "handover" | "verify" | "pdf") => void;
+    onAsk: (t: { id: string; name: string }, action: OnbRequestAction) => void; onRemark: (label: string) => void; hdr: StepHeader;
+}) {
+    const meta = ONB_STEP_META.accessories;
+    const total = items.length;
+    const handedCount = items.filter((it) => state[it.id]?.handedOver).length;
+    const verifiedCount = items.filter((it) => state[it.id]?.verified).length;
+    const sent = !!sentAt;
+    const handedOff = !!handoverReview;
+    const driverSigned = !!driverReview;
+    const allVerified = total > 0 && verifiedCount === total;
+
+    const steps = [
+        { label: "Hand-over checklist", done: handedOff },
+        { label: "Driver verifies & signs", done: driverSigned && allVerified },
+        { label: "Reviewer sign-off", done: !!review },
+    ];
+    const currentIdx = steps.findIndex((s) => !s.done);
+    const Row = ({ i, children }: { i: number; children: React.ReactNode }) => {
+        const s = steps[i];
+        const current = i === currentIdx;
+        return (
+            <div className="relative flex gap-4">
+                <div className="relative flex w-7 shrink-0 flex-col items-center">
+                    <span className={cn("z-10 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ring-4 ring-white",
+                        s.done ? "bg-emerald-500 text-white" : current ? "bg-blue-600 text-white" : "border-2 border-slate-200 bg-white text-slate-400")}>
+                        {s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                    </span>
+                    {i < steps.length - 1 && <span className="w-0.5 flex-1 bg-slate-200" />}
+                </div>
+                <div className="min-w-0 flex-1 pb-5">
+                    <p className="mb-1.5 mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Step {i + 1} · {s.label}</p>
+                    {children}
+                </div>
+            </div>
+        );
+    };
+
+    // A compact "checklist" summary card shown for each phase — click to open the form.
+    const SignedBanner = ({ r, label }: { r: OnbReview; label: string }) => (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+            <BadgeCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+            <p className="text-[13px] text-emerald-800">{label} <span className="font-semibold">{r.by}</span>{r.role ? ` · ${r.role}` : ""} · {r.date}</p>
+            {r.sig && <img src={r.sig} alt="signature" className="ml-auto h-9 rounded border border-emerald-200 bg-white" />}
+        </div>
+    );
+
+    return (
+        <ModuleShell Icon={meta.Icon} stepLabel={hdr.stepLabel} title={meta.title} desc={meta.desc} statusPill={hdr.statusPill} statusMenu={hdr.statusMenu}
+            action={<span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{verifiedCount} / {total} verified</span>}>
+            {total === 0 ? <EmptyRow text="No accessories on the assigned workflow." /> : (
+                <>
+                    <div className="mb-4 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600"><KeyRound className="h-4 w-4" /></span>
+                        <p className="text-[13px] leading-relaxed text-slate-600">Open the checklist, tick each accessory handed over and sign it. You can also ask someone to review the list. Then send it to the driver to confirm &amp; sign what they received.</p>
+                    </div>
+
+                    <div>
+                        {/* Step 1 — the hand-over checklist form */}
+                        <Row i={0}>
+                            <div className="rounded-xl border border-slate-200 p-4">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><ListChecks className="h-5 w-5" /></span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-semibold text-slate-900">{checklistName}</p>
+                                        <p className="truncate text-xs text-slate-500">{total} item{total === 1 ? "" : "s"} · {handedCount}/{total} handed over{handedOff ? " · signed" : ""}</p>
+                                    </div>
+                                    <Button className={TINY} variant="outline" onClick={() => onAsk({ id: "accessories-list", name: checklistName }, "Request")}><UserCheck className="h-3.5 w-3.5" /> Assign</Button>
+                                    <Button className={TINY} variant="outline" onClick={() => onOpenForm("pdf")}><FileText className="h-3.5 w-3.5" /> PDF view</Button>
+                                    <Button className={cn(TINY, "w-[150px]")} variant={handedOff ? "outline" : "default"} onClick={() => onOpenForm("handover")}>
+                                        {handedOff ? <><Eye className="h-3.5 w-3.5" /> Open / re-sign</> : <><PenLine className="h-3.5 w-3.5" /> Open &amp; sign</>}
+                                    </Button>
+                                </div>
+                                {handoverReview && <SignedBanner r={handoverReview} label="Handed over &amp; signed by" />}
+                            </div>
+                        </Row>
+
+                        {/* Step 2 — driver verifies & signs: assign it to the driver (verify now) or send them the request */}
+                        <Row i={1}>
+                            <div className="rounded-xl border border-slate-200 p-4">
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">How is verification satisfied?</p>
+                                    {driverSigned
+                                        ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Signed</span>
+                                        : sent
+                                            ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700"><Send className="h-3 w-3" /> Sent {relativeTime(sentAt!)}</span>
+                                            : <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500"><span className="h-1.5 w-1.5 rounded-full bg-slate-400" /> Not sent</span>}
+                                </div>
+
+                                {/* Assign to the driver first, then view / verify / PDF the verification */}
+                                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-3">
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500"><UserCheck className="h-5 w-5" /></span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-semibold text-slate-900">Driver verification</p>
+                                        <p className="truncate text-xs text-slate-500">{sent ? `Sent ${relativeTime(sentAt!)} · ` : "Email the checklist so the driver confirms & signs · "}{verifiedCount}/{total} verified{driverSigned ? " · signed" : ""}</p>
+                                    </div>
+                                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                                        <Button className={TINY} onClick={() => onAsk({ id: "accessories-driver", name: `${checklistName} — driver verification` }, "Request")}><UserCheck className="h-3.5 w-3.5" /> Assign to driver</Button>
+                                        <Button className={TINY} variant="outline" onClick={() => onOpenForm("verify")}><Eye className="h-3.5 w-3.5" /> View</Button>
+                                        <Button className={TINY} variant="outline" onClick={() => onOpenForm("verify")}><PenLine className="h-3.5 w-3.5" /> Verify</Button>
+                                        <Button className={TINY} variant="outline" onClick={() => onOpenForm("pdf")}><FileText className="h-3.5 w-3.5" /> PDF</Button>
+                                    </div>
+                                </div>
+
+                                {driverReview && <SignedBanner r={driverReview} label="Verified &amp; signed by" />}
+                            </div>
+                        </Row>
+
+                        {/* Step 3 — reviewer sign-off (available by default) */}
+                        <Row i={2}>
+                            <StepReview label="accessories hand-over" review={review} onSign={onSign} />
+                        </Row>
+                    </div>
+                </>
+            )}
+        </ModuleShell>
+    );
+}
+
+// The accessory hand-over CHECKLIST FORM — opened full-screen. Tick each item and
+// sign. Used for both the staff hand-over and the driver's verification.
+function AccessoryChecklistForm({ mode, checklistName, items, state, driverName, existing, onBack, onSubmit }: {
+    mode: "handover" | "verify"; checklistName: string; items: AccessoryChecklistItem[]; state: Record<string, AccessoryCheck>;
+    driverName: string; existing?: OnbReview; onBack: () => void; onSubmit: (checkedIds: string[], r: { by: string; role: string; date: string; sig: string }) => void;
+}) {
+    const isHand = mode === "handover";
+    const preChecked = items.filter((it) => (isHand ? state[it.id]?.handedOver : state[it.id]?.verified)).map((it) => it.id);
+    const [checked, setChecked] = useState<Set<string>>(new Set(preChecked));
+    const [by, setBy] = useState(existing?.by ?? (isHand ? ACTOR : driverName));
+    const [role, setRole] = useState(existing?.role ?? (isHand ? "Issued by" : "Driver"));
+    const [date, setDate] = useState(existing?.date ?? new Date().toISOString().slice(0, 10));
+    const [sig, setSig] = useState(existing?.sig ?? "");
+
+    const toggle = (id: string) => setChecked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const allOn = checked.size === items.length && items.length > 0;
+    const toggleAll = () => setChecked(allOn ? new Set() : new Set(items.map((i) => i.id)));
+
+    // Group by category for a clean checklist layout.
+    const cats = Array.from(new Set(items.map((i) => i.category ?? "Accessories")));
+
+    return (
+        <div className="min-h-screen bg-slate-50">
+            <div className="space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+                <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Back to onboarding file</button>
+
+                <div className="mx-auto max-w-2xl space-y-5">
+                    {/* Header */}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex items-start gap-4">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><ListChecks className="h-6 w-6" /></span>
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">{isHand ? "Accessory Hand-Over Checklist" : "Driver Verification Checklist"}</p>
+                                <h1 className="text-xl font-bold text-slate-900">{checklistName}</h1>
+                                <p className="mt-0.5 text-sm text-slate-500">{isHand ? "Tick each accessory you are handing over to the driver, then sign below." : "Tick each accessory you received, then sign below to confirm."}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Checklist */}
+                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+                            <p className="text-sm font-bold text-slate-800">Items <span className="ml-1 font-normal text-slate-400">{checked.size}/{items.length}</span></p>
+                            <button type="button" onClick={toggleAll} className="text-xs font-semibold text-blue-600 hover:text-blue-700">{allOn ? "Clear all" : "Select all"}</button>
+                        </div>
+                        <div className="p-4">
+                            {cats.map((cat) => (
+                                <div key={cat} className="mb-3 last:mb-0">
+                                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat}</p>
+                                    <div className="space-y-1.5">
+                                        {items.filter((it) => (it.category ?? "Accessories") === cat).map((it) => {
+                                            const on = checked.has(it.id);
+                                            const handed = !!state[it.id]?.handedOver;
+                                            return (
+                                                <button key={it.id} type="button" onClick={() => toggle(it.id)}
+                                                    className={cn("flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition", on ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/30")}>
+                                                    <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border", on ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white")}>{on && <Check className="h-3.5 w-3.5" />}</span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-semibold text-slate-800">{it.name}</p>
+                                                        {it.note && <p className="truncate text-xs text-slate-400">{it.note}</p>}
+                                                    </div>
+                                                    {!isHand && handed && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Handed over</span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Signature */}
+                    <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">{isHand ? "Issuer signature" : "Driver signature"}</p>
+                        <h4 className="mt-0.5 text-sm font-bold text-slate-900">{isHand ? "I confirm I handed over the ticked items above." : "I confirm I received the ticked items above."}</h4>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                            <div><label className="mb-1 block text-xs font-semibold text-slate-600">Name</label><Input value={by} onChange={(e) => setBy(e.target.value)} placeholder="Full name" /></div>
+                            <div><label className="mb-1 block text-xs font-semibold text-slate-600">Title / role</label><Input value={role} onChange={(e) => setRole(e.target.value)} /></div>
+                            <div><label className="mb-1 block text-xs font-semibold text-slate-600">Date</label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+                        </div>
+                        <div className="mt-3">
+                            <label className="mb-1 block text-xs font-semibold text-slate-600">Signature</label>
+                            <SignaturePad label="Your signature" onChange={setSig} />
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <Button variant="outline" onClick={onBack}>Cancel</Button>
+                            <Button disabled={!sig || !by.trim()} onClick={() => onSubmit([...checked], { by: by.trim(), role: role.trim(), date, sig })}><PenLine className="h-4 w-4" /> {isHand ? "Confirm hand-over & sign" : "Confirm receipt & sign"}</Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 

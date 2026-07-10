@@ -17,6 +17,8 @@ type SubTabsProps<T extends string> = {
     bordered?: boolean;
     /** Container size — sm: tighter padding, md: default. */
     size?: "sm" | "md";
+    /** Distribute tabs evenly to fill the full bar width instead of scrolling (default: false). */
+    fill?: boolean;
 };
 
 /**
@@ -30,6 +32,7 @@ export function SubTabs<T extends string>({
     className,
     bordered = true,
     size = "md",
+    fill = false,
 }: SubTabsProps<T>) {
     return (
         <div
@@ -38,7 +41,7 @@ export function SubTabs<T extends string>({
                 className
             )}
         >
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
+            <div className={cn("flex items-center gap-1 -mb-px", fill ? "w-full" : "overflow-x-auto no-scrollbar")}>
                 {tabs.map((tab) => {
                     const Icon = tab.icon;
                     const active = activeId === tab.id;
@@ -51,6 +54,7 @@ export function SubTabs<T extends string>({
                             className={cn(
                                 "relative text-sm font-medium whitespace-nowrap transition-colors inline-flex items-center gap-2 border-b-2",
                                 padding,
+                                fill && "flex-1 justify-center",
                                 active
                                     ? "text-blue-600 border-blue-600"
                                     : "text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300"

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock, FileCheck2, Loader2, ShieldCheck, ThumbsUp, X } from "lucide-react";
 import { APPLICATION_FORMS } from "./ApplicationSettingsPage";
-import { getOnbWorkflow, type OnboardingState } from "./onboarding.data";
+import { getOnbWorkflow, makeAssignedTraining, getAccessoryChecklist, type OnboardingState, type AssignedTraining } from "./onboarding.data";
 
 // Hiring Process applicants — localStorage-backed so the list board and the
 // applicant detail page stay in sync (status changes, remarks, reissue).
@@ -452,6 +452,13 @@ function onboardingSeed(): Applicant[] {
         if (wf) {
             if (stage === "policy" || stage === "mid" || stage === "complete") onb.signedContracts = [...wf.policyForms];
             if (stage === "mid" || stage === "complete") { onb.signedForms = [...wf.forms]; onb.signedDocs = [...wf.documents]; onb.quizResults = passResults(wf.quizzes); onb.quizAttempts = passAttempts(wf.quizzes); }
+            const training = (st: AssignedTraining["status"], at: number) => wf.trainings.map((id) => makeAssignedTraining(id, st, at)).filter((t): t is AssignedTraining => !!t);
+            if (stage === "mid") onb.trainings = training("assigned", NOW - 2 * D).map((t, i) => (i === 0 ? { ...t, status: "in_progress" } : t));
+            if (stage === "complete") onb.trainings = training("completed", NOW - 1 * D);
+            // Accessories hand-over: mid = some handed over (sent, awaiting verify); complete = all handed + verified.
+            const accIds = (getAccessoryChecklist(wf.accessoryChecklistId)?.items ?? []).map((i) => i.id);
+            if (stage === "mid") { onb.accessoriesSentAt = NOW - 1 * D; onb.accessories = Object.fromEntries(accIds.map((id, i) => [id, { handedOver: true, handedAt: NOW - 2 * D, verified: i === 0, verifiedAt: i === 0 ? NOW - 1 * D : undefined }])); }
+            if (stage === "complete") { onb.accessoriesSentAt = NOW - 2 * D; onb.accessories = Object.fromEntries(accIds.map((id) => [id, { handedOver: true, handedAt: NOW - 2 * D, verified: true, verifiedAt: NOW - 1 * D }])); }
             if (stage === "complete") onb.reviews = { checklist: review };
         }
         return seedApplicant({ id, firstName: first, lastName: last, email: `${first.toLowerCase()}.${last.toLowerCase()}@example.com`, formId, carrier, carrierId, template: "Complete Driver Hiring (Default)", status: "approved", stepsDone: 12, stepsTotal: 12, invitedAt, updatedAt: NOW - 1 * D, position, phone, onboarding: onb });
@@ -466,7 +473,7 @@ function onboardingSeed(): Applicant[] {
     ];
 }
 
-const KEY = "hp_applicants_v14";
+const KEY = "hp_applicants_v18";
 
 function read(): Applicant[] {
     if (typeof window === "undefined") return SEED;
