@@ -1,9 +1,13 @@
-import { useState } from "react";
-import { ChevronLeft, Printer, ListChecks, KeyRound, Eye, Info, Check, Sparkles } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronLeft, Printer, Download, KeyRound, Eye, Info, Check, Sparkles } from "lucide-react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useCompanyBranding } from "../ats/company-branding.data";
 import { Field, Grid, CheckLine, ReviewSignOff, newSignOff, todayISO, type SignOffData } from "./FormKit";
+import { FormDocument, THEMES, type ThemeKey, type DocSection } from "./FormDocument";
 import { ACCESSORY_CATEGORIES, type AccessoryChecklist } from "./onboarding.data";
 
 /**
@@ -16,79 +20,87 @@ import { ACCESSORY_CATEGORIES, type AccessoryChecklist } from "./onboarding.data
  *    received, enter quantities, complete the recipient details and sign off.
  */
 export function AccessoryChecklistPreview({ checklist, mode = "pdf", onBack }: { checklist: AccessoryChecklist; mode?: "pdf" | "form"; onBack: () => void }) {
+    const [branding] = useCompanyBranding();
     const order = [...ACCESSORY_CATEGORIES] as string[];
     const cats = Array.from(new Set(checklist.items.map((i) => i.category ?? "Accessories")))
         .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
 
     // The form's "PDF Preview" flips to the paper view; from there "Edit" returns.
     const [view, setView] = useState<"pdf" | "form">(mode);
+    const [theme, setTheme] = useState<ThemeKey>("standard");
+    const [downloading, setDownloading] = useState(false);
+    const docRef = useRef<HTMLDivElement>(null);
 
     if (view === "form") return <AccessoryChecklistForm checklist={checklist} cats={cats} onBack={onBack} onPreview={() => setView("pdf")} />;
 
+    // Build the branded document — same shape (title/subtitle/badge/sections) the
+    // MVR / Abstract forms feed into the shared FormDocument.
+    const sections: DocSection[] = [
+        { title: "Recipient", groups: [{ rows: [
+            { label: "Driver name", value: "" },
+            { label: "Employee ID", value: "" },
+            { label: "Vehicle / Unit #", value: "" },
+            { label: "Date", value: "" },
+        ] }] },
+        { title: "Items Handed Over", groups: cats.map((cat) => ({
+            label: cat,
+            table: {
+                headers: ["Item", "Qty", "Received"],
+                rows: checklist.items.filter((it) => (it.category ?? "Accessories") === cat)
+                    .map((it) => [it.note ? `${it.name} — ${it.note}` : it.name, "", "☐"]),
+            },
+        })) },
+        { title: "Sign-Off", groups: [
+            { label: "Issued by (staff)", rows: [{ label: "Name", value: "" }, { label: "Title / role", value: "" }, { label: "Date", value: "" }, { label: "Signature", value: "" }] },
+            { label: "Received by (driver)", rows: [{ label: "Name", value: "" }, { label: "Date", value: "" }, { label: "Signature", value: "" }] },
+        ] },
+    ];
+
+    const downloadPdf = async () => {
+        const el = docRef.current;
+        if (!el) return;
+        setDownloading(true);
+        try {
+            const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+            const pdf = new jsPDF({ unit: "pt", format: "a4" });
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+            const imgH = (canvas.height * pageW) / canvas.width;
+            let heightLeft = imgH, position = 0;
+            const img = canvas.toDataURL("image/png");
+            pdf.addImage(img, "PNG", 0, position, pageW, imgH);
+            heightLeft -= pageH;
+            while (heightLeft > 0) { position -= pageH; pdf.addPage(); pdf.addImage(img, "PNG", 0, position, pageW, imgH); heightLeft -= pageH; }
+            pdf.save("accessory-hand-over.pdf");
+        } finally { setDownloading(false); }
+    };
+
     return (
-        <div className="min-h-screen bg-slate-100">
-            {/* Toolbar (hidden when printing) */}
-            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6 print:hidden">
+        <div className="min-h-screen bg-slate-50">
+            <style>{`@media print {
+                body * { visibility: hidden !important; }
+                #app-doc, #app-doc * { visibility: visible !important; }
+                #app-doc { position: absolute !important; left: 0; top: 0; width: 100%; box-shadow: none !important; }
+                .no-print { display: none !important; }
+            }`}</style>
+
+            {/* Top bar — matches the hiring-process form preview toolbar */}
+            <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
                 <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft className="h-4 w-4" /> Accessories</button>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                        {THEMES.map((t) => (
+                            <button key={t.key} type="button" onClick={() => setTheme(t.key)} className={cn("rounded-md px-3 py-1.5 text-xs font-semibold transition", theme === t.key ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-white")}>{t.name}</button>
+                        ))}
+                    </div>
                     {mode === "form" && <Button variant="outline" size="sm" onClick={() => setView("form")}>Edit form</Button>}
-                    <Button size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print / Save as PDF</Button>
+                    <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
+                    <Button size="sm" onClick={downloadPdf} disabled={downloading}><Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}</Button>
                 </div>
             </div>
 
-            {/* Paper */}
-            <div className="mx-auto my-6 max-w-[800px] px-4 print:my-0 print:px-0">
-                <div className="rounded-lg bg-white p-10 shadow-sm print:rounded-none print:p-0 print:shadow-none">
-                    {/* Header */}
-                    <div className="flex items-start justify-between border-b-2 border-slate-800 pb-4">
-                        <div>
-                            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Accessory Hand-Over Checklist</p>
-                            <h1 className="mt-1 text-2xl font-bold text-slate-900">{checklist.name}</h1>
-                            {checklist.description && <p className="mt-1 max-w-md text-sm text-slate-500">{checklist.description}</p>}
-                        </div>
-                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><ListChecks className="h-6 w-6" /></span>
-                    </div>
-
-                    {/* Driver / date fields */}
-                    <div className="mt-5 grid grid-cols-2 gap-x-10 gap-y-4 text-sm">
-                        <PaperField label="Driver name" />
-                        <PaperField label="Date" />
-                        <PaperField label="Vehicle / Unit #" />
-                        <PaperField label="Employee ID" />
-                    </div>
-
-                    {/* Items */}
-                    <div className="mt-7">
-                        <p className="mb-2 text-sm font-bold text-slate-800">Items handed over <span className="font-normal text-slate-400">({checklist.items.length})</span></p>
-                        <div className="space-y-5">
-                            {cats.map((cat) => (
-                                <div key={cat}>
-                                    <p className="mb-1.5 border-b border-slate-200 pb-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">{cat}</p>
-                                    <div className="divide-y divide-slate-100">
-                                        {checklist.items.filter((it) => (it.category ?? "Accessories") === cat).map((it) => (
-                                            <div key={it.id} className="flex items-center gap-3 py-2">
-                                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 border-slate-300" />
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-slate-800">{it.name}</p>
-                                                    {it.note && <p className="text-xs text-slate-400">{it.note}</p>}
-                                                </div>
-                                                <span className="shrink-0 text-[11px] text-slate-300">Qty ______</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Signatures */}
-                    <div className="mt-10 grid grid-cols-2 gap-10">
-                        <SignBlock title="Issued by" />
-                        <SignBlock title="Received by (Driver)" />
-                    </div>
-
-                    <p className="mt-8 text-center text-[10px] text-slate-400">Generated by TrackSmart · Onboarding · Accessory Hand-Over</p>
-                </div>
+            <div className="px-6 py-8">
+                <FormDocument ref={docRef} title={checklist.name} subtitle={checklist.description || "Accessory Hand-Over Checklist"} badge="Hand-Over" sections={sections} theme={theme} branding={branding} />
             </div>
         </div>
     );
@@ -156,6 +168,8 @@ function AccessoryChecklistForm({ checklist, cats, onBack, onPreview }: { checkl
     const copy = FORM_COPY[formType];
     const receivedCount = checklist.items.filter((it) => received[it.id]).length;
     const allReceived = checklist.items.length > 0 && receivedCount === checklist.items.length;
+    const pct = checklist.items.length ? Math.round((receivedCount / checklist.items.length) * 100) : 0;
+    const toggleAll = () => setReceived(allReceived ? {} : Object.fromEntries(checklist.items.map((it) => [it.id, true])));
 
     // Tick every item, default each quantity to 1, and fill the recipient details.
     const fillSample = () => {
@@ -223,39 +237,56 @@ function AccessoryChecklistForm({ checklist, cats, onBack, onPreview }: { checkl
                     </Grid>
                 </div>
 
-                {/* Items */}
+                {/* Items — a proper checklist with select-all and progress */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-base font-bold text-slate-900">{copy.itemsHeading}</h2>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">{receivedCount} / {checklist.items.length} {copy.verbAdj}</span>
+                        <div className="flex items-center gap-3">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">{receivedCount} / {checklist.items.length} {copy.verbAdj}</span>
+                            <button type="button" onClick={toggleAll} className="text-xs font-semibold text-blue-600 hover:text-blue-700">{allReceived ? "Clear all" : "Select all"}</button>
+                        </div>
                     </div>
-                    <div className="space-y-5">
-                        {cats.map((cat) => (
-                            <div key={cat}>
-                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat}</p>
-                                <div className="space-y-2">
-                                    {checklist.items.filter((it) => (it.category ?? "Accessories") === cat).map((it) => {
-                                        const on = !!received[it.id];
-                                        return (
-                                            <div key={it.id} className={cn("flex items-center gap-3 rounded-lg border px-3 py-2.5 transition", on ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white")}>
-                                                <button type="button" onClick={() => setReceived((r) => ({ ...r, [it.id]: !r[it.id] }))}
-                                                    className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition", on ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400")}>
-                                                    {on && <Check className="h-3.5 w-3.5" />}
-                                                </button>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-slate-800">{it.name}</p>
-                                                    {it.note && <p className="text-xs text-slate-400">{it.note}</p>}
+                    {/* Progress bar */}
+                    <div className="mt-3 flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-400">{pct}%</span>
+                    </div>
+                    <div className="mt-5 space-y-5">
+                        {cats.map((cat) => {
+                            const list = checklist.items.filter((it) => (it.category ?? "Accessories") === cat);
+                            const catDone = list.filter((it) => received[it.id]).length;
+                            return (
+                                <div key={cat}>
+                                    <div className="mb-2 flex items-center gap-2">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat}</p>
+                                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">{catDone}/{list.length}</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {list.map((it) => {
+                                            const on = !!received[it.id];
+                                            return (
+                                                <div key={it.id} className={cn("flex items-center gap-3 rounded-lg border px-3 py-2.5 transition", on ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white hover:border-slate-300")}>
+                                                    <button type="button" onClick={() => setReceived((r) => ({ ...r, [it.id]: !r[it.id] }))}
+                                                        className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition", on ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400")}>
+                                                        {on && <Check className="h-3.5 w-3.5" />}
+                                                    </button>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-medium text-slate-800">{it.name}</p>
+                                                        {it.note && <p className="text-xs text-slate-400">{it.note}</p>}
+                                                    </div>
+                                                    <div className="flex shrink-0 items-center gap-1.5">
+                                                        <span className="text-[11px] font-medium text-slate-400">Qty</span>
+                                                        <Input value={qty[it.id] ?? ""} onChange={(e) => setQty((q) => ({ ...q, [it.id]: e.target.value }))} className="h-9 w-16 text-center" placeholder="1" />
+                                                    </div>
                                                 </div>
-                                                <div className="flex shrink-0 items-center gap-1.5">
-                                                    <span className="text-[11px] font-medium text-slate-400">Qty</span>
-                                                    <Input value={qty[it.id] ?? ""} onChange={(e) => setQty((q) => ({ ...q, [it.id]: e.target.value }))} className="h-9 w-16 text-center" placeholder="1" />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -294,25 +325,3 @@ function AccessoryChecklistForm({ checklist, cats, onBack, onPreview }: { checkl
     );
 }
 
-function PaperField({ label }: { label: string }) {
-    return (
-        <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
-            <div className="mt-3 border-b border-slate-300" />
-        </div>
-    );
-}
-
-function SignBlock({ title }: { title: string }) {
-    return (
-        <div>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{title}</p>
-            <div className="mt-8 border-b border-slate-400" />
-            <p className="mt-1 text-[11px] text-slate-400">Signature</p>
-            <div className="mt-6 grid grid-cols-2 gap-4">
-                <div><div className="border-b border-slate-300" /><p className="mt-1 text-[11px] text-slate-400">Print name</p></div>
-                <div><div className="border-b border-slate-300" /><p className="mt-1 text-[11px] text-slate-400">Date</p></div>
-            </div>
-        </div>
-    );
-}

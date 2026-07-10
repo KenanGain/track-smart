@@ -289,10 +289,10 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
                                 onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
                         )}
                         {activeKind === "accessories" && (
-                            <AccessoriesStep items={accessoryItems} state={onb.accessories ?? {}} sentAt={onb.accessoriesSentAt} checklistName={accessoryChecklistName} setOnb={setOnb}
+                            <AccessoriesStep items={accessoryItems} state={onb.accessories ?? {}} sentAt={onb.accessoriesSentAt} checklistName={accessoryChecklistName}
                                 handoverReview={onb.reviews?.["accessories-handover"]} driverReview={onb.reviews?.["accessories-driver"]}
                                 review={onb.reviews?.accessories} onSign={(r) => signStep("accessories", "accessories hand-over", r)} onOpenForm={setAccForm}
-                                onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} onRemark={(label) => setRemarkFor(label)} hdr={hdr} />
+                                onAsk={(t, action) => openReq({ itemId: t.id, itemLabel: t.name, action })} hdr={hdr} />
                         )}
                         {activeKind === "checklist" && (
                             <ChecklistStep checklist={checklists.find((c) => c.id === wf?.checklistId)} review={onb.reviews?.checklist} onSign={(r) => signStep("checklist", "final checklist", r)} hdr={hdr} />
@@ -722,10 +722,10 @@ function TrainingStep({ trainingIds, assigned, setOnb, review, onSign, onAsk, on
 //   1) staff open the checklist, tick each item handed over and sign it (can also
 //      ask someone to review the list), then send it to the driver;
 //   2) the driver opens the same checklist, confirms what they received and signs.
-function AccessoriesStep({ items, state, sentAt, checklistName, setOnb, handoverReview, driverReview, review, onSign, onOpenForm, onAsk, onRemark, hdr }: {
-    items: AccessoryChecklistItem[]; state: Record<string, AccessoryCheck>; sentAt?: number; checklistName: string; setOnb: SetOnb;
+function AccessoriesStep({ items, state, sentAt, checklistName, handoverReview, driverReview, review, onSign, onOpenForm, onAsk, hdr }: {
+    items: AccessoryChecklistItem[]; state: Record<string, AccessoryCheck>; sentAt?: number; checklistName: string;
     handoverReview?: OnbReview; driverReview?: OnbReview; review?: OnbReview; onSign: SignFn; onOpenForm: (mode: "handover" | "verify" | "pdf") => void;
-    onAsk: (t: { id: string; name: string }, action: OnbRequestAction) => void; onRemark: (label: string) => void; hdr: StepHeader;
+    onAsk: (t: { id: string; name: string }, action: OnbRequestAction) => void; hdr: StepHeader;
 }) {
     const meta = ONB_STEP_META.accessories;
     const total = items.length;
