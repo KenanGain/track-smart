@@ -106,13 +106,16 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
 
     // Save a completed accessory checklist form (staff hand-over or driver verify) —
     // marks the checked items + records the signer on that phase.
-    const submitAccessoryForm = (mode: "handover" | "verify", checkedIds: string[], r: { by: string; role: string; date: string; sig: string }) => setOnb((prev) => {
+    const submitAccessoryForm = (mode: "handover" | "verify", checkedIds: string[], qtys: Record<string, string>, r: { by: string; role: string; date: string; sig: string }) => setOnb((prev) => {
         const cur = { ...(prev.accessories ?? {}) };
         accessoryItems.forEach((it) => {
             const on = checkedIds.includes(it.id);
             const rec = { ...cur[it.id] };
             if (mode === "handover") { rec.handedOver = on; rec.handedAt = on ? Date.now() : undefined; }
             else { rec.verified = on; rec.verifiedAt = on ? Date.now() : undefined; }
+            // Record the quantity for ticked items; keep any prior qty on the driver-verify pass.
+            if (on) rec.qty = (qtys[it.id] ?? "").trim() || rec.qty || "1";
+            else if (mode === "handover") rec.qty = undefined;
             cur[it.id] = rec;
         });
         const key = mode === "handover" ? "accessories-handover" : "accessories-driver";
@@ -170,7 +173,7 @@ export function OnboardingFileDashboard({ applicantId, onBack }: { applicantId: 
     if (accForm) return (
         <AccessoryChecklistForm mode={accForm} checklistName={accessoryChecklistName} items={accessoryItems} state={onb.accessories ?? {}}
             driverName={`${a.firstName} ${a.lastName}`} existing={accForm === "handover" ? onb.reviews?.["accessories-handover"] : onb.reviews?.["accessories-driver"]}
-            onBack={() => setAccForm(null)} onSubmit={(ids, r) => { submitAccessoryForm(accForm, ids, r); setAccForm(null); }} />
+            onBack={() => setAccForm(null)} onSubmit={(ids, qtys, r) => { submitAccessoryForm(accForm, ids, qtys, r); setAccForm(null); }} />
     );
     if (quizRun) {
         const quiz = quizzes.find((q) => q.id === quizRun.quizId);
@@ -847,11 +850,13 @@ function AccessoriesStep({ items, state, sentAt, checklistName, handoverReview, 
 // sign. Used for both the staff hand-over and the driver's verification.
 function AccessoryChecklistForm({ mode, checklistName, items, state, driverName, existing, onBack, onSubmit }: {
     mode: "handover" | "verify"; checklistName: string; items: AccessoryChecklistItem[]; state: Record<string, AccessoryCheck>;
-    driverName: string; existing?: OnbReview; onBack: () => void; onSubmit: (checkedIds: string[], r: { by: string; role: string; date: string; sig: string }) => void;
+    driverName: string; existing?: OnbReview; onBack: () => void; onSubmit: (checkedIds: string[], qtys: Record<string, string>, r: { by: string; role: string; date: string; sig: string }) => void;
 }) {
     const isHand = mode === "handover";
     const preChecked = items.filter((it) => (isHand ? state[it.id]?.handedOver : state[it.id]?.verified)).map((it) => it.id);
     const [checked, setChecked] = useState<Set<string>>(new Set(preChecked));
+    // Per-item quantity — prefilled from what was recorded (e.g. the hand-over qty on the driver-verify pass).
+    const [qty, setQty] = useState<Record<string, string>>(() => Object.fromEntries(items.map((it) => [it.id, state[it.id]?.qty ?? ""])));
     const [by, setBy] = useState(existing?.by ?? (isHand ? ACTOR : driverName));
     const [role, setRole] = useState(existing?.role ?? (isHand ? "Issued by" : "Driver"));
     const [date, setDate] = useState(existing?.date ?? new Date().toISOString().slice(0, 10));
@@ -896,16 +901,23 @@ function AccessoryChecklistForm({ mode, checklistName, items, state, driverName,
                                         {items.filter((it) => (it.category ?? "Accessories") === cat).map((it) => {
                                             const on = checked.has(it.id);
                                             const handed = !!state[it.id]?.handedOver;
+                                            const handedQty = state[it.id]?.qty;
                                             return (
-                                                <button key={it.id} type="button" onClick={() => toggle(it.id)}
-                                                    className={cn("flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition", on ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/30")}>
-                                                    <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border", on ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white")}>{on && <Check className="h-3.5 w-3.5" />}</span>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="truncate text-sm font-semibold text-slate-800">{it.name}</p>
-                                                        {it.note && <p className="truncate text-xs text-slate-400">{it.note}</p>}
+                                                <div key={it.id}
+                                                    className={cn("flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 transition", on ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 hover:border-blue-300")}>
+                                                    <button type="button" onClick={() => toggle(it.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                                        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border", on ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white")}>{on && <Check className="h-3.5 w-3.5" />}</span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="truncate text-sm font-semibold text-slate-800">{it.name}</p>
+                                                            {it.note && <p className="truncate text-xs text-slate-400">{it.note}</p>}
+                                                        </div>
+                                                    </button>
+                                                    {!isHand && handed && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Handed · Qty {handedQty || "1"}</span>}
+                                                    <div className="flex shrink-0 items-center gap-1.5">
+                                                        <span className="text-[11px] font-medium text-slate-400">Qty</span>
+                                                        <Input value={qty[it.id] ?? ""} onChange={(e) => setQty((q) => ({ ...q, [it.id]: e.target.value }))} className="h-9 w-16 text-center" placeholder="1" />
                                                     </div>
-                                                    {!isHand && handed && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">Handed over</span>}
-                                                </button>
+                                                </div>
                                             );
                                         })}
                                     </div>
@@ -929,7 +941,7 @@ function AccessoryChecklistForm({ mode, checklistName, items, state, driverName,
                         </div>
                         <div className="mt-4 flex justify-end gap-2">
                             <Button variant="outline" onClick={onBack}>Cancel</Button>
-                            <Button disabled={!sig || !by.trim()} onClick={() => onSubmit([...checked], { by: by.trim(), role: role.trim(), date, sig })}><PenLine className="h-4 w-4" /> {isHand ? "Confirm hand-over & sign" : "Confirm receipt & sign"}</Button>
+                            <Button disabled={!sig || !by.trim()} onClick={() => onSubmit([...checked], qty, { by: by.trim(), role: role.trim(), date, sig })}><PenLine className="h-4 w-4" /> {isHand ? "Confirm hand-over & sign" : "Confirm receipt & sign"}</Button>
                         </div>
                     </div>
                 </div>

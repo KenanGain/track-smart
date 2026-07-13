@@ -181,7 +181,7 @@ export function makeAssignedTraining(id: string, status: AssignedTraining["statu
 
 // Per-accessory hand-over state — staff hand the item over, then the driver
 // verifies they received it (the two phases of the Accessories step).
-export type AccessoryCheck = { handedOver?: boolean; handedAt?: number; verified?: boolean; verifiedAt?: number };
+export type AccessoryCheck = { handedOver?: boolean; handedAt?: number; verified?: boolean; verifiedAt?: number; qty?: string };
 
 export type OnbQuizResult = { score: number; total: number; passed: boolean; at: number; answers?: Record<string, number> };
 
