@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { ChevronLeft, Check, X, FileText, FileSignature, FilePlus2, ClipboardList, ListChecks, GraduationCap, KeyRound, Info } from "lucide-react";
+import { ChevronLeft, Check, X, FileText, FileSignature, FilePlus2, ClipboardList, ListChecks, GraduationCap, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { policyDocuments } from "./policy-forms.data";
-import { ONBOARDING_FORMS, ONB_DRIVER_TYPES, TRAINING_TYPES, useAccessoryChecklists, getOnbWorkflow, blankOnbWorkflow, type OnbWorkflow } from "./onboarding.data";
+import { ONBOARDING_FORMS, ONB_DRIVER_TYPES, TRAINING_TYPES, getOnbWorkflow, blankOnbWorkflow, type OnbWorkflow } from "./onboarding.data";
 import { useDocTemplates } from "./document-templates.data";
 import { useOnboardingQuizzes } from "./onboarding-quizzes.data";
 import { useChecklists } from "./checklists.data";
@@ -18,14 +18,12 @@ export function OnbWorkflowBuilder({ workflowId, onBack, onSave }: { workflowId:
     const { templates } = useDocTemplates();
     const { quizzes } = useOnboardingQuizzes();
     const { checklists } = useChecklists();
-    const { checklists: accessoryChecklists } = useAccessoryChecklists();
 
     const policyPool: PoolItem[] = policyDocuments().filter((d) => !HIDDEN.has(d.id)).map((d) => ({ id: d.id, label: `${d.title} ${d.accentTitle}` }));
     const formPool: PoolItem[] = ONBOARDING_FORMS.map((f) => ({ id: f.id, label: f.label }));
     const docPool: PoolItem[] = templates.map((t) => ({ id: t.id, label: t.name }));
     const quizPool: PoolItem[] = quizzes.map((q) => ({ id: q.id, label: q.title }));
     const trainingPool: PoolItem[] = TRAINING_TYPES.filter((t) => t.status === "active").map((t) => ({ id: t.id, label: `${t.name} · ${t.category}` }));
-    const accessoryChecklistPool: PoolItem[] = accessoryChecklists.map((c) => ({ id: c.id, label: `${c.name} · ${c.items.length} item${c.items.length === 1 ? "" : "s"}` }));
     const checklistPool: PoolItem[] = checklists.map((c) => ({ id: c.id, label: c.name }));
 
     const set = (patch: Partial<OnbWorkflow>) => setWf((w) => ({ ...w, ...patch }));
@@ -113,10 +111,7 @@ export function OnbWorkflowBuilder({ workflowId, onBack, onSave }: { workflowId:
                     attached={wf.trainings} pool={trainingPool} addLabel="Add a training course…"
                     onAdd={(id) => set({ trainings: [...wf.trainings, id] })}
                     onRemove={(id) => set({ trainings: wf.trainings.filter((x) => x !== id) })} />
-                <SelectStep n={6} Icon={KeyRound} title="Accessories hand-over" desc="Keys, devices & equipment issued to the driver, then verified by them."
-                    attachLabel="Attach an accessory checklist" selectedLabel="checklist" value={wf.accessoryChecklistId} pool={accessoryChecklistPool}
-                    emptyHint="No accessory checklists yet — create one in the Accessories tab." onChange={(id) => set({ accessoryChecklistId: id })} />
-                <SelectStep n={7} Icon={ListChecks} title="Checklist" desc="Final review checklist to confirm onboarding is complete."
+                <SelectStep n={6} Icon={ListChecks} title="Checklist" desc="Final review checklist to confirm onboarding is complete."
                     attachLabel="Attach a checklist" selectedLabel="checklist" value={wf.checklistId} pool={checklistPool}
                     emptyHint="No checklists yet — create one in the Checklist tab." onChange={(id) => set({ checklistId: id })} />
 
@@ -175,8 +170,8 @@ function WorkflowStep({ n, Icon, title, desc, attached, pool, addLabel, addTitle
     );
 }
 
-// A step that attaches ONE item (a checklist) rather than a list — used for both
-// the accessory checklist and the final review checklist.
+// A step that attaches ONE item (a checklist) rather than a list — used for the
+// final review checklist.
 function SelectStep({ n, Icon, title, desc, attachLabel, selectedLabel, emptyHint, value, pool, onChange }: {
     n: number; Icon: React.ElementType; title: string; desc: string; attachLabel: string; selectedLabel: string; emptyHint: string;
     value: string | null; pool: PoolItem[]; onChange: (id: string | null) => void;

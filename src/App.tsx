@@ -28,6 +28,8 @@ import { InventoryListPage } from '@/pages/inventory/InventoryListPage'
 import { VendorsListPage } from '@/pages/inventory/VendorsListPage'
 import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
 import { AddInventoryItemPage } from '@/pages/inventory/AddInventoryItemPage'
+import { DriverHandoverPage } from '@/pages/inventory/DriverHandoverPage'
+import { DriverInventoryPage } from '@/pages/inventory/DriverInventoryPage'
 import type { AccountRecord } from '@/pages/accounts/accounts.data'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
@@ -363,10 +365,64 @@ function App() {
                 />
             )
         }
+        if (path === "/inventory/handover") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <DriverHandoverPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                />
+            )
+        }
+        if (path.startsWith("/inventory/handover/")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const initialDriverId = path.slice("/inventory/handover/".length)
+            return (
+                <DriverHandoverPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                    initialDriverId={initialDriverId}
+                />
+            )
+        }
+        if (path === "/inventory/driver-inventory") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <DriverInventoryPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                />
+            )
+        }
+        if (path.startsWith("/inventory/driver-inventory/")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const initialDriverId = path.slice("/inventory/driver-inventory/".length)
+            return (
+                <DriverInventoryPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                    initialDriverId={initialDriverId}
+                />
+            )
+        }
         if (path === "/inventory/items/new") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <AddInventoryItemPage onNavigate={handleNavigate} accountId={account?.id} />
+        }
+        if (path.startsWith("/inventory/items/")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const editId = path.slice("/inventory/items/".length)
+            return <AddInventoryItemPage onNavigate={handleNavigate} accountId={account?.id} editId={editId} />
         }
         if (path === "/inventory/vendors") {
             const account = selectedAccount

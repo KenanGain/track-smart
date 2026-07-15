@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
     Plus, Download, Building2, ChevronRight, ChevronDown, Search,
-    Truck, IdCard,
+    Truck, IdCard, Pencil,
     Fuel, Radio, Activity, Map as MapIcon, Camera, Wrench, Layers,
+    KeyRound, ShieldCheck, Package, Cpu, CreditCard,
 } from "lucide-react";
 import {
     INVENTORY_ITEMS,
@@ -51,6 +52,11 @@ const CATEGORY_VISUAL: Record<string, { icon: React.ElementType; bg: string; tex
     "cat-gps-tracking":       { icon: MapIcon,  bg: "bg-emerald-50", text: "text-emerald-700", bar: "bg-emerald-500", avatarBg: "bg-emerald-100", avatarText: "text-emerald-800" },
     "cat-dashcam":            { icon: Camera,   bg: "bg-cyan-50",    text: "text-cyan-700",    bar: "bg-cyan-500",    avatarBg: "bg-cyan-100",    avatarText: "text-cyan-800"    },
     "cat-repair-maintenance": { icon: Wrench,   bg: "bg-slate-100",  text: "text-slate-700",   bar: "bg-slate-500",   avatarBg: "bg-slate-200",   avatarText: "text-slate-800"   },
+    "cat-keys":               { icon: KeyRound,    bg: "bg-amber-50",   text: "text-amber-700",   bar: "bg-amber-500",   avatarBg: "bg-amber-100",   avatarText: "text-amber-800"   },
+    "cat-safety-ppe":         { icon: ShieldCheck, bg: "bg-rose-50",    text: "text-rose-700",    bar: "bg-rose-500",    avatarBg: "bg-rose-100",    avatarText: "text-rose-800"    },
+    "cat-equipment":          { icon: Package,     bg: "bg-teal-50",    text: "text-teal-700",    bar: "bg-teal-500",    avatarBg: "bg-teal-100",    avatarText: "text-teal-800"    },
+    "cat-devices":            { icon: Cpu,         bg: "bg-sky-50",     text: "text-sky-700",     bar: "bg-sky-500",     avatarBg: "bg-sky-100",     avatarText: "text-sky-800"     },
+    "cat-cards-docs":         { icon: CreditCard,  bg: "bg-violet-50",  text: "text-violet-700",  bar: "bg-violet-500",  avatarBg: "bg-violet-100",  avatarText: "text-violet-800"  },
 };
 const DEFAULT_VISUAL = { icon: Layers, bg: "bg-slate-100", text: "text-slate-700", bar: "bg-slate-400", avatarBg: "bg-slate-200", avatarText: "text-slate-800" };
 const visualFor = (categoryId: string) => CATEGORY_VISUAL[categoryId] ?? DEFAULT_VISUAL;
@@ -193,7 +199,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                     </button>
                     <button
                         onClick={() => onNavigate("/inventory/items/new")}
-                        className="h-9 px-3.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm"
+                        className="h-9 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-sm transition-colors"
                     >
                         <Plus size={15} /> Add Inventory
                     </button>
@@ -265,6 +271,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                     setCollapsedCats((prev) => ({ ...prev, [g.category.id]: !prev[g.category.id] }))
                                 }
                                 accountId={accountId}
+                                onNavigate={onNavigate}
                             />
                         );
                     })}
@@ -277,13 +284,14 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
 // ── Per-category block ─────────────────────────────────────────────────────
 
 function CategoryBlock({
-    category, items, collapsed, onToggleCollapse, accountId,
+    category, items, collapsed, onToggleCollapse, accountId, onNavigate,
 }: {
     category: VendorCategory;
     items: InventoryItem[];
     collapsed: boolean;
     onToggleCollapse: () => void;
     accountId?: string;
+    onNavigate: (path: string) => void;
 }) {
     const visual = visualFor(category.id);
     const Icon = visual.icon;
@@ -307,9 +315,12 @@ function CategoryBlock({
             <button
                 type="button"
                 onClick={onToggleCollapse}
-                className="w-full flex items-center gap-3 pl-5 pr-4 py-3.5 border-b border-slate-100 hover:bg-slate-50/60 transition-colors text-left"
+                className={cn(
+                    "w-full flex items-center gap-3 pl-5 pr-4 py-3.5 hover:bg-slate-50/60 transition-colors text-left",
+                    collapsed ? "" : "border-b border-slate-100",
+                )}
             >
-                <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0", visual.bg, visual.text)}>
+                <div className={cn("h-11 w-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ring-1 ring-black/5", visual.bg, visual.text)}>
                     <Icon size={18} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -344,7 +355,7 @@ function CategoryBlock({
             {!collapsed && (
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        <thead className="bg-slate-50/60 border-b border-slate-200">
+                        <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                             <tr>
                                 <TH>Vendor</TH>
                                 <TH>Serial #</TH>
@@ -354,6 +365,7 @@ function CategoryBlock({
                                 <TH>Schedule</TH>
                                 <TH>Assigned To</TH>
                                 <TH>Status</TH>
+                                <TH className="text-right">Actions</TH>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -365,7 +377,7 @@ function CategoryBlock({
                                     .split(/\s+/).filter(Boolean).slice(0, 2)
                                     .map((p) => p[0]!.toUpperCase()).join("");
                                 return (
-                                    <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                                    <tr key={item.id} className="even:bg-slate-50/40 hover:bg-blue-50/40 transition-colors">
                                         {/* Vendor with avatar */}
                                         <TD>
                                             <div className="flex items-center gap-2.5 min-w-0">
@@ -388,8 +400,8 @@ function CategoryBlock({
                                         <TD className="text-slate-600 text-xs">{fmtDate(item.issueDate)}</TD>
                                         <TD className="text-slate-600 text-xs">{fmtDate(item.expiryDate)}</TD>
                                         <TD>
-                                            <div className="text-xs text-slate-600 leading-tight">{item.recurrence}</div>
-                                            <div className="text-[11px] text-slate-400 leading-tight">remind {item.reminder.toLowerCase()}</div>
+                                            <div className="text-xs text-slate-600 leading-tight">{item.recurrence === "None" ? "One-time" : item.recurrence}</div>
+                                            {item.reminder !== "None" && <div className="text-[11px] text-slate-400 leading-tight">remind {item.reminder.toLowerCase()}</div>}
                                         </TD>
                                         <TD>
                                             {target ? (
@@ -419,6 +431,17 @@ function CategoryBlock({
                                                 <span className={cn("mr-1.5 h-1.5 w-1.5 rounded-full", STATUS_DOT[item.status])} />
                                                 {item.status}
                                             </span>
+                                        </TD>
+                                        <TD className="text-right">
+                                            <button
+                                                type="button"
+                                                onClick={() => onNavigate(`/inventory/items/${item.id}`)}
+                                                title="Edit"
+                                                aria-label="Edit"
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"
+                                            >
+                                                <Pencil size={14} />
+                                            </button>
                                         </TD>
                                     </tr>
                                 );

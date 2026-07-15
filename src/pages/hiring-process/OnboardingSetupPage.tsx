@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, FileText, FileSignature, FileCheck2, ClipboardList, ListChecks, GraduationCap, KeyRound, Workflow as WorkflowIcon, Lock, Eye, Plus, FlaskConical, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, FileText, FileSignature, FileCheck2, ClipboardList, ListChecks, GraduationCap, Workflow as WorkflowIcon, Lock, Eye, Plus, FlaskConical, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SubTabs } from "@/components/ui/SubTabs";
 import { cn } from "@/lib/utils";
 import { policyDocuments, THEME_HEX } from "./policy-forms.data";
-import { ONBOARDING_FORMS, TRAINING_TYPES, TRAINING_CATEGORIES, useOnbWorkflows, useAccessoryChecklists, type OnbWorkflow, type AccessoryChecklist } from "./onboarding.data";
+import { ONBOARDING_FORMS, TRAINING_TYPES, TRAINING_CATEGORIES, useOnbWorkflows, type OnbWorkflow } from "./onboarding.data";
 import { OnbWorkflowBuilder } from "./OnbWorkflowBuilder";
 import { OnbWorkflowTester } from "./OnbWorkflowTester";
-import { AccessoryChecklistBuilder } from "./AccessoryChecklistBuilder";
-import { AccessoryChecklistPreview } from "./AccessoryChecklistPreview";
 import { useOnboardingQuizzes, ONB_QUIZ_CATEGORIES } from "./onboarding-quizzes.data";
 import type { Quiz } from "./quizzes.data";
 import { QuizRunner } from "./QuizRunner";
@@ -26,7 +24,7 @@ import { DocumentTemplateBuilder } from "./DocumentTemplateBuilder";
  * quizzes (see onboarding-quizzes.data.ts).
  */
 
-type Tab = "workflow" | "policy" | "onboarding" | "documents" | "quizzes" | "training" | "accessories" | "checklists";
+type Tab = "workflow" | "policy" | "onboarding" | "documents" | "quizzes" | "training" | "checklists";
 
 const ACTIVE_TRAININGS = TRAINING_TYPES.filter((t) => t.status === "active");
 
@@ -42,14 +40,10 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
     const [newQuiz, setNewQuiz] = useState(false);
     const [editWorkflow, setEditWorkflow] = useState<string | null>(null);
     const [testWorkflow, setTestWorkflow] = useState<string | null>(null);
-    const [editAccessoryChecklist, setEditAccessoryChecklist] = useState<string | null>(null);
-    const [previewAccessoryChecklist, setPreviewAccessoryChecklist] = useState<string | null>(null);
-    const [accessoryPreviewMode, setAccessoryPreviewMode] = useState<"pdf" | "form">("pdf");
     const { quizzes, remove: removeQuiz, save: saveQuiz } = useOnboardingQuizzes();
     const { checklists, remove: removeChecklist } = useChecklists();
     const { templates: docTemplates, save: saveDoc, remove: removeDoc } = useDocTemplates();
     const { workflows, save: saveWorkflow, remove: removeWorkflow } = useOnbWorkflows();
-    const { checklists: accessoryChecklists, save: saveAccessoryChecklist, remove: removeAccessoryChecklist } = useAccessoryChecklists();
 
     const docs = policyDocuments().filter((d) => !HIDDEN_ONBOARDING.has(d.id));
     const openDoc = (id: string, pdf?: boolean) => onNavigate(`/settings/hiring-process/policy/${id}${pdf ? "?pdf=1" : ""}`);
@@ -61,11 +55,6 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
     if (editChecklist !== null) return <ChecklistBuilder checklistId={editChecklist} onBack={() => setEditChecklist(null)} />;
     if (editDoc !== null) return <DocumentTemplateBuilder templateId={editDoc} startPreview={docPreview} carrierId={carrierId} onSave={saveDoc} onBack={() => { setEditDoc(null); setDocPreview(false); }} />;
     if (editWorkflow !== null) return <OnbWorkflowBuilder workflowId={editWorkflow} onSave={saveWorkflow} onBack={() => setEditWorkflow(null)} />;
-    if (editAccessoryChecklist !== null) return <AccessoryChecklistBuilder checklistId={editAccessoryChecklist} onSave={saveAccessoryChecklist} onBack={() => setEditAccessoryChecklist(null)} />;
-    if (previewAccessoryChecklist !== null) {
-        const c = accessoryChecklists.find((x) => x.id === previewAccessoryChecklist);
-        if (c) return <AccessoryChecklistPreview checklist={c} mode={accessoryPreviewMode} onBack={() => setPreviewAccessoryChecklist(null)} />;
-    }
     if (testWorkflow !== null) {
         const w = workflows.find((x) => x.id === testWorkflow);
         if (w) return <OnbWorkflowTester workflow={w} onBack={() => setTestWorkflow(null)} />;
@@ -78,7 +67,6 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
         { id: "documents", label: "Documents & sign", icon: FileCheck2, count: docTemplates.length },
         { id: "quizzes", label: "Quizzes", icon: ClipboardList, count: quizzes.length },
         { id: "training", label: "Training", icon: GraduationCap, count: ACTIVE_TRAININGS.length },
-        { id: "accessories", label: "Accessories", icon: KeyRound, count: accessoryChecklists.length },
         { id: "checklists", label: "Checklist", icon: ListChecks, count: checklists.length },
     ];
 
@@ -103,8 +91,6 @@ export function OnboardingSetupPage({ onNavigate, carrierId }: { onNavigate: (pa
                 {tab === "documents" && <DocumentsTab templates={docTemplates} onNew={() => setEditDoc("new")} onEdit={(id) => setEditDoc(id)} onPreview={(id) => { setDocPreview(true); setEditDoc(id); }} onRemove={removeDoc} />}
                 {tab === "quizzes" && <QuizzesTab quizzes={quizzes} onPreview={setPreviewQuiz} onRemove={removeQuiz} onNew={() => setNewQuiz(true)} />}
                 {tab === "training" && <TrainingTab />}
-                {tab === "accessories" && <AccessoriesTab checklists={accessoryChecklists} onEdit={setEditAccessoryChecklist} onRemove={removeAccessoryChecklist}
-                    onPreview={(id, mode) => { setAccessoryPreviewMode(mode); setPreviewAccessoryChecklist(id); }} />}
                 {tab === "checklists" && <ChecklistsTab checklists={checklists} onEdit={setEditChecklist} onRemove={removeChecklist} />}
             </div>
 
@@ -128,7 +114,7 @@ function WorkflowTab({ workflows, onNew, onEdit, onRemove, onTest }: { workflows
             ) : (
                 <div className="divide-y divide-slate-100">
                     {workflows.map((w) => {
-                        const steps: [string, number][] = [["Policy forms", w.policyForms?.length ?? 0], ["Onboarding forms", w.forms.length], ["Documents", w.documents.length], ["Quizzes", w.quizzes.length], ["Training", w.trainings?.length ?? 0], ["Accessories", w.accessoryChecklistId ? 1 : 0], ["Checklist", w.checklistId ? 1 : 0]];
+                        const steps: [string, number][] = [["Policy forms", w.policyForms?.length ?? 0], ["Onboarding forms", w.forms.length], ["Documents", w.documents.length], ["Quizzes", w.quizzes.length], ["Training", w.trainings?.length ?? 0], ["Checklist", w.checklistId ? 1 : 0]];
                         const totalItems = steps.reduce((n, [, c]) => n + c, 0);
                         return (
                             <div key={w.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
@@ -465,43 +451,6 @@ function TrainingTab() {
                         </div>
                     );
                 })}
-            </div>
-        </ListCard>
-    );
-}
-
-// ── Accessories ──────────────────────────────────────────────────────────────
-// Named accessory checklists (keys, devices, cards, PPE…). Create as many as you
-// need and attach one per onboarding workflow's Accessories step; the driver then
-// verifies what they received.
-function AccessoriesTab({ checklists, onEdit, onPreview, onRemove }: { checklists: AccessoryChecklist[]; onEdit: (id: string) => void; onPreview: (id: string, mode: "pdf" | "form") => void; onRemove: (id: string) => void }) {
-    return (
-        <ListCard title="Accessory checklists" count={checklists.length} searchPlaceholder="Search accessory checklists…"
-            action={<Button size="sm" onClick={() => onEdit("new")}><Plus className="h-4 w-4" /> New Checklist</Button>}>
-            <div className="divide-y divide-slate-100">
-                {checklists.length === 0 && <p className="px-5 py-10 text-center text-sm text-slate-400">No accessory checklists yet — create one to attach to a workflow.</p>}
-                {checklists.map((c) => (
-                    <div key={c.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center">
-                        <div className="flex min-w-0 flex-1 items-center gap-4">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><KeyRound className="h-5 w-5" /></div>
-                            <div className="min-w-0">
-                                <p className="flex flex-wrap items-center gap-1.5 font-semibold text-slate-900">
-                                    {c.name}
-                                    {c.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"><Lock className="h-2.5 w-2.5" /> Default</span>}
-                                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">{c.items.length} item{c.items.length === 1 ? "" : "s"}</span>
-                                </p>
-                                {c.description && <p className="truncate text-sm text-slate-500">{c.description}</p>}
-                            </div>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => onPreview(c.id, "form")}><FlaskConical className="h-4 w-4" /> Test</Button>
-                            <Button variant="outline" size="sm" onClick={() => onPreview(c.id, "pdf")}><Eye className="h-4 w-4" /> PDF view</Button>
-                            <Button variant="outline" size="sm" onClick={() => onPreview(c.id, "form")}>Open form <ArrowRight className="h-4 w-4" /></Button>
-                            <Button variant="outline" size="sm" onClick={() => onEdit(c.id)}>Edit</Button>
-                            <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete accessory checklist “${c.name}”?`)) onRemove(c.id); }} className="text-rose-500 hover:text-rose-600">Delete</Button>
-                        </div>
-                    </div>
-                ))}
             </div>
         </ListCard>
     );

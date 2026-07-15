@@ -128,7 +128,9 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
     const quizPicks = quizStepDef?.quizzes ?? [];
     const checklist = getChecklist(tpl?.checklistId);
     // Hiring review shows only Stage 1 (the hiring decision); later stages are completed in Onboarding.
-    const reviewChecklist = checklist ? { ...checklist, stages: checklist.stages.slice(0, 1) } : undefined;
+    // Only the hiring stage is shown, without its in-stage supervisor signature or
+    // the Driver CC# footer — the approval is captured by the Reviewer Sign-Off below.
+    const reviewChecklist = checklist ? { ...checklist, stages: checklist.stages.slice(0, 1).map((s) => ({ ...s, signature: false })), footerFields: [] } : undefined;
     const clState = a.checklistState ?? {};
     // The step's required items (forms + license uploads). Empty for review / employment steps (handled specially).
     // A license form holds a LIST of licenses → expand into one row per license.
@@ -505,8 +507,8 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                     </div>
                 </div>
 
-                {/* Clickable stepper */}
-                <div className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
+                {/* Clickable stepper — sticks to the top while scrolling */}
+                <div className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm">
                     <div className="overflow-x-auto pb-1">
                         <div className="flex min-w-max items-start">
                             {steps.map((s, i) => {
@@ -569,6 +571,15 @@ export function HiringFileDashboard({ applicantId, onBack }: { applicantId: stri
                                             );
                                         })()}
                                         <DecisionPanel a={a} steps={steps} doneDocs={doneDocs} totalDocs={totalDocs} doneSteps={doneSteps} setStatus={setStatus} onPacket={() => setShowPacket(true)} />
+                                        <ReviewSignOff
+                                            label="I have reviewed and approve this hiring file."
+                                            signedNote="Hiring file reviewed & signed off"
+                                            existing={a.reviews?.["hiring-review"]}
+                                            onConfirm={(r) => updateOne(a.id, (prev) => ({
+                                                reviews: { ...(prev.reviews ?? {}), "hiring-review": { ...r, at: Date.now() } },
+                                                events: [{ id: `ev-${Date.now()}`, type: "review", text: `Reviewed & signed off the hiring file — ${r.by}`, at: Date.now(), author: ACTOR }, ...prev.events],
+                                            }))}
+                                        />
                                     </div>
                                 ) : isEmpStep ? (
                                     <EmploymentModule a={a} fid={empFid!} employment={pf.employment} unemployment={pf.unemployment} updateOne={updateOne} onPdf={() => setPdfReview(sel)} onReviewEmployer={(c) => setEmpReview(c.id)} reviews={a.reviews} />

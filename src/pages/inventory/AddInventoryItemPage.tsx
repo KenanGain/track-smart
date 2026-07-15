@@ -5,6 +5,7 @@ import {
     VENDOR_CATEGORIES,
     getCategoryLabel,
     CARRIER_NAME,
+    INVENTORY_ITEMS,
     type Recurrence,
     type Reminder,
     type InventoryStatus,
@@ -18,6 +19,8 @@ type Props = {
     onNavigate: (path: string) => void;
     /** Carrier scope — drives the vendor dropdown + assignment picker. */
     accountId?: string;
+    /** When set, the page opens in edit mode, prefilled from this inventory item. */
+    editId?: string;
 };
 
 export type InventoryFormPayload = {
@@ -42,7 +45,7 @@ const KIND_OPTIONS: { value: AssignmentKind; label: string; helper: string }[] =
     { value: "driver",  label: "Driver",  helper: "Assign directly to a driver" },
 ];
 
-export function AddInventoryItemPage({ onNavigate, accountId }: Props) {
+export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
     // Vendor dropdown is scoped to the active carrier. Each Vendor row in
     // VENDORS carries an accountId, so we filter directly. Falls back to
     // the global list when no carrier is active.
@@ -52,19 +55,22 @@ export function AddInventoryItemPage({ onNavigate, accountId }: Props) {
         return carrierVendors.length > 0 ? carrierVendors : VENDORS;
     }, [accountId]);
 
+    // In edit mode, prefill every field from the existing inventory item.
+    const editing = useMemo(() => (editId ? INVENTORY_ITEMS.find((i) => i.id === editId) : undefined), [editId]);
+
     // §1 Inventory Details
-    const [vendorId, setVendorId] = useState(vendors[0]?.id ?? "");
-    const [serial, setSerial] = useState("");
-    const [pin, setPin] = useState("");
-    const [issueDate, setIssueDate] = useState("");
-    const [expiryDate, setExpiryDate] = useState("");
-    const [recurrence, setRecurrence] = useState<Recurrence>("Yearly");
-    const [reminder, setReminder] = useState<Reminder>("1 month");
-    const [status, setStatus] = useState<InventoryStatus>("Active");
+    const [vendorId, setVendorId] = useState(editing?.vendorId ?? vendors[0]?.id ?? "");
+    const [serial, setSerial] = useState(editing?.serial ?? "");
+    const [pin, setPin] = useState(editing?.pin ?? "");
+    const [issueDate, setIssueDate] = useState(editing?.issueDate ?? "");
+    const [expiryDate, setExpiryDate] = useState(editing?.expiryDate ?? "");
+    const [recurrence, setRecurrence] = useState<Recurrence>(editing?.recurrence ?? "Yearly");
+    const [reminder, setReminder] = useState<Reminder>(editing?.reminder ?? "1 month");
+    const [status, setStatus] = useState<InventoryStatus>(editing?.status ?? "Active");
 
     // §2 Assignment (one-to-one)
-    const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>("cmv");
-    const [targetId, setTargetId] = useState<string>("");
+    const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>(editing?.assignedTo?.kind ?? "cmv");
+    const [targetId, setTargetId] = useState<string>(editing?.assignedTo?.targetId ?? "");
 
     const selectedVendor = useMemo(() => vendors.find((v) => v.id === vendorId), [vendorId, vendors]);
 
@@ -100,9 +106,9 @@ export function AddInventoryItemPage({ onNavigate, accountId }: Props) {
                         <span>/</span>
                         <span>Inventory</span>
                         <span>/</span>
-                        <span>Add Inventory</span>
+                        <span>{editing ? "Edit Inventory" : "Add Inventory"}</span>
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900">Add Inventory</h1>
+                    <h1 className="text-2xl font-bold text-slate-900">{editing ? "Edit Inventory" : "Add Inventory"}</h1>
                 </div>
                 <div className="flex gap-3">
                     <button
@@ -116,7 +122,7 @@ export function AddInventoryItemPage({ onNavigate, accountId }: Props) {
                         disabled={!isValid}
                         className={`px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm flex items-center gap-2 ${isValid ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-300 cursor-not-allowed'}`}
                     >
-                        <Check size={16} /> Save Inventory
+                        <Check size={16} /> {editing ? "Update Inventory" : "Save Inventory"}
                     </button>
                 </div>
             </div>

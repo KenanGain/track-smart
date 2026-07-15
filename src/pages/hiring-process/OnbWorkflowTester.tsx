@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Check, PartyPopper, CheckCircle2, FileText, FileSignature, ClipboardList, ListChecks, GraduationCap, KeyRound, PenLine } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, PartyPopper, CheckCircle2, FileText, FileSignature, ClipboardList, ListChecks, GraduationCap, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PolicyForm } from "./PolicyForm";
 import { policyDocuments } from "./policy-forms.data";
-import { getOnboardingFormDef, getTrainingType, getAccessoryChecklist, type OnbWorkflow } from "./onboarding.data";
+import { getOnboardingFormDef, getTrainingType, type OnbWorkflow } from "./onboarding.data";
 import { getDocTemplate } from "./document-templates.data";
 import { getOnboardingQuiz } from "./onboarding-quizzes.data";
 import { useChecklists } from "./checklists.data";
 
 const noop = () => {};
-type StepKind = "policy" | "forms" | "documents" | "quizzes" | "training" | "accessories" | "checklist";
+type StepKind = "policy" | "forms" | "documents" | "quizzes" | "training" | "checklist";
 type WizStep = { key: string; title: string; kind: StepKind; ids: string[]; Icon: React.ElementType };
 
 const resolveFormDef = (id: string) => getOnboardingFormDef(id) ?? policyDocuments().find((p) => p.id === id);
@@ -22,8 +22,6 @@ const resolveFormDef = (id: string) => getOnboardingFormDef(id) ?? policyDocumen
  */
 export function OnbWorkflowTester({ workflow, onBack }: { workflow: OnbWorkflow; onBack: () => void }) {
     const { checklists } = useChecklists();
-    const accItems = getAccessoryChecklist(workflow.accessoryChecklistId)?.items ?? [];
-    const accById = new Map(accItems.map((i) => [i.id, i]));
     const steps = useMemo<WizStep[]>(() => {
         const s: WizStep[] = [];
         if (workflow.policyForms?.length) s.push({ key: "policy", title: "Policy forms", kind: "policy", ids: workflow.policyForms, Icon: FileSignature });
@@ -31,7 +29,6 @@ export function OnbWorkflowTester({ workflow, onBack }: { workflow: OnbWorkflow;
         if (workflow.documents.length) s.push({ key: "documents", title: "Documents & sign", kind: "documents", ids: workflow.documents, Icon: PenLine });
         if (workflow.quizzes.length) s.push({ key: "quizzes", title: "Post-orientation quiz", kind: "quizzes", ids: workflow.quizzes, Icon: ClipboardList });
         if (workflow.trainings?.length) s.push({ key: "training", title: "Training", kind: "training", ids: workflow.trainings, Icon: GraduationCap });
-        if (accItems.length) s.push({ key: "accessories", title: "Accessories hand-over", kind: "accessories", ids: accItems.map((i) => i.id), Icon: KeyRound });
         if (workflow.checklistId) s.push({ key: "checklist", title: "Final checklist", kind: "checklist", ids: [workflow.checklistId], Icon: ListChecks });
         return s;
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,20 +160,6 @@ export function OnbWorkflowTester({ workflow, onBack }: { workflow: OnbWorkflow;
                                     <p className="truncate text-sm text-slate-500">{t ? `${t.category} · due in ${t.defaultDueDays} days` : "Training not found"}</p>
                                 </div>
                                 {t?.defaultMandatory && <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600">Mandatory</span>}
-                            </div>
-                        );
-                    })}
-
-                    {step.kind === "accessories" && step.ids.map((id) => {
-                        const a = accById.get(id);
-                        return (
-                            <div key={id} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><KeyRound className="h-5 w-5" /></span>
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate font-semibold text-slate-900">{a?.name ?? id}</p>
-                                    <p className="truncate text-sm text-slate-500">{a ? `${a.category ?? "Accessory"}${a.note ? ` · ${a.note}` : ""}` : "Accessory not found"}</p>
-                                </div>
-                                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">verify receipt</span>
                             </div>
                         );
                     })}

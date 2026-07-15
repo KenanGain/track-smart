@@ -38,6 +38,8 @@ const PATH_TITLES: Record<string, string> = {
     "/inventory/vendors": "Vendors",
     "/inventory/vendors/new": "Add Vendor",
     "/inventory/items/new": "Add Inventory",
+    "/inventory/handover": "Hand Over",
+    "/inventory/driver-inventory": "Driver Inventory",
     "/compliance": "Compliance & Documents",
     "/maintenance": "Maintenance",
     "/paystubs": "Paystubs",
@@ -58,6 +60,8 @@ const PATH_TITLES: Record<string, string> = {
 
 function getPageTitle(path: string): string {
     if (PATH_TITLES[path]) return PATH_TITLES[path];
+    if (path.startsWith("/inventory/driver-inventory/")) return "Driver Inventory";
+    if (path.startsWith("/inventory/handover/")) return "Hand Over";
     if (path.startsWith("/settings/")) return "Settings";
     if (path.startsWith("/admin/")) return "Admin";
     return "TrackSmart";

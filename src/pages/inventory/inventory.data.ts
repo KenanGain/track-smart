@@ -128,6 +128,12 @@ export const VENDOR_CATEGORIES: VendorCategory[] = [
     { id: "cat-gps-tracking",       name: "GPS Tracking",           description: "GPS / telematics providers." },
     { id: "cat-dashcam",            name: "Dashcam",                description: "In-cab camera providers." },
     { id: "cat-repair-maintenance", name: "Repair and Maintenance", description: "Repair shops and service vendors." },
+    // Company-issued physical accessories (keys, PPE, equipment, devices, docs).
+    { id: "cat-keys",               name: "Keys & Access",          description: "Keys, fobs and yard / gate access cards issued for the truck." },
+    { id: "cat-safety-ppe",         name: "Safety & PPE",           description: "Personal protective equipment issued to the driver." },
+    { id: "cat-equipment",          name: "Equipment & Supplies",   description: "Load securement, uniforms and seasonal gear." },
+    { id: "cat-devices",            name: "Devices & Electronics",  description: "In-cab devices, sensors and company phone." },
+    { id: "cat-cards-docs",         name: "Cards & Documents",      description: "Insurance, registration and permit documents." },
 ];
 
 // Vendors are scoped per carrier (accountId). Super-admins see only the
@@ -330,6 +336,11 @@ const SERIAL_PREFIX_BY_CATEGORY: Record<string, string> = {
     "cat-gps-tracking": "GPS",
     "cat-dashcam": "CAM",
     "cat-repair-maintenance": "RMO",
+    "cat-keys": "KEY",
+    "cat-safety-ppe": "PPE",
+    "cat-equipment": "EQP",
+    "cat-devices": "DEV",
+    "cat-cards-docs": "DOC",
 };
 
 const CATEGORY_RECURRENCE: Record<string, Recurrence> = {
@@ -339,6 +350,12 @@ const CATEGORY_RECURRENCE: Record<string, Recurrence> = {
     "cat-eld-provider": "Monthly",
     "cat-gps-tracking": "Monthly",
     "cat-dashcam": "Yearly",
+    // Physical keys / PPE / equipment have no renewal; cards & devices renew yearly.
+    "cat-keys": "None",
+    "cat-safety-ppe": "None",
+    "cat-equipment": "None",
+    "cat-devices": "Yearly",
+    "cat-cards-docs": "Yearly",
 };
 
 function inventoryHash(s: string): number {
@@ -428,6 +445,71 @@ export const CARRIER_INVENTORY_ITEMS: Record<string, InventoryItem[]> = {};
 for (const vendor of VENDORS) {
     const list = CARRIER_INVENTORY_ITEMS[vendor.accountId] ??= [];
     list.push(buildInventoryItem(vendor, list.length));
+}
+
+// ── Company-issued accessories (keys, PPE, equipment, devices, documents) ─────
+// Physical items handed to the driver / assigned to a truck. Unlike vendor
+// inventory these have no external supplier, so a synthetic "Company Issued"
+// vendor carries the item name for the list's Vendor column. Each carrier gets
+// its own copies assigned to that carrier's trucks (CMV) or active drivers.
+// Every accessory is assigned to the VEHICLE (CMV) it belongs to. The driver
+// hand-over that issues these to a person is handled separately (onboarding) and
+// wired in at a later stage.
+type AccessorySeed = { catId: string; name: string };
+const COMPANY_ACCESSORIES: AccessorySeed[] = [
+    // Keys & Access
+    { catId: "cat-keys", name: "Truck Keys" },
+    { catId: "cat-keys", name: "Trailer / Padlock Keys" },
+    { catId: "cat-keys", name: "Fuel Cap Key" },
+    { catId: "cat-keys", name: "Key Fob / Remote" },
+    { catId: "cat-keys", name: "Yard / Gate Access Card" },
+    // Safety & PPE
+    { catId: "cat-safety-ppe", name: "Hi-Vis Safety Vest" },
+    { catId: "cat-safety-ppe", name: "Safety Gloves" },
+    { catId: "cat-safety-ppe", name: "Safety Boots" },
+    { catId: "cat-safety-ppe", name: "First-Aid Kit" },
+    // Equipment & Supplies
+    { catId: "cat-equipment", name: "Company Uniform" },
+    { catId: "cat-equipment", name: "Load Bars" },
+    { catId: "cat-equipment", name: "Load Straps / Chains" },
+    { catId: "cat-equipment", name: "Winter Emergency Kit" },
+    // Devices & Electronics
+    { catId: "cat-devices", name: "Reefer Temperature Sensor" },
+    { catId: "cat-devices", name: "Tire Pressure Sensor (TPMS)" },
+    { catId: "cat-devices", name: "Company Phone" },
+    // Cards & Documents
+    { catId: "cat-cards-docs", name: "Insurance Card" },
+    { catId: "cat-cards-docs", name: "Vehicle Registration & Permits" },
+    { catId: "cat-cards-docs", name: "IFTA / IRP Documents" },
+];
+
+for (const accountId of Object.keys(CARRIER_ASSETS)) {
+    const assets = CARRIER_ASSETS[accountId] ?? [];
+    const trucks = assets.filter((a) => a.assetCategory === "CMV" && a.assetType === "Truck");
+    if (trucks.length === 0) continue;
+    const list = CARRIER_INVENTORY_ITEMS[accountId] ??= [];
+    COMPANY_ACCESSORIES.forEach((def, i) => {
+        const vendorId = `v-acc-${accountId}-${i}`;
+        VENDORS.push({ id: vendorId, name: def.name, companyName: "Company Issued", categoryId: def.catId, accountId, status: "Active" });
+        const seed = inventoryHash(`${accountId}:acc:${def.name}`);
+        const issueDate = dateString(2024 + (seed % 2), 1 + ((seed >> 4) % 12), 1 + ((seed >> 9) % 27));
+        const rec = CATEGORY_RECURRENCE[def.catId] ?? "None";
+        const hasExpiry = rec !== "None";
+        const truck = trucks[i % trucks.length];
+        const prefix = SERIAL_PREFIX_BY_CATEGORY[def.catId] ?? "ACC";
+        list.push({
+            id: `inv-acc-${accountId.replace("acct-", "")}-${String(i + 1).padStart(3, "0")}`,
+            vendorId,
+            serial: `${prefix}-${String(seed % 999999).padStart(6, "0")}`,
+            pin: def.catId === "cat-keys" || def.catId === "cat-cards-docs" ? String(1000 + (seed % 9000)) : "",
+            issueDate,
+            expiryDate: hasExpiry ? addYears(issueDate, 1 + (seed % 2)) : "",
+            recurrence: rec,
+            reminder: hasExpiry ? "1 month" : "None",
+            status: "Active",
+            assignedTo: { kind: "cmv", targetId: truck.id },
+        });
+    });
 }
 
 export const INVENTORY_ITEMS: InventoryItem[] = Object.values(CARRIER_INVENTORY_ITEMS).flat();

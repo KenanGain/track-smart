@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { FileText, FileSignature, BookOpenCheck, PenLine, ListChecks, GraduationCap, KeyRound } from "lucide-react";
+import { FileText, FileSignature, BookOpenCheck, PenLine, ListChecks, GraduationCap } from "lucide-react";
 import { TRAINING_TYPES, TRAINING_CATEGORIES } from "@/data/training.data";
-import { ACCESSORY_TYPES, ACCESSORY_CATEGORIES, getAccessoryType, getAccessoryChecklist } from "@/data/accessories.data";
 import { policyDocuments, type PolicyFormDef, type PolicyField } from "./policy-forms.data";
 import type { StepStatus } from "./applicants.data";
 
@@ -16,7 +15,7 @@ import type { StepStatus } from "./applicants.data";
 // Onboarding steps are DERIVED FROM THE ASSIGNED WORKFLOW (Onboarding Setup):
 // Policy forms · Onboarding forms · Documents & sign · Quiz · Checklist. Only the
 // sections the workflow actually populates become steps.
-export type OnbStepKind = "policy" | "forms" | "documents" | "quiz" | "training" | "accessories" | "checklist";
+export type OnbStepKind = "policy" | "forms" | "documents" | "quiz" | "training" | "checklist";
 export type OnbStepStatus = "pending" | "in-progress" | "complete";
 
 export const ONB_STEP_META: Record<OnbStepKind, { title: string; short: string; desc: string; Icon: React.ElementType }> = {
@@ -25,7 +24,6 @@ export const ONB_STEP_META: Record<OnbStepKind, { title: string; short: string; 
     documents: { title: "Documents & sign", short: "Documents", desc: "PDF documents the driver e-signs.", Icon: PenLine },
     quiz: { title: "Post-orientation quiz", short: "Quiz", desc: "Knowledge checks the driver must pass.", Icon: BookOpenCheck },
     training: { title: "Training", short: "Training", desc: "Safety & compliance training courses the driver must complete.", Icon: GraduationCap },
-    accessories: { title: "Accessories hand-over", short: "Accessories", desc: "Hand over keys, devices & equipment, then the driver verifies what they received.", Icon: KeyRound },
     checklist: { title: "Final checklist", short: "Checklist", desc: "Reviewer confirms onboarding is complete.", Icon: ListChecks },
 };
 
@@ -149,9 +147,6 @@ export function onbPolicyItems(): { id: string; label: string; desc: string; def
 }
 
 export { TRAINING_TYPES, TRAINING_CATEGORIES };
-export { ACCESSORY_TYPES, ACCESSORY_CATEGORIES, getAccessoryType, getAccessoryChecklist };
-export { useAccessoryChecklists, blankAccessoryChecklist } from "@/data/accessories.data";
-export type { AccessoryChecklist, AccessoryChecklistItem } from "@/data/accessories.data";
 
 // A training course assigned to the driver from the catalog.
 export type AssignedTraining = {
@@ -178,10 +173,6 @@ export function makeAssignedTraining(id: string, status: AssignedTraining["statu
     if (!t) return undefined;
     return { id: t.id, name: t.name, category: t.category, mandatory: t.defaultMandatory, dueDays: t.defaultDueDays, assignedAt: at, status, completedAt: status === "completed" ? at : undefined };
 }
-
-// Per-accessory hand-over state — staff hand the item over, then the driver
-// verifies they received it (the two phases of the Accessories step).
-export type AccessoryCheck = { handedOver?: boolean; handedAt?: number; verified?: boolean; verifiedAt?: number; qty?: string };
 
 export type OnbQuizResult = { score: number; total: number; passed: boolean; at: number; answers?: Record<string, number> };
 
@@ -225,8 +216,6 @@ export type OnboardingState = {
     quizResults?: Record<string, OnbQuizResult>;
     quizAttempts?: Record<string, number>;    // chances used per quiz
     trainings?: AssignedTraining[];
-    accessories?: Record<string, AccessoryCheck>;  // hand-over state keyed by accessory id
-    accessoriesSentAt?: number;               // when the checklist was sent to the driver to verify
     reviews?: Record<string, OnbReview>;      // reviewer sign-off keyed by step id
     stepStatus?: Record<string, StepStatus>;  // manual per-step review lifecycle (keyed by OnbStepKind)
     requests?: OnbRequest[];                  // open/resolved order-request records
@@ -252,7 +241,6 @@ export function onbWorkflowSteps(wf?: OnbWorkflow): OnbStepKind[] {
     if (wf.documents.length) s.push("documents");
     if (wf.quizzes.length) s.push("quiz");
     if (wf.trainings?.length) s.push("training");
-    if (wf.accessoryChecklistId) s.push("accessories");
     if (wf.checklistId) s.push("checklist");
     return s.length ? s : ["forms"];
 }
@@ -287,15 +275,6 @@ export function onbStepStatus(kind: OnbStepKind, wf: OnbWorkflow | undefined, o:
             const started = ids.filter((i) => byId.has(i)).length;
             return done >= ids.length ? "complete" : started > 0 ? "in-progress" : "pending";
         }
-        case "accessories": {
-            const ids = (getAccessoryChecklist(wf?.accessoryChecklistId)?.items ?? []).map((i) => i.id);
-            if (!ids.length) return "complete";
-            const st = onb.accessories ?? {};
-            const verified = ids.filter((i) => st[i]?.verified).length;
-            if (verified >= ids.length) return "complete";
-            const handed = ids.filter((i) => st[i]?.handedOver).length;
-            return handed > 0 || onb.accessoriesSentAt ? "in-progress" : "pending";
-        }
         case "checklist": return onb.reviews?.checklist ? "complete" : "pending";
     }
 }
@@ -324,7 +303,6 @@ export type OnbWorkflow = {
     documents: string[];         // document template ids (Documents & sign tab)
     quizzes: string[];           // onboarding quiz ids
     trainings: string[];             // training course ids (TRAINING_TYPES)
-    accessoryChecklistId: string | null;  // one accessory hand-over checklist
     checklistId: string | null;      // one review checklist
 };
 
@@ -349,7 +327,6 @@ function seededWorkflows(): OnbWorkflow[] {
             documents: ["tpl-driver-agreement", "tpl-driver-acknowledgements"],
             quizzes: ["onb-post-orientation"],
             trainings: ["workplace_harassment", "reporting_procedures", "defensive_driving"],
-            accessoryChecklistId: "acl-standard",
             checklistId: "cl-us",
         },
         {
@@ -362,7 +339,6 @@ function seededWorkflows(): OnbWorkflow[] {
             documents: ["tpl-driver-agreement", "tpl-cell-phone-policy", "tpl-dashcam-policy", "tpl-eld-hos-dvir-ack", "tpl-driver-acknowledgements"],
             quizzes: ["onb-post-orientation"],
             trainings: ["pre_trip_inspection", "hours_of_service", "load_securement", "collision_reporting", "defensive_driving", "distracted_driving", "winter_driving"],
-            accessoryChecklistId: "acl-otr",
             checklistId: "cl-us",
         },
         {
@@ -375,7 +351,6 @@ function seededWorkflows(): OnbWorkflow[] {
             documents: ["tpl-driver-agreement", "tpl-cell-phone-policy", "tpl-weights-dimensions", "tpl-load-securement-dvir", "tpl-driver-acknowledgements"],
             quizzes: ["onb-post-orientation"],
             trainings: ["pre_trip_inspection", "load_securement", "defensive_driving", "winter_driving"],
-            accessoryChecklistId: "acl-otr",
             checklistId: "cl-canada",
         },
         {
@@ -388,7 +363,6 @@ function seededWorkflows(): OnbWorkflow[] {
             documents: ["tpl-contractor-agreement", "tpl-driver-agreement", "tpl-dashcam-policy", "tpl-cert-compliance-logbook", "tpl-security-awareness"],
             quizzes: ["onb-post-orientation"],
             trainings: ["defensive_driving", "distracted_driving", "ctpat_pre_trip_inspection", "collision_reporting"],
-            accessoryChecklistId: "acl-cross",
             checklistId: "cl-cross",
         },
     ];
@@ -397,7 +371,7 @@ function seededWorkflows(): OnbWorkflow[] {
 // Migrate older workflows that kept policy + onboarding form ids together in
 // `forms` — split them into `policyForms` (policy statements) + `forms`.
 function normalizeWf(w: OnbWorkflow): OnbWorkflow {
-    const withT = { ...w, trainings: w.trainings ?? [], accessoryChecklistId: w.accessoryChecklistId ?? null };
+    const withT = { ...w, trainings: w.trainings ?? [] };
     if (Array.isArray(w.policyForms)) return withT;
     const policyIds = new Set(policyDocuments().map((d) => d.id));
     const all = w.forms ?? [];
@@ -458,7 +432,7 @@ export function resolveOnbWorkflow(o: OnboardingState | undefined, formId: strin
         ?? workflows.find((w) => w.id === "onbwf-standard") ?? workflows[0];
 }
 export function blankOnbWorkflow(): OnbWorkflow {
-    return { id: `onbwf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`, name: "", description: "", driverType: "us", policyForms: [], forms: [], documents: [], quizzes: [], trainings: [], accessoryChecklistId: null, checklistId: null };
+    return { id: `onbwf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`, name: "", description: "", driverType: "us", policyForms: [], forms: [], documents: [], quizzes: [], trainings: [], checklistId: null };
 }
 
 export const ONB_DRIVER_TYPES: { id: string; label: string; sub: string }[] = [
