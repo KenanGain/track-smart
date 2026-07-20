@@ -24,6 +24,8 @@ import {
 } from "./handovers.data";
 import { APP_USERS, getManagedAccountIds } from "@/data/users.data";
 import { TablePager } from "./TablePager";
+import { InventoryTabs } from "./InventoryTabs";
+import { KpiTile } from "./InventoryKpi";
 import { useCompanyBranding } from "../ats/company-branding.data";
 import { FormDocument, THEMES, type ThemeKey, type DocSection } from "../hiring-process/FormDocument";
 import { ReviewSignOff, newSignOff, todayISO, type SignOffData } from "../hiring-process/FormKit";
@@ -85,22 +87,6 @@ const STATUS_CHIP: Record<HandoverStatus, { label: (n: number) => string; cls: s
 type IssuedBy = { name: string; title: string; vehicle: string; employeeId: string; date: string };
 const EMPTY_ISSUED: IssuedBy = { name: "", title: "", vehicle: "", employeeId: "", date: todayISO() };
 
-/** KPI card matching the app-wide stat-card style (label + value + tinted icon). */
-function StatCard({ label, value, icon: Icon, tone }: { label: string; value: number; icon: React.ElementType; tone: "blue" | "emerald" | "violet" | "amber" }) {
-    const valueTone = tone === "emerald" ? "text-emerald-600" : tone === "violet" ? "text-violet-600" : tone === "amber" ? "text-amber-600" : "text-slate-900";
-    const iconBg = tone === "emerald" ? "bg-emerald-50 text-emerald-600" : tone === "violet" ? "bg-violet-50 text-violet-600" : tone === "amber" ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600";
-    return (
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
-                    <p className={cn("text-2xl font-bold mt-1 tabular-nums", valueTone)}>{value}</p>
-                </div>
-                <div className={cn("p-3 rounded-lg", iconBg)}><Icon className="w-5 h-5" /></div>
-            </div>
-        </div>
-    );
-}
 
 export function DriverHandoverPage({ onNavigate, accountId, accountName, initialDriverId }: Props) {
     const acct = accountId ?? "acct-001";
@@ -225,7 +211,7 @@ export function DriverHandoverPage({ onNavigate, accountId, accountName, initial
             recordedAt: staffSignoff.done ? Date.now() : undefined,
         };
         save(rec);
-        onNavigate("/inventory/handover");
+        onNavigate("/inventory");
     };
 
     if (view === "linkform" && activeDriver) {
@@ -277,7 +263,7 @@ export function DriverHandoverPage({ onNavigate, accountId, accountName, initial
                 driverSignoff={driverSignoff} setDriverSignoff={setDriverSignoff}
                 verified={verified} setVerified={setVerified}
                 selectedLines={selectedLines}
-                onBack={() => onNavigate("/inventory/handover")}
+                onBack={() => onNavigate("/inventory")}
                 onPdf={() => setView("pdf")}
                 onViewForm={(variant) => { setLinkVariant(variant); setView("linkform"); }}
                 onSave={saveHandover}
@@ -295,11 +281,12 @@ export function DriverHandoverPage({ onNavigate, accountId, accountName, initial
     const pendingCount = drivers.length - issuedCount;
 
     return (
-        <div className="p-6 lg:p-8 bg-slate-50 min-h-screen">
-            {/* Header */}
-            <div className="mb-6">
-                <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-                    <Building2 size={14} />
+        <div className="bg-slate-50 min-h-screen">
+            {/* Header band (white) */}
+            <div className="bg-white border-b border-slate-200 px-6 lg:px-8 py-5">
+                <div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+                        <Building2 size={14} />
                     <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
                     <span>/</span>
                     <button onClick={() => onNavigate("/inventory")} className="hover:text-slate-700">Inventory</button>
@@ -308,13 +295,19 @@ export function DriverHandoverPage({ onNavigate, accountId, accountName, initial
                 </div>
                 <h1 className="text-2xl font-bold text-slate-900">Hand Over</h1>
                 <p className="text-sm text-slate-500 mt-0.5">Issue a hand-over checklist to a driver, assign the task to a staff member, then have the driver verify what they received — all tracked here.</p>
+                </div>
+
+                {/* Section tabs */}
+                <InventoryTabs current="list" onNavigate={onNavigate} className="mt-4 -mb-5" />
             </div>
 
+            {/* Body */}
+            <div className="px-6 lg:px-8 py-6">
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-                <StatCard label="Handed over" value={issuedCount} icon={PackageCheck} tone="amber" />
-                <StatCard label="Verified" value={verifiedCount} icon={CircleCheck} tone="emerald" />
-                <StatCard label="Pending" value={pendingCount} icon={Clock} tone="blue" />
+                <KpiTile label="Handed over" value={issuedCount} Icon={PackageCheck} accent="amber" />
+                <KpiTile label="Verified" value={verifiedCount} Icon={CircleCheck} accent="emerald" />
+                <KpiTile label="Pending" value={pendingCount} Icon={Clock} accent="blue" />
             </div>
 
             {/* Search */}
@@ -389,16 +382,13 @@ export function DriverHandoverPage({ onNavigate, accountId, accountName, initial
                                             </td>
                                             <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{count > 0 ? `${count} item${count === 1 ? "" : "s"}` : "—"}</td>
                                             <td className="px-5 py-3 text-right">
-                                                <button
-                                                    type="button"
+                                                <Button
+                                                    variant={action.primary ? "default" : "outline"}
+                                                    size="sm"
                                                     onClick={(e) => { e.stopPropagation(); onNavigate(`/inventory/handover/${d.id}`); }}
-                                                    className={cn(
-                                                        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
-                                                        action.primary ? "border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100" : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-600",
-                                                    )}
                                                 >
                                                     <action.Icon size={14} /> {action.label}
-                                                </button>
+                                                </Button>
                                             </td>
                                         </tr>
                                     );
@@ -409,6 +399,7 @@ export function DriverHandoverPage({ onNavigate, accountId, accountName, initial
                     <TablePager page={page} perPage={perPage} total={shownDrivers.length} label="drivers" onPage={setPage} onPerPage={(n) => { setPerPage(n); setPage(0); }} />
                 </div>
             )}
+            </div>
         </div>
     );
 }

@@ -21,8 +21,6 @@ import {
     ListChecks,
     Boxes,
     UserCog,
-    List,
-    Store,
     ShieldAlert,
     Lock,
     History,
@@ -36,7 +34,6 @@ import {
     Layers,
     Workflow,
     UserPlus,
-    PackageCheck,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -58,12 +55,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         key: "inventory",
         label: "Inventory",
         icon: Boxes,
-        children: [
-            { key: "inventory-list", label: "List", icon: List, path: "/inventory" },
-            { key: "inventory-vendors", label: "Vendors", icon: Store, path: "/inventory/vendors" },
-            { key: "inventory-handover", label: "Hand Over", icon: PackageCheck, path: "/inventory/handover" },
-            { key: "inventory-driver-inventory", label: "Driver Inventory", icon: ListChecks, path: "/inventory/driver-inventory" },
-        ],
+        path: "/inventory",
     },
 
     {

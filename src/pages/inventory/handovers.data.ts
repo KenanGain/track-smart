@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { todayISO, type SignOffData } from "../hiring-process/FormKit";
+import {
+    getInventoryForCarrier, INVENTORY_ITEMS, VENDORS, VENDOR_CATEGORIES,
+    type InventoryItem,
+} from "./inventory.data";
 
 // Driver hand-over records — the inventory hand-over workflow, managed here in
 // Inventory and modelled on the onboarding Accessories step:
@@ -155,4 +159,77 @@ export function useDriverHandovers(accountId: string) {
     };
 
     return { records: all, get, save, remove };
+}
+
+// ── Shared driver-inventory helpers ─────────────────────────────────────────
+// Only the company-issued physical accessories are handed over to a driver.
+export const HANDOVER_CATEGORIES = ["cat-keys", "cat-safety-ppe", "cat-equipment", "cat-devices", "cat-cards-docs"];
+
+export type ItemLine = { item: InventoryItem; qty: string; verified: boolean };
+export type DriverGroup = { id: string; name: string; lines: ItemLine[] };
+
+/** Group a driver's held items by inventory category, flagging verified ones. */
+export function buildDriverGroups(rec: DriverHandover, itemById: Map<string, InventoryItem>): DriverGroup[] {
+    const verifiedSet = new Set(rec.verifiedItemIds ?? []);
+    const map = new Map<string, DriverGroup>();
+    for (const catId of HANDOVER_CATEGORIES) {
+        const cat = VENDOR_CATEGORIES.find((c) => c.id === catId);
+        if (cat) map.set(catId, { id: catId, name: cat.name, lines: [] });
+    }
+    for (const line of rec.lines) {
+        const item = itemById.get(line.itemId);
+        if (!item) continue;
+        const vendor = VENDORS.find((v) => v.id === item.vendorId);
+        if (vendor && map.has(vendor.categoryId)) {
+            map.get(vendor.categoryId)!.lines.push({ item, qty: line.qty, verified: verifiedSet.has(line.itemId) });
+        }
+    }
+    return Array.from(map.values()).filter((g) => g.lines.length > 0);
+}
+
+/** Company inventory still available to add to a driver — not on this driver's
+ *  list nor on any other driver's list. */
+export function buildAddGroups(
+    records: Record<string, DriverHandover>, acct: string, accountId: string | undefined, driverId: string,
+): { id: string; name: string; items: InventoryItem[] }[] {
+    const elsewhere = itemsHandedElsewhere(records, acct, driverId);
+    const rec = records[`${acct}::${driverId}`];
+    const own = new Set((rec?.lines ?? []).map((l) => l.itemId));
+    const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS)
+        .filter((it) => {
+            const v = VENDORS.find((vv) => vv.id === it.vendorId);
+            return v && HANDOVER_CATEGORIES.includes(v.categoryId) && !elsewhere.has(it.id) && !own.has(it.id);
+        });
+    const map = new Map<string, { id: string; name: string; items: InventoryItem[] }>();
+    for (const catId of HANDOVER_CATEGORIES) {
+        const cat = VENDOR_CATEGORIES.find((c) => c.id === catId);
+        if (cat) map.set(catId, { id: catId, name: cat.name, items: [] });
+    }
+    for (const it of base) {
+        const v = VENDORS.find((vv) => vv.id === it.vendorId);
+        if (v && map.has(v.categoryId)) map.get(v.categoryId)!.items.push(it);
+    }
+    return Array.from(map.values()).filter((g) => g.items.length > 0);
+}
+
+/** Append items to a driver's list; a changed checklist re-opens verification. */
+export function appendLines(rec: DriverHandover, newLines: { itemId: string; qty: string }[]): DriverHandover {
+    const existing = new Set(rec.lines.map((l) => l.itemId));
+    const merged = [...rec.lines, ...newLines.filter((l) => !existing.has(l.itemId))];
+    const driverSignoff = rec.driverSignoff?.done ? { ...rec.driverSignoff, done: false } : rec.driverSignoff;
+    return { ...rec, lines: merged, driverSignoff, updatedAt: Date.now() };
+}
+
+/** Take items back from a driver — remove them from the list (and from the
+ *  verified set). The freed items are no longer reserved, so they can be handed
+ *  over to another driver. When the last item is taken back the hand-over is
+ *  reset so the driver shows as no longer holding anything. */
+export function removeLines(rec: DriverHandover, itemIds: string[]): DriverHandover {
+    const drop = new Set(itemIds);
+    const lines = rec.lines.filter((l) => !drop.has(l.itemId));
+    const verifiedItemIds = (rec.verifiedItemIds ?? []).filter((id) => !drop.has(id));
+    if (lines.length === 0) {
+        return { ...rec, lines, verifiedItemIds: [], staffSignoff: undefined, driverSignoff: undefined, recordedAt: undefined, updatedAt: Date.now() };
+    }
+    return { ...rec, lines, verifiedItemIds, updatedAt: Date.now() };
 }

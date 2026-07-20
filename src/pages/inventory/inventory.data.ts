@@ -134,6 +134,7 @@ export const VENDOR_CATEGORIES: VendorCategory[] = [
     { id: "cat-equipment",          name: "Equipment & Supplies",   description: "Load securement, uniforms and seasonal gear." },
     { id: "cat-devices",            name: "Devices & Electronics",  description: "In-cab devices, sensors and company phone." },
     { id: "cat-cards-docs",         name: "Cards & Documents",      description: "Insurance, registration and permit documents." },
+    { id: "cat-other",              name: "Others",                 description: "Any other vendor that doesn't fit the categories above." },
 ];
 
 // Vendors are scoped per carrier (accountId). Super-admins see only the

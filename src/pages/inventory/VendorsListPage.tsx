@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Building2, Mail, Phone, MapPin, Tag } from "lucide-react";
 import { DataListToolbar, PaginationBar, type ColumnDef } from "@/components/ui/DataListToolbar";
 import { VendorCategoriesModal } from "./VendorCategoriesModal";
+import { InventoryTabs } from "./InventoryTabs";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
@@ -86,11 +87,13 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
     const categoryName = (id: string) => categories.find((c) => c.id === id)?.name ?? "—";
 
     return (
-        <div className="p-6 lg:p-8 bg-slate-50 min-h-screen">
-            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-                        <Building2 size={14} />
+        <div className="bg-slate-50 min-h-screen">
+            {/* Header band (white) */}
+            <div className="bg-white border-b border-slate-200 px-6 lg:px-8 py-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+                            <Building2 size={14} />
                         <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
                         <span>/</span>
                         <span>Inventory</span>
@@ -116,8 +119,14 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
                         <Plus size={15} /> Add Vendor
                     </button>
                 </div>
+                </div>
+
+                {/* Section tabs */}
+                <InventoryTabs current="vendors" onNavigate={onNavigate} className="mt-4 -mb-5" />
             </div>
 
+            {/* Body */}
+            <div className="px-6 lg:px-8 py-6">
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <DataListToolbar
                     searchValue={search}
@@ -224,6 +233,7 @@ export function VendorsListPage({ onNavigate, accountId, accountName }: Props) {
                     onPageChange={setPage}
                     onRowsPerPageChange={(r) => { setRowsPerPage(r); setPage(1); }}
                 />
+            </div>
             </div>
 
             <VendorCategoriesModal

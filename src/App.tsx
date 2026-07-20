@@ -365,11 +365,13 @@ function App() {
                 />
             )
         }
-        if (path === "/inventory/handover") {
+        if (path === "/inventory/handover" || path === "/inventory/driver-inventory") {
+            // Hand Over & Driver Inventory are now folded into the List tab
+            // (via its handed-over switch). Bare links resolve to the List.
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return (
-                <DriverHandoverPage
+                <InventoryListPage
                     onNavigate={handleNavigate}
                     accountId={account?.id}
                     accountName={account?.dbaName ?? account?.legalName}
@@ -386,17 +388,6 @@ function App() {
                     accountId={account?.id}
                     accountName={account?.dbaName ?? account?.legalName}
                     initialDriverId={initialDriverId}
-                />
-            )
-        }
-        if (path === "/inventory/driver-inventory") {
-            const account = selectedAccount
-                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
-            return (
-                <DriverInventoryPage
-                    onNavigate={handleNavigate}
-                    accountId={account?.id}
-                    accountName={account?.dbaName ?? account?.legalName}
                 />
             )
         }

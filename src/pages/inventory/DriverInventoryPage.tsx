@@ -5,23 +5,23 @@ import {
     Plus, X, Check, Pencil, Undo2,
 } from "lucide-react";
 import {
-    getInventoryForCarrier, INVENTORY_ITEMS, VENDORS, VENDOR_CATEGORIES,
+    getInventoryForCarrier, INVENTORY_ITEMS, VENDORS,
     CARRIER_NAME, ACME_ASSETS, type InventoryItem,
 } from "./inventory.data";
 import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
-import { useDriverHandovers, handoverStatusOf, itemsHandedElsewhere, type HandoverStatus, type DriverHandover } from "./handovers.data";
+import {
+    useDriverHandovers, handoverStatusOf, type HandoverStatus,
+    buildDriverGroups, buildAddGroups, appendLines, removeLines,
+} from "./handovers.data";
 import { TablePager } from "./TablePager";
+import { InventoryTabs } from "./InventoryTabs";
+import { KpiTile } from "./InventoryKpi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 type Props = { onNavigate: (path: string) => void; accountId?: string; accountName?: string; initialDriverId?: string };
-
-type ItemLine = { item: InventoryItem; qty: string; verified: boolean };
-type DriverGroup = { id: string; name: string; lines: ItemLine[] };
-
-const HANDOVER_CATEGORIES = ["cat-keys", "cat-safety-ppe", "cat-equipment", "cat-devices", "cat-cards-docs"];
 
 const CAT_VISUAL: Record<string, { icon: React.ElementType; bg: string; text: string; bar: string }> = {
     "cat-keys":       { icon: KeyRound,    bg: "bg-amber-50",  text: "text-amber-700",  bar: "bg-amber-500" },
@@ -60,90 +60,6 @@ const STATUS_CHIP: Record<HandoverStatus, { label: string; cls: string; dot: str
     "handed-over": { label: "Handed over · awaiting driver", cls: "bg-amber-50 text-amber-700 border border-amber-200", dot: "bg-amber-500" },
     "verified": { label: "Verified by driver", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", dot: "bg-emerald-500", icon: CircleCheck },
 };
-
-/** KPI card matching the app-wide stat-card style (label + value + tinted icon). */
-function StatCard({ label, value, icon: Icon, tone }: { label: string; value: number; icon: React.ElementType; tone: "blue" | "emerald" | "violet" | "amber" }) {
-    const valueTone = tone === "emerald" ? "text-emerald-600" : tone === "violet" ? "text-violet-600" : tone === "amber" ? "text-amber-600" : "text-slate-900";
-    const iconBg = tone === "emerald" ? "bg-emerald-50 text-emerald-600" : tone === "violet" ? "bg-violet-50 text-violet-600" : tone === "amber" ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600";
-    return (
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{label}</p>
-                    <p className={cn("text-2xl font-bold mt-1 tabular-nums", valueTone)}>{value}</p>
-                </div>
-                <div className={cn("p-3 rounded-lg", iconBg)}><Icon className="w-5 h-5" /></div>
-            </div>
-        </div>
-    );
-}
-
-/** Group a driver's held items by inventory category, flagging verified ones. */
-function buildDriverGroups(rec: DriverHandover, itemById: Map<string, InventoryItem>): DriverGroup[] {
-    const verifiedSet = new Set(rec.verifiedItemIds ?? []);
-    const map = new Map<string, DriverGroup>();
-    for (const catId of HANDOVER_CATEGORIES) {
-        const cat = VENDOR_CATEGORIES.find((c) => c.id === catId);
-        if (cat) map.set(catId, { id: catId, name: cat.name, lines: [] });
-    }
-    for (const line of rec.lines) {
-        const item = itemById.get(line.itemId);
-        if (!item) continue;
-        const vendor = VENDORS.find((v) => v.id === item.vendorId);
-        if (vendor && map.has(vendor.categoryId)) {
-            map.get(vendor.categoryId)!.lines.push({ item, qty: line.qty, verified: verifiedSet.has(line.itemId) });
-        }
-    }
-    return Array.from(map.values()).filter((g) => g.lines.length > 0);
-}
-
-/** Company inventory still available to add to a driver — not on this driver's
- *  list nor on any other driver's list. */
-function buildAddGroups(
-    records: Record<string, DriverHandover>, acct: string, accountId: string | undefined, driverId: string,
-): { id: string; name: string; items: InventoryItem[] }[] {
-    const elsewhere = itemsHandedElsewhere(records, acct, driverId);
-    const rec = records[`${acct}::${driverId}`];
-    const own = new Set((rec?.lines ?? []).map((l) => l.itemId));
-    const base = (accountId ? getInventoryForCarrier(accountId) : INVENTORY_ITEMS)
-        .filter((it) => {
-            const v = VENDORS.find((vv) => vv.id === it.vendorId);
-            return v && HANDOVER_CATEGORIES.includes(v.categoryId) && !elsewhere.has(it.id) && !own.has(it.id);
-        });
-    const map = new Map<string, { id: string; name: string; items: InventoryItem[] }>();
-    for (const catId of HANDOVER_CATEGORIES) {
-        const cat = VENDOR_CATEGORIES.find((c) => c.id === catId);
-        if (cat) map.set(catId, { id: catId, name: cat.name, items: [] });
-    }
-    for (const it of base) {
-        const v = VENDORS.find((vv) => vv.id === it.vendorId);
-        if (v && map.has(v.categoryId)) map.get(v.categoryId)!.items.push(it);
-    }
-    return Array.from(map.values()).filter((g) => g.items.length > 0);
-}
-
-/** Append items to a driver's list; a changed checklist re-opens verification. */
-function appendLines(rec: DriverHandover, newLines: { itemId: string; qty: string }[]): DriverHandover {
-    const existing = new Set(rec.lines.map((l) => l.itemId));
-    const merged = [...rec.lines, ...newLines.filter((l) => !existing.has(l.itemId))];
-    const driverSignoff = rec.driverSignoff?.done ? { ...rec.driverSignoff, done: false } : rec.driverSignoff;
-    return { ...rec, lines: merged, driverSignoff, updatedAt: Date.now() };
-}
-
-/** Take items back from a driver — remove them from the list (and from the
- *  verified set). The freed items are no longer reserved, so they can be handed
- *  over to another driver. When the last item is taken back the hand-over is
- *  reset so the driver shows as no longer holding anything. */
-function removeLines(rec: DriverHandover, itemIds: string[]): DriverHandover {
-    const drop = new Set(itemIds);
-    const lines = rec.lines.filter((l) => !drop.has(l.itemId));
-    const verifiedItemIds = (rec.verifiedItemIds ?? []).filter((id) => !drop.has(id));
-    if (lines.length === 0) {
-        // Nothing left with the driver — clear the hand-over back to a blank slate.
-        return { ...rec, lines, verifiedItemIds: [], staffSignoff: undefined, driverSignoff: undefined, recordedAt: undefined, updatedAt: Date.now() };
-    }
-    return { ...rec, lines, verifiedItemIds, updatedAt: Date.now() };
-}
 
 export function DriverInventoryPage({ onNavigate, accountId, accountName, initialDriverId }: Props) {
     // Deep-link: /inventory/driver-inventory/<driverId> shows a dedicated page
@@ -222,11 +138,12 @@ function DriverInventoryListPage({ onNavigate, accountId, accountName }: Props) 
     const verifiedDrivers = rows.filter((r) => r.status === "verified").length;
 
     return (
-        <div className="p-6 lg:p-8 bg-slate-50 min-h-screen">
-            {/* Header */}
-            <div className="mb-6">
-                <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-                    <Building2 size={14} />
+        <div className="bg-slate-50 min-h-screen">
+            {/* Header band (white) */}
+            <div className="bg-white border-b border-slate-200 px-6 lg:px-8 py-5">
+                <div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+                        <Building2 size={14} />
                     <span className="font-medium">{accountName ?? CARRIER_NAME}</span>
                     <span>/</span>
                     <button onClick={() => onNavigate("/inventory")} className="hover:text-slate-700">Inventory</button>
@@ -235,13 +152,19 @@ function DriverInventoryListPage({ onNavigate, accountId, accountName }: Props) 
                 </div>
                 <h1 className="text-2xl font-bold text-slate-900">Driver Inventory</h1>
                 <p className="text-sm text-slate-500 mt-0.5">Which company inventory each driver is currently holding, and whether they've verified receipt.</p>
+                </div>
+
+                {/* Section tabs */}
+                <InventoryTabs current="list" onNavigate={onNavigate} className="mt-4 -mb-5" />
             </div>
 
+            {/* Body */}
+            <div className="px-6 lg:px-8 py-6">
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-                <StatCard label="Drivers" value={rows.length} icon={UserRound} tone="blue" />
-                <StatCard label="Items held" value={totalItems} icon={Package} tone="violet" />
-                <StatCard label="Verified" value={verifiedDrivers} icon={CircleCheck} tone="emerald" />
+                <KpiTile label="Drivers" value={rows.length} Icon={UserRound} accent="blue" />
+                <KpiTile label="Items held" value={totalItems} Icon={Package} accent="violet" />
+                <KpiTile label="Verified" value={verifiedDrivers} Icon={CircleCheck} accent="emerald" />
             </div>
 
             {/* Search */}
@@ -308,10 +231,10 @@ function DriverInventoryListPage({ onNavigate, accountId, accountName }: Props) 
                                             </td>
                                             <td className="px-5 py-3 text-right">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    <button type="button" onClick={(e) => { e.stopPropagation(); setAddForDriverId(r.driver.id); }} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-100">
-                                                        <Plus size={13} /> Add items
-                                                    </button>
-                                                    <ChevronRight size={17} className="text-slate-400" />
+                                                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setAddForDriverId(r.driver.id); }}>
+                                                        <Plus size={14} /> Add items
+                                                    </Button>
+                                                    <ChevronRight size={17} className="text-slate-400 shrink-0" />
                                                 </div>
                                             </td>
                                         </tr>
@@ -323,6 +246,7 @@ function DriverInventoryListPage({ onNavigate, accountId, accountName }: Props) 
                     <TablePager page={page} perPage={perPage} total={shown.length} label="drivers" onPage={setPage} onPerPage={(n) => { setPerPage(n); setPage(0); }} />
                 </div>
             )}
+            </div>
 
             {addForDriverId && addDriver && (
                 <QuickAddDialog
@@ -389,12 +313,10 @@ function DriverInventoryDetailPage({
                     <span>/</span>
                     <button onClick={() => onNavigate("/inventory")} className="hover:text-slate-700">Inventory</button>
                     <span>/</span>
-                    <button onClick={() => onNavigate("/inventory/driver-inventory")} className="hover:text-slate-700">Driver Inventory</button>
-                    <span>/</span>
                     <span>{driverName(driver)}</span>
                 </div>
-                <button onClick={() => onNavigate("/inventory/driver-inventory")} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-blue-600">
-                    <ArrowLeft size={16} /> Back to Driver Inventory
+                <button onClick={() => onNavigate("/inventory")} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-blue-600">
+                    <ArrowLeft size={16} /> Back to Inventory
                 </button>
             </div>
 

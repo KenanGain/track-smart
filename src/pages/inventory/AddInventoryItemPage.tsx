@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Building2, Check, IdCard, Truck } from "lucide-react";
+import { ArrowLeft, Building2, Check, Truck } from "lucide-react";
 import {
     VENDORS,
     VENDOR_CATEGORIES,
@@ -39,10 +39,11 @@ const RECURRENCE_OPTIONS: Recurrence[] = ["None", "Monthly", "Quarterly", "Yearl
 const REMINDER_OPTIONS: Reminder[] = ["None", "1 day", "1 week", "1 month"];
 const STATUS_OPTIONS: InventoryStatus[] = ["Active", "Expiring Soon", "Expired"];
 
+// Inventory items are assigned to an asset (CMV / Non-CMV). Direct driver
+// assignment lives in the Hand Over flow, so it's not offered here.
 const KIND_OPTIONS: { value: AssignmentKind; label: string; helper: string }[] = [
     { value: "cmv",     label: "CMV",     helper: "Power units (trucks)" },
     { value: "non-cmv", label: "Non-CMV", helper: "Trailers / vans / other" },
-    { value: "driver",  label: "Driver",  helper: "Assign directly to a driver" },
 ];
 
 export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
@@ -68,9 +69,11 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
     const [reminder, setReminder] = useState<Reminder>(editing?.reminder ?? "1 month");
     const [status, setStatus] = useState<InventoryStatus>(editing?.status ?? "Active");
 
-    // §2 Assignment (one-to-one)
-    const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>(editing?.assignedTo?.kind ?? "cmv");
-    const [targetId, setTargetId] = useState<string>(editing?.assignedTo?.targetId ?? "");
+    // §2 Assignment (one-to-one). Driver assignment is no longer offered, so an
+    // item previously assigned to a driver falls back to an unassigned CMV.
+    const editKind = editing?.assignedTo?.kind;
+    const [assignmentKind, setAssignmentKind] = useState<AssignmentKind>(editKind === "driver" ? "cmv" : (editKind ?? "cmv"));
+    const [targetId, setTargetId] = useState<string>(editKind === "driver" ? "" : (editing?.assignedTo?.targetId ?? ""));
 
     const selectedVendor = useMemo(() => vendors.find((v) => v.id === vendorId), [vendorId, vendors]);
 
@@ -183,15 +186,15 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
                 </Section>
 
                 {/* §2 Assignment (one-to-one) */}
-                <Section number={2} title="Assignment" subtitle="Assign this inventory item to a CMV, Non-CMV, or driver. One item, one target.">
+                <Section number={2} title="Assignment" subtitle="Assign this inventory item to a CMV or Non-CMV asset. One item, one target.">
                     <div className="space-y-5">
                         {/* Kind picker */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Assign To</label>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {KIND_OPTIONS.map((opt) => {
                                     const active = assignmentKind === opt.value;
-                                    const Icon = opt.value === "driver" ? IdCard : Truck;
+                                    const Icon = Truck;
                                     return (
                                         <button
                                             key={opt.value}
@@ -228,9 +231,7 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
                         {/* Searchable, rich target picker */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
-                                {assignmentKind === "cmv" && "Select CMV"}
-                                {assignmentKind === "non-cmv" && "Select Non-CMV asset"}
-                                {assignmentKind === "driver" && "Select Driver"}
+                                {assignmentKind === "cmv" ? "Select CMV" : "Select Non-CMV asset"}
                             </label>
                             <AssignmentTargetPicker
                                 kind={assignmentKind}
@@ -238,7 +239,7 @@ export function AddInventoryItemPage({ onNavigate, accountId, editId }: Props) {
                                 onSelect={setTargetId}
                             />
                             <p className="text-xs text-slate-500 mt-1.5">
-                                Each inventory item can be assigned to exactly one {assignmentKind === "driver" ? "driver" : "asset"}. Type to search.
+                                Each inventory item can be assigned to exactly one asset. Type to search.
                             </p>
                         </div>
                     </div>
