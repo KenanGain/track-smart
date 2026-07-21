@@ -29,7 +29,7 @@ import {
 import { InventoryTabs } from "./InventoryTabs";
 import { KpiTile } from "./InventoryKpi";
 import { AddInventoryModule } from "./AddInventoryModule";
-import { DirectHandoverDialog } from "./HandoverDialogs";
+import { DirectHandoverDialog, ChecklistHandoverPicker } from "./HandoverDialogs";
 import { useInventoryAdditions } from "./inventory-store";
 import { cn } from "@/lib/utils";
 
@@ -158,6 +158,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     const [activeCat, setActiveCat] = useState<string>("All");
     const [addOpen, setAddOpen] = useState(false);
     const [directOpen, setDirectOpen] = useState(false);
+    const [checklistOpen, setChecklistOpen] = useState(false);
     const handed = handoverFilter === "handed";
 
     // Items added inline via the Add Inventory pop-up (localStorage overlay).
@@ -339,9 +340,15 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                 <PackageCheck size={15} /> Hand over to driver
                             </Button>
                         )}
-                        <Button size="sm" onClick={() => setAddOpen(true)}>
-                            <Plus size={15} /> Add Inventory
-                        </Button>
+                        {handoverFilter !== "all" ? (
+                            <Button size="sm" onClick={() => setChecklistOpen(true)}>
+                                <ListChecks size={15} /> Create checklist
+                            </Button>
+                        ) : (
+                            <Button size="sm" onClick={() => setAddOpen(true)}>
+                                <Plus size={15} /> Add Inventory
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -465,6 +472,9 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             )}
             {directOpen && (
                 <DirectHandoverDialog accountId={accountId} onClose={() => setDirectOpen(false)} />
+            )}
+            {checklistOpen && (
+                <ChecklistHandoverPicker accountId={accountId} onNavigate={onNavigate} onClose={() => setChecklistOpen(false)} />
             )}
         </div>
     );
