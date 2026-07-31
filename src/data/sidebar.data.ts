@@ -30,8 +30,10 @@ import {
     Crown,
     Gauge,
     Bell,
+    BellRing,
     Truck,
     Layers,
+    Tags,
     Workflow,
     UserPlus,
 } from "lucide-react";
@@ -59,6 +61,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
     },
 
     {
+        key: "dq-files-menu",
+        label: "DQ Files",
+        icon: ListChecks,
+        path: "/dq-files",
+    },
+    {
         key: "new-compliance",
         label: "New Compliance & Documents",
         icon: FileText,
@@ -69,6 +77,18 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         label: "Compliance Monitoring",
         icon: Gauge,
         path: "/compliance-monitoring",
+    },
+    {
+        key: "default-compliance-documents",
+        label: "Default Compliances & Documents",
+        icon: Layers,
+        path: "/default-compliance-documents",
+    },
+    {
+        key: "default-compliance-monitoring",
+        label: "Default Compliance Monitoring",
+        icon: BellRing,
+        path: "/default-compliance-monitoring",
     },
     {
         key: "fleet-maintenance",
@@ -161,6 +181,8 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "general-settings", label: "General Settings", icon: Sliders, path: "/settings/general" },
             { key: "compliance-setup", label: "Compliance and Documents", icon: ShieldCheck, path: "/settings/compliance-setup" },
             { key: "settings-compliance-and-documents", label: "Compliance Setup", icon: FileText, path: "/settings/compliance-and-documents" },
+            { key: "settings-new-compliance-documents", label: "New Compliance & Documents", icon: Layers, path: "/settings/new-compliance-documents", badge: "New" },
+            { key: "settings-tags", label: "Tags", icon: Tags, path: "/settings/tags", badge: "New" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             {
                 key: "settings-hiring-process",
@@ -174,6 +196,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
                     { key: "settings-hiring-process-testing-forms", label: "Testing Forms", icon: FlaskConical, path: "/settings/hiring-process/testing-forms", badge: "New" },
                 ],
             },
+            { key: "settings-dq-files", label: "DQ Files", icon: ListChecks, path: "/settings/dq-files" },
             { key: "settings-tasks", label: "Tasks", icon: CheckSquare, path: "/settings/tasks" },
             { key: "expenses", label: "Expense Types", icon: DollarSign, path: "/settings/expenses" },
             { key: "violations", label: "Violations", icon: Ban, path: "/settings/violations" },

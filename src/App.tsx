@@ -13,6 +13,7 @@ import { ServiceProfilePage } from '@/pages/service/ServiceProfilePage'
 import { EmptyServiceProfile } from '@/pages/service/EmptyServiceProfile'
 import { SERVICE_PROFILES_DB, type ServiceProfile } from '@/pages/accounts/service-profiles.data'
 import { GeneralSettingsPage } from '@/pages/settings/GeneralSettingsPage'
+import { SettingsDqFilesPage } from '@/pages/settings/SettingsDqFilesPage'
 import { ComplianceAndDocumentsPage } from '@/pages/admin/ComplianceAndDocumentsPage'
 import { CarrierComplianceSetupPage } from '@/pages/admin/CarrierComplianceSetupPage'
 import { ComplianceTemplatesPage } from '@/pages/admin/ComplianceTemplatesPage'
@@ -30,6 +31,7 @@ import { AddVendorPage } from '@/pages/inventory/AddVendorPage'
 import { AddInventoryItemPage } from '@/pages/inventory/AddInventoryItemPage'
 import { DriverHandoverPage } from '@/pages/inventory/DriverHandoverPage'
 import { DriverInventoryPage } from '@/pages/inventory/DriverInventoryPage'
+import { TakeBackPage } from '@/pages/inventory/TakeBackPage'
 import type { AccountRecord } from '@/pages/accounts/accounts.data'
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage'
 import { AssetMaintenancePage } from '@/pages/assets/AssetMaintenancePage'
@@ -38,6 +40,10 @@ import { ViolationsPage } from '@/pages/settings/ViolationsPage'
 import { AccidentsSettingsPage } from '@/pages/settings/AccidentsSettingsPage'
 import { ComplianceDocumentsPage } from '@/pages/compliance/ComplianceDocumentsPage'
 import { NewComplianceDocumentsPage } from '@/pages/compliance/NewComplianceDocumentsPage'
+import { SafetyCatalogView } from '@/pages/compliance/SafetyCatalogView'
+import { DefaultComplianceDataPage } from '@/pages/compliance/DefaultComplianceDataPage'
+import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage'
+import { SafetyTagsPage } from '@/pages/compliance/SafetyTagsPage'
 import { ComplianceMonitoringPage } from '@/pages/compliance/ComplianceMonitoringPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
 import { InspectionsSettingsPage } from '@/pages/settings/InspectionsSettingsPage'
@@ -404,6 +410,19 @@ function App() {
                 />
             )
         }
+        if (path.startsWith("/inventory/take-back/")) {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            const driverId = path.slice("/inventory/take-back/".length)
+            return (
+                <TakeBackPage
+                    onNavigate={handleNavigate}
+                    accountId={account?.id}
+                    accountName={account?.dbaName ?? account?.legalName}
+                    driverId={driverId}
+                />
+            )
+        }
         if (path === "/inventory/items/new") {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
@@ -432,6 +451,9 @@ function App() {
         if (path === "/settings/general") {
             return <GeneralSettingsPage />
         }
+        if (path === "/settings/dq-files") {
+            return <SettingsDqFilesPage />
+        }
         if (path === "/settings/compliance-setup") {
             // Settings view — same catalog UI (heads + filters) as Super Admin,
             // scoped to the carrier's enabled set, read-only (no Add buttons).
@@ -444,6 +466,22 @@ function App() {
                 enabledKeyNumberIds={asg?.enabledKeyNumberIds}
                 enabledDocumentTypeIds={asg?.enabledDocumentTypeIds}
             />
+        }
+        if (path === "/settings/new-compliance-documents") {
+            return <SafetyCatalogView />
+        }
+        if (path === "/default-compliance-documents") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <DefaultComplianceDataPage accountId={account?.id} />
+        }
+        if (path === "/default-compliance-monitoring") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <DefaultComplianceMonitoringPage accountId={account?.id} onNavigate={handleNavigate} />
+        }
+        if (path === "/settings/tags") {
+            return <SafetyTagsPage />
         }
         if (path === "/settings/document-folders") {
             return <DocumentFoldersPage />
@@ -591,7 +629,9 @@ function App() {
             if (def) return <PolicyForm def={def} startPreview={pdf} onBack={() => handleNavigate("/settings/hiring-process/applications?tab=consent")} />
         }
         if (path === "/dq-files") {
-            return <DqFilesPage onNavigate={handleNavigate} />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <DqFilesPage onNavigate={handleNavigate} accountId={account?.id} />
         }
         if (path === "/dq-files/generator") {
             return <DqFileTemplateGenerator onNavigate={handleNavigate} />

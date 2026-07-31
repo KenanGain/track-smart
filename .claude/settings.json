@@ -19,7 +19,10 @@
       "PowerShell(npm run build 2>&1)",
       "PowerShell($p = \"src/pages/settings/SettingsCompliancePage.tsx\"; $l = Get-Content $p; \"lines: $\\($l.Count\\); 440=[$\\($l[439]\\)]; 771=[$\\($l[770]\\)]; 773=[$\\($l[772]\\)]\")",
       "PowerShell(npm run build)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "PowerShell(npx tsc -b 2>&1 | Select-Object -First 30; \"TSC EXIT: $LASTEXITCODE\")",
+      "Bash(curl -s -o /dev/null -w \"http:%{http_code}\\\\n\" http://localhost:5240/)",
+      "Bash(node \"C:/Users/kenan/AppData/Local/Temp/claude/c--Users-kenan-Full-prototpye-code/8e24bebe-63b8-44dc-aaa3-42878858addb/scratchpad/dc-mon2.mjs\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\kenan\\.claude\\projects\\c--Users-kenan-Full-prototpye-code\\memory"

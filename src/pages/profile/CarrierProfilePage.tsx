@@ -62,7 +62,8 @@ import type { DocumentType, ColorTheme } from '@/data/mock-app-data';
 import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
-import { DriverForm } from './DriverForm';
+import { AddDriverApplication } from './AddDriverApplication';
+import { DriverImportModal } from './DriverImportModal';
 
 
 
@@ -598,6 +599,7 @@ export function CarrierProfilePage({
     const [selectedDriverData, setSelectedDriverData] = useState<any>(null); // State to hold detailed driver data
     const [isAddingDriver, setIsAddingDriver] = useState(false);
     const [editingDriverData, setEditingDriverData] = useState<any>(null);
+    const [isImportOpen, setIsImportOpen] = useState(false);
 
     const [complianceFilter, setComplianceFilter] = useState('all');
     const [documentFilter, setDocumentFilter] = useState('all');
@@ -1016,6 +1018,20 @@ export function CarrierProfilePage({
         window.scrollTo(0, 0);
     };
 
+    const handleImportDrivers = (rows: any[]) => {
+        const now = new Date().toLocaleDateString();
+        const created = rows.map((d, i) => ({
+            ...d,
+            id: `DRV-IMP-${Date.now()}-${i}`,
+            dateAdded: d.dateAdded || now,
+            status: d.status || 'Active',
+            complianceStatus: 'Compliant',
+            lastActive: now,
+        }));
+        setDrivers(prev => [...created, ...prev]);
+        showToast(`${created.length} driver${created.length === 1 ? '' : 's'} imported successfully`);
+    };
+
     const handleBackFromDriver = () => {
         // If the user arrived via a Beta Safety Analysis deep-link, route them
         // back to the page they came from instead of just clearing the driver
@@ -1058,32 +1074,33 @@ export function CarrierProfilePage({
     }
 
     if (isAddingDriver) {
-        return <DriverForm 
-            initialData={editingDriverData}
-            isEditing={!!editingDriverData}
-            onCancel={() => { setIsAddingDriver(false); setEditingDriverData(null); }}
-            onSave={(data: any) => { 
-                console.log("Saved", data); 
-                
-                if (editingDriverData) {
-                    setDrivers(prev => prev.map(d => d.id === data.id ? data : d));
-                    setSelectedDriverData(data);
-                    showToast("Driver updated successfully");
-                } else {
-                    const newDriver = {
-                        ...data,
-                        id: `DRV-${Date.now()}`, 
-                        status: data.status || 'Active',
-                        complianceStatus: 'Compliant',
-                        lastActive: new Date().toLocaleDateString()
-                    };
-                    setDrivers(prev => [...prev, newDriver]);
-                    showToast("Driver added successfully");
-                }
+        const handleDriverSave = (data: any) => {
+            if (editingDriverData) {
+                setDrivers(prev => prev.map(d => d.id === data.id ? data : d));
+                setSelectedDriverData(data);
+                showToast("Driver updated successfully");
+            } else {
+                const newDriver = {
+                    ...data,
+                    id: `DRV-${Date.now()}`,
+                    status: data.status || 'Active',
+                    complianceStatus: 'Compliant',
+                    lastActive: new Date().toLocaleDateString()
+                };
+                setDrivers(prev => [...prev, newDriver]);
+                showToast("Driver added successfully");
+            }
+            setIsAddingDriver(false);
+            setEditingDriverData(null);
+        };
+        const cancelDriver = () => { setIsAddingDriver(false); setEditingDriverData(null); };
 
-                setIsAddingDriver(false); 
-                setEditingDriverData(null);
-            }} 
+        // Add AND edit use the same one-page application form, so every driver
+        // follows the same data file. Editing pre-fills from the driver's record.
+        return <AddDriverApplication
+            onCancel={cancelDriver}
+            onSave={handleDriverSave}
+            initialDriver={editingDriverData ?? undefined}
         />;
     }
 
@@ -1568,6 +1585,9 @@ export function CarrierProfilePage({
                                 </button>
                                 <button className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
                                     <Download size={14} className="text-slate-500" /><span className="hidden sm:inline">Export</span>
+                                </button>
+                                <button onClick={() => setIsImportOpen(true)} className="h-10 px-3.5 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
+                                    <UploadCloud size={14} className="text-slate-500" /><span className="hidden sm:inline">Import</span>
                                 </button>
                                 <button onClick={handleAddDriver} className="h-10 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold transition-colors inline-flex items-center justify-center gap-1.5 shadow-sm flex-1 sm:flex-none">
                                     <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Driver</span><span className="sm:hidden">Add</span>
@@ -2082,6 +2102,7 @@ export function CarrierProfilePage({
             </div>
 
             <Toast message={toast.message} visible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
+            <DriverImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} onImport={handleImportDrivers} />
             {Object.values(formConfig.editModals).map((modalConfig: any) => (
                 <GenericEditModal key={modalConfig.id} config={modalConfig} isOpen={activeModal === modalConfig.id} onClose={() => setActiveModal(null)} onSave={handleModalSave} initialValues={modalConfig.values} />
             ))}

@@ -10,6 +10,7 @@
 import { ACCOUNTS_DB, type AccountRecord } from './accounts.data';
 import { MOCK_DRIVER_DETAILED_TEMPLATE, type Driver } from '@/pages/profile/carrier-profile.data';
 import { hash, mulberry32, pick, pickWeighted, pad, areaCodeFor } from './carrier-fleet-shared.data';
+import { applicationFromDriver } from '@/pages/profile/driver-application-map';
 
 // ─── Name pools (region-aware) ───────────────────────────────────────────────
 
@@ -304,7 +305,9 @@ function buildDriversForCarrier(account: AccountRecord, count: number): Driver[]
             certificates: [],
         });
     }
-    return out;
+    // Attach the shared application data file to every driver so the whole roster
+    // follows the same shape as drivers added through the Add Driver form.
+    return out.map((d) => ({ ...d, application: applicationFromDriver(d) }));
 }
 
 // ─── Eagerly build the per-carrier driver map ────────────────────────────────

@@ -62,6 +62,7 @@ function getPageTitle(path: string): string {
     if (PATH_TITLES[path]) return PATH_TITLES[path];
     if (path.startsWith("/inventory/driver-inventory/")) return "Driver Inventory";
     if (path.startsWith("/inventory/handover/")) return "Hand Over";
+    if (path.startsWith("/inventory/take-back/")) return "Take Back";
     if (path.startsWith("/settings/")) return "Settings";
     if (path.startsWith("/admin/")) return "Admin";
     return "TrackSmart";

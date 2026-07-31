@@ -24,9 +24,10 @@ import { CARRIER_ASSETS } from "@/pages/accounts/carrier-assets.data";
 import { CARRIER_DRIVERS } from "@/pages/accounts/carrier-drivers.data";
 import {
     useDriverHandovers, itemsHandedElsewhere, handoverStatusOf,
-    buildDriverGroups, removeLines, type HandoverStatus,
+    buildDriverGroups, type HandoverStatus,
 } from "./handovers.data";
 import { InventoryTabs } from "./InventoryTabs";
+import { TablePager } from "./TablePager";
 import { KpiTile } from "./InventoryKpi";
 import { AddInventoryModule } from "./AddInventoryModule";
 import { DirectHandoverDialog, ChecklistHandoverPicker } from "./HandoverDialogs";
@@ -159,6 +160,8 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
     const [addOpen, setAddOpen] = useState(false);
     const [directOpen, setDirectOpen] = useState(false);
     const [checklistOpen, setChecklistOpen] = useState(false);
+    const [page, setPage] = useState(0);
+    const [perPage, setPerPage] = useState(15);
     const handed = handoverFilter === "handed";
 
     // Items added inline via the Add Inventory pop-up (localStorage overlay).
@@ -245,6 +248,12 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
             });
     }, [baseFiltered, activeCat, search]);
 
+    // Pagination over the filtered item rows.
+    useEffect(() => { setPage(0); }, [search, statusFilter, handoverFilter, activeCat, accountId]);
+    const pageCount = Math.max(1, Math.ceil(rows.length / perPage));
+    const safePage = Math.min(page, pageCount - 1);
+    const pagedRows = rows.slice(safePage * perPage, safePage * perPage + perPage);
+
     return (
         <div className="bg-slate-50 min-h-screen">
             {/* Header band (white) */}
@@ -329,12 +338,6 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                         </select>
                     )}
                     <div className="ml-auto flex items-center gap-2">
-                        {!handed && (
-                            <span className="hidden sm:inline text-xs text-slate-500 mr-1">
-                                Showing <span className="font-semibold text-slate-700">{rows.length}</span> of{" "}
-                                <span className="font-semibold text-slate-700">{items.length}</span> items
-                            </span>
-                        )}
                         {handed && (
                             <Button variant="outline" size="sm" onClick={() => setDirectOpen(true)}>
                                 <PackageCheck size={15} /> Hand over to driver
@@ -361,7 +364,8 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                         <p className="text-xs text-slate-500 mt-1">Try a different category, status, or search.</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto border-t border-slate-100">
+                    <div className="border-t border-slate-100">
+                    <div className="overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
@@ -377,7 +381,7 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {rows.map((item) => {
+                                {pagedRows.map((item) => {
                                     const vendor = VENDORS.find((v) => v.id === item.vendorId);
                                     const visual = visualFor(categoryIdOf(item) ?? "");
                                     const target = resolveAssignment(item.assignedTo, accountId);
@@ -458,6 +462,15 @@ export function InventoryListPage({ onNavigate, accountId, accountName }: Props)
                             </tbody>
                         </table>
                     </div>
+                    <TablePager
+                        page={safePage}
+                        perPage={perPage}
+                        total={rows.length}
+                        label="items"
+                        onPage={setPage}
+                        onPerPage={(n) => { setPerPage(n); setPage(0); }}
+                    />
+                    </div>
                 )}
             </div>
             </div>
@@ -507,7 +520,7 @@ function HandedOverDrivers({ onNavigate, accountId, search }: {
     search: string;
 }) {
     const acct = accountId ?? "acct-001";
-    const { records, get, save } = useDriverHandovers(acct);
+    const { records } = useDriverHandovers(acct);
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [directFor, setDirectFor] = useState<string | null>(null);
 
@@ -539,11 +552,6 @@ function HandedOverDrivers({ onNavigate, accountId, search }: {
     const shown = q
         ? rows.filter((r) => driverName(r.driver).toLowerCase().includes(q) || ((r.driver as any).licenseNumber ?? "").toLowerCase().includes(q))
         : rows;
-
-    const takeBack = (driverId: string, itemId: string) => {
-        const cur = get(driverId);
-        if (cur) save(removeLines(cur, [itemId]));
-    };
 
     if (shown.length === 0) {
         return (
@@ -583,22 +591,24 @@ function HandedOverDrivers({ onNavigate, accountId, search }: {
                                     </div>
                                 </div>
                             </button>
-                            <span className={cn("hidden md:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold shrink-0", chip.cls)}>
-                                {ChipIcon ? <ChipIcon size={13} /> : <span className={cn("h-1.5 w-1.5 rounded-full", chip.dot)} />}
-                                {chip.label}
-                            </span>
-                            <span className="hidden lg:inline text-xs text-slate-500 shrink-0 whitespace-nowrap tabular-nums">
-                                {r.total} item{r.total === 1 ? "" : "s"} · {r.verifiedCount}/{r.total}
-                            </span>
-                            <Button size="sm" onClick={() => setDirectFor(r.driver.id)}>
-                                <PackageCheck size={14} /> Hand over
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => onNavigate(`/inventory/handover/${r.driver.id}`)}>
-                                <ListChecks size={14} /> Checklist
-                            </Button>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className={cn("hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold", chip.cls)}>
+                                    {ChipIcon ? <ChipIcon size={13} /> : <span className={cn("h-1.5 w-1.5 rounded-full", chip.dot)} />}
+                                    {chip.label}
+                                </span>
+                                <span className="hidden lg:inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 whitespace-nowrap tabular-nums">
+                                    {r.total} item{r.total === 1 ? "" : "s"} · {r.verifiedCount}/{r.total} verified
+                                </span>
+                                <Button variant="outline" size="sm" onClick={() => setDirectFor(r.driver.id)}>
+                                    <PackageCheck size={14} /> Hand over
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => onNavigate(`/inventory/take-back/${r.driver.id}`)}>
+                                    <Undo2 size={14} /> Take back
+                                </Button>
+                            </div>
                         </div>
 
-                        {/* Items grouped by category */}
+                        {/* Items grouped by category (read-only; take-back is done from the module) */}
                         {open && (
                             <div className="bg-slate-50/40 px-5 py-3 space-y-4">
                                 {r.groups.map((g) => {
@@ -611,7 +621,7 @@ function HandedOverDrivers({ onNavigate, accountId, search }: {
                                                 <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{g.name}</p>
                                             </div>
                                             <div className="space-y-1.5">
-                                                {g.lines.map(({ item, qty, verified }) => {
+                                                {g.lines.map(({ item, qty, verified, requested }) => {
                                                     const vendor = VENDORS.find((v) => v.id === item.vendorId);
                                                     return (
                                                         <div key={item.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -620,19 +630,13 @@ function HandedOverDrivers({ onNavigate, accountId, search }: {
                                                                 <div className="text-[11px] text-slate-500 font-mono truncate">{item.serial}{item.pin ? ` · PIN ${item.pin}` : ""}</div>
                                                             </div>
                                                             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">Qty {qty}</span>
-                                                            {verified ? (
-                                                                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0"><CircleCheck size={11} /> Received</span>
+                                                            {requested ? (
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0"><Undo2 size={11} /> Return requested</span>
+                                                            ) : verified ? (
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0"><CircleCheck size={11} /> Received</span>
                                                             ) : (
-                                                                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0">Pending</span>
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0">Pending</span>
                                                             )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => takeBack(r.driver.id, item.id)}
-                                                                title="Take back"
-                                                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100 shrink-0"
-                                                            >
-                                                                <Undo2 size={12} /> Take back
-                                                            </button>
                                                         </div>
                                                     );
                                                 })}

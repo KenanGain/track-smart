@@ -36,6 +36,16 @@ export type DriverHandover = {
     driverSignoff?: SignOffData;
     /** Item ids the driver ticked as received during verification. */
     verifiedItemIds?: string[];
+    /** Item ids the company has asked the driver to return (take-back requested,
+     *  awaiting the driver to hand them back). */
+    takeBackRequestedItemIds?: string[];
+    /** Staff member (app user) assigned to verify the driver returned the items. */
+    takeBackAssigneeId?: string;
+    takeBackAssigneeName?: string;
+    /** Item ids confirmed returned during take-back verification. */
+    takeBackReturnedItemIds?: string[];
+    /** Sign-off that the return was verified by the assigned staff member. */
+    takeBackSignoff?: SignOffData;
     updatedAt: number;
     /** Set when the items are formally handed over (staff sign-off complete). */
     recordedAt?: number;
@@ -165,12 +175,14 @@ export function useDriverHandovers(accountId: string) {
 // Only the company-issued physical accessories are handed over to a driver.
 export const HANDOVER_CATEGORIES = ["cat-keys", "cat-safety-ppe", "cat-equipment", "cat-devices", "cat-cards-docs"];
 
-export type ItemLine = { item: InventoryItem; qty: string; verified: boolean };
+export type ItemLine = { item: InventoryItem; qty: string; verified: boolean; requested: boolean };
 export type DriverGroup = { id: string; name: string; lines: ItemLine[] };
 
-/** Group a driver's held items by inventory category, flagging verified ones. */
+/** Group a driver's held items by inventory category, flagging verified ones
+ *  and any with a pending take-back request. */
 export function buildDriverGroups(rec: DriverHandover, itemById: Map<string, InventoryItem>): DriverGroup[] {
     const verifiedSet = new Set(rec.verifiedItemIds ?? []);
+    const requestedSet = new Set(rec.takeBackRequestedItemIds ?? []);
     const map = new Map<string, DriverGroup>();
     for (const catId of HANDOVER_CATEGORIES) {
         const cat = VENDOR_CATEGORIES.find((c) => c.id === catId);
@@ -181,10 +193,22 @@ export function buildDriverGroups(rec: DriverHandover, itemById: Map<string, Inv
         if (!item) continue;
         const vendor = VENDORS.find((v) => v.id === item.vendorId);
         if (vendor && map.has(vendor.categoryId)) {
-            map.get(vendor.categoryId)!.lines.push({ item, qty: line.qty, verified: verifiedSet.has(line.itemId) });
+            map.get(vendor.categoryId)!.lines.push({
+                item, qty: line.qty,
+                verified: verifiedSet.has(line.itemId),
+                requested: requestedSet.has(line.itemId),
+            });
         }
     }
     return Array.from(map.values()).filter((g) => g.lines.length > 0);
+}
+
+/** Ask the driver to return the given items — flags them as take-back
+ *  requested (pending the driver handing them back). */
+export function requestTakeBack(rec: DriverHandover, itemIds: string[]): DriverHandover {
+    const set = new Set(rec.takeBackRequestedItemIds ?? []);
+    itemIds.forEach((id) => set.add(id));
+    return { ...rec, takeBackRequestedItemIds: Array.from(set), updatedAt: Date.now() };
 }
 
 /** Company inventory still available to add to a driver — not on this driver's
@@ -228,8 +252,9 @@ export function removeLines(rec: DriverHandover, itemIds: string[]): DriverHando
     const drop = new Set(itemIds);
     const lines = rec.lines.filter((l) => !drop.has(l.itemId));
     const verifiedItemIds = (rec.verifiedItemIds ?? []).filter((id) => !drop.has(id));
+    const takeBackRequestedItemIds = (rec.takeBackRequestedItemIds ?? []).filter((id) => !drop.has(id));
     if (lines.length === 0) {
-        return { ...rec, lines, verifiedItemIds: [], staffSignoff: undefined, driverSignoff: undefined, recordedAt: undefined, updatedAt: Date.now() };
+        return { ...rec, lines, verifiedItemIds: [], takeBackRequestedItemIds: [], staffSignoff: undefined, driverSignoff: undefined, recordedAt: undefined, updatedAt: Date.now() };
     }
-    return { ...rec, lines, verifiedItemIds, updatedAt: Date.now() };
+    return { ...rec, lines, verifiedItemIds, takeBackRequestedItemIds, updatedAt: Date.now() };
 }

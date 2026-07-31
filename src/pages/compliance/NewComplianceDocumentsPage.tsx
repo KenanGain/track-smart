@@ -79,8 +79,8 @@ type ViewMode = 'Compliance' | 'Documents';
 const KEY_NUMBER_GROUP_ORDER: KeyNumberGroup[] = [
     'Regulatory and Safety Numbers',
     'Tax and Business Identification Numbers',
-    'Bond and Registration Numbers',
     'Carrier & Industry Codes',
+    'Bond and Registration Numbers',
     'Other',
 ];
 

@@ -201,6 +201,10 @@ export interface Driver {
     keyNumbers?: any[];
     documents?: any[];
     certificates?: any[];
+
+    // Full driver-application data (same shape whether hired through the process
+    // or added via "Add Driver") — every driver carries this so the data file is uniform.
+    application?: import('@/pages/hiring-process/ApplicationSettingsPage').ApplicationData;
 }
 
 export const MOCK_DRIVERS: Driver[] = [

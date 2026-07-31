@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Eye, Flag, Globe, Info, Leaf, MapPin, Pencil, Plus, Save, Sparkles, Trash2, Upload, Image as ImageIcon, FileText, FileSignature, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,7 @@ export const CA_PROVINCES = [
 ];
 export const STATES_PROVINCES = [...US_STATES, ...CA_PROVINCES];
 const POSITIONS = ["Company Driver", "Owner Operator", "Lease Operator", "Driver Trainee", "Other"];
+const VISA_TYPES = ["B1/B2", "TN", "H-2B", "L-1", "Work Permit", "Other"];
 const CONTACT_METHODS = ["Primary Phone", "Cell Phone", "Email Address"];
 const CONTACT_TIMES = ["Any", "Morning", "Afternoon", "Evening"];
 export const LICENSE_CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class A", "Class B", "Class C"];
@@ -148,7 +149,7 @@ const newDrivingExp = (): DrivingExp => ({
 // Motor Vehicle Record - yes/no questions; "Yes" reveals Month/Year + explanation.
 // `upload` → "Yes" also asks for an attestation document. `noDetails` → just Yes/No
 // (no Month/Year + explain). `showWhen` → only shown when that question is "Yes".
-const MVR_QUESTIONS: { id: string; label: string; upload?: boolean; noDetails?: boolean; showWhen?: string }[] = [
+export const MVR_QUESTIONS: { id: string; label: string; upload?: boolean; noDetails?: boolean; showWhen?: string }[] = [
     { id: "denied", label: "Has any license, permit or privilege ever been denied, suspended or revoked for any reason?" },
     { id: "convictedSuspension", label: "Have you ever been convicted of driving during license suspension or revocation, or driving without a valid license or an expired license, or are any charges pending?" },
     { id: "alcoholOffense", label: "Have you ever been convicted for any alcohol or controlled substance related offense while operating a motor vehicle, or are any charges pending?" },
@@ -796,68 +797,120 @@ export const HIRING_FORMS: HiringFormItem[] = [
     { id: "clearinghouse-query", name: "Clearinghouse Query", blurb: "FMCSA Drug & Alcohol Clearinghouse query.", group: "Medical & Compliance" },
 ];
 
+// The full application data object — the SAME shape captured whether the driver
+// applies through the hiring process OR is added directly via "Add Driver".
+export type ApplicationData = {
+    type: string; typeName: string;
+    firstName: string; middleName: string; lastName: string; suffix: string;
+    email: string; phone: string; cellPhone: string;
+    dob: string; ssn: string; legalRightUS: boolean; legalRightCA: boolean;
+    position: string; operatesInUS: string;
+    address: { addr1: string; unit: string; addr2: string; country: string; city: string; state: string; zip: string };
+    resided3yr: string; residenceRows: ResidenceRow[];
+    preferredContact: string; bestTime: string;
+    licenses: License[]; drivingExp: DrivingExp[];
+    mvr: Record<string, MvrAnswer>;
+    hadAccidents: string; accidents: Accident[];
+    hadViolations: string; incidents: Incident[];
+    employedRecently: string; employers: Employer[];
+    wasUnemployed: string; unemployment: Unemployment[];
+    attendedSchool: string; education: Education[];
+    militaryEver: string; military: Military;
+    passport: { number: string; country: string; expiry: DateVal; doc: string };
+    visa: { has: string; number: string; type: string; expiry: DateVal; doc: string };
+    signedDoc: string;
+};
+
 // ----------------------------- application form view -----------------------------
-function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { config: FormConfig; onBack: () => void; onPreview?: () => void; initialPhase?: "application" | "consent" }) {
+export function ApplicationFormView({ config, onBack, onPreview, initialPhase, mode = "wizard", onSaveDriver, onConfigChange, saveLabel = "Save Driver", headerTitle, initialData }: {
+    config: FormConfig; onBack: () => void; onPreview?: () => void; initialPhase?: "application" | "consent";
+    // "wizard" = the hiring-process step-by-step application (default).
+    // "page"   = one big scrolling page (Add Driver): all sections stacked, no
+    //            consent phase; emits an ApplicationData object via onSaveDriver.
+    mode?: "wizard" | "page";
+    onSaveDriver?: (data: ApplicationData) => void;
+    onConfigChange?: (id: string) => void;   // page mode: switch the driver/region type
+    saveLabel?: string;
+    headerTitle?: string;
+    // Pre-fill every field from an existing ApplicationData object (edit / re-open).
+    initialData?: ApplicationData;
+}) {
+    const d0 = initialData;
     // Personal
-    const [firstName, setFirstName] = useState("");
-    const [middleName, setMiddleName] = useState("");
-    const [lastName, setLastName] = useState("");
-    const [suffix, setSuffix] = useState("");
-    const [ssn, setSsn] = useState("");
-    const [dob, setDob] = useState("");
-    const [legalRight, setLegalRight] = useState(false);       // US work eligibility
-    const [legalRightCA, setLegalRightCA] = useState(false);   // Canada work eligibility (cross-border / Canada forms)
+    const [firstName, setFirstName] = useState(d0?.firstName ?? "");
+    const [middleName, setMiddleName] = useState(d0?.middleName ?? "");
+    const [lastName, setLastName] = useState(d0?.lastName ?? "");
+    const [suffix, setSuffix] = useState(d0?.suffix ?? "");
+    const [ssn, setSsn] = useState(d0?.ssn ?? "");
+    const [dob, setDob] = useState(d0?.dob ?? "");
+    const [legalRight, setLegalRight] = useState(d0?.legalRightUS ?? false);       // US work eligibility
+    const [legalRightCA, setLegalRightCA] = useState(d0?.legalRightCA ?? false);   // Canada work eligibility (cross-border / Canada forms)
 
     // Address
-    const [addr1, setAddr1] = useState("");
-    const [unit, setUnit] = useState("");
-    const [addr2, setAddr2] = useState("");
-    const [country, setCountry] = useState(config.defaultCountry);
-    const [city, setCity] = useState("");
-    const [state, setState] = useState("");
-    const [zip, setZip] = useState("");
-    const [resided3yr, setResided3yr] = useState("");
-    const [residenceRows, setResidenceRows] = useState<ResidenceRow[]>([]);
+    const [addr1, setAddr1] = useState(d0?.address?.addr1 ?? "");
+    const [unit, setUnit] = useState(d0?.address?.unit ?? "");
+    const [addr2, setAddr2] = useState(d0?.address?.addr2 ?? "");
+    const [country, setCountry] = useState(d0?.address?.country ?? config.defaultCountry);
+    const [city, setCity] = useState(d0?.address?.city ?? "");
+    const [state, setState] = useState(d0?.address?.state ?? "");
+    const [zip, setZip] = useState(d0?.address?.zip ?? "");
+    const [resided3yr, setResided3yr] = useState(d0?.resided3yr ?? "");
+    const [residenceRows, setResidenceRows] = useState<ResidenceRow[]>(d0?.residenceRows ?? []);
     const [showResidence, setShowResidence] = useState(false);
 
     // Contact
-    const [primaryPhone, setPrimaryPhone] = useState("");
-    const [cellPhone, setCellPhone] = useState("");
-    const [email, setEmail] = useState("");
-    const [confirmEmail, setConfirmEmail] = useState("");
-    const [preferredContact, setPreferredContact] = useState("Primary Phone");
-    const [bestTime, setBestTime] = useState("Any");
-    const [position, setPosition] = useState("");
+    const [primaryPhone, setPrimaryPhone] = useState(d0?.phone ?? "");
+    const [cellPhone, setCellPhone] = useState(d0?.cellPhone ?? "");
+    const [email, setEmail] = useState(d0?.email ?? "");
+    const [confirmEmail, setConfirmEmail] = useState(d0?.email ?? "");
+    const [preferredContact, setPreferredContact] = useState(d0?.preferredContact || "Primary Phone");
+    const [bestTime, setBestTime] = useState(d0?.bestTime || "Any");
+    const [position, setPosition] = useState(d0?.position ?? "");
 
     // Licenses (multiple) — one blank license is present by default; "Add Another License" adds more.
-    const [licenses, setLicenses] = useState<License[]>(() => [newLicense()]);
+    const [licenses, setLicenses] = useState<License[]>(() => (d0?.licenses && d0.licenses.length ? d0.licenses : [newLicense()]));
 
     // Driving experience (multiple) — one default entry shown inline.
-    const [drivingExp, setDrivingExp] = useState<DrivingExp[]>(() => [newDrivingExp()]);
+    const [drivingExp, setDrivingExp] = useState<DrivingExp[]>(() => (d0?.drivingExp && d0.drivingExp.length ? d0.drivingExp : [newDrivingExp()]));
 
     // Military (single, gated)
-    const [militaryEver, setMilitaryEver] = useState("");
-    const [military, setMilitary] = useState<Military>(newMilitary());
+    const [militaryEver, setMilitaryEver] = useState(d0?.militaryEver ?? "");
+    const [military, setMilitary] = useState<Military>(d0?.military ?? newMilitary());
     const setM = (patch: Partial<Military>) => setMilitary((m) => ({ ...m, ...patch }));
 
     // History (multiple, gated)
-    const [employedRecently, setEmployedRecently] = useState("");
-    const [employers, setEmployers] = useState<Employer[]>([]);
-    const [attendedSchool, setAttendedSchool] = useState("");
-    const [education, setEducation] = useState<Education[]>([]);
-    const [wasUnemployed, setWasUnemployed] = useState("");
-    const [unemployment, setUnemployment] = useState<Unemployment[]>([]);
+    const [employedRecently, setEmployedRecently] = useState(d0?.employedRecently ?? "");
+    const [employers, setEmployers] = useState<Employer[]>(d0?.employers ?? []);
+    const [attendedSchool, setAttendedSchool] = useState(d0?.attendedSchool ?? "");
+    const [education, setEducation] = useState<Education[]>(d0?.education ?? []);
+    const [wasUnemployed, setWasUnemployed] = useState(d0?.wasUnemployed ?? "");
+    const [unemployment, setUnemployment] = useState<Unemployment[]>(d0?.unemployment ?? []);
 
-    // Motor Vehicle Record
-    const [mvr, setMvr] = useState<Record<string, MvrAnswer>>(newMvrState);
+    // Motor Vehicle Record — merge onto a full question set so every question id is present.
+    const [mvr, setMvr] = useState<Record<string, MvrAnswer>>(() => ({ ...newMvrState(), ...(d0?.mvr ?? {}) }));
     const setMvrAnswer = (id: string, patch: Partial<MvrAnswer>) =>
         setMvr((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
     // Incidents (moving violations) + Accidents (multiple, gated)
-    const [hadViolations, setHadViolations] = useState("");
-    const [incidents, setIncidents] = useState<Incident[]>([]);
-    const [hadAccidents, setHadAccidents] = useState("");
-    const [accidents, setAccidents] = useState<Accident[]>([]);
+    const [hadViolations, setHadViolations] = useState(d0?.hadViolations ?? "");
+    const [incidents, setIncidents] = useState<Incident[]>(d0?.incidents ?? []);
+    const [hadAccidents, setHadAccidents] = useState(d0?.hadAccidents ?? "");
+    const [accidents, setAccidents] = useState<Accident[]>(d0?.accidents ?? []);
+
+    // Travel Documents — passport + visa (identity docs; used for cross-border travel).
+    const [passportNumber, setPassportNumber] = useState(d0?.passport?.number ?? "");
+    const [passportCountry, setPassportCountry] = useState(d0?.passport?.country ?? config.defaultCountry);
+    const [passportExpiry, setPassportExpiry] = useState<DateVal>(d0?.passport?.expiry ?? { ...emptyDate });
+    const [passportDoc, setPassportDoc] = useState(d0?.passport?.doc ?? "");
+    const [hasVisa, setHasVisa] = useState(d0?.visa?.has ?? "");
+    const [visaType, setVisaType] = useState(d0?.visa?.type ?? "");
+    const [visaNumber, setVisaNumber] = useState(d0?.visa?.number ?? "");
+    const [visaExpiry, setVisaExpiry] = useState<DateVal>(d0?.visa?.expiry ?? { ...emptyDate });
+    const [visaDoc, setVisaDoc] = useState(d0?.visa?.doc ?? "");
+
+    // Signed application document — page mode (Add Driver) uploads the signed
+    // application/declaration instead of collecting a live e-signature.
+    const [signedDoc, setSignedDoc] = useState(d0?.signedDoc ?? "");
 
     // Signature
     const [saveFormData, setSaveFormData] = useState(true);
@@ -875,7 +928,7 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
     // Whether this driver operates in / crosses into the US. Gates the US-federal
     // report consents (FCRA · MVR · PSP · FMCSA Clearinghouse) in the consent step.
     // Canada-only applications default to No; everyone else defaults to Yes.
-    const [operatesInUS, setOperatesInUS] = useState(isCanada && !isCross ? "No" : "Yes");
+    const [operatesInUS, setOperatesInUS] = useState(d0?.operatesInUS ?? (isCanada && !isCross ? "No" : "Yes"));
 
     // Populate the whole form with realistic dummy data so the filled view can
     // be reviewed at a glance.
@@ -905,6 +958,11 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
         setWasUnemployed("Yes");
         setUnemployment([{ start: { m: "04", y: "2020" }, end: { m: "08", y: "2020" }, comments: "Between roles during COVID-19." }]);
         setCopyEmail("kenan.gain@example.com");
+        // Travel documents — passport always; visa for cross-border drivers.
+        setPassportNumber("X1234567"); setPassportCountry(config.defaultCountry); setPassportExpiry({ m: "08", d: "15", y: "2030" }); setPassportDoc("passport.pdf");
+        if (isCross) { setHasVisa("Yes"); setVisaType("TN"); setVisaNumber("V-99120"); setVisaExpiry({ m: "08", d: "15", y: "2029" }); setVisaDoc("visa.pdf"); }
+        else { setHasVisa("No"); }
+        setSignedDoc("signed-application.pdf");
     };
 
     // One license's fields, rendered inline (used directly on the License step so
@@ -1053,7 +1111,10 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
                         <ToggleField label={`Do you have legal right to work in ${isCanada ? "Canada" : "the United States"}?`} checked={isCanada ? legalRightCA : legalRight} onChange={isCanada ? setLegalRightCA : setLegalRight} />
                     )}
                     <Field className="sm:col-span-2" label="Position Type"><Select value={position} placeholder="Select..." onChange={setPosition}><Options items={POSITIONS} /></Select></Field>
-                    <Field className="sm:col-span-2" label="Will this driver operate in or cross into the United States?" hint="If No, US-federal consents (Personal Information / FCRA, MVR, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step." required><YesNo value={operatesInUS} onChange={setOperatesInUS} /></Field>
+                    {/* Consent-gating question — only relevant to the hiring wizard's consent step, not the Add Driver page. */}
+                    {mode !== "page" && (
+                        <Field className="sm:col-span-2" label="Will this driver operate in or cross into the United States?" hint="If No, US-federal consents (Personal Information / FCRA, MVR, PSP, and FMCSA Drug & Alcohol Clearinghouse) won't be requested in the consent step." required><YesNo value={operatesInUS} onChange={setOperatesInUS} /></Field>
+                    )}
                 </Grid>
             ),
         },
@@ -1128,6 +1189,36 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
                     <Button type="button" variant="outline" onClick={() => setLicenses((ls) => [...ls, newLicense()])} className="w-full border-dashed">
                         <Plus className="h-4 w-4" /> Add Another License
                     </Button>
+                </div>
+            ),
+        },
+        {
+            key: "travel-documents", title: "Travel Documents", fields: 6, render: () => (
+                <div className="space-y-6">
+                    <InfoAlert>Passport and visa details — used for identity verification and cross-border travel.</InfoAlert>
+                    <FormSection title="Passport">
+                        <Grid>
+                            <Field label="Passport Number"><TextInput value={passportNumber} onChange={(e) => setPassportNumber(e.target.value)} /></Field>
+                            <Field label="Issuing Country"><SearchSelect value={passportCountry} items={COUNTRIES} onChange={setPassportCountry} /></Field>
+                            <Field label="Expiration Date"><DateTriple value={passportExpiry} years={EXP_YEARS} onChange={setPassportExpiry} /></Field>
+                            <div className="hidden sm:block" />
+                            <div className="sm:col-span-2"><ImageUpload label="Passport document" hint="PNG, JPG or PDF · max 10MB" value={passportDoc} onChange={setPassportDoc} /></div>
+                        </Grid>
+                    </FormSection>
+                    <FormSection title="Visa / Work Permit">
+                        <Grid>
+                            <Field className="sm:col-span-2" label="Do you have a visa or work permit?"><YesNo value={hasVisa} onChange={setHasVisa} /></Field>
+                            {hasVisa === "Yes" && (
+                                <>
+                                    <Field label="Visa Type"><Select value={visaType} placeholder="Please Choose" onChange={setVisaType}><Options items={VISA_TYPES} /></Select></Field>
+                                    <Field label="Visa Number"><TextInput value={visaNumber} onChange={(e) => setVisaNumber(e.target.value)} /></Field>
+                                    <Field label="Expiration Date"><DateTriple value={visaExpiry} years={EXP_YEARS} onChange={setVisaExpiry} /></Field>
+                                    <div className="hidden sm:block" />
+                                    <div className="sm:col-span-2"><ImageUpload label="Visa document" hint="PNG, JPG or PDF · max 10MB" value={visaDoc} onChange={setVisaDoc} /></div>
+                                </>
+                            )}
+                        </Grid>
+                    </FormSection>
                 </div>
             ),
         },
@@ -1369,37 +1460,60 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
                         <Field label={config.idLabel} required><TextInput value={ssn} onChange={(e) => setSsn(e.target.value)} /></Field>
                         <Field label="Date of Birth" required><DateInput value={dob} onChange={(e) => setDob(e.target.value)} /></Field>
                     </Grid>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-sm text-slate-600">Would you like to save this form data? (optional)</p>
-                        <p className="mt-1 text-xs text-slate-500">If you save, the next time you apply we can pre-fill the data for you. Saving also enables you to edit your data in the future.</p>
-                        <label className="mt-3 flex cursor-pointer items-center gap-2">
-                            <Checkbox checked={saveFormData} onCheckedChange={setSaveFormData} />
-                            <span className="text-sm text-slate-700">Yes</span>
-                        </label>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 p-4">
-                        <label className="flex cursor-pointer items-center gap-2">
-                            <Checkbox checked={sendCopy} onCheckedChange={setSendCopy} />
-                            <span className="text-sm text-slate-600">Send me a copy (optional)</span>
-                        </label>
-                        <Field className="mt-3" label="Email Address"><TextInput type="email" value={copyEmail} onChange={(e) => setCopyEmail(e.target.value)} /></Field>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Declaration</p>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">By signing, I authorize the investigation of my employment and safety-performance history and certify that the information in this application is true and complete.</p>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">In the event of employment, I understand that false or misleading information given in my application or interview(s) may result in discharge. I also understand that I am required to abide by all rules and regulations of the Company.</p>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">I understand that the information I provide regarding my current and/or prior employers may be used, and those employer(s) will be contacted for the purpose of investigating my safety performance history as required by 49 CFR 391.23. I understand that I have the right to:</p>
-                        <ul className="mt-1.5 space-y-1.5 text-sm leading-relaxed text-slate-600">
-                            <li className="flex gap-2"><span className="text-slate-400">•</span><span>Review information provided by current/previous employers;</span></li>
-                            <li className="flex gap-2"><span className="text-slate-400">•</span><span>Have errors in the information corrected by previous employers, and for those previous employers to resend the corrected information to the prospective employer; and</span></li>
-                            <li className="flex gap-2"><span className="text-slate-400">•</span><span>Have a rebuttal statement attached to the alleged erroneous information, if the previous employer(s) and I cannot agree on the accuracy of the information.</span></li>
-                        </ul>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">This certifies that I completed this application, and that all entries on it and information in it are true and complete to the best of my knowledge.</p>
-                        <p className="mt-3 text-sm font-medium text-slate-700">Note: A motor carrier may require an applicant to provide more information than that required by the Federal Motor Carrier Safety Regulations.</p>
-                    </div>
-                    <InfoAlert>By signing below, I agree to use an electronic signature and acknowledge that an electronic signature is as legally binding as an ink signature.</InfoAlert>
-                    <p className="text-sm text-slate-600">Draw your signature with your finger or mouse, or switch to <span className="font-medium text-slate-700">Type</span> to enter your name.</p>
-                    <SignaturePad />
+                    {/* Applicant-portal prompts — not shown when an admin adds the driver directly. */}
+                    {mode !== "page" && (
+                        <>
+                            <div className="rounded-lg border border-slate-200 p-4">
+                                <p className="text-sm text-slate-600">Would you like to save this form data? (optional)</p>
+                                <p className="mt-1 text-xs text-slate-500">If you save, the next time you apply we can pre-fill the data for you. Saving also enables you to edit your data in the future.</p>
+                                <label className="mt-3 flex cursor-pointer items-center gap-2">
+                                    <Checkbox checked={saveFormData} onCheckedChange={setSaveFormData} />
+                                    <span className="text-sm text-slate-700">Yes</span>
+                                </label>
+                            </div>
+                            <div className="rounded-lg border border-slate-200 p-4">
+                                <label className="flex cursor-pointer items-center gap-2">
+                                    <Checkbox checked={sendCopy} onCheckedChange={setSendCopy} />
+                                    <span className="text-sm text-slate-600">Send me a copy (optional)</span>
+                                </label>
+                                <Field className="mt-3" label="Email Address"><TextInput type="email" value={copyEmail} onChange={(e) => setCopyEmail(e.target.value)} /></Field>
+                            </div>
+                        </>
+                    )}
+                    {mode === "page" ? (
+                        // Add Driver: upload the signed Declaration document (no live e-signature).
+                        <div className="space-y-3">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Declaration form</p>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                    Instead of signing here, upload the driver&rsquo;s <span className="font-semibold text-slate-700">signed Declaration form</span> — the page on
+                                    which the driver certifies the application is true and complete, authorizes the investigation of their employment
+                                    and safety-performance history (49 CFR 391.23), and acknowledges their rights to review and correct that information.
+                                </p>
+                                <p className="mt-2 text-xs italic text-slate-500">Note: attach the signed &amp; dated declaration the driver completed (scan or photo). Accepted: PNG, JPG or PDF.</p>
+                            </div>
+                            <ImageUpload label="Signed Declaration form" hint="PNG, JPG or PDF · max 10MB" value={signedDoc} onChange={setSignedDoc} />
+                        </div>
+                    ) : (
+                        <>
+                            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Declaration</p>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">By signing, I authorize the investigation of my employment and safety-performance history and certify that the information in this application is true and complete.</p>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">In the event of employment, I understand that false or misleading information given in my application or interview(s) may result in discharge. I also understand that I am required to abide by all rules and regulations of the Company.</p>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">I understand that the information I provide regarding my current and/or prior employers may be used, and those employer(s) will be contacted for the purpose of investigating my safety performance history as required by 49 CFR 391.23. I understand that I have the right to:</p>
+                                <ul className="mt-1.5 space-y-1.5 text-sm leading-relaxed text-slate-600">
+                                    <li className="flex gap-2"><span className="text-slate-400">•</span><span>Review information provided by current/previous employers;</span></li>
+                                    <li className="flex gap-2"><span className="text-slate-400">•</span><span>Have errors in the information corrected by previous employers, and for those previous employers to resend the corrected information to the prospective employer; and</span></li>
+                                    <li className="flex gap-2"><span className="text-slate-400">•</span><span>Have a rebuttal statement attached to the alleged erroneous information, if the previous employer(s) and I cannot agree on the accuracy of the information.</span></li>
+                                </ul>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">This certifies that I completed this application, and that all entries on it and information in it are true and complete to the best of my knowledge.</p>
+                                <p className="mt-3 text-sm font-medium text-slate-700">Note: A motor carrier may require an applicant to provide more information than that required by the Federal Motor Carrier Safety Regulations.</p>
+                            </div>
+                            <InfoAlert>By signing below, I agree to use an electronic signature and acknowledge that an electronic signature is as legally binding as an ink signature.</InfoAlert>
+                            <p className="text-sm text-slate-600">Draw your signature with your finger or mouse, or switch to <span className="font-medium text-slate-700">Type</span> to enter your name.</p>
+                            <SignaturePad />
+                        </>
+                    )}
                 </div>
             ),
         },
@@ -1408,6 +1522,89 @@ function ApplicationFormView({ config, onBack, onPreview, initialPhase }: { conf
     const steps = dataSteps;
     const current = steps[step];
     const isLast = step === steps.length - 1;
+
+    // Gather every section's state into one ApplicationData object — this is the
+    // shared JSON shape the Add Driver form emits (same fields as the wizard).
+    const collectData = (): ApplicationData => ({
+        type: config.id, typeName: config.name,
+        firstName, middleName, lastName, suffix, email, phone: primaryPhone, cellPhone,
+        dob, ssn, legalRightUS: legalRight, legalRightCA, position, operatesInUS,
+        address: { addr1, unit, addr2, country, city, state, zip },
+        resided3yr, residenceRows, preferredContact, bestTime,
+        licenses, drivingExp, mvr,
+        hadAccidents, accidents, hadViolations, incidents,
+        employedRecently, employers, wasUnemployed, unemployment, attendedSchool, education,
+        militaryEver, military,
+        passport: { number: passportNumber, country: passportCountry, expiry: passportExpiry, doc: passportDoc },
+        visa: { has: hasVisa, number: visaNumber, type: visaType, expiry: visaExpiry, doc: visaDoc },
+        signedDoc,
+    });
+
+    // Page mode — one big scrolling page (Add Driver). Every step's fields are
+    // rendered stacked in a card; no steps sidebar, nav or consent phase.
+    if (mode === "page") {
+        return (
+            <div className="min-h-screen bg-slate-50 pb-16">
+                <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
+                    <div className="flex items-center gap-3">
+                        <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900">
+                            <ChevronLeft className="h-4 w-4" /> Cancel
+                        </button>
+                        <span className="hidden text-sm font-semibold text-slate-800 sm:inline">{headerTitle ?? "Add New Driver"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={fillSample}><Sparkles className="h-4 w-4" /> Fill sample data</Button>
+                        <Button type="button" size="sm" onClick={() => onSaveDriver?.(collectData())}><Save className="h-4 w-4" /> {saveLabel}</Button>
+                    </div>
+                </div>
+
+                <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+                    {/* Driver type (region) — picks which application fields apply. */}
+                    <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Driver Type</p>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {APPLICATION_FORMS.map((f) => {
+                                const active = f.id === config.id;
+                                return (
+                                    <button key={f.id} type="button" onClick={() => onConfigChange?.(f.id)} disabled={!onConfigChange}
+                                        className={cn(
+                                            "flex items-start gap-3 rounded-xl border p-4 text-left transition disabled:cursor-default",
+                                            active ? "border-blue-500 bg-blue-50/60 ring-1 ring-blue-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
+                                        )}>
+                                        <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", f.accent)}><f.Icon className="h-5 w-5" /></span>
+                                        <span className="min-w-0">
+                                            <span className="block text-sm font-semibold text-slate-800">{f.name}</span>
+                                            <span className="block text-xs text-slate-500">{f.region}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        {steps.map((s, i) => (
+                            <section key={s.key} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-4">
+                                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{i + 1}</span>
+                                    <h2 className="text-base font-bold text-slate-900">{s.title}</h2>
+                                </div>
+                                <div className="p-6">{s.render()}</div>
+                            </section>
+                        ))}
+                    </div>
+
+                    <div className="mt-8 flex justify-end">
+                        <Button type="button" onClick={() => onSaveDriver?.(collectData())}><Save className="h-4 w-4" /> {saveLabel}</Button>
+                    </div>
+                </div>
+
+                {showResidence && (
+                    <ResidenceModal rows={residenceRows} onClose={() => setShowResidence(false)} onSave={(rows) => { setResidenceRows(rows); setShowResidence(false); }} />
+                )}
+            </div>
+        );
+    }
 
     // After the application data, the driver moves into the consent phase.
     if (phase === "consent") {

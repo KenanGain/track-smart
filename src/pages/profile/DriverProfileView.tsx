@@ -11,6 +11,7 @@ import { StatusBadge, ViewField, InputGroup, Modal, maskSSN, formatDate, calcula
 import { PaystubsPage } from '../finance/PaystubsPage';
 import { MOCK_DRIVERS } from '@/data/mock-app-data';
 import { US_STATES, CA_PROVINCES } from '@/data/geo-data';
+import { MVR_QUESTIONS } from '@/pages/hiring-process/ApplicationSettingsPage';
 import { MOCK_VIOLATION_RECORDS } from '@/pages/violations/violations-list.data';
 import { INCIDENTS } from '@/pages/incidents/incidents.data';
 import { inspectionsData } from '@/pages/inspections/inspectionsData';
@@ -412,273 +413,335 @@ export const EditEmploymentModal = ({ isOpen, onClose, history, onSave }: any) =
 };
 
 // --- Profile Tab Component ---
-const ProfileTab = ({ data, onEditPersonal, onEditAddress, onEditContacts, onEditResidences, onEditLicenses, onEditTravelDocs, onEditEmployment }: any) => {
+const ProfileTab = ({ data, onEdit }: any) => {
+  // The driver's full application data file (same shape captured by Add / Edit).
+  const app: any = data.application || {};
+  const mmYY = (d: any) => (d && d.m && d.y ? `${String(d.m).padStart(2, '0')}/${d.y}` : '—');
+  const yesNo = (v: any) => (v === true ? 'Yes' : v === false ? 'No' : (v || '—'));
 
-  // Section card header helper
-  const SectionCard = ({ icon: Icon, iconBg = 'bg-blue-50', iconColor = 'text-blue-600', title, onEdit, children }: any) => (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className={`p-1.5 rounded-lg ${iconBg} ${iconColor} flex items-center justify-center`}>
-            <Icon className="w-4 h-4" />
-          </div>
-          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+  // Numbered read-only section — mirrors the Add / Edit application form layout.
+  const Section = ({ num, title, children }: { num: number; title: string; children: React.ReactNode }) => (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">{num}</span>
+          <h3 className="text-base font-bold text-slate-900">{title}</h3>
         </div>
         {onEdit && (
           <button onClick={onEdit} className="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-colors" title="Edit">
-            <Edit className="w-3.5 h-3.5" />
+            <Edit className="w-4 h-4" />
           </button>
         )}
       </div>
-      <div className="flex-1">{children}</div>
-    </div>
+      {children}
+    </section>
   );
+
+  const Fields = ({ children }: { children: React.ReactNode }) => (
+    <div className="px-5 py-5"><div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">{children}</div></div>
+  );
+  const TableWrap = ({ children }: { children: React.ReactNode }) => (
+    <div className="overflow-x-auto"><table className="w-full text-sm text-left">{children}</table></div>
+  );
+  const THead = ({ cols }: { cols: string[] }) => (
+    <thead className="bg-slate-50/80 border-b border-slate-100 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
+      <tr>{cols.map((c) => <th key={c} className="px-5 py-2.5">{c}</th>)}</tr>
+    </thead>
+  );
+  const EmptyRow = ({ cols, label }: { cols: number; label: string }) => (
+    <tr><td colSpan={cols} className="px-5 py-6 text-center text-slate-400 text-xs italic">{label}</td></tr>
+  );
+
+  const residences = (data.previousResidences && data.previousResidences.length ? data.previousResidences : (app.residenceRows || []));
+  const mvrYes = MVR_QUESTIONS.filter((q: any) => app.mvr && app.mvr[q.id] && app.mvr[q.id].answer === 'Yes');
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
+      {/* 1. Applicant Information */}
+      <Section num={1} title="Applicant Information">
+        <Fields>
+          <ViewField label="First Name" value={data.firstName} />
+          <ViewField label="Middle Name" value={data.middleName || '—'} />
+          <ViewField label="Last Name" value={data.lastName} />
+          <ViewField label="Email" value={data.email} icon={Mail} highlight />
+          <ViewField label="Phone" value={data.phone} icon={Phone} />
+          <ViewField label="Date of Birth" value={formatDate(data.dob)} subValue={calculateAge(data.dob) ? `${calculateAge(data.dob)} yrs` : undefined} />
+          <ViewField label="Gender" value={data.gender} />
+          <ViewField label="SSN / SIN" value={maskSSN(data.ssn)} />
+          <div>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Status</p>
+            <StatusBadge status={data.status} />
+          </div>
+          <ViewField label="Right to Work — U.S." value={yesNo(app.legalRightUS)} />
+          <ViewField label="Right to Work — Canada" value={yesNo(app.legalRightCA)} />
+          <ViewField label="Position Type" value={app.position || data.driverType || '—'} />
+        </Fields>
+      </Section>
 
-      {/* ROW 1: Personal Identification + Current Residence */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        {/* Personal Identification */}
-        <SectionCard icon={User} title="Personal Identification" onEdit={onEditPersonal}>
-          <div className="px-5 py-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-              <ViewField label="First Name" value={data.firstName} />
-              <ViewField label="Middle Name" value={data.middleName} />
-              <ViewField label="Last Name" value={data.lastName} />
-              <ViewField label="Date of Birth" value={formatDate(data.dob)} subValue={calculateAge(data.dob) ? `${calculateAge(data.dob)} yrs` : undefined} />
-              <ViewField label="Gender" value={data.gender} />
-              <ViewField label="SSN / SIN" value={maskSSN(data.ssn)} />
-              <ViewField label="Phone" value={data.phone} icon={Phone} />
-              <ViewField label="Email" value={data.email} icon={Mail} highlight />
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Status</p>
-                <StatusBadge status={data.status} />
+      {/* 2. Address Details */}
+      <Section num={2} title="Address Details">
+        <Fields>
+          <ViewField label="Country" value={data.country} />
+          <ViewField label="Street Address" value={data.address} />
+          <ViewField label="Unit / Apt" value={data.unit || '—'} />
+          <ViewField label="City" value={data.city} />
+          <ViewField label="State / Province" value={data.state} />
+          <ViewField label="Zip / Postal" value={data.zip} />
+          <ViewField label="Lived Here 3+ Years" value={app.resided3yr || '—'} />
+        </Fields>
+        <div className="border-t border-slate-100">
+          <p className="px-5 pt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Residence History</p>
+          <TableWrap>
+            <THead cols={['Address', 'Duration']} />
+            <tbody className="divide-y divide-slate-50">
+              {residences.map((res: any, idx: number) => (
+                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-5 py-3">
+                    <div className="font-semibold text-slate-800 text-sm">{res.address}{res.unit ? ` #${res.unit}` : ''}</div>
+                    <div className="text-xs text-slate-500">{res.city}, {res.state} {res.zip} · {res.country || 'USA'}</div>
+                  </td>
+                  <td className="px-5 py-3 whitespace-nowrap">
+                    <div className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-100 px-2 py-1 rounded-md font-medium">
+                      <CalendarX className="w-3 h-3 text-slate-400" />
+                      {res.startDate ? formatDate(res.startDate) : (res.start ? mmYY(res.start) : '—')}
+                      <ArrowRight className="w-3 h-3 text-slate-300" />
+                      {res.endDate ? formatDate(res.endDate) : (res.end ? mmYY(res.end) : 'Present')}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {residences.length === 0 && <EmptyRow cols={2} label="No previous residence history." />}
+            </tbody>
+          </TableWrap>
+        </div>
+      </Section>
+
+      {/* 3. Contact Details */}
+      <Section num={3} title="Contact Details">
+        <Fields>
+          <ViewField label="Primary Phone" value={data.phone} icon={Phone} />
+          <ViewField label="Cell Phone" value={app.cellPhone || '—'} icon={Phone} />
+          <ViewField label="Email" value={data.email || app.email} icon={Mail} highlight />
+          <ViewField label="Preferred Contact" value={app.preferredContact || '—'} />
+          <ViewField label="Best Time to Contact" value={app.bestTime || '—'} />
+        </Fields>
+      </Section>
+
+      {/* 4. License Details */}
+      <Section num={4} title="License Details">
+        <TableWrap>
+          <THead cols={['Type', 'Number', 'State', 'Class', 'Endorsements', 'Expires', 'Status']} />
+          <tbody className="divide-y divide-slate-50">
+            {data.licenses?.map((lic: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800">{lic.type}</span>
+                    {lic.isPrimary && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 uppercase">Primary</span>}
+                  </div>
+                </td>
+                <td className="px-5 py-3.5 font-mono text-sm text-slate-600 uppercase">{lic.licenseNumber}</td>
+                <td className="px-5 py-3.5 text-slate-600">{lic.province}</td>
+                <td className="px-5 py-3.5 text-slate-600">{lic.class}</td>
+                <td className="px-5 py-3.5">
+                  {lic.endorsements && lic.endorsements.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">{lic.endorsements.map((e: string, i: number) => <span key={i} className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{e}</span>)}</div>
+                  ) : <span className="text-slate-300 text-xs">—</span>}
+                </td>
+                <td className="px-5 py-3.5 text-slate-600">{formatDate(lic.expiryDate)}</td>
+                <td className="px-5 py-3.5"><StatusBadge status={lic.status} /></td>
+              </tr>
+            ))}
+            {(!data.licenses || data.licenses.length === 0) && <EmptyRow cols={7} label="No licenses recorded." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 5. Travel Documents */}
+      <Section num={5} title="Travel Documents">
+        <TableWrap>
+          <THead cols={['Type', 'Number', 'Country', 'Expires']} />
+          <tbody className="divide-y divide-slate-50">
+            {data.travelDocuments?.map((doc: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5 font-semibold text-slate-800">{doc.type}</td>
+                <td className="px-5 py-3.5 font-mono text-sm text-slate-600">{doc.number}</td>
+                <td className="px-5 py-3.5 text-slate-600 uppercase">{doc.country}</td>
+                <td className="px-5 py-3.5 text-slate-600">{formatDate(doc.expiryDate)}</td>
+              </tr>
+            ))}
+            {(!data.travelDocuments || data.travelDocuments.length === 0) && <EmptyRow cols={4} label="No travel documents recorded." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 6. License Disqualification */}
+      <Section num={6} title="License Disqualification">
+        {mvrYes.length > 0 ? (
+          <div className="divide-y divide-slate-100">
+            {mvrYes.map((q: any) => {
+              const a = app.mvr[q.id];
+              return (
+                <div key={q.id} className="px-5 py-3.5">
+                  <p className="text-sm font-semibold text-slate-800">{q.label}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                    <span className="inline-flex items-center rounded bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-600">Yes</span>
+                    {(a.my && a.my.m && a.my.y) ? <span>{mmYY(a.my)}</span> : null}
+                    {a.explain ? <span className="text-slate-500">{a.explain}</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="px-5 py-6 text-center text-slate-400 text-xs italic">No license suspensions, revocations, or disqualifying convictions reported.</p>
+        )}
+      </Section>
+
+      {/* 7. Driving Experience */}
+      <Section num={7} title="Driving Experience">
+        <TableWrap>
+          <THead cols={['Equipment', 'Freight', 'Regions', 'Dates', 'Miles', 'O/O']} />
+          <tbody className="divide-y divide-slate-50">
+            {(app.drivingExp || []).map((x: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5 font-semibold text-slate-800">{x.equipmentClass || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{(x.freightTypes || []).join(', ') || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{(x.regions || []).join(', ') || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap font-mono text-xs">{formatDate(x.from)} — {formatDate(x.to)}</td>
+                <td className="px-5 py-3.5 text-slate-600">{x.miles ? Number(x.miles).toLocaleString() : '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{x.ownerOperator || '—'}</td>
+              </tr>
+            ))}
+            {(!app.drivingExp || app.drivingExp.length === 0) && <EmptyRow cols={6} label="No driving experience recorded." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 8. Employment History */}
+      <Section num={8} title="Employment History">
+        <TableWrap>
+          <THead cols={['Employer', 'Timeline', 'Zone', 'Status']} />
+          <tbody className="divide-y divide-slate-50">
+            {data.employmentHistory?.map((job: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5">
+                  <div className="font-semibold text-slate-800">{job.employerName}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{typeof job.address === 'object' ? `${job.address.city || ''}, ${job.address.state || ''}` : job.address}</div>
+                </td>
+                <td className="px-5 py-3.5 whitespace-nowrap text-xs text-slate-600 font-mono">{formatDate(job.startDate)} — {formatDate(job.endDate)}</td>
+                <td className="px-5 py-3.5 text-slate-600 text-sm">{job.operatingZone || '—'}</td>
+                <td className="px-5 py-3.5">
+                  <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase", job.terminationStatus === 'Voluntary' ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200")}>{job.terminationStatus || '—'}</span>
+                </td>
+              </tr>
+            ))}
+            {(!data.employmentHistory || data.employmentHistory.length === 0) && <EmptyRow cols={4} label="No employment history recorded." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 9. Unemployment */}
+      <Section num={9} title="Unemployment">
+        <TableWrap>
+          <THead cols={['Dates', 'Comments']} />
+          <tbody className="divide-y divide-slate-50">
+            {(app.unemployment || []).map((u: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5 whitespace-nowrap font-mono text-xs text-slate-600">{mmYY(u.start)} — {mmYY(u.end)}</td>
+                <td className="px-5 py-3.5 text-slate-600">{u.comments || '—'}</td>
+              </tr>
+            ))}
+            {(!app.unemployment || app.unemployment.length === 0) && <EmptyRow cols={2} label="No unemployment periods reported." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 10. Education */}
+      <Section num={10} title="Education">
+        <TableWrap>
+          <THead cols={['School', 'Field of Study', 'Location', 'Dates']} />
+          <tbody className="divide-y divide-slate-50">
+            {(app.education || []).map((s: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5 font-semibold text-slate-800">{s.school || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{s.study || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{[s.city, s.state].filter(Boolean).join(', ') || '—'}</td>
+                <td className="px-5 py-3.5 whitespace-nowrap font-mono text-xs text-slate-600">{mmYY(s.start)} — {mmYY(s.end)}</td>
+              </tr>
+            ))}
+            {(!app.education || app.education.length === 0) && <EmptyRow cols={4} label="No education records." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 11. Accident History */}
+      <Section num={11} title="Accident History">
+        <TableWrap>
+          <THead cols={['Date', 'Type', 'At Fault', 'Location']} />
+          <tbody className="divide-y divide-slate-50">
+            {(app.accidents || []).map((a: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5 whitespace-nowrap font-mono text-xs text-slate-600">{mmYY(a.date)}</td>
+                <td className="px-5 py-3.5 font-semibold text-slate-800">{a.type || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{a.atFault || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{[a.city, a.state].filter(Boolean).join(', ') || '—'}</td>
+              </tr>
+            ))}
+            {(!app.accidents || app.accidents.length === 0) && <EmptyRow cols={4} label="No accidents reported." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 12. Traffic Violations */}
+      <Section num={12} title="Traffic Violations">
+        <TableWrap>
+          <THead cols={['Date', 'Charge', 'State', 'Penalty']} />
+          <tbody className="divide-y divide-slate-50">
+            {(app.incidents || []).map((v: any, idx: number) => (
+              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-3.5 whitespace-nowrap font-mono text-xs text-slate-600">{mmYY(v.date)}</td>
+                <td className="px-5 py-3.5 font-semibold text-slate-800">{(v.charges || []).join(', ') || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{v.state || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{(v.penalties || []).join(', ') || '—'}</td>
+              </tr>
+            ))}
+            {(!app.incidents || app.incidents.length === 0) && <EmptyRow cols={4} label="No traffic violations reported." />}
+          </tbody>
+        </TableWrap>
+      </Section>
+
+      {/* 13. Military Service */}
+      <Section num={13} title="Military Service">
+        {app.militaryEver === 'Yes' && app.military ? (
+          <Fields>
+            <ViewField label="Country" value={app.military.country || '—'} />
+            <ViewField label="Branch" value={app.military.branch || '—'} />
+            <ViewField label="Rank at Discharge" value={app.military.rank || '—'} />
+            <ViewField label="Served" value={`${mmYY(app.military.start)} — ${mmYY(app.military.end)}`} />
+            <ViewField label="Can Obtain DD214" value={app.military.dd214 || '—'} />
+          </Fields>
+        ) : (
+          <p className="px-5 py-6 text-center text-slate-400 text-xs italic">No military service reported.</p>
+        )}
+      </Section>
+
+      {/* 14. Signature & Declaration */}
+      <Section num={14} title="Signature & Declaration">
+        <div className="px-5 py-5">
+          {app.signedDoc ? (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600"><FileText className="h-4 w-4" /></span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">{app.signedDoc}</p>
+                <p className="text-xs text-slate-500">Signed declaration on file</p>
               </div>
-              <ViewField label="Date Hired" value={formatDate(data.hiredDate || data.dateHired)} />
-              <ViewField label="System Added" value={formatDate(data.dateAdded)} />
             </div>
-          </div>
-        </SectionCard>
-
-        {/* Current Residence */}
-        <SectionCard icon={MapPin} iconBg="bg-emerald-50" iconColor="text-emerald-600" title="Current Residence" onEdit={onEditAddress}>
-          <div className="px-5 py-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <ViewField label="Country" value={data.country} fullWidth />
-              <ViewField label="Street Address" value={data.address} fullWidth />
-              <ViewField label="Unit / Apt" value={data.unit || '—'} />
-              <ViewField label="City" value={data.city} />
-              <ViewField label="State / Province" value={data.state} />
-              <ViewField label="Zip / Postal" value={data.zip} />
-            </div>
-          </div>
-        </SectionCard>
-      </div>
-
-      {/* ROW 2: Emergency Contacts + Previous Residences (Table Views) */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        {/* Emergency Contacts */}
-        <SectionCard icon={AlertTriangle} iconBg="bg-rose-50" iconColor="text-rose-500" title="Emergency Contacts" onEdit={onEditContacts}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50/80 border-b border-slate-100 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                <tr>
-                  <th className="px-5 py-2.5">Name</th>
-                  <th className="px-5 py-2.5">Relation</th>
-                  <th className="px-5 py-2.5">Contact</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {data.emergencyContacts?.map((contact: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-5 py-3 font-semibold text-slate-800 text-sm">{contact.name}</td>
-                    <td className="px-5 py-3">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold uppercase">
-                        {contact.relation}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex flex-col gap-0.5 text-xs text-slate-600">
-                        {contact.phone && <span className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-slate-400" />{contact.phone}</span>}
-                        {contact.email && <span className="flex items-center gap-1.5"><Mail className="w-3 h-3 text-slate-400" />{contact.email}</span>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {(!data.emergencyContacts || data.emergencyContacts.length === 0) && (
-                  <tr><td colSpan={3} className="px-5 py-6 text-center text-slate-400 text-xs italic">No emergency contacts listed.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-
-        {/* Previous Residences */}
-        <SectionCard icon={History} iconBg="bg-indigo-50" iconColor="text-indigo-600" title="Previous Residences" onEdit={onEditResidences}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50/80 border-b border-slate-100 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                <tr>
-                  <th className="px-5 py-2.5">Address</th>
-                  <th className="px-5 py-2.5">Duration</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {data.previousResidences?.map((res: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-5 py-3">
-                      <div className="font-semibold text-slate-800 text-sm">{res.address}{res.unit ? ` #${res.unit}` : ''}</div>
-                      <div className="text-xs text-slate-500">{res.city}, {res.state} {res.zip} &middot; {res.country || 'USA'}</div>
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-100 px-2 py-1 rounded-md font-medium">
-                        <CalendarX className="w-3 h-3 text-slate-400" />
-                        {res.startDate ? formatDate(res.startDate) : '—'}
-                        <ArrowRight className="w-3 h-3 text-slate-300" />
-                        {res.endDate ? formatDate(res.endDate) : 'Present'}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {(!data.previousResidences || data.previousResidences.length === 0) && (
-                  <tr><td colSpan={2} className="px-5 py-6 text-center text-slate-400 text-xs italic">No previous residence history.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-      </div>
-
-      {/* ROW 3: Driver Licenses */}
-      <SectionCard icon={Award} iconBg="bg-blue-50" iconColor="text-blue-600" title="Driver Licenses" onEdit={onEditLicenses}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50/80 border-b border-slate-100 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-              <tr>
-                <th className="px-5 py-2.5">Type</th>
-                <th className="px-5 py-2.5">Number</th>
-                <th className="px-5 py-2.5">State</th>
-                <th className="px-5 py-2.5">Class</th>
-                <th className="px-5 py-2.5">Expires</th>
-                <th className="px-5 py-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {data.licenses?.map((lic: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-800">{lic.type}</span>
-                      {lic.isPrimary && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 uppercase">Primary</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-slate-600 uppercase">{lic.licenseNumber}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{lic.province}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{lic.class}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{formatDate(lic.expiryDate)}</td>
-                  <td className="px-5 py-3.5"><StatusBadge status={lic.status} /></td>
-                </tr>
-              ))}
-              {(!data.licenses || data.licenses.length === 0) && (
-                <tr><td colSpan={6} className="px-5 py-6 text-center text-slate-400 text-xs italic">No licenses recorded.</td></tr>
-              )}
-            </tbody>
-          </table>
+          ) : (
+            <p className="text-center text-slate-400 text-xs italic">Signed declaration not uploaded.</p>
+          )}
         </div>
-      </SectionCard>
-
-      {/* ROW 4: Travel Documents */}
-      <SectionCard icon={Briefcase} iconBg="bg-sky-50" iconColor="text-sky-600" title="Travel Documents" onEdit={onEditTravelDocs}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50/80 border-b border-slate-100 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-              <tr>
-                <th className="px-5 py-2.5">Type</th>
-                <th className="px-5 py-2.5">Number</th>
-                <th className="px-5 py-2.5">Country</th>
-                <th className="px-5 py-2.5">Expires</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {data.travelDocuments?.map((doc: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-5 py-3.5 font-semibold text-slate-800">{doc.type}</td>
-                  <td className="px-5 py-3.5 font-mono text-sm text-slate-600">{doc.number}</td>
-                  <td className="px-5 py-3.5 text-slate-600 uppercase">{doc.country}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{formatDate(doc.expiryDate)}</td>
-                </tr>
-              ))}
-              {(!data.travelDocuments || data.travelDocuments.length === 0) && (
-                <tr><td colSpan={4} className="px-5 py-6 text-center text-slate-400 text-xs italic">No travel documents recorded.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
-
-      {/* ROW 5: Employment History */}
-      <SectionCard icon={Briefcase} iconBg="bg-amber-50" iconColor="text-amber-600" title="Employment History" onEdit={onEditEmployment}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50/80 border-b border-slate-100 text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-              <tr>
-                <th className="px-5 py-2.5">Employer</th>
-                <th className="px-5 py-2.5">Timeline</th>
-                <th className="px-5 py-2.5">Zone</th>
-                <th className="px-5 py-2.5">Status</th>
-                <th className="px-5 py-2.5">Ref</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {data.employmentHistory?.map((job: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-5 py-3.5">
-                    <div className="font-semibold text-slate-800">{job.employerName}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {typeof job.address === 'object'
-                        ? `${job.address.city || ''}, ${job.address.state || ''}`
-                        : job.address}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 whitespace-nowrap">
-                    <div className="text-xs text-slate-600 font-mono">
-                      {formatDate(job.startDate)} — {formatDate(job.endDate)}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-slate-600 text-sm">{job.operatingZone}</td>
-                  <td className="px-5 py-3.5">
-                    <span className={cn(
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase",
-                      job.terminationStatus === 'Voluntary' ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
-                    )}>
-                      {job.terminationStatus}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {job.hasReferenceDoc && job.referenceDocId ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                        <FileCheck className="w-3 h-3" /> Verified
-                      </span>
-                    ) : job.hasReferenceDoc ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                        <FileWarning className="w-3 h-3" /> Pending
-                      </span>
-                    ) : (
-                      <span className="text-slate-300 text-xs">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {(!data.employmentHistory || data.employmentHistory.length === 0) && (
-                <tr><td colSpan={5} className="px-5 py-6 text-center text-slate-400 text-xs italic">No employment history recorded.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      </Section>
     </div>
   );
 };
@@ -2438,15 +2501,9 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             })()}
 
             {activeTab === 'Profile' && (
-              <ProfileTab 
-                data={driverData} 
-                onEditPersonal={() => setIsPersonalModalOpen(true)}
-                onEditAddress={() => setIsAddressModalOpen(true)}
-                onEditContacts={() => setIsContactsModalOpen(true)}
-                onEditResidences={() => setIsResidencesModalOpen(true)}
-                onEditLicenses={() => setIsLicensesModalOpen(true)}
-                onEditTravelDocs={() => setIsTravelDocsModalOpen(true)}
-                onEditEmployment={() => setIsEmploymentModalOpen(true)}
+              <ProfileTab
+                data={driverData}
+                onEdit={() => onEditProfile(driverData)}
               />
             )}
 
