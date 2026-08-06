@@ -133,6 +133,46 @@ const docs = {
         authority: 'Government / Regulatory Authority', title: 'Compliance Document', subtitle: 'Official compliance & registration record', ref: 'REG-582104',
         rows: [['Issued To', 'Acme Logistics'], ['Reference Number', 'REG-582104'], ['Issue Date', '2024-03-01'], ['Expiry Date', '2026-11-30'], ['Jurisdiction', 'Federal'], ['Country / Region', 'United States']],
     }),
+    'medical-certificate.pdf': certificate({
+        authority: 'FMCSA — DOT Medical Examiner', title: "Medical Examiner's Certificate", subtitle: 'DOT Physical Examination — Driver Qualification', ref: 'MED-774213',
+        rows: [['Driver', 'Jason Cooper'], ['Certificate No.', 'MED-774213'], ['Exam Date', '2025-06-10'], ['Expiry Date', '2027-06-10'], ['Examiner', 'Dr. L. Nguyen, CME'], ['Restrictions', 'None']],
+    }),
+    'drug-test.pdf': certificate({
+        authority: 'Certified Testing Laboratory', title: 'Drug & Alcohol Test Result', subtitle: 'DOT 49 CFR Part 40 — Pre-Employment', ref: 'DT-559002',
+        rows: [['Donor', 'Jason Cooper'], ['Specimen ID', 'DT-559002'], ['Collection Date', '2025-05-28'], ['Result', 'Negative'], ['MRO', 'Dr. P. Alvarez'], ['Panel', '5-Panel + Alcohol']],
+    }),
+    'mvr.pdf': certificate({
+        authority: 'Department of Motor Vehicles', title: 'Motor Vehicle Record (MVR)', subtitle: 'Driving Abstract & Violation History', ref: 'MVR-330871',
+        rows: [['Driver', 'Jason Cooper'], ['License No.', 'CDL-198347'], ['State / Province', 'Illinois, USA'], ['Status', 'Valid'], ['Violations (36mo)', 'None'], ['Report Date', '2025-07-01']],
+    }),
+    'psp-report.pdf': certificate({
+        authority: 'FMCSA — Pre-Employment Screening', title: 'PSP Report', subtitle: 'Crash & Roadside Inspection History', ref: 'PSP-901245',
+        rows: [['Driver', 'Jason Cooper'], ['DL Number', 'CDL-198347'], ['Crashes (5yr)', '0'], ['Inspections (3yr)', '4'], ['Report Date', '2025-07-02'], ['Period', '2020–2025']],
+    }),
+    'safety-fitness.pdf': certificate({
+        authority: 'Ministry of Transportation', title: 'Safety Fitness Certificate', subtitle: 'National Safety Code (NSC) Registration', ref: 'NSC-681997',
+        rows: [['Carrier', 'Acme Logistics'], ['NSC Number', 'NSC-681997'], ['Safety Rating', 'Satisfactory'], ['Issue Date', '2024-05-01'], ['Expiry Date', '2026-04-30'], ['Jurisdiction', 'Ontario, Canada']],
+    }),
+    'mc-authority.pdf': certificate({
+        authority: 'FMCSA', title: 'Operating Authority (MC)', subtitle: 'Motor Carrier Operating Authority', ref: 'MC-103478',
+        rows: [['Carrier', 'Acme Logistics'], ['MC Number', 'MC-103478'], ['USDOT', 'DOT-7693121'], ['Status', 'Active'], ['Effective Date', '2023-08-10'], ['Authority Type', 'Common / Contract']],
+    }),
+    'ifta.pdf': certificate({
+        authority: 'International Fuel Tax Agreement', title: 'IFTA License', subtitle: 'Fuel Tax Registration', ref: 'IFTA-45120',
+        rows: [['Carrier', 'Acme Logistics'], ['IFTA Number', 'IFTA-45120'], ['Base Jurisdiction', 'Ontario, Canada'], ['Issue Date', '2025-01-01'], ['Expiry Date', '2025-12-31'], ['Decals', '2']],
+    }),
+    'irp.pdf': certificate({
+        authority: 'International Registration Plan', title: 'IRP Cab Card', subtitle: 'Apportioned Vehicle Registration', ref: 'IRP-88213',
+        rows: [['Carrier', 'Acme Logistics'], ['Plate', 'AB-77120'], ['Unit / VIN', '104 · 1FUJGLDR8'], ['Registered Weight', '80,000 lb'], ['Issue Date', '2025-03-01'], ['Expiry Date', '2026-02-28']],
+    }),
+    'annual-inspection.pdf': certificate({
+        authority: 'Certified Inspection Facility', title: 'Annual Vehicle Inspection', subtitle: 'DOT / CVOR Periodic Inspection Report', ref: 'INS-220945',
+        rows: [['Unit', '104'], ['VIN', '1FUJGLDR8'], ['Inspector', 'M. Reed, Lic. #4471'], ['Inspection Date', '2025-04-12'], ['Result', 'Pass'], ['Next Due', '2026-04-12']],
+    }),
+    'business-registration.pdf': certificate({
+        authority: 'Secretary of State', title: 'Business Registration', subtitle: 'Articles of Incorporation / Business License', ref: 'BR-201884',
+        rows: [['Entity', 'Acme Logistics Inc.'], ['Registration No.', 'BR-201884'], ['Formed', '2019-02-14'], ['Status', 'Active / Good Standing'], ['State', 'Delaware, USA'], ['Type', 'Corporation']],
+    }),
     'driver-license.pdf': licenseCard(),
 };
 

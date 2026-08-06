@@ -64,6 +64,8 @@ export interface DocVersion {
     files: DataDocFile[];
     monitoring: MonitoringConfig;
     uploadedAt: string;  // ISO
+    uploadedBy?: string; // name of the person who captured/uploaded this version
+    state?: string;      // lifecycle state override: current | historical | superseded | cancelled | expired | pending (unset → derived from position)
 }
 
 /**
@@ -163,8 +165,15 @@ export function useComplianceData(accountId?: string) {
         const cur = loadAll();
         persist({ ...cur, [keyOf(subjectId, recordId)]: entry });
     };
+    // Batch write — one read + one persist + one event for many entries (used by "Load sample data" across every subject).
+    const setEntries = (items: { subjectId: string; recordId: string; entry: RecordDataEntry }[]) => {
+        if (!items.length) return;
+        const next = { ...loadAll() };
+        for (const it of items) next[keyOf(it.subjectId, it.recordId)] = it.entry;
+        persist(next);
+    };
 
-    return { acct, all, getEntry, setEntry };
+    return { acct, all, getEntry, setEntry, setEntries };
 }
 
 // ── Status + completeness ─────────────────────────────────────────────

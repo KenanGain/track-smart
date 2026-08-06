@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Search, Bell, HelpCircle, ChevronDown, LogOut, User } from "lucide-react";
+import { Search, Bell, HelpCircle, ChevronDown, LogOut, User, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ROLE_BADGE, ROLE_LABELS, getManagedAccountIds, type AppUser } from "@/data/users.data";
@@ -25,6 +25,8 @@ type TopNavbarProps = {
     /** Fired when the user picks a different service profile from the
      *  top-bar Service Profile switcher. */
     onSelectServiceProfile?: (id: string) => void;
+    /** Opens the off-canvas navigation drawer on mobile (hamburger). */
+    onOpenMobileNav?: () => void;
     className?: string;
 };
 
@@ -77,6 +79,7 @@ export function TopNavbar({
     onSelectAccount,
     selectedServiceProfileId,
     onSelectServiceProfile,
+    onOpenMobileNav,
     className,
 }: TopNavbarProps) {
     // Swap the top-bar switcher when the user is on the Service Profile page —
@@ -105,6 +108,16 @@ export function TopNavbar({
             )}
         >
             <div className="flex items-center gap-3 min-w-0">
+                {/* Hamburger — opens the nav drawer on mobile only */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onOpenMobileNav}
+                    className="h-9 w-9 -ml-2 shrink-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg md:hidden"
+                    aria-label="Open navigation menu"
+                >
+                    <Menu size={20} />
+                </Button>
                 <h1 className="text-base font-semibold text-slate-900 truncate">
                     {getPageTitle(currentPath)}
                 </h1>

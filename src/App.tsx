@@ -103,6 +103,7 @@ function App() {
     const [previousPath, setPreviousPath] = useState<string | null>(null)
     const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null)
     const [selectedServiceProfileId, setSelectedServiceProfileId] = useState<string | undefined>(undefined)
+    const [mobileNavOpen, setMobileNavOpen] = useState(false)
     const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
         if (typeof window === 'undefined') return null
         const id = localStorage.getItem('app_current_user_id')
@@ -728,6 +729,8 @@ function App() {
                 currentPath={path}
                 onNavigate={handleNavigate}
                 role={currentUser.role}
+                mobileOpen={mobileNavOpen}
+                onMobileClose={() => setMobileNavOpen(false)}
             />
             <div className="flex-1 flex flex-col min-w-0">
                 <TopNavbar
@@ -735,6 +738,7 @@ function App() {
                     user={currentUser}
                     onSignOut={handleSignOut}
                     onNavigate={handleNavigate}
+                    onOpenMobileNav={() => setMobileNavOpen(true)}
                     selectedAccountId={selectedAccount?.id}
                     onSelectAccount={handleSelectAccount}
                     selectedServiceProfileId={

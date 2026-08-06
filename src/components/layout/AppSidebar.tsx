@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_NODES } from "@/data/sidebar.data";
 import { isGroup, type SidebarNode, type SidebarGroup, type SidebarItem } from "@/types/sidebar";
@@ -17,10 +17,25 @@ type AppSidebarProps = {
     currentPath: string;
     onNavigate: (path: string) => void;
     role: UserRole;
+    /** Whether the off-canvas mobile drawer is open (ignored on md+). */
+    mobileOpen?: boolean;
+    /** Close the mobile drawer (backdrop tap / after navigating). */
+    onMobileClose?: () => void;
     className?: string;
 };
 
-export function AppSidebar({ currentPath, onNavigate, role, className }: AppSidebarProps) {
+export function AppSidebar({ currentPath, onNavigate, role, mobileOpen = false, onMobileClose, className }: AppSidebarProps) {
+    // On phones the sidebar is an off-canvas drawer, always expanded (labels visible).
+    const [isMobile, setIsMobile] = React.useState(false);
+    React.useEffect(() => {
+        const mq = window.matchMedia("(max-width: 767px)");
+        const sync = () => setIsMobile(mq.matches);
+        sync();
+        mq.addEventListener("change", sync);
+        return () => mq.removeEventListener("change", sync);
+    }, []);
+    // Close the drawer after navigating away.
+    const navigateAndClose = (path: string) => { onNavigate(path); onMobileClose?.(); };
     const visibleNodes = React.useMemo(() => {
         const isAdmin = role === "admin" || role === "super-admin";
         return SIDEBAR_NODES.filter((n) => (ADMIN_ONLY_KEYS.has(n.key) ? isAdmin : true));
@@ -83,38 +98,52 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
         setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
     };
 
+    // On mobile the drawer is always expanded (labels visible) at a comfortable width.
+    const effectiveCollapsed = isMobile ? false : isCollapsed;
+    const asideWidth = isMobile ? 272 : (isCollapsed ? 70 : width);
+
     return (
+        <>
+        {/* Mobile backdrop — tap to dismiss the drawer */}
+        {mobileOpen && (
+            <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden" onClick={onMobileClose} aria-hidden="true" />
+        )}
         <aside
-            style={{ width: isCollapsed ? 70 : width }}
+            style={{ width: asideWidth }}
             className={cn(
-                "h-screen border-r border-slate-200 bg-white flex flex-col ease-in-out relative z-50",
-                // Animate width only when collapsing/expanding — not while dragging.
+                "h-screen border-r border-slate-200 bg-white flex flex-col ease-in-out z-50",
+                // Off-canvas drawer on mobile; normal in-flow column on md+.
+                "fixed inset-y-0 left-0 md:relative md:inset-auto md:translate-x-0",
+                mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:shadow-none",
+                // Animate width/slide only when collapsing/expanding — not while dragging.
                 isResizing ? "" : "transition-all duration-300",
                 className
             )}
         >
             <div className={cn(
                 "h-16 flex items-center border-b border-slate-200 transition-all px-4",
-                isCollapsed ? "justify-center" : "justify-between"
+                effectiveCollapsed ? "justify-center" : "justify-between"
             )}>
                 <h2 className={cn(
                     "font-semibold text-slate-900 tracking-tight whitespace-nowrap overflow-hidden transition-all ease-in-out",
-                    isCollapsed ? "w-0 opacity-0 duration-300" : "w-auto opacity-100 duration-500 delay-100 text-lg"
+                    effectiveCollapsed ? "w-0 opacity-0 duration-300" : "w-auto opacity-100 duration-500 delay-100 text-lg"
                 )}>
                     TrackSmart
                 </h2>
+                {/* Desktop: collapse/expand rail. Mobile: close the drawer. */}
                 <Button
                     variant="ghost"
                     size="icon"
-                    onClick={toggleCollapse}
+                    onClick={isMobile ? onMobileClose : toggleCollapse}
                     className="h-8 w-8 text-slate-500 hover:text-slate-900 shrink-0"
+                    aria-label={isMobile ? "Close navigation menu" : "Toggle sidebar"}
                 >
-                    {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+                    {isMobile ? <X size={18} /> : isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                 </Button>
             </div>
 
             <ScrollArea className="flex-1">
-                <div className={cn("py-4", isCollapsed ? "px-2" : "px-3")}>
+                <div className={cn("py-4", effectiveCollapsed ? "px-2" : "px-3")}>
                     <nav className="space-y-1">
                         {visibleNodes.map((node) => (
                             <SidebarNodeView
@@ -123,16 +152,16 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
                                 currentPath={currentPath}
                                 openGroups={openGroups}
                                 onToggleGroup={toggleGroup}
-                                onNavigate={onNavigate}
-                                isCollapsed={isCollapsed}
+                                onNavigate={navigateAndClose}
+                                isCollapsed={effectiveCollapsed}
                             />
                         ))}
                     </nav>
                 </div>
             </ScrollArea>
 
-            {/* Drag handle to resize the sidebar (double-click to reset) */}
-            {!isCollapsed && (
+            {/* Drag handle to resize the sidebar (double-click to reset) — desktop only */}
+            {!isMobile && !isCollapsed && (
                 <div
                     role="separator"
                     aria-orientation="vertical"
@@ -149,6 +178,7 @@ export function AppSidebar({ currentPath, onNavigate, role, className }: AppSide
                 </div>
             )}
         </aside>
+        </>
     );
 }
 

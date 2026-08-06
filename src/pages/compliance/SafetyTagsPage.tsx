@@ -70,7 +70,7 @@ export function SafetyTagsPage() {
                 </div>
             </div>
 
-            <div className="px-8 py-6 space-y-5 max-w-5xl">
+            <div className="px-8 py-6 space-y-5">
                 <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-[13px] text-blue-800">
                     <Info size={16} className="mt-0.5 shrink-0 text-blue-500" />
                     <p>
@@ -103,7 +103,7 @@ export function SafetyTagsPage() {
                             <span className="text-[11px] font-semibold text-slate-400">({shownGroups.length})</span>
                             <div className="flex-1 h-px bg-slate-200" />
                         </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 items-start">
                             {shownGroups.map(g => {
                                 const meta = GROUP_META[g.title] ?? FALLBACK_META;
                                 return <DefaultGroupCard key={g.title} title={g.title} description={meta.description} Icon={meta.Icon} theme={meta.theme} tags={g.shown} />;
