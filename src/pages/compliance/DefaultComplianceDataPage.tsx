@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
     Building2, Truck, User, Layers, Search, Hash, FileText, MapPin, CalendarClock,
     UploadCloud, Eye, Trash2, X, Check, CircleAlert, CircleDashed, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown,
-    ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, Lock,
+    ChevronLeft, Plus, Bell, Columns, Tag, Filter, Pencil, Info, Sparkles, ShieldCheck, Lock, CornerDownRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
@@ -15,14 +15,13 @@ import {
     defaultMonitoring, CARRIER_SUBJECT,
     type RecordDataEntry, type DocVersion, type DocInstance, type DataDocFile, type DataStatus, type MonitoringConfig, type MonitorBasis,
 } from '@/pages/compliance/compliance-data-store';
+import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
 import { useSafetyTags, tagColor, smartTagMatch, MAX_DOC_TAGS } from '@/pages/compliance/safety-tags.data';
 import { COUNTRIES, ALL_COUNTRIES, STATES_BY_COUNTRY } from '@/pages/compliance/jurisdiction.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { findUserById } from '@/data/users.data';
-import type { Asset } from '@/pages/assets/assets.data';
-import type { Driver } from '@/pages/profile/carrier-profile.data';
 
 /**
  * Default Compliances & Documents — the per-carrier DATA page.
@@ -146,8 +145,9 @@ function DocThumb({ f, size = 40 }: { f: DataDocFile; size?: number }) {
     );
 }
 
-/** Compact document list for one version — a tight line per file, or a clear "missing" chip when none uploaded. Shared by the table + mobile cards. */
-function DocFilesCell({ files }: { files: DataDocFile[] }) {
+/** Compact document list for one version — a tight line per file, or a clear "missing" chip when none uploaded. Shared by the table + mobile cards.
+ *  `showTag=false` hides the per-file tag (used in the table, where the tag has its own Tags column). Slot labels (Front/Back) always show. */
+function DocFilesCell({ files, showTag = true }: { files: DataDocFile[]; showTag?: boolean }) {
     if (files.length === 0) {
         return (
             <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-amber-300 bg-amber-50/60 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
@@ -156,19 +156,33 @@ function DocFilesCell({ files }: { files: DataDocFile[] }) {
         );
     }
     return (
-        <div className="flex flex-col gap-0.5">
-            {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                    <DocThumb f={f} size={18} />
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-slate-600" title={f.name}>
-                        {f.slot && <span className="mr-1 font-semibold text-slate-400">{f.slot}:</span>}{f.name}
-                    </span>
-                    {f.url && (
-                        <button type="button" onClick={() => openFile(f)} title={`View ${f.name}`}
-                            className="shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-blue-600 hover:bg-blue-50"><Eye size={12} /> View</button>
-                    )}
-                </div>
-            ))}
+        <div className="flex flex-col gap-1">
+            {files.map((f, i) => {
+                const chip = f.slot || (showTag ? f.tag : undefined);
+                return (
+                    <div key={i} className="flex items-center gap-2">
+                        <DocThumb f={f} size={22} />
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                            {chip && <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{chip}</span>}
+                            <span className="min-w-0 truncate text-[12px] font-medium text-slate-700" title={f.name}>{f.name}</span>
+                        </div>
+                        {f.url && (
+                            <button type="button" onClick={() => openFile(f)} title={`View ${f.name}`}
+                                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"><Eye size={12} /> View</button>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+/** Tags cell — record (version) tags plus, optionally, this row's document tag (distinct slate chip). */
+function DocTagsCell({ recordTags, docTag }: { recordTags: string[]; docTag?: string }) {
+    if (!recordTags.length && !docTag) return <span className="text-[13px] text-slate-400">—</span>;
+    return (
+        <div className="flex flex-wrap gap-1 max-w-[220px]">
+            {recordTags.map(t => <span key={t} className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium', tagColor(t))}><Tag size={9} /> {t}</span>)}
+            {docTag && <span className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold', tagColor(docTag))}><Tag size={9} /> {docTag}</span>}
         </div>
     );
 }
@@ -223,7 +237,7 @@ function recurrenceFromRecord(r: SafetyRecord): string {
     return 'annually';
 }
 /** Build a monitoring config seeded from the record (recurrence), merging any stored value on top. */
-function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig): MonitoringConfig {
+export function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig): MonitoringConfig {
     const base = defaultMonitoring();
     base.recurrence = recurrenceFromRecord(record);
     // Status-only records default to status-based monitoring (no date reminders).
@@ -318,25 +332,31 @@ function sampleVersion(record: SafetyRecord, label: string, over: Partial<DocVer
 function buildSampleEntry(record: SafetyRecord, i: number): RecordDataEntry | null {
     // Multi-instance records (e.g. Insurance) → two concurrent active policies, each with its own current.
     if (record.multiInstance) {
+        // Insurance policies carry no record-level tags — each document is tagged individually.
+        const insPolicy = (name: string, over: Partial<DocVersion>, docTag: string): DocInstance => {
+            const ver = sampleVersion(record, 'Record 2026', { ...over, tags: [] });
+            if (ver.files.length) ver.files = ver.files.map((f, idx) => (idx === 0 ? { ...f, tag: docTag } : f));
+            return { ...newInstance(name), versions: [ver] };
+        };
         return {
             versions: [],
             instances: [
-                { ...newInstance('Liability — State Farm'), versions: [sampleVersion(record, 'Version 2026', { numberValue: 'POL-100', expiryDate: '2026-12-31', tags: ['Verified', 'Primary'] })] },
-                { ...newInstance('Cargo — Progressive'), versions: [sampleVersion(record, 'Version 2026', { numberValue: 'POL-200', expiryDate: '2027-03-15', tags: ['Renewed'] })] },
+                insPolicy('Liability — State Farm', { numberValue: 'POL-100', expiryDate: '2026-12-31' }, 'Certificate'),
+                insPolicy('Cargo — Progressive', { numberValue: 'POL-200', expiryDate: '2027-03-15' }, 'Certificate'),
             ],
         };
     }
     const mode = i % 6;
     if (mode === 5) return null;                                                                        // leave empty → Missing / Optional
-    if (mode === 4) return { versions: [sampleVersion(record, 'Version 2026', { monitoring: { ...seedMonitoring(record), enabled: false } })] }; // filled, monitoring off, no tags
+    if (mode === 4) return { versions: [sampleVersion(record, 'Record 2026', { monitoring: { ...seedMonitoring(record), enabled: false } })] }; // filled, monitoring off, no tags
     const tags = mode === 0 ? ['Verified', 'Primary'] : mode === 1 ? ['Renewed'] : mode === 2 ? ['Pending Review'] : [];
-    const current = sampleVersion(record, 'Version 2026', { tags });
+    const current = sampleVersion(record, 'Record 2026', { tags });
     // Every 3rd record keeps an older version too → an expandable multi-version row.
     if (mode === 3) {
         return {
             versions: [
                 current,
-                sampleVersion(record, 'Version 2025', {
+                sampleVersion(record, 'Record 2025', {
                     expiryDate: isDateMonitored(record) ? '2025-12-31' : '',
                     issueDate: record.tracksIssueDate ? '2023-01-10' : '',
                     monitoring: { ...seedMonitoring(record), enabled: false },
@@ -356,23 +376,40 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
     const olderMon = () => ({ ...seedMonitoring(record), enabled: false });
     const dated = isDateMonitored(record);
     if (record.multiInstance) {
+        // Document tags used for the multi-document policy demo (each maps to a row in the table).
+        const POLICY_DOC_TAGS = ['Certificate', 'Endorsement', 'Declaration page', 'Schedule of coverage'];
+        const PRODUCERS = ['Marsh McLennan', 'Aon Risk', 'Gallagher', 'HUB International', 'Lockton', 'Brown & Brown'];
+        const LIMITS = ['$1,000,000', '$2,000,000', '$100,000 deductible', '$5,000,000', '$1,000,000', '$750,000'];
         // One instance per concurrent policy, each with a few dated versions (current + renewal history).
-        const policy = (name: string, num: string, years: number[]): DocInstance => ({
+        const policy = (name: string, num: string, years: number[], pi: number): DocInstance => ({
             ...newInstance(name),
-            versions: years.map((y, i) => sampleVersion(record, `Version ${y}`, {
-                numberValue: num, expiryDate: `${y}-12-31`,
-                tags: i === 0 ? ['Verified', 'Primary'] : [], monitoring: i === 0 ? { ...seedMonitoring(record), enabled: true } : olderMon(),
-            })),
+            versions: years.map((y, i) => {
+                const ver = sampleVersion(record, `Record ${y}`, {
+                    numberValue: num, expiryDate: `${y}-12-31`,
+                    insurer: name.split('—')[1]?.trim() || name, producer: PRODUCERS[pi % PRODUCERS.length], policyLimit: LIMITS[pi % LIMITS.length],
+                    // Insurance carries NO record-level tags — every tag lives on an individual document (below).
+                    tags: [], monitoring: i === 0 ? { ...seedMonitoring(record), enabled: true } : olderMon(),
+                });
+                // Current record holds several TAGGED documents so the per-document extra rows are demonstrable.
+                if (i === 0) {
+                    const count = 3 + (pi % 2); // 3 or 4 documents per current record
+                    const base = ver.files[0];
+                    ver.files = Array.from({ length: count }, (_, d) => (d === 0
+                        ? { ...base, tag: POLICY_DOC_TAGS[0] }
+                        : { name: `policy-${POLICY_DOC_TAGS[d].toLowerCase().replace(/\s+/g, '-')}.pdf`, size: DEMO_PDF_SIZE['compliance-document.pdf'] ?? 4800, url: '/demo-docs/compliance-document.pdf', tag: POLICY_DOC_TAGS[d], uploadedAt: ver.uploadedAt }));
+                }
+                return ver;
+            }),
         });
-        return {
-            versions: [],
-            instances: [
-                policy('Liability — State Farm', 'POL-100', [2026, 2025, 2024]),
-                policy('Cargo — Progressive', 'POL-200', [2027, 2026, 2025]),
-                policy('Physical Damage — Northbridge', 'POL-300', [2026, 2025]),
-                policy('Umbrella — Chubb', 'POL-400', [2026, 2025, 2024, 2023]),
-            ],
-        };
+        const defs: [string, string, number[]][] = [
+            ['Liability — State Farm', 'POL-100', [2026, 2025, 2024]],
+            ['Cargo — Progressive', 'POL-200', [2027, 2026, 2025]],
+            ['Physical Damage — Northbridge', 'POL-300', [2026, 2025]],
+            ['Umbrella — Chubb', 'POL-400', [2026, 2025, 2024, 2023]],
+            ['General Liability — Travelers', 'POL-500', [2026, 2025]],
+            ['Non-Trucking Liability — Berkshire', 'POL-600', [2027, 2026]],
+        ];
+        return { versions: [], instances: defs.map(([n, num, yrs], pi) => policy(n, num, yrs, pi)) };
     }
     // 6 dated versions (newest = current, the rest are renewal history).
     // Slotted records (CDL, SSN) naturally get multiple files (Front/Back) via sampleVersion; single-upload records stay single.
@@ -381,7 +418,7 @@ function buildDetailSample(record: SafetyRecord): RecordDataEntry {
     const years = [2026, 2025, 2024, 2023, 2022, 2021];
     return {
         versions: years.map((y, i) => {
-            const v = sampleVersion(record, `Version ${y}`, {
+            const v = sampleVersion(record, `Record ${y}`, {
                 expiryDate: dated ? `${y}-12-31` : '',
                 issueDate: record.tracksIssueDate ? `${y - 2}-01-10` : '',
                 status: !dated ? (i === 0 ? 'Active' : 'On File') : '',
@@ -492,7 +529,6 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
     const carrierName = account ? (account.dbaName || account.legalName) : 'the selected carrier';
 
     const { acct, all, getEntry, setEntry, setEntries } = useComplianceData(accountId);
-    const [recordType, setRecordType] = useState<RecordTypeId>('DC');
     const [entity, setEntity] = useState<EntityId>('Carrier');
     const [selectedSubject, setSelectedSubject] = useState<string | null>(null); // asset/driver id
     const [focusRecordId, setFocusRecordId] = useState<string | null>(null);     // deep-link from the Monitoring page
@@ -507,8 +543,6 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
             localStorage.removeItem('dcd-focus');
             const f = JSON.parse(raw) as { acct?: string; entity?: EntityId; subjectId?: string; recordId?: string };
             if (!f || f.acct !== acct || !f.recordId) return;
-            const rec = SAFETY_RECORDS.find(r => r.id === f.recordId);
-            if (rec) setRecordType(rec.type);
             if (f.entity) setEntity(f.entity);
             setSelectedSubject(f.entity && f.entity !== 'Carrier' ? (f.subjectId ?? null) : null);
             setFocusRecordId(f.recordId);
@@ -516,10 +550,21 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [acct]);
 
-    // The top-right record-type switch scopes the whole page to Compliances & Documents / Compliances / Documents.
-    const records = useMemo(() => SAFETY_RECORDS.filter(r => r.type === recordType), [recordType]);
+    // One combined list — this carrier's custom records (shown first) + every system-default
+    // record across all types (Compliances, Documents, Compliances & Documents).
+    const { records: customRecords } = useCustomSafetyRecords(accountId);
+    const records = useMemo(() => [...customRecords, ...SAFETY_RECORDS], [customRecords]);
     const assets = useMemo(() => getAssetsForAccount(acct), [acct]);
     const drivers = useMemo(() => getDriversForAccount(acct), [acct]);
+
+    // Asset / Driver tabs: switch between the flat "Records" list (all subjects) and the subject roster.
+    const [subView, setSubView] = useState<'records' | 'list'>('records');
+    const assetSubjects = useMemo<RecSubject[]>(() => assets.map(a => ({ id: a.id, label: a.unitNumber, sub: `${a.year} ${a.make} ${a.model}` })), [assets]);
+    const driverSubjects = useMemo<RecSubject[]>(() => drivers.map(d => ({ id: d.id, label: d.name, sub: d.driverType ?? undefined, initials: d.avatarInitials })), [drivers]);
+    const assetRoster = useMemo<RosterSubject[]>(() => assets.map(a => ({ id: a.id, name: a.unitNumber, sub: `${a.year} ${a.make} ${a.model}`, type: a.assetType, extra: a.vin })), [assets]);
+    const driverRoster = useMemo<RosterSubject[]>(() => drivers.map(d => ({ id: d.id, name: d.name, sub: d.driverType ?? undefined, type: d.driverType ?? '—', extra: d.licenseState ?? undefined, initials: d.avatarInitials })), [drivers]);
+    const assetRecordCount = useMemo(() => records.filter(r => r.entity === 'Asset').length * assets.length, [records, assets]);
+    const driverRecordCount = useMemo(() => records.filter(r => r.entity === 'Driver').length * drivers.length, [records, drivers]);
 
     const entityCounts = useMemo(() => {
         const m: Record<EntityId, number> = { Carrier: 0, Asset: 0, Driver: 0 };
@@ -544,7 +589,7 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
             <ToastStack />
             {/* Header — hidden while a record's dedicated detail page is open */}
             {!detailOpen && (
-            <div className="bg-white border-b border-slate-200 px-8 py-5">
+            <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-start gap-3 min-w-0">
                         <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
@@ -558,7 +603,6 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                         </div>
                     </div>
                     <div className="flex flex-col items-end gap-2 ml-auto">
-                        <RecordTypeSwitch value={recordType} onChange={setRecordType} />
                         {account && (
                             <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
                                 <Building2 size={15} /> {carrierName}
@@ -567,39 +611,51 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                     </div>
                 </div>
 
-                {/* Entity tabs */}
-                <div className="flex items-center gap-1 mt-4 -mb-5">
-                    {ENTITY_ORDER.map(e => {
-                        const active = entity === e;
-                        const Icon = ENTITY_ICON[e];
-                        const badge = e === 'Asset' ? assets.length : e === 'Driver' ? drivers.length : entityCounts.Carrier;
-                        return (
-                            <button
-                                key={e}
-                                type="button"
-                                onClick={() => switchEntity(e)}
-                                className={cn(
-                                    'inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-                                    active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300',
-                                )}
-                            >
-                                <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                                {e}
-                                <span className={cn(
-                                    'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-                                    active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200/70 text-slate-600',
-                                )}>
-                                    {badge}
-                                </span>
-                            </button>
-                        );
-                    })}
+                {/* Entity tabs + (Asset/Driver) inline Records|roster view toggle */}
+                <div className="flex items-end justify-between gap-x-3 gap-y-2 mt-4 -mb-5 flex-wrap">
+                    <div className="flex items-center gap-1">
+                        {ENTITY_ORDER.map(e => {
+                            const active = entity === e;
+                            const Icon = ENTITY_ICON[e];
+                            const badge = e === 'Asset' ? assets.length : e === 'Driver' ? drivers.length : entityCounts.Carrier;
+                            return (
+                                <button
+                                    key={e}
+                                    type="button"
+                                    onClick={() => switchEntity(e)}
+                                    className={cn(
+                                        'inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
+                                        active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent hover:border-slate-300',
+                                    )}
+                                >
+                                    <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                                    {e}
+                                    <span className={cn(
+                                        'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                                        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200/70 text-slate-600',
+                                    )}>
+                                        {badge}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {entity === 'Asset' && !selectedSubject && (
+                        <div className="pb-2">
+                            <SubViewSwitch value={subView} onChange={setSubView} listLabel="Assets" ListIcon={Truck} listCount={assets.length} recordCount={assetRecordCount} />
+                        </div>
+                    )}
+                    {entity === 'Driver' && !selectedSubject && (
+                        <div className="pb-2">
+                            <SubViewSwitch value={subView} onChange={setSubView} listLabel="Drivers" ListIcon={User} listCount={drivers.length} recordCount={driverRecordCount} />
+                        </div>
+                    )}
                 </div>
             </div>
             )}
 
             {/* Body */}
-            <div className="px-8 py-6 space-y-5">
+            <div className="px-4 sm:px-8 py-6 space-y-5">
                 {entity === 'Carrier' && (
                     <SubjectDocuments
                         entity="Carrier"
@@ -641,7 +697,9 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                                 />
                             );
                         })()
-                        : <AssetList assets={assets} records={records} getEntry={getEntry} onOpen={setSelectedSubject} />
+                        : (subView === 'records'
+                            ? <AllRecordsView entity="Asset" subjects={assetSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} />
+                            : <SubjectRoster entity="Asset" subjects={assetRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} />)
                 )}
 
                 {entity === 'Driver' && (
@@ -667,35 +725,11 @@ export function DefaultComplianceDataPage({ accountId }: { accountId?: string })
                                 />
                             );
                         })()
-                        : <DriverList drivers={drivers} records={records} getEntry={getEntry} onOpen={setSelectedSubject} />
+                        : (subView === 'records'
+                            ? <AllRecordsView entity="Driver" subjects={driverSubjects} records={records} getEntry={getEntry} setEntry={setEntry} setEntries={setEntries} all={all} onDetailChange={setDetailOpen} />
+                            : <SubjectRoster entity="Driver" subjects={driverRoster} records={records} getEntry={getEntry} onOpen={setSelectedSubject} all={all} />)
                 )}
             </div>
-        </div>
-    );
-}
-
-// ── Record-type switch (top-right) — Compliances & Documents / Compliances / Documents ──
-const RECORD_TYPE_ICON: Record<RecordTypeId, typeof Layers> = { DC: Layers, C: ShieldCheck, D: FileText };
-function RecordTypeSwitch({ value, onChange }: { value: RecordTypeId; onChange: (t: RecordTypeId) => void }) {
-    return (
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-            {RECORD_TYPE_ORDER.map(t => {
-                const active = value === t;
-                const Icon = RECORD_TYPE_ICON[t];
-                return (
-                    <button
-                        key={t}
-                        type="button"
-                        onClick={() => onChange(t)}
-                        className={cn(
-                            'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors',
-                            active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50',
-                        )}
-                    >
-                        <Icon size={13} className={active ? 'text-white' : 'text-slate-400'} /> {RECORD_TYPE_LABEL[t]}
-                    </button>
-                );
-            })}
         </div>
     );
 }
@@ -709,100 +743,193 @@ function CompletionBar({ pct }: { pct: number }) {
     );
 }
 
-function AssetList({ assets, records, getEntry, onOpen }: {
-    assets: Asset[]; records: SafetyRecord[]; getEntry: EntryGetter; onOpen: (id: string) => void;
-}) {
-    const [q, setQ] = useState('');
-    const assetRecords = useMemo(() => records.filter(r => r.entity === 'Asset'), [records]);
-    const filtered = q.trim()
-        ? assets.filter(a => `${a.unitNumber} ${a.make} ${a.model} ${a.vin} ${a.assetType}`.toLowerCase().includes(q.trim().toLowerCase()))
-        : assets;
-    return (
-        <ListShell title="Assets" count={assets.length} q={q} setQ={setQ} placeholder="Search unit, VIN, make…" Icon={Truck}>
-            {filtered.map(a => {
-                const stats = computeStats(assetRecords, r => getEntry(a.id, r.id));
-                return (
-                    <li key={a.id}>
-                        <button type="button" onClick={() => onOpen(a.id)} className="w-full flex items-center gap-4 px-4 sm:px-5 py-3.5 hover:bg-slate-50/60 text-left">
-                            <div className="h-10 w-10 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
-                                <Truck size={18} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-semibold text-slate-900">{a.unitNumber}</span>
-                                    <span className="text-[12px] text-slate-500">{a.year} {a.make} {a.model}</span>
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{a.assetType}</span>
-                                </div>
-                                <div className="mt-1.5 flex items-center gap-3">
-                                    <div className="w-40 max-w-[45vw]"><CompletionBar pct={stats.pct} /></div>
-                                    <span className="text-[11px] text-slate-500 tabular-nums">{stats.complete}/{stats.complete + stats.requiredMissing} required</span>
-                                    {stats.requiredMissing > 0 && <span className="text-[11px] font-semibold text-rose-500">{stats.requiredMissing} missing</span>}
-                                </div>
-                            </div>
-                            <ChevronRight size={18} className="text-slate-300 shrink-0" />
-                        </button>
-                    </li>
-                );
-            })}
-        </ListShell>
-    );
-}
+// Asset / Driver roster — a proper data table (KPIs + search + filters + sorting + pagination),
+// each row keeping its completion progress bar. Replaces the old card lists.
+type RosterSubject = { id: string; name: string; sub?: string; type: string; extra?: string; initials?: string };
+type RosterCol = 'name' | 'type' | 'completion' | 'missing';
 
-function DriverList({ drivers, records, getEntry, onOpen }: {
-    drivers: Driver[]; records: SafetyRecord[]; getEntry: EntryGetter; onOpen: (id: string) => void;
+function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all }: {
+    entity: 'Asset' | 'Driver';
+    subjects: RosterSubject[];
+    records: SafetyRecord[];
+    getEntry: EntryGetter;
+    onOpen: (id: string) => void;
+    all: unknown;
 }) {
-    const [q, setQ] = useState('');
-    const driverRecords = useMemo(() => records.filter(r => r.entity === 'Driver'), [records]);
-    const filtered = q.trim()
-        ? drivers.filter(d => `${d.name} ${d.driverType ?? ''} ${d.licenseState ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
-        : drivers;
-    return (
-        <ListShell title="Drivers" count={drivers.length} q={q} setQ={setQ} placeholder="Search driver, type…" Icon={User}>
-            {filtered.map(d => {
-                const stats = computeStats(driverRecords, r => getEntry(d.id, r.id));
-                return (
-                    <li key={d.id}>
-                        <button type="button" onClick={() => onOpen(d.id)} className="w-full flex items-center gap-4 px-4 sm:px-5 py-3.5 hover:bg-slate-50/60 text-left">
-                            <div className="h-10 w-10 rounded-full bg-blue-50 text-blue-600 text-[13px] font-bold flex items-center justify-center shrink-0">
-                                {d.avatarInitials}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm font-semibold text-slate-900">{d.name}</span>
-                                    {d.driverType && <span className="text-[12px] text-slate-500">{d.driverType}</span>}
-                                    {d.licenseState && <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{d.licenseState}</span>}
-                                </div>
-                                <div className="mt-1.5 flex items-center gap-3">
-                                    <div className="w-40 max-w-[45vw]"><CompletionBar pct={stats.pct} /></div>
-                                    <span className="text-[11px] text-slate-500 tabular-nums">{stats.complete}/{stats.complete + stats.requiredMissing} required</span>
-                                    {stats.requiredMissing > 0 && <span className="text-[11px] font-semibold text-rose-500">{stats.requiredMissing} missing</span>}
-                                </div>
-                            </div>
-                            <ChevronRight size={18} className="text-slate-300 shrink-0" />
-                        </button>
-                    </li>
-                );
-            })}
-        </ListShell>
-    );
-}
+    const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
+    const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'complete' | 'incomplete'>('all');
+    const [sort, setSort] = useState<{ col: RosterCol; dir: 'asc' | 'desc' }>({ col: 'name', dir: 'asc' });
+    const [pageSize, setPageSize] = useState(25);
+    const [page, setPage] = useState(1);
+    const noun = entity === 'Asset' ? 'assets' : 'drivers';
+    const Icon = entity === 'Asset' ? Truck : User;
+    const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
 
-function ListShell({ title, count, q, setQ, placeholder, Icon, children }: {
-    title: string; count: number; q: string; setQ: (v: string) => void; placeholder: string; Icon: typeof Truck; children: React.ReactNode;
-}) {
+    const rows = useMemo(() => subjects.map(s => ({ s, stats: computeStats(entityRecords, r => getEntry(s.id, r.id)) })),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [subjects, entityRecords, all]);
+
+    const kpis = useMemo(() => {
+        const total = rows.length;
+        const complete = rows.filter(r => r.stats.pct === 100).length;
+        const withMissing = rows.filter(r => r.stats.requiredMissing > 0).length;
+        const avg = total ? Math.round(rows.reduce((a, r) => a + r.stats.pct, 0) / total) : 0;
+        return { total, complete, withMissing, avg };
+    }, [rows]);
+
+    const types = useMemo(() => Array.from(new Set(subjects.map(s => s.type).filter(t => t && t !== '—'))), [subjects]);
+
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return rows.filter(({ s, stats }) => {
+            if (typeFilter !== 'all' && s.type !== typeFilter) return false;
+            if (statusFilter === 'complete' && stats.pct !== 100) return false;
+            if (statusFilter === 'incomplete' && stats.requiredMissing === 0) return false;
+            if (q && !`${s.name} ${s.sub || ''} ${s.type} ${s.extra || ''}`.toLowerCase().includes(q)) return false;
+            return true;
+        });
+    }, [rows, search, typeFilter, statusFilter]);
+
+    const sorted = useMemo(() => {
+        const val = (r: (typeof rows)[number]) =>
+            sort.col === 'name' ? r.s.name.toLowerCase()
+                : sort.col === 'type' ? (r.s.type || '').toLowerCase()
+                    : sort.col === 'completion' ? String(r.stats.pct).padStart(3, '0')
+                        : String(r.stats.requiredMissing).padStart(3, '0');
+        const arr = [...filtered].sort((a, b) => val(a).localeCompare(val(b), undefined, { numeric: true }));
+        if (sort.dir === 'desc') arr.reverse();
+        return arr;
+    }, [filtered, sort]);
+
+    useEffect(() => { setPage(1); }, [search, typeFilter, statusFilter, pageSize, sort]);
+    const total = sorted.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const pageRows = sorted.slice(start, start + pageSize);
+    const toggleSort = (col: RosterCol) => setSort(prev => (prev.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }));
+
+    const Th = ({ col, label, className }: { col: RosterCol; label: string; className?: string }) => {
+        const active = sort.col === col;
+        const Ic = active ? (sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+        return (
+            <th className={cn('px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap', className)}>
+                <button type="button" onClick={() => toggleSort(col)} className={cn('inline-flex items-center gap-1 hover:text-slate-700 transition-colors', active && 'text-blue-600')}>
+                    {label} <Ic size={12} className={active ? '' : 'text-slate-300'} />
+                </button>
+            </th>
+        );
+    };
+
     return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 flex-wrap">
-                <h3 className="inline-flex items-center gap-2 text-base font-bold text-slate-800">
-                    <Icon size={17} className="text-slate-400" /> {title} <span className="text-slate-400 font-semibold">({count})</span>
-                </h3>
-                <div className="relative w-full sm:w-72">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder}
-                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+        <div className="space-y-5">
+            {/* KPI tiles */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <KpiTile label={entity === 'Asset' ? 'Assets' : 'Drivers'} value={kpis.total} Icon={Icon} accent="slate" />
+                <KpiTile label="Fully complete" value={kpis.complete} Icon={Check} accent="emerald" />
+                <KpiTile label="With missing" value={kpis.withMissing} Icon={CircleAlert} accent="rose" />
+                <KpiTile label="Avg completion" value={`${kpis.avg}%`} Icon={CalendarClock} accent="blue" />
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                {/* Toolbar */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
+                    <div className="relative flex-1 min-w-[220px] max-w-sm">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={entity === 'Asset' ? 'Search unit, VIN, make…' : 'Search driver, type…'}
+                            className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
+                    {types.length > 0 && (
+                        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={selectCls} title="Filter by type">
+                            <option value="all">All types</option>
+                            {types.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    )}
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | 'complete' | 'incomplete')} className={selectCls} title="Filter by completion">
+                        <option value="all">All statuses</option>
+                        <option value="complete">Fully complete</option>
+                        <option value="incomplete">Has missing</option>
+                    </select>
+                </div>
+
+                {pageRows.length === 0 ? (
+                    <div className="px-5 py-12 text-center text-sm text-slate-500">No {noun} match your search / filters.</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[760px]">
+                            <thead className="border-b border-slate-200 bg-slate-50/50">
+                                <tr>
+                                    <Th col="name" label={entity} className="pl-5" />
+                                    <Th col="type" label="Type" />
+                                    <Th col="completion" label="Completion" className="w-[300px]" />
+                                    <Th col="missing" label="Required Missing" />
+                                    <th className="px-4 py-2.5" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pageRows.map(({ s, stats }) => (
+                                    <tr key={s.id} onClick={() => onOpen(s.id)} className="border-b border-slate-100 hover:bg-slate-50/60 cursor-pointer">
+                                        <td className="px-4 py-3 pl-5">
+                                            <div className="flex items-center gap-2.5">
+                                                {s.initials
+                                                    ? <div className="h-9 w-9 rounded-full bg-blue-50 text-blue-600 text-[12px] font-bold flex items-center justify-center shrink-0">{s.initials}</div>
+                                                    : <div className="h-9 w-9 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><Icon size={16} /></div>}
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-semibold text-slate-900 truncate">{s.name}</div>
+                                                    {s.sub && <div className="text-[11px] text-slate-500 truncate">{s.sub}</div>}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">{s.type || '—'}</span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-40"><CompletionBar pct={stats.pct} /></div>
+                                                <span className="w-9 text-[12px] font-semibold text-slate-700 tabular-nums">{stats.pct}%</span>
+                                                <span className="whitespace-nowrap text-[11px] text-slate-500 tabular-nums">{stats.complete}/{stats.complete + stats.requiredMissing} required</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {stats.requiredMissing > 0
+                                                ? <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600"><CircleAlert size={11} /> {stats.requiredMissing}</span>
+                                                : <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600"><Check size={11} /> None</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-right"><ChevronRight size={16} className="text-slate-300" /></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
+                    <div className="flex items-center gap-3 text-[12px] text-slate-500">
+                        <label className="flex items-center gap-1.5">
+                            Rows per page
+                            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </label>
+                        <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <ChevronLeft size={14} /> Prev
+                        </button>
+                        <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
+                        <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                            Next <ChevronRight size={14} />
+                        </button>
+                    </div>
                 </div>
             </div>
-            <ul className="divide-y divide-slate-100">{children}</ul>
         </div>
     );
 }
@@ -833,6 +960,7 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | DataStatus>('all');
     const [tagFilter, setTagFilter] = useState<string>('all');
+    const [typeFilter, setTypeFilter] = useState<RecordTypeId | 'all'>('all');
     const [sort, setSort] = useState<{ col: SortCol; dir: 'asc' | 'desc' } | null>(null);
     const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(ALL_DATA_COLS));
     const [pageSize, setPageSize] = useState(25);
@@ -898,6 +1026,7 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
         const q = search.trim().toLowerCase();
         return entityRecords.filter(r => {
             if (category !== 'All' && r.category !== category) return false;
+            if (typeFilter !== 'all' && r.type !== typeFilter) return false;
             const entry = getEntry(subjectId, r.id);
             if (statusFilter !== 'all' && entryStatus(r, entry) !== statusFilter) return false;
             const tags = versionTags(entry);
@@ -910,7 +1039,7 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
             return true;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [entityRecords, category, statusFilter, tagFilter, search, subjectId, all]);
+    }, [entityRecords, category, typeFilter, statusFilter, tagFilter, search, subjectId, all]);
 
     const sorted = useMemo(() => {
         if (!sort) return filtered;
@@ -922,7 +1051,7 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filtered, sort, subjectId, all]);
 
-    useEffect(() => { setPage(1); }, [category, statusFilter, tagFilter, search, pageSize, sort, subjectId]);
+    useEffect(() => { setPage(1); }, [category, typeFilter, statusFilter, tagFilter, search, pageSize, sort, subjectId]);
 
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -993,6 +1122,10 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
                             className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                     </div>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
+                    <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as RecordTypeId | 'all')} className={selectCls} title="Filter by record type">
+                        <option value="all">All record types</option>
+                        {RECORD_TYPE_ORDER.map(t => <option key={t} value={t}>{RECORD_TYPE_LABEL[t]}</option>)}
+                    </select>
                     <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | DataStatus)} className={selectCls} title="Filter by status">
                         <option value="all">All statuses</option>
                         <option value="complete">Complete</option>
@@ -1005,9 +1138,9 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
                     </select>
                     <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
                     <div className="ml-auto flex items-center gap-2">
-                        <button type="button" onClick={loadSampleData} title={alsoSeedSubjects?.length ? 'Populate carrier records plus a sample asset & driver (with demo PDF documents) so every monitoring tab has data' : 'Populate this list with representative sample records (with demo PDF documents)'}
+                        <button type="button" onClick={loadSampleData} title={alsoSeedSubjects?.length ? 'Load sample data everywhere — the carrier plus every asset & driver (with demo PDF documents), so all records, monitoring and the Records lists have data' : 'Populate this list with representative sample records (with demo PDF documents)'}
                             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[13px] font-semibold text-violet-700 hover:bg-violet-100">
-                            <Sparkles size={14} /> Load sample data
+                            <Sparkles size={14} /> {alsoSeedSubjects?.length ? 'Load sample data (everywhere)' : 'Load sample data'}
                         </button>
                         {hasData && (
                             <button type="button" onClick={() => setConfirmClear(true)} title="Clear all captured data for this subject"
@@ -1098,6 +1231,291 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
     );
 }
 
+// ── Aggregated "Records" view (all records across every asset / driver) ──────────────
+type RecSubject = { id: string; label: string; sub?: string; initials?: string };
+
+/** Records | Assets(Drivers) view toggle — a subtle segmented control that sits inline with the
+ *  entity tabs, matching the app's other segmented controls so it reads as part of the header. */
+function SubViewSwitch({ value, onChange, listLabel, ListIcon, listCount, recordCount }: {
+    value: 'records' | 'list'; onChange: (v: 'records' | 'list') => void;
+    listLabel: string; ListIcon: typeof Truck; listCount: number; recordCount: number;
+}) {
+    const opts = [
+        { id: 'records' as const, label: 'Records', Icon: Layers, count: recordCount },
+        { id: 'list' as const, label: listLabel, Icon: ListIcon, count: listCount },
+    ];
+    return (
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/70 p-0.5">
+            {opts.map(o => {
+                const active = value === o.id;
+                return (
+                    <button key={o.id} type="button" onClick={() => onChange(o.id)}
+                        className={cn('inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors',
+                            active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
+                        <o.Icon size={13} className={active ? 'text-blue-600' : 'text-slate-400'} /> {o.label}
+                        <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums', active ? 'bg-blue-50 text-blue-600' : 'bg-slate-200/70 text-slate-500')}>{o.count}</span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+/** Leading "Subject" cell — the asset / driver a record row belongs to. */
+function SubjectCell({ s }: { s: RecSubject }) {
+    return (
+        <div className="flex items-center gap-2.5 min-w-[150px]">
+            {s.initials
+                ? <div className="h-8 w-8 rounded-full bg-blue-50 text-blue-600 text-[11px] font-bold flex items-center justify-center shrink-0">{s.initials}</div>
+                : <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><Truck size={15} /></div>}
+            <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-slate-800 truncate">{s.label}</div>
+                {s.sub && <div className="text-[11px] text-slate-400 truncate">{s.sub}</div>}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Flat records list across EVERY asset (or driver) of the carrier — one row per subject × record,
+ * with the subject name on each row. KPIs + search + type / status / tag / subject filters + column
+ * chooser + Load sample data. Rows open that subject's record detail page. Mirrors SubjectDocuments.
+ */
+function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntries, all, onDetailChange }: {
+    entity: 'Asset' | 'Driver';
+    subjects: RecSubject[];
+    records: SafetyRecord[];
+    getEntry: EntryGetter;
+    setEntry: EntrySetter;
+    setEntries: (items: { subjectId: string; recordId: string; entry: RecordDataEntry }[]) => void;
+    all: unknown; // store snapshot — changes on every write; forces the memos below to recompute
+    onDetailChange?: (open: boolean) => void;
+}) {
+    const { tags: tagCatalog } = useSafetyTags();
+    const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
+    const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState<RecordTypeId | 'all'>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | DataStatus>('all');
+    const [tagFilter, setTagFilter] = useState('all');
+    const [subjectFilter, setSubjectFilter] = useState('all');
+    const [visibleCols, setVisibleCols] = useState<Set<DataColId>>(() => new Set(ALL_DATA_COLS));
+    const [sort, setSort] = useState<{ col: SortCol; dir: 'asc' | 'desc' } | null>(null);
+    const [pageSize, setPageSize] = useState(25);
+    const [page, setPage] = useState(1);
+    const [detail, setDetail] = useState<{ subject: RecSubject; record: SafetyRecord } | null>(null);
+    const [confirmClear, setConfirmClear] = useState(false);
+    const subjectNoun = entity === 'Asset' ? 'assets' : 'drivers';
+
+    useEffect(() => { onDetailChange?.(!!detail); }, [detail, onDetailChange]);
+    useEffect(() => () => onDetailChange?.(false), [onDetailChange]);
+
+    const toggleCol = (id: DataColId) => setVisibleCols(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const toggleSort = (col: SortCol) => setSort(prev => (prev && prev.col === col ? (prev.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }));
+
+    const allRows = useMemo(() => {
+        const rows: { subject: RecSubject; record: SafetyRecord }[] = [];
+        for (const s of subjects) for (const r of entityRecords) rows.push({ subject: s, record: r });
+        return rows;
+    }, [subjects, entityRecords]);
+
+    // Aggregate KPIs across every subject × record.
+    const kpis = useMemo(() => {
+        let complete = 0, missing = 0;
+        for (const { subject, record } of allRows) {
+            const st = entryStatus(record, getEntry(subject.id, record.id));
+            if (st === 'complete') complete++; else if (st === 'missing') missing++;
+        }
+        const req = complete + missing;
+        return { total: allRows.length, complete, missing, pct: req ? Math.round((complete / req) * 100) : 100 };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [allRows, all]);
+
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return allRows.filter(({ subject, record: r }) => {
+            if (subjectFilter !== 'all' && subject.id !== subjectFilter) return false;
+            if (typeFilter !== 'all' && r.type !== typeFilter) return false;
+            const entry = getEntry(subject.id, r.id);
+            if (statusFilter !== 'all' && entryStatus(r, entry) !== statusFilter) return false;
+            const tags = versionTags(entry);
+            if (tagFilter !== 'all' && !tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
+            if (q) {
+                const cur = currentVersion(entry);
+                const hay = `${subject.label} ${subject.sub || ''} ${searchBlob(r)} ${cur?.numberValue || ''} ${tags.join(' ')}`.toLowerCase();
+                if (!(hay.includes(q) || tags.some(t => smartTagMatch(q, t)))) return false;
+            }
+            return true;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [allRows, subjectFilter, typeFilter, statusFilter, tagFilter, search, all]);
+
+    const sorted = useMemo(() => {
+        if (!sort) return filtered;
+        const arr = [...filtered].sort((a, b) =>
+            sortValueFor(sort.col, a.record, getEntry(a.subject.id, a.record.id))
+                .localeCompare(sortValueFor(sort.col, b.record, getEntry(b.subject.id, b.record.id)), undefined, { numeric: true, sensitivity: 'base' }));
+        if (sort.dir === 'desc') arr.reverse();
+        return arr;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filtered, sort, all]);
+
+    useEffect(() => { setPage(1); }, [subjectFilter, typeFilter, statusFilter, tagFilter, search, pageSize, sort]);
+
+    const total = sorted.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const pageRows = sorted.slice(start, start + pageSize);
+    const cols = DATA_COLUMNS.filter(c => visibleCols.has(c.id));
+    const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
+
+    const loadSampleData = () => {
+        const items: { subjectId: string; recordId: string; entry: RecordDataEntry }[] = [];
+        for (const s of subjects) entityRecords.forEach((r, i) => items.push({ subjectId: s.id, recordId: r.id, entry: buildSampleEntry(r, i) ?? emptyEntry() }));
+        setEntries(items);
+        emitToast(`Sample data loaded — ${items.length} records across ${subjects.length} ${subjectNoun}`);
+    };
+    const clearData = () => {
+        const items: { subjectId: string; recordId: string; entry: RecordDataEntry }[] = [];
+        for (const s of subjects) entityRecords.forEach(r => items.push({ subjectId: s.id, recordId: r.id, entry: emptyEntry() }));
+        setEntries(items);
+        emitToast('Data cleared');
+    };
+    const hasData = allRows.some(({ subject, record }) => { const e = getEntry(subject.id, record.id); return e.versions.length > 0 || (e.instances?.length ?? 0) > 0; });
+
+    if (detail) {
+        return (
+            <RecordDetailPage
+                record={detail.record}
+                entry={getEntry(detail.subject.id, detail.record.id)}
+                entity={entity}
+                subjectLabel={detail.subject.label}
+                subjectId={detail.subject.id}
+                setEntry={setEntry}
+                onBack={() => setDetail(null)}
+            />
+        );
+    }
+
+    return (
+        <div className="space-y-5">
+            {/* KPI tiles — aggregated across all subjects */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <KpiTile label="Records" value={kpis.total} Icon={Layers} accent="slate" />
+                <KpiTile label="Complete" value={kpis.complete} Icon={Check} accent="emerald" />
+                <KpiTile label="Required Missing" value={kpis.missing} Icon={CircleAlert} accent="rose" />
+                <KpiTile label="Required Complete" value={`${kpis.pct}%`} Icon={CalendarClock} accent="blue" />
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                {/* Toolbar */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
+                    <div className="relative flex-1 min-w-[220px] max-w-sm">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${entity === 'Asset' ? 'unit' : 'driver'}, record, number, tag…`}
+                            className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
+                    <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)} className={selectCls} title={`Filter by ${entity.toLowerCase()}`}>
+                        <option value="all">All {subjectNoun}</option>
+                        {subjects.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </select>
+                    <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as RecordTypeId | 'all')} className={selectCls} title="Filter by record type">
+                        <option value="all">All record types</option>
+                        {RECORD_TYPE_ORDER.map(t => <option key={t} value={t}>{RECORD_TYPE_LABEL[t]}</option>)}
+                    </select>
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | DataStatus)} className={selectCls} title="Filter by status">
+                        <option value="all">All statuses</option>
+                        <option value="complete">Complete</option>
+                        <option value="missing">Missing</option>
+                        <option value="optional">Optional</option>
+                    </select>
+                    <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} className={selectCls} title="Filter by document tag">
+                        <option value="all">All tags</option>
+                        {tagCatalog.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <ColumnsDropdown visible={visibleCols} onToggle={toggleCol} />
+                    <div className="ml-auto flex items-center gap-2">
+                        <button type="button" onClick={loadSampleData} title={`Populate every ${entity.toLowerCase()} with representative sample records (with demo PDF documents)`}
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[13px] font-semibold text-violet-700 hover:bg-violet-100">
+                            <Sparkles size={14} /> Load sample data
+                        </button>
+                        {hasData && (
+                            <button type="button" onClick={() => setConfirmClear(true)} title={`Clear all captured data for every ${entity.toLowerCase()}`}
+                                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-rose-600 hover:border-rose-200">
+                                <Trash2 size={14} /> Clear
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {pageRows.length === 0 ? (
+                    <div className="px-5 py-12 text-center text-sm text-slate-500">No records match your search / filters.</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[1080px]">
+                            <thead className="border-b border-slate-200 bg-slate-50/50">
+                                <tr className="text-left">
+                                    <th className="px-4 py-2.5 pl-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">{entity}</th>
+                                    <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} />
+                                    {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pageRows.map(({ subject, record }) => (
+                                    <RecordTableRow
+                                        key={`${subject.id}-${record.id}`}
+                                        r={record}
+                                        entry={getEntry(subject.id, record.id)}
+                                        visibleCols={visibleCols}
+                                        onOpen={() => setDetail({ subject, record })}
+                                        leadCell={<SubjectCell s={subject} />}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
+                    <div className="flex items-center gap-3 text-[12px] text-slate-500">
+                        <label className="flex items-center gap-1.5">
+                            Rows per page
+                            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </label>
+                        <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <ChevronLeft size={14} /> Prev
+                        </button>
+                        <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
+                        <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                            Next <ChevronRight size={14} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {confirmClear && (
+                <ConfirmDialog
+                    danger
+                    title="Clear all data?"
+                    message={`This removes every captured document / version for all ${subjectNoun}. This can't be undone.`}
+                    confirmLabel="Clear all"
+                    onConfirm={() => { clearData(); setConfirmClear(false); }}
+                    onCancel={() => setConfirmClear(false)}
+                />
+            )}
+        </div>
+    );
+}
+
 function SortableTh({ col, label, sort, onSort, className }: {
     col: SortCol; label: string; sort: { col: SortCol; dir: 'asc' | 'desc' } | null; onSort: (c: SortCol) => void; className?: string;
 }) {
@@ -1139,9 +1557,11 @@ function ColumnsDropdown({ visible, onToggle }: { visible: Set<DataColId>; onTog
 }
 
 // ── Record table row (+ expandable version sub-rows) ──────────────────
-function RecordTableRow({ r, entry, visibleCols, onOpen }: {
+function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
     r: SafetyRecord; entry: RecordDataEntry; visibleCols: Set<DataColId>;
     onOpen: () => void;
+    /** Optional leading cell (the aggregated "Records" view passes the Asset/Driver subject here). */
+    leadCell?: ReactNode;
 }) {
     const status = entryStatus(r, entry);
     const isMulti = !!r.multiInstance;
@@ -1156,14 +1576,19 @@ function RecordTableRow({ r, entry, visibleCols, onOpen }: {
     return (
         <>
             <tr className="border-b border-slate-100 hover:bg-slate-50/50 align-top">
+                {/* Subject (aggregated Records view only) */}
+                {leadCell !== undefined && <td className="px-4 py-3.5 pl-5 align-top">{leadCell}</td>}
                 {/* Record & Fields */}
-                <td className="px-4 py-3.5 pl-5">
+                <td className={cn('px-4 py-3.5', leadCell === undefined && 'pl-5')}>
                     <div className="flex items-start gap-2">
                         <div className="min-w-0">
-                            <button type="button" onClick={onOpen} title="Open details" className="group inline-flex items-center gap-1 text-left text-sm font-semibold text-slate-900 hover:text-blue-600">
-                                {r.recordName}
-                                <ChevronRight size={13} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
-                            </button>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <button type="button" onClick={onOpen} title="Open details" className="group inline-flex items-center gap-1 text-left text-sm font-semibold text-slate-900 hover:text-blue-600">
+                                    {r.recordName}
+                                    <ChevronRight size={13} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                                </button>
+                                {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
+                            </div>
                             {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
                             <div className="mt-1 flex flex-wrap gap-1.5">
                                 {r.numberName && (
@@ -1226,7 +1651,7 @@ function RecordTableRow({ r, entry, visibleCols, onOpen }: {
                                     )}
                                     {isMulti
                                         ? insts.length > 0 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{insts.length} {nounPl(insts.length)} · all active</span>
-                                        : versionCount > 1 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{versionCount} versions</span>}
+                                        : versionCount > 1 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{versionCount} records</span>}
                                 </div>
                             )}
                         </div>
@@ -1544,13 +1969,18 @@ function UploaderCell({ name, at }: { name?: string; at: string }) {
 }
 
 // ── Detail document-table controls (search / filter / sort / column-select / pagination) ──
-type DocColId = 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'document' | 'uploaded';
-type DocSortCol = 'number' | 'policy' | 'version' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded';
-const DOC_COLS_ALL: DocColId[] = ['state', 'issue', 'expiry', 'status', 'tags', 'document', 'uploaded'];
+type DocColId = 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'tags' | 'notes' | 'document' | 'uploaded';
+type DocSortCol = 'number' | 'policy' | 'version' | 'insurer' | 'producer' | 'limit' | 'state' | 'issue' | 'expiry' | 'status' | 'uploaded';
+const DOC_COLS_ALL: DocColId[] = ['insurer', 'producer', 'limit', 'state', 'issue', 'expiry', 'status', 'tags', 'notes', 'document', 'uploaded'];
+// Columns shown by default (Notes is available in the Columns menu but off until enabled).
+const DOC_DEFAULT_COLS: DocColId[] = DOC_COLS_ALL.filter(c => c !== 'notes');
 // Core columns that are always shown — cannot be toggled off (locked in the Columns menu).
 const DOC_LOCKED_COLS: DocColId[] = ['state', 'document'];
+// Insurance-only columns (shown only for multi-instance records).
+const DOC_INSURANCE_COLS: DocColId[] = ['insurer', 'producer', 'limit'];
 const DOC_COL_LABEL: Record<DocColId, string> = {
-    state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', tags: 'Tags', document: 'Document', uploaded: 'Uploaded by',
+    insurer: 'Insurer', producer: 'Producer', limit: 'Policy Limit',
+    state: 'State', issue: 'Issue date', expiry: 'Expiry date', status: 'Status', tags: 'Tags', notes: 'Notes', document: 'Document', uploaded: 'Uploaded by',
 };
 const DOC_TH_CLS = 'px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap';
 function docSortValue(col: DocSortCol, row: DocRow): string {
@@ -1563,14 +1993,22 @@ function docSortValue(col: DocSortCol, row: DocRow): string {
         case 'issue': return v.issueDate || '';
         case 'expiry': return v.expiryDate || '';
         case 'status': return (v.status || '').toLowerCase();
+        case 'insurer': return (v.insurer || '').toLowerCase();
+        case 'producer': return (v.producer || '').toLowerCase();
+        case 'limit': return (v.policyLimit || '').toLowerCase();
         case 'uploaded': return `${v.uploadedBy || ''} ${v.uploadedAt || ''}`.toLowerCase();
         default: return '';
     }
 }
 function docSearchBlob(row: DocRow): string {
     const v = row.version;
-    return [v.numberValue, v.label, row.instanceName, v.status, DOC_STATE_META[effectiveState(v, row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.tags.join(' '), v.files.map(f => f.name).join(' ')]
+    return [v.numberValue, v.label, row.instanceName, v.insurer, v.producer, v.policyLimit, v.status, DOC_STATE_META[effectiveState(v, row.isCurrent)].label, v.issueDate, v.expiryDate, v.uploadedBy, v.notes,
+        v.tags.join(' '), v.files.map(f => f.name).join(' '), v.files.map(f => f.tag ?? '').join(' ')]
         .filter(Boolean).join(' ').toLowerCase();
+}
+/** All tags on a record — its version tags + every document tag (used for the tag filter + search). */
+function rowAllTags(row: DocRow): string[] {
+    return Array.from(new Set([...row.version.tags, ...row.version.files.map(f => f.tag).filter((t): t is string => !!t)]));
 }
 /** Sortable header cell for the detail document table. */
 function DocTh({ col, label, sortable, sort, onSort, className }: {
@@ -1635,7 +2073,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
     const [docSearch, setDocSearch] = useState('');
     const [tagFilter, setTagFilter] = useState('all');
     const [docSort, setDocSort] = useState<{ col: DocSortCol; dir: 'asc' | 'desc' } | null>(null);
-    const [visibleDocCols, setVisibleDocCols] = useState<Set<DocColId>>(() => new Set(DOC_COLS_ALL));
+    const [visibleDocCols, setVisibleDocCols] = useState<Set<DocColId>>(() => new Set(DOC_DEFAULT_COLS));
     const [docPageSize, setDocPageSize] = useState(25);
     const [docPage, setDocPage] = useState(1);
     const [pendingDelete, setPendingDelete] = useState<DocRow | null>(null); // → ConfirmDialog "are you sure?"
@@ -1655,8 +2093,20 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         setPendingDelete(null);
         emitToast(`${row.version.label} removed`, 'success');
     };
+    // Remove ONE uploaded document from a record (used by the per-document extra rows on insurance policies).
+    const removeRowFile = (row: DocRow, fileIdx: number) => {
+        const updated = { ...row.version, files: row.version.files.filter((_, i) => i !== fileIdx) };
+        if (row.instanceId) {
+            const instances = (entry.instances ?? []).map(inst => (inst.id === row.instanceId
+                ? { ...inst, versions: inst.versions.map(x => (x.id === row.version.id ? updated : x)) } : inst));
+            setEntry(subjectId, record.id, { ...entry, instances });
+        } else {
+            setEntry(subjectId, record.id, { ...entry, versions: entry.versions.map(x => (x.id === row.version.id ? updated : x)) });
+        }
+        emitToast('Document removed', 'success');
+    };
     // Scoped single-version add / edit (opens VersionEditModal — "each row edit only shows that data").
-    const freshVersion = () => ({ ...newVersion(`Version ${new Date().getFullYear()}`), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
+    const freshVersion = () => ({ ...newVersion(`Record ${new Date().getFullYear()}`), monitoring: seedMonitoring(record), uploadedBy: currentUserName() });
     const startEdit = (row: DocRow) => setEditing({ version: row.version, mode: 'edit', instanceId: row.instanceId });
     const startAdd = () => setEditing({ version: freshVersion(), mode: 'add' });
     const startAddPolicy = () => setEditing({ version: freshVersion(), mode: 'add', newPolicy: true });
@@ -1667,41 +2117,65 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
             // New insurance policy → a fresh instance holding this version as its current.
             const inst = { ...newInstance((policyName || '').trim() || `Policy ${(entry.instances?.length ?? 0) + 1}`), versions: [saved] };
             setEntry(subjectId, record.id, { ...entry, versions: [], instances: [...(entry.instances ?? []), inst] });
-        } else if (editing.instanceId) {
-            // Add-to-policy prepends as that policy's new current; edit replaces in place.
+        } else if (editing.instanceId && editing.mode === 'add') {
+            // Add-to-policy → prepend as that policy's new current.
             const instances = (entry.instances ?? []).map(inst => (inst.id === editing.instanceId
-                ? { ...inst, versions: editing.mode === 'add' ? [saved, ...inst.versions] : inst.versions.map(x => (x.id === saved.id ? saved : x)) }
-                : inst));
+                ? { ...inst, versions: [saved, ...inst.versions] } : inst));
             setEntry(subjectId, record.id, { ...entry, instances });
+        } else if (editing.instanceId) {
+            // Edit an insurance version → update in place, or REASSIGN to another policy if the Policy field changed.
+            const targetName = policyName?.trim();
+            const curInst = (entry.instances ?? []).find(i => i.id === editing.instanceId);
+            const samePolicy = !targetName || targetName.toLowerCase() === (curInst?.name ?? '').toLowerCase();
+            if (samePolicy) {
+                const instances = (entry.instances ?? []).map(inst => inst.id === editing.instanceId
+                    ? { ...inst, name: targetName || inst.name, versions: inst.versions.map(x => (x.id === saved.id ? saved : x)) }
+                    : inst);
+                setEntry(subjectId, record.id, { ...entry, instances });
+            } else {
+                // Pull the version out of its current policy, then drop it into the target (existing by name, else new).
+                let instances = (entry.instances ?? []).map(inst => inst.id === editing.instanceId
+                    ? { ...inst, versions: inst.versions.filter(x => x.id !== saved.id) } : inst);
+                const target = instances.find(i => i.name.toLowerCase() === targetName!.toLowerCase());
+                instances = target
+                    ? instances.map(i => (i.id === target.id ? { ...i, versions: [saved, ...i.versions] } : i))
+                    : [...instances, { ...newInstance(targetName!), versions: [saved] }];
+                instances = instances.filter(i => i.versions.length > 0);
+                setEntry(subjectId, record.id, { ...entry, instances });
+            }
         } else if (editing.mode === 'add') {
             setEntry(subjectId, record.id, { ...entry, versions: [saved, ...entry.versions] });
         } else {
             setEntry(subjectId, record.id, { ...entry, versions: entry.versions.map(x => (x.id === saved.id ? saved : x)) });
         }
-        emitToast(editing.newPolicy ? `${(record.instanceNoun || 'Policy')} added` : editing.mode === 'add' ? 'Version added' : 'Changes saved');
+        emitToast(editing.mode === 'add' ? 'Record added' : 'Changes saved');
         setEditing(null);
     };
 
     const isMulti = !!record.multiInstance;
+    // Insurer / Producer / Policy Limit are insurance-only columns — shown for the SYSTEM insurance
+    // records, never for custom records (custom multi-document is just "several documents", and its
+    // table shows only the fields defined in its form).
+    const isInsurance = isMulti && !record.customForm;
     const dated = isDateMonitored(record);
-    const noun = record.instanceNoun || 'document';
+    const noun = record.instanceNoun || 'document'; // used for the insurance "Policy" column header
     const showNumber = !!record.numberName;
     const showIssue = !!record.tracksIssueDate;
     const showDate = dated;
     const showStatus = !dated;
-    const showCol = (id: DocColId) => DOC_LOCKED_COLS.includes(id) || visibleDocCols.has(id);
+    const showCol = (id: DocColId) => (DOC_INSURANCE_COLS.includes(id) ? isInsurance : true) && (DOC_LOCKED_COLS.includes(id) || visibleDocCols.has(id));
     const applicableDocCols = DOC_COLS_ALL.filter(id =>
-        id === 'issue' ? showIssue : id === 'expiry' ? showDate : id === 'status' ? showStatus : true);
+        DOC_INSURANCE_COLS.includes(id) ? isInsurance : id === 'issue' ? showIssue : id === 'expiry' ? showDate : id === 'status' ? showStatus : true);
 
     const allRows = buildDocRows(record, entry);
     // "History" = older/previous versions (position-based, newest = current). Independent of the controllable State field.
     const isCurrentRow = (r: DocRow) => r.isCurrent;
     const historyCount = allRows.filter(r => !isCurrentRow(r)).length;
-    const tagOptions = Array.from(new Set(allRows.flatMap(r => r.version.tags))).sort();
+    const tagOptions = Array.from(new Set(allRows.flatMap(rowAllTags))).sort();
     const baseRows = includeHistory ? allRows : allRows.filter(isCurrentRow);
     const q = docSearch.trim().toLowerCase();
     const filteredRows = baseRows.filter(r => {
-        if (tagFilter !== 'all' && !r.version.tags.some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
+        if (tagFilter !== 'all' && !rowAllTags(r).some(t => t.toLowerCase() === tagFilter.toLowerCase())) return false;
         if (q && !docSearchBlob(r).includes(q)) return false;
         return true;
     });
@@ -1718,11 +2192,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
         <>
             {/* Header — title + Show-history toggle + Add (opens the record form popup) */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-100 flex-wrap">
-                <h3 className="text-[13px] font-bold text-slate-700">{isMulti ? 'Active filings' : 'Documents & versions'}</h3>
+                <h3 className="text-[13px] font-bold text-slate-700">{isMulti ? 'Active filings' : 'Documents & records'}</h3>
                 <div className="flex items-center gap-3 flex-wrap">
                     {/* Persistent "Show history" toggle — reveals older/historical versions; disabled when there are none yet. */}
                     <button type="button" disabled={historyCount === 0} onClick={() => setIncludeHistory(v => !v)}
-                        title={historyCount === 0 ? 'No older versions yet' : includeHistory ? 'Hide historical versions' : 'Show historical (old) versions'}
+                        title={historyCount === 0 ? 'No older records yet' : includeHistory ? 'Hide historical records' : 'Show historical (old) records'}
                         className={cn('inline-flex items-center gap-2 text-[12px] font-semibold', historyCount === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:text-slate-800')}>
                         <span className={cn('relative h-5 w-9 rounded-full transition-colors', includeHistory && historyCount > 0 ? 'bg-blue-600' : 'bg-slate-300')}>
                             <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', includeHistory && historyCount > 0 ? 'left-[18px]' : 'left-0.5')} />
@@ -1734,9 +2208,9 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-violet-200 bg-violet-50 text-[12px] font-semibold text-violet-700 hover:bg-violet-100">
                         <Sparkles size={14} /> Sample data
                     </button>
-                    <button type="button" onClick={isMulti ? startAddPolicy : startAdd} title={isMulti ? `Add a ${noun}` : 'Add a new version'}
+                    <button type="button" onClick={isMulti ? startAddPolicy : startAdd} title={isMulti ? 'Add a new policy record' : 'Add a new record'}
                         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700">
-                        <Plus size={14} /> Add {isMulti ? noun : 'version'}
+                        <Plus size={14} /> Add record
                     </button>
                 </div>
             </div>
@@ -1745,7 +2219,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     <div className="mx-auto mb-3 h-11 w-11 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><FileText size={20} /></div>
                     <p className="text-sm font-semibold text-slate-700">No documents captured yet</p>
                     <p className="mt-1 text-[13px] text-slate-500">Use <span className="font-semibold text-slate-700">Add</span> to upload a document or record a number / date.</p>
-                    <button type="button" onClick={isMulti ? startAddPolicy : startAdd} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"><UploadCloud size={15} /> Add {isMulti ? noun : 'version'}</button>
+                    <button type="button" onClick={isMulti ? startAddPolicy : startAdd} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"><UploadCloud size={15} /> Add record</button>
                 </div>
             ) : (
                 <>
@@ -1754,7 +2228,7 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 flex-wrap">
                         <div className="relative flex-1 min-w-[200px] max-w-sm">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="Search versions, numbers, tags, files…"
+                            <input value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="Search records, numbers, tags, files…"
                                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                         </div>
                         {tagOptions.length > 0 && (
@@ -1775,30 +2249,40 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     ) : (
                         <>
                         <div className="hidden md:block overflow-x-auto">
-                            <table className="w-full min-w-[1160px]">
+                            <table className={cn('w-full', isMulti ? 'min-w-[1400px]' : 'min-w-[1160px]')}>
                                 <thead className="border-b border-slate-200 bg-slate-50/50">
                                     <tr>
                                         {showNumber && <DocTh col="number" label={record.numberName} sortable sort={docSort} onSort={toggleDocSort} className="pl-5" />}
                                         {isMulti && <DocTh col="policy" label={noun.charAt(0).toUpperCase() + noun.slice(1)} sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && 'pl-5')} />}
-                                        <DocTh col="version" label="Version" sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && !isMulti && 'pl-5')} />
+                                        {showCol('insurer') && <DocTh col="insurer" label="Insurer" sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {showCol('producer') && <DocTh col="producer" label="Producer" sortable sort={docSort} onSort={toggleDocSort} />}
+                                        {showCol('limit') && <DocTh col="limit" label="Policy Limit" sortable sort={docSort} onSort={toggleDocSort} />}
+                                        <DocTh col="version" label="Record" sortable sort={docSort} onSort={toggleDocSort} className={cn(!showNumber && !isMulti && 'pl-5')} />
                                         {showCol('state') && <DocTh col="state" label="State" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showIssue && showCol('issue') && <DocTh col="issue" label="Issue date" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showDate && showCol('expiry') && <DocTh col="expiry" label="Expiry date" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showStatus && showCol('status') && <DocTh col="status" label="Status" sortable sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('tags') && <DocTh label="Tags" sort={docSort} onSort={toggleDocSort} />}
+                                        {showCol('notes') && <DocTh label="Notes" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('document') && <DocTh label="Document" sort={docSort} onSort={toggleDocSort} />}
                                         {showCol('uploaded') && <DocTh col="uploaded" label="Uploaded by" sortable sort={docSort} onSort={toggleDocSort} />}
                                         <th className={cn(DOC_TH_CLS, 'pr-5 text-right')}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {pageRows.map(row => {
+                                    {pageRows.flatMap(row => {
                                         const v = row.version;
                                         const st = effectiveState(v, row.isCurrent);
-                                        return (
-                                            <tr key={row.key} className={cn('border-b border-slate-100 align-top', st === 'current' ? 'bg-emerald-50/40' : 'hover:bg-slate-50/50')}>
+                                        // Insurance policies with several documents → one row per document (primary row + "extra" rows).
+                                        const splitDocs = isMulti && showCol('document') && v.files.length > 1;
+                                        const trs: ReactNode[] = [];
+                                        trs.push(
+                                            <tr key={row.key} className={cn('align-top', splitDocs ? '' : 'border-b border-slate-100', st === 'current' ? 'bg-emerald-50/40' : 'hover:bg-slate-50/50')}>
                                                 {showNumber && <td className={cn('px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800', 'pl-5')}>{v.numberValue || <span className="font-normal text-slate-400">—</span>}</td>}
                                                 {isMulti && <td className={cn('px-4 py-3 whitespace-nowrap text-[13px] font-semibold text-slate-800', !showNumber && 'pl-5')}>{row.instanceName || '—'}</td>}
+                                                {showCol('insurer') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.insurer || <span className="text-slate-400">—</span>}</td>}
+                                                {showCol('producer') && <td className="px-4 py-3 text-[13px] text-slate-700 whitespace-nowrap">{v.producer || <span className="text-slate-400">—</span>}</td>}
+                                                {showCol('limit') && <td className="px-4 py-3 text-[13px] font-medium text-slate-700 whitespace-nowrap tabular-nums">{v.policyLimit || <span className="font-normal text-slate-400">—</span>}</td>}
                                                 <td className={cn('px-4 py-3 whitespace-nowrap', !showNumber && !isMulti && 'pl-5')}>
                                                     <span className="text-[13px] font-medium text-slate-700">{v.label}</span>
                                                 </td>
@@ -1808,33 +2292,73 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                                 {showStatus && showCol('status') && <td className="px-4 py-3 whitespace-nowrap">{v.status ? <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{v.status}</span> : <span className="text-[13px] text-slate-400">—</span>}</td>}
                                                 {showCol('tags') && (
                                                     <td className="px-4 py-3">
-                                                        {v.tags.length ? (
-                                                            <div className="flex flex-wrap gap-1 max-w-[220px]">
-                                                                {v.tags.map(t => <span key={t} className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium', tagColor(t))}><Tag size={9} /> {t}</span>)}
-                                                            </div>
-                                                        ) : <span className="text-[13px] text-slate-400">—</span>}
+                                                        {/* Insurance is tagged per document — never show record-level tags on its rows. */}
+                                                        <DocTagsCell recordTags={isMulti ? [] : v.tags} docTag={v.files[0]?.tag} />
+                                                    </td>
+                                                )}
+                                                {showCol('notes') && (
+                                                    <td className="px-4 py-3">
+                                                        {v.notes ? <span className="block max-w-[220px] truncate text-[12px] text-slate-600" title={v.notes}>{v.notes}</span> : <span className="text-[13px] text-slate-400">—</span>}
                                                     </td>
                                                 )}
                                                 {showCol('document') && (
                                                     <td className="px-4 py-3">
-                                                        <div className="max-w-[260px]"><DocFilesCell files={v.files} /></div>
+                                                        <div className="max-w-[260px]"><DocFilesCell files={splitDocs ? [v.files[0]] : v.files} showTag={false} /></div>
                                                     </td>
                                                 )}
                                                 {showCol('uploaded') && <UploaderCell name={v.uploadedBy} at={v.uploadedAt} />}
                                                 <td className="px-4 py-3 pr-5">
                                                     <div className="flex items-center justify-end gap-1.5">
                                                         {isMulti && row.isCurrent && row.instanceId && (
-                                                            <button type="button" onClick={() => startAddToPolicy(row.instanceId!)} title="Add a version to this policy"
-                                                                className="inline-flex h-8 items-center gap-1 px-2 rounded-lg border border-blue-200 bg-blue-50 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"><Plus size={13} /> Version</button>
+                                                            <button type="button" onClick={() => startAddToPolicy(row.instanceId!)} title="Add a renewal record to this policy"
+                                                                className="inline-flex h-8 items-center gap-1 px-2 rounded-lg border border-blue-200 bg-blue-50 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"><Plus size={13} /> Record</button>
                                                         )}
-                                                        <button type="button" onClick={() => startEdit(row)} title="Edit this version"
+                                                        <button type="button" onClick={() => startEdit(row)} title="Edit this record"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"><Pencil size={14} /></button>
-                                                        <button type="button" onClick={() => setPendingDelete(row)} title="Remove this version"
+                                                        <button type="button" onClick={() => setPendingDelete(row)} title="Remove this record"
                                                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"><Trash2 size={14} /></button>
                                                     </div>
                                                 </td>
                                             </tr>
                                         );
+                                        if (splitDocs) {
+                                            const cellPad = 'px-4 py-2';
+                                            v.files.slice(1).forEach((f, k) => {
+                                                const idx = k + 1;
+                                                const last = idx === v.files.length - 1;
+                                                trs.push(
+                                                    <tr key={`${row.key}-doc${idx}`} className={cn('align-top', last && 'border-b border-slate-100', st === 'current' ? 'bg-emerald-50/20' : 'bg-slate-50/30')}>
+                                                        {showNumber && <td className={cn(cellPad, 'pl-5')} />}
+                                                        {isMulti && <td className={cn(cellPad, !showNumber && 'pl-5')} />}
+                                                        {showCol('insurer') && <td className={cellPad} />}
+                                                        {showCol('producer') && <td className={cellPad} />}
+                                                        {showCol('limit') && <td className={cellPad} />}
+                                                        <td className={cn(cellPad, 'whitespace-nowrap', !showNumber && !isMulti && 'pl-5')}>
+                                                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><CornerDownRight size={12} /> Document {idx + 1}</span>
+                                                        </td>
+                                                        {showCol('state') && <td className={cellPad} />}
+                                                        {showIssue && showCol('issue') && <td className={cellPad} />}
+                                                        {showDate && showCol('expiry') && <td className={cellPad} />}
+                                                        {showStatus && showCol('status') && <td className={cellPad} />}
+                                                        {showCol('tags') && <td className={cellPad}><DocTagsCell recordTags={[]} docTag={f.tag} /></td>}
+                                                        {showCol('notes') && <td className={cellPad} />}
+                                                        {showCol('document') && (
+                                                            <td className={cellPad}>
+                                                                <div className="max-w-[260px]"><DocFilesCell files={[f]} showTag={false} /></div>
+                                                            </td>
+                                                        )}
+                                                        {showCol('uploaded') && <td className={cellPad} />}
+                                                        <td className={cn(cellPad, 'pr-5')}>
+                                                            <div className="flex items-center justify-end">
+                                                                <button type="button" onClick={() => removeRowFile(row, idx)} title="Remove this document"
+                                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"><Trash2 size={13} /></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            });
+                                        }
+                                        return trs;
                                     })}
                                 </tbody>
                             </table>
@@ -1857,16 +2381,19 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                             </div>
                                             <div className="flex items-center gap-1.5 shrink-0">
                                                 {isMulti && row.isCurrent && row.instanceId && (
-                                                    <button type="button" onClick={() => startAddToPolicy(row.instanceId!)} title="Add a version to this policy"
+                                                    <button type="button" onClick={() => startAddToPolicy(row.instanceId!)} title="Add a renewal record to this policy"
                                                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"><Plus size={15} /></button>
                                                 )}
-                                                <button type="button" onClick={() => startEdit(row)} title="Edit this version"
+                                                <button type="button" onClick={() => startEdit(row)} title="Edit this record"
                                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200"><Pencil size={14} /></button>
-                                                <button type="button" onClick={() => setPendingDelete(row)} title="Remove this version"
+                                                <button type="button" onClick={() => setPendingDelete(row)} title="Remove this record"
                                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"><Trash2 size={14} /></button>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                                            {isInsurance && <MobileFact label="Insurer" value={v.insurer} />}
+                                            {isInsurance && <MobileFact label="Producer" value={v.producer} />}
+                                            {isInsurance && <MobileFact label="Policy Limit" value={v.policyLimit} />}
                                             {showIssue && <MobileFact label="Issue date" value={v.issueDate} />}
                                             {showDate && <MobileFact label="Expiry date" value={v.expiryDate} />}
                                             {showStatus && <MobileFact label="Status" value={v.status} />}
@@ -1875,6 +2402,12 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                                         {v.tags.length > 0 && (
                                             <div className="flex flex-wrap gap-1">
                                                 {v.tags.map(t => <span key={t} className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium', tagColor(t))}><Tag size={9} /> {t}</span>)}
+                                            </div>
+                                        )}
+                                        {v.notes && (
+                                            <div>
+                                                <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Notes</div>
+                                                <p className="text-[12px] text-slate-600">{v.notes}</p>
                                             </div>
                                         )}
                                         <div>
@@ -1920,8 +2453,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
                     subjectLabel={subjectLabel}
                     version={editing.version}
                     mode={editing.mode}
-                    askPolicyName={!!editing.newPolicy}
+                    // Show the Policy select when creating a new policy OR editing an insurance version (so you can see / reassign it).
+                    askPolicyName={!!editing.newPolicy || (isMulti && editing.mode === 'edit')}
+                    initialPolicyName={editing.instanceId ? (instancesOf(entry).find(i => i.id === editing.instanceId)?.name ?? '') : ''}
                     policyOptions={Array.from(new Set([...instancesOf(entry).map(i => i.name), ...(record.multiInstance ? INSURANCE_POLICY_SUGGESTIONS : [])]))}
+                    policyPrefills={(() => { const m: Record<string, DocVersion> = {}; for (const i of instancesOf(entry)) { const c = i.versions[0]; if (c) m[i.name] = c; } return m; })()}
                     onSave={saveVersion}
                     onClose={() => setEditing(null)}
                 />
@@ -1973,7 +2509,10 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                             <FileText size={22} />
                         </span>
                         <div className="min-w-0">
-                            <h2 className="text-xl font-bold leading-tight text-slate-900">{record.recordName}</h2>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-xl font-bold leading-tight text-slate-900">{record.recordName}</h2>
+                                {record.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={10} /> Custom</span>}
+                            </div>
                             {record.description && <p className="mt-0.5 text-[13px] text-slate-500">{record.description}</p>}
                         </div>
                     </div>
@@ -2043,7 +2582,7 @@ function KpiTile({ label, value, Icon, accent }: { label: string; value: string 
 }
 
 /** Deterministic demo fill for a SINGLE version (mirrors Load-sample / ManageModal's fillV). */
-function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion {
+export function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion {
     const country = record.allCountries ? 'United States' : 'Canada';
     const stateProv = record.hideState ? '' : (STATES_BY_COUNTRY[country]?.[0] ?? '');
     const merged: DocVersion = {
@@ -2053,10 +2592,17 @@ function fillVersionDemo(record: SafetyRecord, v: DocVersion): DocVersion {
         issueDate: record.tracksIssueDate ? '2024-01-15' : v.issueDate,
         expiryDate: isDateMonitored(record) ? (record.configuredDate ?? '2026-12-31') : v.expiryDate,
         status: !isDateMonitored(record) ? (v.status || 'Active') : v.status,
-        tags: v.tags.length ? v.tags : ['Verified', 'Primary'],
+        tags: record.multiInstance ? [] : (v.tags.length ? v.tags : ['Verified', 'Primary']),
         monitoring: { ...v.monitoring, enabled: true },
     };
+    if (record.multiInstance) {
+        merged.insurer = v.insurer || 'State Farm';
+        merged.producer = v.producer || 'Marsh McLennan';
+        merged.policyLimit = v.policyLimit || '$1,000,000';
+    }
     if (record.type !== 'C' && record.docRequirement !== 'none' && merged.files.length === 0) merged.files = sampleDocFiles(record);
+    // Insurance documents are tagged individually — give each demo document a system tag.
+    if (record.multiInstance) merged.files = merged.files.map((f, idx) => (f.tag ? f : { ...f, tag: ['Certificate', 'Endorsement', 'Declaration page', 'Schedule of coverage'][idx] ?? 'Supporting document' }));
     return merged;
 }
 
@@ -2191,15 +2737,43 @@ function MonitoringToggle({ record, monitoring, issueDate, expiryDate, status, o
 }
 
 // ── Version fields (Details / Document / Monitoring / Tags / Notes) for ONE version — shared by VersionSet + VersionEditModal ──
-function VersionFields({ record, version, onChange, tagCatalog, addToCatalog }: {
+/** Max documents that can hang off ONE insurance policy record (bulk drag-drop up to this many). */
+const MAX_POLICY_DOCS = 10;
+/** Character limit for a record's display name. */
+const MAX_RECORD_NAME = 40;
+
+export function VersionFields({ record, version, onChange, tagCatalog, addToCatalog, editableLabel }: {
     record: SafetyRecord; version: DocVersion; onChange: (next: DocVersion) => void;
-    tagCatalog: string[]; addToCatalog: (t: string) => void;
+    tagCatalog: string[]; addToCatalog: (t: string) => void; editableLabel?: boolean;
 }) {
     const v = version;
     const hasDoc = record.type !== 'C' && record.docRequirement !== 'none';
     const slots = record.slotLabels ?? [];
     const countries = record.allCountries ? ALL_COUNTRIES : COUNTRIES;
-    const numberRequired = record.type === 'C' || record.type === 'DC';
+    // Custom records carry an explicit per-field form definition; system records use the built-in rules.
+    const cf = record.customForm;
+    const isMultiDoc = cf ? (cf.upload.enabled && cf.upload.multi) : !!record.multiInstance;
+    const showNumber = cf ? cf.numberField.enabled && !!record.numberName : !!record.numberName;
+    const numberRequired = cf ? cf.numberField.required : (record.type === 'C' || record.type === 'DC');
+    const showCountry = cf ? cf.country.enabled : true;
+    const countryRequired = cf ? cf.country.required : false;
+    const showState = cf ? cf.state.enabled : !record.hideState;
+    const stateRequired = cf ? cf.state.required : false;
+    const showIssue = cf ? cf.issueDate.enabled : !!record.tracksIssueDate;
+    const issueRequired = cf ? cf.issueDate.required : false;
+    const showExpiry = cf ? cf.expiryDate.enabled : isDateMonitored(record);
+    const expiryRequired = cf ? cf.expiryDate.required : true;
+    const showStatus = cf ? cf.status.enabled : !isDateMonitored(record);
+    const statusRequired = cf ? cf.status.required : true;
+    const showUpload = cf ? cf.upload.enabled : hasDoc;
+    const showMonitoring = cf ? cf.monitoring.enabled : true;
+    const showNotes = cf ? cf.notes.enabled : true;
+    // Tags ↔ upload are interlinked: a single/no-upload record gets ONE record-level tag field;
+    // a multi-document record tags each uploaded document individually. Both are governed by the
+    // same Tags toggle, so turning Tags off removes tags everywhere.
+    const tagsEnabled = cf ? cf.tags.enabled : true;
+    const showTags = tagsEnabled && !isMultiDoc;
+    const showDocTags = tagsEnabled;
     const inputCls = 'w-full h-9 px-3 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
     const states = STATES_BY_COUNTRY[v.country] ?? [];
 
@@ -2207,8 +2781,12 @@ function VersionFields({ record, version, onChange, tagCatalog, addToCatalog }: 
     const setCountry = (val: string) => onChange({ ...v, country: val, stateProv: (STATES_BY_COUNTRY[val] ?? []).includes(v.stateProv) ? v.stateProv : '' });
     const addFiles = async (list: FileList | null) => {
         if (!list || list.length === 0) return;
-        const docs: DataDocFile[] = await Promise.all(Array.from(list).map(async f => ({ name: f.name, size: f.size, url: await readAsDataUrl(f), uploadedAt: new Date().toISOString() })));
+        const room = Math.max(0, MAX_POLICY_DOCS - v.files.length);
+        if (room === 0) { emitToast(`Up to ${MAX_POLICY_DOCS} documents per record`, 'error'); return; }
+        const picked = Array.from(list).slice(0, room);
+        const docs: DataDocFile[] = await Promise.all(picked.map(async f => ({ name: f.name, size: f.size, url: await readAsDataUrl(f), uploadedAt: new Date().toISOString() })));
         onChange({ ...v, files: [...v.files, ...docs] });
+        if (list.length > room) emitToast(`Added ${room} — max ${MAX_POLICY_DOCS} documents per record`);
     };
     const removeFile = (i: number) => onChange({ ...v, files: v.files.filter((_, idx) => idx !== i) });
     const setSlotFile = async (slot: string, file: File | undefined) => {
@@ -2219,43 +2797,73 @@ function VersionFields({ record, version, onChange, tagCatalog, addToCatalog }: 
     const removeSlotFile = (slot: string) => onChange({ ...v, files: v.files.filter(f => f.slot !== slot) });
     const addTag = (t: string) => { const val = t.trim(); if (!val) return; addToCatalog(val); if (!v.tags.some(x => x.toLowerCase() === val.toLowerCase())) onChange({ ...v, tags: [...v.tags, val] }); };
     const removeTag = (t: string) => onChange({ ...v, tags: v.tags.filter(x => x !== t) });
+    // isMultiDoc (computed above) → multiple supporting documents on one record, each tagged
+    // (insurance policies: main certificate + endorsements; custom multi-document records).
+    const setFileTag = (i: number, tag: string) => onChange({ ...v, files: v.files.map((f, idx) => (idx === i ? { ...f, tag } : f)) });
 
     return (
         <div className="space-y-3">
             {/* DETAILS */}
             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {record.numberName && (
-                    <Field label={record.numberName} required={numberRequired}>
+                {editableLabel && (
+                    <Field label="Record name" required>
+                        <div className="relative">
+                            <input value={v.label} maxLength={MAX_RECORD_NAME}
+                                onChange={e => patch({ label: e.target.value })}
+                                placeholder="e.g. Record 2026" className={cn(inputCls, 'pr-14')} />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-slate-400">{v.label.length}/{MAX_RECORD_NAME}</span>
+                        </div>
+                    </Field>
+                )}
+                {showNumber && (
+                    <Field label={record.numberName} required={numberRequired} optional={cf ? !numberRequired : undefined}>
                         <input value={v.numberValue} onChange={e => patch({ numberValue: e.target.value })} placeholder={`Enter ${record.numberName.toLowerCase()}`} className={inputCls} />
                     </Field>
                 )}
-                <Field label="Country">
-                    <select value={v.country} onChange={e => setCountry(e.target.value)} className={inputCls}>
-                        <option value="">Select country</option>
-                        {countries.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                </Field>
-                {!record.hideState && (
-                    <Field label="State / Province">
+                {isMultiDoc && !cf && (
+                    <Field label="Insurer">
+                        <input value={v.insurer ?? ''} onChange={e => patch({ insurer: e.target.value })} placeholder="Insurance carrier — e.g. State Farm" className={inputCls} />
+                    </Field>
+                )}
+                {isMultiDoc && !cf && (
+                    <Field label="Producer">
+                        <input value={v.producer ?? ''} onChange={e => patch({ producer: e.target.value })} placeholder="Broker / producer of record" className={inputCls} />
+                    </Field>
+                )}
+                {isMultiDoc && !cf && (
+                    <Field label="Policy Limit">
+                        <input value={v.policyLimit ?? ''} onChange={e => patch({ policyLimit: e.target.value })} placeholder="e.g. $1,000,000" className={inputCls} />
+                    </Field>
+                )}
+                {showCountry && (
+                    <Field label="Country" required={countryRequired} optional={cf ? !countryRequired : undefined}>
+                        <select value={v.country} onChange={e => setCountry(e.target.value)} className={inputCls}>
+                            <option value="">Select country</option>
+                            {countries.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </Field>
+                )}
+                {showState && (
+                    <Field label="State / Province" required={stateRequired} optional={cf ? !stateRequired : undefined}>
                         <select value={v.stateProv} disabled={states.length === 0} onChange={e => patch({ stateProv: e.target.value })} className={inputCls}>
                             <option value="">{states.length ? 'Select state / province' : '—'}</option>
                             {states.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </Field>
                 )}
-                {record.tracksIssueDate && (
-                    <Field label="Issue date" optional>
+                {showIssue && (
+                    <Field label="Issue date" required={issueRequired} optional={!issueRequired}>
                         <input type="date" value={v.issueDate} onChange={e => patch({ issueDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}
-                {isDateMonitored(record) && (
-                    <Field label={record.monitorType} required>
+                {showExpiry && (
+                    <Field label={cf ? 'Expiry date' : record.monitorType} required={expiryRequired} optional={cf ? !expiryRequired : undefined}>
                         <input type="date" value={v.expiryDate} onChange={e => patch({ expiryDate: e.target.value })} className={inputCls} />
                     </Field>
                 )}
-                {!isDateMonitored(record) && (
-                    <Field label="Status" required>
+                {showStatus && (
+                    <Field label="Status" required={statusRequired} optional={cf ? !statusRequired : undefined}>
                         <select value={v.status ?? ''} onChange={e => patch({ status: e.target.value })} className={inputCls}>
                             <option value="">Select status</option>
                             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -2269,11 +2877,15 @@ function VersionFields({ record, version, onChange, tagCatalog, addToCatalog }: 
                     </select>
                 </Field>
             </div>
-            {/* UPLOADED DOCUMENT */}
-            {hasDoc && (
+            {/* UPLOADED DOCUMENT(S) */}
+            {showUpload && (
                 <div className="border-t border-slate-200 pt-3">
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Uploaded Document</div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isMultiDoc ? 'Uploaded Documents' : 'Uploaded Document'}</div>
+                        {isMultiDoc && <span className={cn('text-[10px] font-bold tabular-nums', v.files.length >= MAX_POLICY_DOCS ? 'text-amber-600' : 'text-slate-400')}>{v.files.length}/{MAX_POLICY_DOCS}</span>}
+                    </div>
                     <div className="mb-1.5 text-[12px] font-semibold text-slate-600">{record.documentName || 'Document'}</div>
+                    {isMultiDoc && <p className="mb-2 text-[11px] text-slate-400">{cf ? `This record can hold up to ${MAX_POLICY_DOCS} documents. Drag several files at once — each becomes its own tagged row.` : `This policy can hold up to ${MAX_POLICY_DOCS} documents (certificate, endorsements, declarations…). Drag several files at once — each becomes its own tagged row; the policy details above are shared.`}</p>}
                     {slots.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {slots.map(slot => {
@@ -2286,29 +2898,61 @@ function VersionFields({ record, version, onChange, tagCatalog, addToCatalog }: 
                                 );
                             })}
                         </div>
+                    ) : isMultiDoc ? (
+                        <div className="space-y-2.5">
+                            {v.files.map((f, i) => (
+                                <div key={i} className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2.5">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700"><FileText size={11} /> Document {i + 1}</span>
+                                    <FileChip f={f} onRemove={() => removeFile(i)} />
+                                    {showDocTags && (
+                                        <div className="pl-0.5">
+                                            <div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-500"><Tag size={11} /> Document tag</div>
+                                            <DocTagPicker value={f.tag ?? ''} catalog={tagCatalog}
+                                                onChange={val => setFileTag(i, val)} onCreate={addToCatalog} />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            {v.files.length < MAX_POLICY_DOCS ? (
+                                <UploadZone compact
+                                    label={v.files.length ? `Add more documents — drag up to ${MAX_POLICY_DOCS - v.files.length} files` : `Drag up to ${MAX_POLICY_DOCS} documents here — or click`}
+                                    hint={v.files.length ? 'Same policy — drop several at once, then tag each' : 'Bulk drop — PDF, image or file'}
+                                    multiple onFiles={addFiles} />
+                            ) : (
+                                <p className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-center text-[11px] font-semibold text-amber-700">Maximum of {MAX_POLICY_DOCS} documents reached — remove one to add another.</p>
+                            )}
+                        </div>
                     ) : v.files.length > 0 ? (
                         <div className="space-y-2">{v.files.map((f, i) => <FileChip key={i} f={f} onRemove={() => removeFile(i)} />)}</div>
                     ) : (
-                        <UploadZone label="Drag a file here — or click — to upload the document" hint="Captures the document for this version; PDF, image or file" multiple onFiles={addFiles} />
+                        <UploadZone label="Drag a file here — or click — to upload the document" hint="Captures the document for this record; PDF, image or file" multiple onFiles={addFiles} />
                     )}
                 </div>
             )}
             {/* MONITORING (compact toggle) */}
-            <div className="border-t border-slate-200 pt-3">
-                <MonitoringToggle record={record} monitoring={v.monitoring} issueDate={v.issueDate} expiryDate={v.expiryDate} status={v.status ?? ''}
-                    onChange={m => patch({ monitoring: m })} />
-            </div>
-            {/* TAGS */}
-            <div className="border-t border-slate-200 pt-3">
-                <TagField tags={v.tags} catalog={tagCatalog} onAdd={addTag} onRemove={removeTag} />
-            </div>
+            {showMonitoring && (
+                <div className="border-t border-slate-200 pt-3">
+                    <MonitoringToggle record={record} monitoring={v.monitoring} issueDate={v.issueDate} expiryDate={v.expiryDate} status={v.status ?? ''}
+                        onChange={m => patch({ monitoring: m })} />
+                </div>
+            )}
+            {/* TAGS — record-level tags for single-document records only.
+                Multi-document records (insurance policies / custom multi-doc) tag each uploaded
+                document individually (above), so the record-level tag editor is hidden for them. */}
+            {showTags && (
+                <div className="border-t border-slate-200 pt-3">
+                    <TagField tags={v.tags} catalog={tagCatalog} onAdd={addTag} onRemove={removeTag} />
+                </div>
+            )}
             {/* NOTES */}
-            <div className="border-t border-slate-200 pt-3">
-                <Field label="Notes">
-                    <textarea value={v.notes} onChange={e => patch({ notes: e.target.value })} rows={2} placeholder="Optional notes…"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none" />
-                </Field>
-            </div>
+            {showNotes && (
+                <div className="border-t border-slate-200 pt-3">
+                    <Field label="Notes">
+                        <textarea value={v.notes} onChange={e => patch({ notes: e.target.value })} rows={2} placeholder="Optional notes…"
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none" />
+                    </Field>
+                </div>
+            )}
         </div>
     );
 }
@@ -2320,9 +2964,9 @@ const INSURANCE_POLICY_SUGGESTIONS = [
     'General Liability', 'Non-Trucking Liability', 'Trailer Interchange', 'Workers Compensation',
 ];
 
-/** Searchable single-select with create — pick an existing / suggested policy name, or type a new one. */
-function PolicyNameCombo({ value, onChange, options, placeholder }: {
-    value: string; onChange: (v: string) => void; options: string[]; placeholder?: string;
+/** Searchable single-select with create — pick an existing / suggested option, or type a new one. Used for policy names + document tags. */
+function SearchCreateCombo({ value, onChange, onPick, options, placeholder, icon }: {
+    value: string; onChange: (v: string) => void; onPick?: (v: string) => void; options: string[]; placeholder?: string; icon?: ReactNode;
 }) {
     const [open, setOpen] = useState(false);
     const q = value.trim().toLowerCase();
@@ -2345,13 +2989,13 @@ function PolicyNameCombo({ value, onChange, options, placeholder }: {
                 <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg py-1">
                     {filtered.length > 0 && <div className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Existing / suggested</div>}
                     {filtered.map(o => (
-                        <button key={o} type="button" onMouseDown={e => e.preventDefault()} onClick={() => { onChange(o); setOpen(false); }}
+                        <button key={o} type="button" onMouseDown={e => e.preventDefault()} onClick={() => { (onPick ?? onChange)(o); setOpen(false); }}
                             className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50', o.toLowerCase() === q ? 'font-semibold text-blue-700 bg-blue-50/40' : 'text-slate-700')}>
-                            <FileText size={13} className="shrink-0 text-slate-400" /> <span className="truncate">{o}</span>
+                            {icon ?? <FileText size={13} className="shrink-0 text-slate-400" />} <span className="truncate">{o}</span>
                         </button>
                     ))}
                     {showAdd && (
-                        <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setOpen(false)}
+                        <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { (onPick ?? onChange)(value.trim()); setOpen(false); }}
                             className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-blue-700 hover:bg-blue-50', filtered.length > 0 && 'border-t border-slate-100')}>
                             <Plus size={13} className="shrink-0" /> Add &ldquo;{value.trim()}&rdquo;
                         </button>
@@ -2362,17 +3006,88 @@ function PolicyNameCombo({ value, onChange, options, placeholder }: {
     );
 }
 
-function VersionEditModal({ record, subjectLabel, version, mode, noun, askPolicyName, policyOptions, onSave, onClose }: {
+/** Single-tag picker for ONE uploaded document — shows the chosen system tag as a coloured
+ *  chip, and a searchable "system tags / create new" combo while editing. Keeps its own text
+ *  buffer so typing never mangles the committed value (unlike a directly-bound input). */
+function DocTagPicker({ value, catalog, onChange, onCreate }: {
+    value: string; catalog: string[]; onChange: (t: string) => void; onCreate: (t: string) => void;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [q, setQ] = useState('');
+    const query = q.trim();
+    const filtered = (query ? catalog.filter(o => smartTagMatch(query, o)) : catalog).slice(0, 8);
+    const exists = catalog.some(o => o.toLowerCase() === query.toLowerCase());
+    const commit = (t: string) => { const val = t.trim(); if (!val) return; onCreate(val); onChange(val); setEditing(false); setQ(''); };
+
+    if (value && !editing) {
+        return (
+            <div className="flex flex-wrap items-center gap-2">
+                <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-semibold', tagColor(value))}>
+                    <Tag size={11} /> {value}
+                </span>
+                <button type="button" onClick={() => { setQ(''); setEditing(true); }} className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">Change</button>
+                <button type="button" onClick={() => onChange('')} className="inline-flex items-center gap-0.5 text-[11px] font-medium text-slate-400 hover:text-rose-600" title="Remove tag"><X size={12} /> Remove</button>
+            </div>
+        );
+    }
+    // Add / change → the SAME search-and-add UI as the record-level Tags editor.
+    return (
+        <div className="relative">
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input autoFocus={editing} value={q} onChange={e => setQ(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(q); } else if (e.key === 'Escape' && value) setEditing(false); }}
+                        onBlur={() => { if (value) setEditing(false); }}
+                        placeholder="Search or add a tag…"
+                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                </div>
+                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => commit(q)} disabled={!query}
+                    className={cn('inline-flex shrink-0 items-center gap-1 h-9 px-3.5 rounded-lg text-[13px] font-semibold whitespace-nowrap transition-colors',
+                        query ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border border-slate-200 bg-white text-slate-400 cursor-not-allowed')}>
+                    <Plus size={14} /> Add
+                </button>
+            </div>
+            {(filtered.length > 0 || (query && !exists)) && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg p-1">
+                    {filtered.length > 0 && <div className="px-2 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">System tags</div>}
+                    {filtered.map(o => (
+                        <button key={o} type="button" onMouseDown={e => e.preventDefault()} onClick={() => commit(o)}
+                            className="flex w-full items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-slate-50">
+                            <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold', tagColor(o))}>{o}</span>
+                        </button>
+                    ))}
+                    {query && !exists && (
+                        <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => commit(query)}
+                            className={cn('flex w-full items-center gap-1.5 px-2 py-2 rounded text-left text-[13px] font-semibold text-blue-700 hover:bg-blue-50', filtered.length > 0 && 'mt-1 border-t border-slate-100 pt-2')}>
+                            <Plus size={13} /> Create &ldquo;{query}&rdquo;
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function VersionEditModal({ record, subjectLabel, version, mode, askPolicyName, policyOptions, policyPrefills, initialPolicyName, onSave, onClose }: {
     record: SafetyRecord; subjectLabel?: string;
-    version: DocVersion; mode: 'add' | 'edit'; noun?: string; askPolicyName?: boolean; policyOptions?: string[];
+    version: DocVersion; mode: 'add' | 'edit'; askPolicyName?: boolean; policyOptions?: string[];
+    policyPrefills?: Record<string, DocVersion>; initialPolicyName?: string;
     onSave: (v: DocVersion, policyName?: string) => void; onClose: () => void;
 }) {
     const [v, setV] = useState<DocVersion>(version);
-    const [policyName, setPolicyName] = useState('');
+    const [policyName, setPolicyName] = useState(initialPolicyName ?? '');
     const { tags: tagCatalog, add: addToCatalog } = useSafetyTags();
     const EntityIcon = ENTITY_ICON[record.entity];
-    const unit = askPolicyName ? (noun || 'policy') : (noun || 'version');
-    const Unit = unit.charAt(0).toUpperCase() + unit.slice(1);
+    const unit = 'record';
+    // Picking an existing policy prefills the whole form from that policy's current record (add mode only — in edit it just reassigns).
+    const handlePickPolicy = (name: string) => {
+        setPolicyName(name);
+        if (mode === 'add') {
+            const pf = policyPrefills?.[name];
+            if (pf) setV(prev => ({ ...pf, id: prev.id, uploadedAt: prev.uploadedAt, uploadedBy: prev.uploadedBy }));
+        }
+    };
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
@@ -2390,17 +3105,17 @@ function VersionEditModal({ record, subjectLabel, version, mode, noun, askPolicy
                     <button type="button" onClick={onClose} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 shrink-0"><X size={18} /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{v.label}</span>
+                    <div className="flex items-center justify-end">
                         <button type="button" onClick={() => { setV(cur => fillVersionDemo(record, cur)); ['Verified', 'Primary'].forEach(addToCatalog); }}
-                            className="ml-auto inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-700 hover:bg-blue-100"><Sparkles size={13} /> Fill demo data</button>
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-700 hover:bg-blue-100"><Sparkles size={13} /> Fill demo data</button>
                     </div>
                     {askPolicyName && (
-                        <Field label={`${Unit} name`} required>
-                            <PolicyNameCombo value={policyName} onChange={setPolicyName} options={policyOptions ?? []} placeholder={`${Unit} name — e.g. Liability — State Farm`} />
+                        <Field label="Policy" required={mode === 'add'}>
+                            <SearchCreateCombo value={policyName} onChange={setPolicyName} onPick={handlePickPolicy} options={policyOptions ?? []} placeholder="Policy name — e.g. Liability — State Farm" />
+                            {mode === 'edit' && <p className="mt-1 text-[10px] text-slate-400">Change this to move the record to another policy (or type a new policy name).</p>}
                         </Field>
                     )}
-                    <VersionFields record={record} version={v} onChange={setV} tagCatalog={tagCatalog} addToCatalog={addToCatalog} />
+                    <VersionFields record={record} version={v} onChange={setV} tagCatalog={tagCatalog} addToCatalog={addToCatalog} editableLabel />
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400"><MapPin size={12} /> {record.jurisdiction}</div>
                 </div>
                 <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
@@ -2430,13 +3145,13 @@ function VersionSet({ record, versions, onChange, versioned, tagCatalog, addToCa
     const patchVersion = (id: string, patch: Partial<DocVersion>) =>
         onChange(versions.map(v => (v.id === id ? { ...v, ...patch } : v)));
     const addVersion = () =>
-        onChange([{ ...newVersion(`Version ${versions.length + 1}`), monitoring: seedMonitoring(record), uploadedBy: currentUserName() }, ...versions]);
+        onChange([{ ...newVersion(`Record ${versions.length + 1}`), monitoring: seedMonitoring(record), uploadedBy: currentUserName() }, ...versions]);
     const addVersionWithFiles = async (list: FileList | null) => {
         if (!list || list.length === 0) return;
         const docs: DataDocFile[] = await Promise.all(Array.from(list).map(async f => ({
             name: f.name, size: f.size, url: await readAsDataUrl(f), uploadedAt: new Date().toISOString(),
         })));
-        onChange([{ ...newVersion(`Version ${versions.length + 1}`), monitoring: seedMonitoring(record), files: docs, uploadedBy: currentUserName() }, ...versions]);
+        onChange([{ ...newVersion(`Record ${versions.length + 1}`), monitoring: seedMonitoring(record), files: docs, uploadedBy: currentUserName() }, ...versions]);
     };
     const removeVersion = (id: string) => onChange(versions.filter(v => v.id !== id));
 
@@ -2601,19 +3316,21 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
             issueDate: record.tracksIssueDate ? '2024-01-15' : v.issueDate,
             expiryDate: isDateMonitored(record) ? (record.configuredDate ?? '2026-12-31') : v.expiryDate,
             status: !isDateMonitored(record) ? (v.status || 'Active') : v.status,
-            tags: v.tags.length ? v.tags : ['Verified', 'Primary'],
+            tags: record.multiInstance ? [] : (v.tags.length ? v.tags : ['Verified', 'Primary']),
             files: v.files,
             monitoring: { ...v.monitoring, enabled: true },
             ...over,
         };
         if (hasDoc && merged.files.length === 0) merged.files = sampleDocFiles(record);
+        // Insurance documents are tagged individually — give each demo document a system tag.
+        if (record.multiInstance) merged.files = merged.files.map((f, idx) => (f.tag ? f : { ...f, tag: ['Certificate', 'Endorsement', 'Declaration page', 'Schedule of coverage'][idx] ?? 'Supporting document' }));
         return merged;
     };
     const fillDemo = () => {
         if (isMulti) {
             const mk = (name: string, num: string, exp: string): DocInstance => ({
                 ...newInstance(name),
-                versions: [fillV({ ...newVersion('Version 2026'), monitoring: seedMonitoring(record) }, { numberValue: num, expiryDate: exp })],
+                versions: [fillV({ ...newVersion('Record 2026'), monitoring: seedMonitoring(record) }, { numberValue: num, expiryDate: exp })],
             });
             setInstances([mk('Liability — State Farm', 'POL-100', '2026-12-31'), mk('Cargo — Progressive', 'POL-200', '2027-03-15')]);
         } else {
@@ -2672,7 +3389,7 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
                         </button>
                         {isMulti
                             ? <span className="text-[12px] text-slate-500">{instances.length} {plural(instances.length)} · all active</span>
-                            : (multi && versions.length > 0 && <span className="text-[12px] text-slate-500">{versions.length} dated version{versions.length === 1 ? '' : 's'} · newest first</span>)}
+                            : (multi && versions.length > 0 && <span className="text-[12px] text-slate-500">{versions.length} dated record{versions.length === 1 ? '' : 's'} · newest first</span>)}
                     </div>
 
                     {isMulti ? (
@@ -2705,7 +3422,7 @@ function ManageModal({ record, subjectLabel, carrierName, initial, onSave, onClo
                                         {record.docRequirement === 'required' && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}
                                         {record.docRequirement === 'optional' && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">Optional</span>}
                                     </div>
-                                    <p className="text-[11px] text-slate-400">Each renewal / reissue captures its own number, dates, document and tags as a new dated version — upload below. Previous versions are retained.</p>
+                                    <p className="text-[11px] text-slate-400">Each renewal / reissue captures its own number, dates, document and tags as a new dated record — upload below. Previous records are retained.</p>
                                 </div>
                             )}
                             <VersionSet record={record} versions={versions} versioned={multi} onChange={setVersions} tagCatalog={tagCatalog} addToCatalog={addToCatalog} />

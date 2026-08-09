@@ -469,7 +469,9 @@ function App() {
             />
         }
         if (path === "/settings/new-compliance-documents") {
-            return <SafetyCatalogView />
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <SafetyCatalogView accountId={account?.id} />
         }
         if (path === "/default-compliance-documents") {
             const account = selectedAccount

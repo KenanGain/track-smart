@@ -31,6 +31,50 @@ export type DocRequirement = 'required' | 'optional' | 'none';
  */
 export type UploadMode = 'single' | 'recurring' | 'event';
 
+/**
+ * Per-field configuration for a CUSTOM record's data-entry form.
+ *
+ * A custom record is authored in Settings ▸ New Compliance & Documents as a small
+ * FORM DEFINITION — the user picks which fields the record's data-entry form (rendered
+ * by `VersionFields` on the Default Compliances & Documents page) should show, and which
+ * of those are required. `undefined` on a record means "system default" — the built-in
+ * field rules apply and the form looks exactly as it always has.
+ */
+export interface CustomFieldConfig {
+    /** Show this field on the data-entry form. */
+    enabled: boolean;
+    /** Mark it required (the form flags it, not hard-validated in the prototype). */
+    required: boolean;
+}
+export interface CustomFormConfig {
+    /** Number / code / account value (e.g. "License Number"). */
+    numberField: CustomFieldConfig;
+    country: CustomFieldConfig;
+    state: CustomFieldConfig;
+    issueDate: CustomFieldConfig;
+    expiryDate: CustomFieldConfig;
+    status: CustomFieldConfig;
+    /** Document upload — `multi` allows several documents on one record. */
+    upload: CustomFieldConfig & { multi: boolean };
+    monitoring: { enabled: boolean };
+    tags: { enabled: boolean };
+    notes: { enabled: boolean };
+}
+
+/** Fresh custom-form definition — mirrors a standard "Compliance & Document" record. */
+export const DEFAULT_CUSTOM_FORM: CustomFormConfig = {
+    numberField: { enabled: true, required: true },
+    country: { enabled: true, required: false },
+    state: { enabled: true, required: false },
+    issueDate: { enabled: true, required: false },
+    expiryDate: { enabled: true, required: true },
+    status: { enabled: false, required: false },
+    upload: { enabled: true, required: true, multi: false },
+    monitoring: { enabled: true },
+    tags: { enabled: true },
+    notes: { enabled: true },
+};
+
 export interface SafetyRecord {
     id: string;
     /** Short/common label — the main name column. */
@@ -77,6 +121,10 @@ export interface SafetyRecord {
     multiInstance?: boolean;
     /** Noun for one instance of a multi-instance record (e.g. "policy"). Defaults to "document". */
     instanceNoun?: string;
+    /** True for user-created records (Settings ▸ New Compliance & Documents ▸ Add custom record) — these are editable & deletable. */
+    custom?: boolean;
+    /** Field-by-field data-entry form definition — present only on custom records (drives `VersionFields`). */
+    customForm?: CustomFormConfig;
 }
 
 export const SAFETY_RECORDS: SafetyRecord[] = [

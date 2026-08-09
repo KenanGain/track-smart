@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     Building2, Truck, User, FileText, Hash, CalendarClock, Calendar,
-    ShieldCheck, Layers, Info, MapPin, Activity, Bell,
+    ShieldCheck, Layers, Info, MapPin, Activity,
     Search, Columns, Check, ChevronDown, ChevronUp, ChevronsUpDown, ChevronLeft, ChevronRight,
-    ClipboardList, Table2, UploadCloud, X, Eye, SquarePen, Sparkles, Plus, Tag, History,
+    ClipboardList, Table2, X, Eye, SquarePen, Sparkles, History, Plus, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { KeyNumberGroup } from '@/pages/admin/ComplianceAndDocumentsPage';
 import {
     SAFETY_RECORDS, SAFETY_CATEGORY_ORDER, RECORD_TYPE_ORDER, RECORD_TYPE_LABEL,
-    ENTITY_ORDER, isDateMonitored, UPLOAD_MODE_LABEL,
-    type SafetyRecord, type RecordTypeId, type EntityId, type UploadMode,
+    ENTITY_ORDER, isDateMonitored, UPLOAD_MODE_LABEL, DEFAULT_CUSTOM_FORM,
+    type SafetyRecord, type RecordTypeId, type EntityId, type UploadMode, type CustomFormConfig,
 } from '@/pages/compliance/safety-software-catalog.data';
-import { useSafetyTags, tagColor, smartTagMatch, groupTitleOf, MAX_DOC_TAGS } from '@/pages/compliance/safety-tags.data';
-import { ALL_COUNTRIES } from '@/pages/compliance/jurisdiction.data';
-import { APP_USERS } from '@/data/users.data';
+import { useCustomSafetyRecords, newCustomRecordId } from '@/pages/compliance/safety-custom-records.data';
+import { useSafetyTags } from '@/pages/compliance/safety-tags.data';
+import { VersionFields, fillVersionDemo, seedMonitoring } from '@/pages/compliance/DefaultComplianceDataPage';
+import { newVersion, type DocVersion } from '@/pages/compliance/compliance-data-store';
 
 /**
  * Settings → New Compliance & Documents — read-only classification catalog.
@@ -67,7 +68,10 @@ const COLUMNS: ColumnDef[] = [
         sortValue: r => r.recordName, cellClassName: 'w-[30%]',
         render: r => (
             <>
-                <div className="text-sm font-semibold text-slate-900">{r.recordName}</div>
+                <div className="flex items-center gap-1.5">
+                    <div className="text-sm font-semibold text-slate-900">{r.recordName}</div>
+                    {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
+                </div>
                 {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
                 <div className="mt-1 flex flex-wrap gap-1.5">
                     {r.numberName && (
@@ -161,14 +165,17 @@ function searchBlob(r: SafetyRecord): string {
 
 // ── Page ──────────────────────────────────────────────────────────────
 
-export function SafetyCatalogView() {
-    const [recordType, setRecordType] = useState<RecordTypeId>('DC');
+export function SafetyCatalogView({ accountId }: { accountId?: string }) {
     const [entity, setEntity] = useState<EntityId>('Carrier');
     // Column visibility is held here so it persists across record-type / entity switches.
     const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(() => new Set(ALL_COLUMN_IDS));
+    // This carrier's user-created custom records (editable & deletable) merged into the system-default catalog.
+    const { records: customRecords, add: addCustom, update: updateCustom, remove: removeCustom } = useCustomSafetyRecords(accountId);
+    const [customModal, setCustomModal] = useState<{ mode: 'add' | 'edit'; record?: SafetyRecord } | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<SafetyRecord | null>(null);
 
-    // System-default catalog — records are read-only (view / edit only, no deletion).
-    const records = SAFETY_RECORDS;
+    // This carrier's custom records (editable / deletable) shown first, then the read-only system defaults.
+    const records = useMemo(() => [...customRecords, ...SAFETY_RECORDS], [customRecords]);
 
     // Global counts (independent of the current entity tab) for the switch badges.
     const typeCounts = useMemo(() => {
@@ -177,55 +184,33 @@ export function SafetyCatalogView() {
         return m;
     }, [records]);
 
-    // Per-entity counts for the currently-selected record type.
+    // Per-entity counts across every record type.
     const entityCounts = useMemo(() => {
         const m: Record<EntityId, number> = { Carrier: 0, Asset: 0, Driver: 0 };
-        for (const r of records) if (r.type === recordType) m[r.entity]++;
+        for (const r of records) m[r.entity]++;
         return m;
-    }, [records, recordType]);
+    }, [records]);
 
     const rows = useMemo(
-        () => records.filter(r => r.type === recordType && r.entity === entity),
-        [records, recordType, entity],
+        () => records.filter(r => r.entity === entity),
+        [records, entity],
     );
 
     return (
         <div className="flex-1 bg-slate-50 min-h-screen">
             {/* ── Header ───────────────────────────────────────────────── */}
-            <div className="bg-white border-b border-slate-200 px-8 py-5">
+            <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="min-w-0">
                         <h1 className="text-2xl font-bold text-slate-900">New Compliance &amp; Documents</h1>
                         <p className="text-sm text-slate-500 mt-0.5">
-                            System default classification — {records.length} records (safety-software workbook + driver hiring documents).
+                            {records.length} records — system-default classification plus any custom records you add.
                         </p>
                     </div>
-
-                    {/* Record-type switch */}
-                    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-                        {RECORD_TYPE_ORDER.map(t => {
-                            const active = recordType === t;
-                            return (
-                                <button
-                                    key={t}
-                                    type="button"
-                                    onClick={() => setRecordType(t)}
-                                    className={cn(
-                                        'inline-flex items-center gap-2 px-4 py-1.5 text-sm font-semibold rounded-md transition-colors',
-                                        active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900',
-                                    )}
-                                >
-                                    {RECORD_TYPE_LABEL[t]}
-                                    <span className={cn(
-                                        'inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-                                        active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
-                                    )}>
-                                        {typeCounts[t]}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <button type="button" onClick={() => setCustomModal({ mode: 'add' })}
+                        className="inline-flex shrink-0 items-center gap-1.5 h-9 px-3.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shadow-sm">
+                        <Plus size={15} /> Add custom record
+                    </button>
                 </div>
 
                 {/* Entity tabs */}
@@ -260,7 +245,7 @@ export function SafetyCatalogView() {
             </div>
 
             {/* ── Body ─────────────────────────────────────────────────── */}
-            <div className="px-8 py-6 space-y-5">
+            <div className="px-4 sm:px-8 py-6 space-y-5">
                 {/* Record-type summary tiles */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <SummaryTile label="Total Records"          value={records.length}        Icon={Layers}      accent="slate" />
@@ -272,25 +257,355 @@ export function SafetyCatalogView() {
                 <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-[13px] text-blue-800">
                     <Info size={16} className="mt-0.5 shrink-0 text-blue-500" />
                     <p>
-                        Showing <strong>{rows.length}</strong> {RECORD_TYPE_LABEL[recordType].toLowerCase()} record{rows.length === 1 ? '' : 's'} for <strong>{entity}</strong>.
+                        Showing <strong>{rows.length}</strong> record{rows.length === 1 ? '' : 's'} for <strong>{entity}</strong>.
                         Use the category sub-tabs, search, and column controls below. Monitoring always tracks the expiry / renewal / next-due date — never the issue date.
                     </p>
                 </div>
 
                 {rows.length === 0 ? (
                     <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-sm text-slate-500">
-                        No <strong>{RECORD_TYPE_LABEL[recordType]}</strong> records for <strong>{entity}</strong>.
+                        No records for <strong>{entity}</strong>.
                     </div>
                 ) : (
                     <RecordsList
-                        key={`${recordType}-${entity}`}
+                        key={entity}
                         rows={rows}
-                        recordType={recordType}
                         entity={entity}
                         visibleCols={visibleCols}
                         onVisibleColsChange={setVisibleCols}
+                        onEditCustom={r => setCustomModal({ mode: 'edit', record: r })}
+                        onDeleteCustom={r => setPendingDelete(r)}
                     />
                 )}
+            </div>
+
+            {customModal && (
+                <CustomRecordModal
+                    mode={customModal.mode}
+                    initial={customModal.record}
+                    entityDefault={entity}
+                    onSave={r => { if (customModal.mode === 'edit') updateCustom(r); else addCustom(r); setCustomModal(null); }}
+                    onClose={() => setCustomModal(null)}
+                />
+            )}
+            {pendingDelete && (
+                <ConfirmDeleteModal
+                    record={pendingDelete}
+                    onConfirm={() => { removeCustom(pendingDelete.id); setPendingDelete(null); }}
+                    onClose={() => setPendingDelete(null)}
+                />
+            )}
+        </div>
+    );
+}
+
+// ── Add / edit a CUSTOM record ────────────────────────────────────────
+const CM_INPUT = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
+const CM_LABEL = 'block text-[11px] font-semibold text-slate-600 mb-1';
+
+/** On/off pill switch. */
+function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
+            className={cn('relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors', on ? 'bg-blue-600' : 'bg-slate-300')}>
+            <span className={cn('inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', on ? 'translate-x-4' : 'translate-x-0.5')} />
+        </button>
+    );
+}
+
+/** "Required" checkbox — shown next to an enabled field so the author can mark it required. */
+function RequiredToggle({ required, onChange }: { required: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <label className={cn('inline-flex cursor-pointer select-none items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors',
+            required ? 'text-blue-700' : 'text-slate-400 hover:text-slate-600')}>
+            <input type="checkbox" checked={required} onChange={e => onChange(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/30" />
+            Required
+        </label>
+    );
+}
+
+/** One row in the form-field definition list: label + optional Required toggle + on/off switch (+ inline extras). */
+function FieldDefRow({ label, hint, enabled, onEnabled, required, onRequired, children }: {
+    label: string; hint?: string; enabled: boolean; onEnabled: (v: boolean) => void;
+    required?: boolean; onRequired?: (v: boolean) => void; children?: React.ReactNode;
+}) {
+    return (
+        <div className={cn('px-3.5 py-3 transition-colors', enabled ? 'bg-white' : 'bg-slate-50/50')}>
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <div className={cn('text-[13px] font-semibold', enabled ? 'text-slate-800' : 'text-slate-400')}>{label}</div>
+                    {hint && <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{hint}</div>}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                    {enabled && onRequired && (
+                        <>
+                            <RequiredToggle required={!!required} onChange={onRequired} />
+                            <span className="h-4 w-px bg-slate-200" />
+                        </>
+                    )}
+                    <Switch on={enabled} onChange={onEnabled} />
+                </div>
+            </div>
+            {enabled && children && <div className="mt-3">{children}</div>}
+        </div>
+    );
+}
+
+/** Derive a form definition for the modal — from an existing record's `customForm`, or its flags (legacy custom records), or the default. */
+function initFormConfig(initial?: SafetyRecord): CustomFormConfig {
+    if (initial?.customForm) return JSON.parse(JSON.stringify(initial.customForm)) as CustomFormConfig;
+    if (!initial) return JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FORM)) as CustomFormConfig;
+    const hasNumber = initial.type === 'C' || initial.type === 'DC';
+    const hasUpload = initial.type === 'D' || initial.type === 'DC';
+    const dated = isDateMonitored(initial);
+    return {
+        numberField: { enabled: hasNumber, required: hasNumber },
+        country: { enabled: true, required: false },
+        state: { enabled: !initial.hideState, required: false },
+        issueDate: { enabled: !!initial.tracksIssueDate, required: false },
+        expiryDate: { enabled: dated, required: dated },
+        status: { enabled: !dated, required: !dated },
+        upload: { enabled: hasUpload, required: initial.docRequirement === 'required', multi: !!initial.multiInstance },
+        monitoring: { enabled: true },
+        tags: { enabled: true },
+        notes: { enabled: true },
+    };
+}
+
+/**
+ * Add / edit a CUSTOM record — a small FORM DEFINITION. The author picks which fields the
+ * record's data-entry form shows (and which are required); `VersionFields` on the Default
+ * Compliances & Documents page renders exactly that. Record type is derived from the field
+ * choices (number field + document → Compliance & Document, etc.).
+ */
+function CustomRecordModal({ mode, initial, entityDefault, onSave, onClose }: {
+    mode: 'add' | 'edit';
+    initial?: SafetyRecord;
+    entityDefault: EntityId;
+    onSave: (r: SafetyRecord) => void;
+    onClose: () => void;
+}) {
+    const [entity, setEntity] = useState<EntityId>(initial?.entity ?? entityDefault);
+    const [recordName, setRecordName] = useState(initial?.recordName ?? '');
+    const [description, setDescription] = useState(initial?.description ?? '');
+    const [category, setCategory] = useState<KeyNumberGroup>(initial?.category ?? 'Other');
+    const [numberName, setNumberName] = useState(initial?.numberName ?? '');
+    const [documentName, setDocumentName] = useState(initial?.documentName ?? '');
+    const [cf, setCf] = useState<CustomFormConfig>(() => initFormConfig(initial));
+    // Define the fields, or preview the real Form / Data tabs the record will render.
+    const [view, setView] = useState<'define' | 'form' | 'data'>('define');
+
+    // Live preview uses the real data-entry form (VersionFields) driven off the current definition.
+    const { tags: tagCatalog, add: addToCatalog } = useSafetyTags();
+    const [pv, setPv] = useState<DocVersion | null>(null);
+
+    useEffect(() => {
+        const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
+    }, [onClose]);
+
+    // Patch one field's config immutably.
+    const set = <K extends keyof CustomFormConfig>(k: K, patch: Partial<CustomFormConfig[K]>) =>
+        setCf(prev => ({ ...prev, [k]: { ...prev[k], ...patch } }));
+
+    const hasNumber = cf.numberField.enabled;
+    const hasUpload = cf.upload.enabled;
+    const derivedType: RecordTypeId = hasNumber && hasUpload ? 'DC' : hasUpload ? 'D' : 'C';
+    // Only the record name is required — field labels fall back to sensible defaults ("Number" / "Document").
+    const canSave = recordName.trim().length > 0;
+
+    // Build the SafetyRecord this definition represents — used by both Save and the live preview.
+    const makeRecord = (id: string): SafetyRecord => {
+        const name = recordName.trim() || 'Untitled record';
+        const monitorType = cf.expiryDate.enabled ? 'Expiry date' : cf.status.enabled ? 'Active/inactive status' : 'On file';
+        return {
+            id,
+            recordName: name,
+            description: description.trim() || name,
+            numberName: hasNumber ? (numberName.trim() || 'Number') : '',
+            documentName: hasUpload ? (documentName.trim() || 'Document') : '',
+            category, entity, type: derivedType,
+            docRequirement: hasUpload ? (cf.upload.required ? 'required' : 'optional') : 'none',
+            recurring: 'Custom',
+            monitorType,
+            tracksIssueDate: cf.issueDate.enabled,
+            hideState: !cf.state.enabled,
+            jurisdiction: '—',
+            monitor: `Custom record — ${cf.expiryDate.enabled ? 'monitored on the expiry date' : cf.status.enabled ? 'monitored by status' : 'kept on file'}.`,
+            uploadMode: hasUpload ? 'recurring' : undefined,
+            multiInstance: hasUpload && cf.upload.multi,
+            custom: true,
+            // Monitoring, Tags and Notes are common to every record — always included.
+            customForm: { ...cf, monitoring: { enabled: true }, tags: { enabled: true }, notes: { enabled: true } },
+        };
+    };
+
+    const previewRecord = makeRecord(initial?.id ?? 'preview');
+    const showForm = () => {
+        if (!pv) setPv({ ...newVersion(`Record ${new Date().getFullYear()}`), monitoring: seedMonitoring(previewRecord) });
+        setView('form');
+    };
+
+    const save = () => {
+        if (!canSave) return;
+        onSave(makeRecord(initial?.id ?? newCustomRecordId()));
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
+            <div className="relative z-10 flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5">
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-900">{mode === 'edit' ? 'Edit custom record' : 'Add custom record'}</h3>
+                        <p className="mt-0.5 text-[12px] text-slate-500">Define a custom document / compliance for this carrier — choose the fields its form captures and which are required.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
+                </div>
+                {/* Tabs — same underline pattern as the record View modal (Define fields · Form · Data) */}
+                <div className="flex items-center gap-1 border-b border-slate-200 px-5">
+                    {([['define', 'Define fields', SquarePen], ['form', 'Form', ClipboardList], ['data', 'Data', Table2]] as const).map(([val, lbl, TabIcon]) => {
+                        const active = view === val;
+                        return (
+                            <button key={val} type="button" onClick={() => (val === 'form' ? showForm() : setView(val))}
+                                className={cn('inline-flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-semibold border-b-2 transition-colors',
+                                    active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
+                                <TabIcon size={14} /> {lbl}
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    {view === 'form' ? (
+                        <div className="space-y-3">
+                            <p className="text-[12px] text-slate-500">Live preview of the data-entry <strong>form</strong> users fill on Default Compliances &amp; Documents — the exact fields and requirements you defined.</p>
+                            {pv && (
+                                <fieldset disabled className="m-0 min-w-0 border-0 p-0">
+                                    <VersionFields record={previewRecord} version={pv} onChange={setPv} tagCatalog={tagCatalog} addToCatalog={addToCatalog} editableLabel />
+                                </fieldset>
+                            )}
+                        </div>
+                    ) : view === 'data' ? (
+                        <div className="space-y-3">
+                            <p className="text-[12px] text-slate-500">The record's <strong>Data</strong> tab — full record metadata plus each field's status (Required / Optional / Off), auto-populated from your definition.</p>
+                            <DataView r={previewRecord} />
+                        </div>
+                    ) : (
+                    <>
+                    {/* Identity */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className={CM_LABEL}>Applies to</label>
+                            <div className="inline-flex w-full rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                                {ENTITY_ORDER.map(e => {
+                                    const Icon = ENTITY_ICON[e];
+                                    const active = entity === e;
+                                    return (
+                                        <button key={e} type="button" onClick={() => setEntity(e)}
+                                            className={cn('flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-semibold transition-colors',
+                                                active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
+                                            <Icon size={13} /> {e}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div>
+                            <label className={CM_LABEL}>Category</label>
+                            <select value={category} onChange={e => setCategory(e.target.value as KeyNumberGroup)} className={CM_INPUT}>
+                                {SAFETY_CATEGORY_ORDER.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className={CM_LABEL}>Record name <span className="text-rose-500">*</span></label>
+                        <input value={recordName} onChange={e => setRecordName(e.target.value)} maxLength={60} placeholder="e.g. City Business License" className={CM_INPUT} />
+                    </div>
+                    <div>
+                        <label className={CM_LABEL}>Description / full name</label>
+                        <input value={description} onChange={e => setDescription(e.target.value)} maxLength={120} placeholder="Full / formal name or purpose" className={CM_INPUT} />
+                    </div>
+                    {/* Form-field definition */}
+                    <div className="pt-1">
+                        <div className="flex items-center gap-1.5">
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Form fields</label>
+                            <span className="group relative inline-flex">
+                                <Info size={13} className="cursor-help text-slate-400 hover:text-slate-600" />
+                                <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-72 rounded-lg border border-slate-200 bg-white p-2.5 text-[11px] leading-snug text-slate-500 shadow-lg group-hover:block">
+                                    <span className="font-semibold text-slate-700">Always included:</span> Monitoring reminders, Tags and Notes are part of every record. Tags attach to the whole record, or to each document when you choose <span className="font-semibold text-slate-600">Multiple documents</span>.
+                                </span>
+                            </span>
+                        </div>
+                        <p className="mb-2.5 mt-0.5 text-[11px] leading-snug text-slate-400">Choose which fields the record's data-entry form captures, and mark the ones that are required.</p>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-100">
+                            <FieldDefRow label="Number / code field" hint="A number, code or account value" enabled={cf.numberField.enabled} onEnabled={v => set('numberField', { enabled: v })} required={cf.numberField.required} onRequired={v => set('numberField', { required: v })}>
+                                <input value={numberName} onChange={e => setNumberName(e.target.value)} maxLength={60} placeholder="Field label — e.g. License Number (defaults to “Number”)" className={CM_INPUT} />
+                            </FieldDefRow>
+                            <FieldDefRow label="Country" enabled={cf.country.enabled} onEnabled={v => set('country', { enabled: v })} required={cf.country.required} onRequired={v => set('country', { required: v })} />
+                            <FieldDefRow label="State / Province" enabled={cf.state.enabled} onEnabled={v => set('state', { enabled: v })} required={cf.state.required} onRequired={v => set('state', { required: v })} />
+                            <FieldDefRow label="Issue date" enabled={cf.issueDate.enabled} onEnabled={v => set('issueDate', { enabled: v })} required={cf.issueDate.required} onRequired={v => set('issueDate', { required: v })} />
+                            <FieldDefRow label="Expiry date" hint="Monitored date — drives renewal alerts" enabled={cf.expiryDate.enabled} onEnabled={v => set('expiryDate', { enabled: v })} required={cf.expiryDate.required} onRequired={v => set('expiryDate', { required: v })} />
+                            <FieldDefRow label="Status" enabled={cf.status.enabled} onEnabled={v => set('status', { enabled: v })} required={cf.status.required} onRequired={v => set('status', { required: v })} />
+                            <FieldDefRow label="Document upload" enabled={cf.upload.enabled} onEnabled={v => set('upload', { enabled: v })} required={cf.upload.required} onRequired={v => set('upload', { required: v })}>
+                                <div className="space-y-2">
+                                    <input value={documentName} onChange={e => setDocumentName(e.target.value)} maxLength={60} placeholder="Document label — e.g. License Certificate (defaults to “Document”)" className={CM_INPUT} />
+                                    <div className="inline-flex w-full rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                                        {([['single', 'One document'], ['multi', 'Multiple documents']] as const).map(([val, lbl]) => {
+                                            const active = cf.upload.multi === (val === 'multi');
+                                            return (
+                                                <button key={val} type="button" onClick={() => set('upload', { multi: val === 'multi' })}
+                                                    className={cn('flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-semibold transition-colors',
+                                                        active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
+                                                    {val === 'single' ? <FileText size={13} /> : <Layers size={13} />} {lbl}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {cf.upload.multi && (
+                                        <p className="text-[11px] text-slate-400">Holds several documents — each is tagged individually.</p>
+                                    )}
+                                </div>
+                            </FieldDefRow>
+                        </div>
+                    </div>
+                    </>
+                    )}
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                    <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button type="button" onClick={save} disabled={!canSave}
+                        className={cn('inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-sm font-semibold', canSave ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed')}>
+                        <Check size={15} /> {mode === 'edit' ? 'Save changes' : 'Add record'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ConfirmDeleteModal({ record, onConfirm, onClose }: { record: SafetyRecord; onConfirm: () => void; onClose: () => void }) {
+    useEffect(() => {
+        const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
+    }, [onClose]);
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
+            <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white shadow-xl p-5">
+                <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center"><Trash2 size={18} /></div>
+                    <div>
+                        <h3 className="text-base font-bold text-slate-900">Delete custom record?</h3>
+                        <p className="mt-1 text-[13px] text-slate-500"><strong className="text-slate-700">{record.recordName}</strong> will be removed from the catalog. This can&rsquo;t be undone.</p>
+                    </div>
+                </div>
+                <div className="mt-5 flex items-center justify-end gap-2">
+                    <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                    <button type="button" onClick={onConfirm} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700"><Trash2 size={15} /> Delete</button>
+                </div>
             </div>
         </div>
     );
@@ -298,15 +613,17 @@ export function SafetyCatalogView() {
 
 // ── Records list (search · columns · sort · pagination) ───────────────
 
-function RecordsList({ rows, recordType, entity, visibleCols, onVisibleColsChange }: {
+function RecordsList({ rows, entity, visibleCols, onVisibleColsChange, onEditCustom, onDeleteCustom }: {
     rows: SafetyRecord[];
-    recordType: RecordTypeId;
     entity: EntityId;
     visibleCols: Set<ColumnId>;
     onVisibleColsChange: (next: Set<ColumnId>) => void;
+    onEditCustom: (r: SafetyRecord) => void;
+    onDeleteCustom: (r: SafetyRecord) => void;
 }) {
     const [activeCategory, setActiveCategory] = useState<KeyNumberGroup | 'All'>('All');
     const [search, setSearch] = useState('');
+    const [typeFilter, setTypeFilter] = useState<RecordTypeId | 'all'>('all');
     const [sort, setSort] = useState<{ col: ColumnId; dir: 'asc' | 'desc' } | null>(null);
     const [pageSize, setPageSize] = useState(25);
     const [page, setPage] = useState(1);
@@ -322,10 +639,11 @@ function RecordsList({ rows, recordType, entity, visibleCols, onVisibleColsChang
     }, [rows]);
 
     const filtered = useMemo(() => {
-        const byCat = activeCategory === 'All' ? rows : rows.filter(r => r.category === activeCategory);
+        let base = activeCategory === 'All' ? rows : rows.filter(r => r.category === activeCategory);
+        if (typeFilter !== 'all') base = base.filter(r => r.type === typeFilter);
         const q = search.trim().toLowerCase();
-        return q ? byCat.filter(r => searchBlob(r).includes(q)) : byCat;
-    }, [rows, activeCategory, search]);
+        return q ? base.filter(r => searchBlob(r).includes(q)) : base;
+    }, [rows, activeCategory, typeFilter, search]);
 
     const sorted = useMemo(() => {
         if (!sort) return filtered;
@@ -339,7 +657,7 @@ function RecordsList({ rows, recordType, entity, visibleCols, onVisibleColsChang
     }, [filtered, sort]);
 
     // Any change to the working set resets to the first page.
-    useEffect(() => { setPage(1); }, [activeCategory, search, sort, pageSize]);
+    useEffect(() => { setPage(1); }, [activeCategory, typeFilter, search, sort, pageSize]);
 
     const total = sorted.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -370,12 +688,22 @@ function RecordsList({ rows, recordType, entity, visibleCols, onVisibleColsChang
             </button>
             <button
                 type="button"
-                title="Edit"
-                onClick={() => setDetail({ record: r, tab: 'form', mode: 'edit' })}
+                title={r.custom ? 'Edit custom record' : 'Edit'}
+                onClick={() => (r.custom ? onEditCustom(r) : setDetail({ record: r, tab: 'form', mode: 'edit' }))}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600"
             >
                 <SquarePen size={16} />
             </button>
+            {r.custom && (
+                <button
+                    type="button"
+                    title="Delete custom record"
+                    onClick={() => onDeleteCustom(r)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                >
+                    <Trash2 size={16} />
+                </button>
+            )}
         </div>
     );
 
@@ -388,7 +716,7 @@ function RecordsList({ rows, recordType, entity, visibleCols, onVisibleColsChang
                 </div>
                 <div>
                     <h3 className="text-lg font-bold text-slate-800 leading-tight">Records</h3>
-                    <p className="text-[12px] text-slate-500">{RECORD_TYPE_LABEL[recordType]} · {entity}</p>
+                    <p className="text-[12px] text-slate-500">All record types · {entity}</p>
                 </div>
             </div>
 
@@ -406,6 +734,11 @@ function RecordsList({ rows, recordType, entity, visibleCols, onVisibleColsChang
                         className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
                     />
                 </div>
+                <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as RecordTypeId | 'all')} title="Filter by record type"
+                    className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
+                    <option value="all">All record types</option>
+                    {RECORD_TYPE_ORDER.map(t => <option key={t} value={t}>{RECORD_TYPE_LABEL[t]}</option>)}
+                </select>
                 <ColumnsDropdown visibleCols={visibleCols} onChange={onVisibleColsChange} />
             </div>
 
@@ -680,1101 +1013,86 @@ function RecordDetailModal({ record, tab, mode, onTab, onClose }: {
 
                 {/* Body */}
                 <div className="overflow-y-auto p-5">
-                    {tab === 'form' ? <FormPreview r={record} editable={mode === 'edit'} /> : <DataView r={record} />}
+                    {tab === 'form' ? <DefaultFormPreview r={record} editable={mode === 'edit'} /> : <DataView r={record} />}
                 </div>
             </div>
         </div>
     );
 }
 
-const MODAL_INPUT_VIEW = 'h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500';
-const MODAL_INPUT_EDIT = 'h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500';
-
-// Country / state options for the Jurisdiction selectors.
-const COUNTRIES = ['United States', 'Canada', 'Mexico'];
-const US_STATES = [
-    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
-    'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
-    'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
-    'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
-    'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
-    'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
-    'West Virginia', 'Wisconsin', 'Wyoming',
-];
-const CA_PROVINCES = [
-    'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador',
-    'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island', 'Quebec',
-    'Saskatchewan', 'Yukon',
-];
-const MX_STATES = ['Baja California', 'Chihuahua', 'Coahuila', 'Nuevo León', 'Sonora', 'Tamaulipas'];
-const STATES_BY_COUNTRY: Record<string, string[]> = {
-    'United States': US_STATES,
-    'Canada': CA_PROVINCES,
-    'Mexico': MX_STATES,
-};
-
-/** Driver-license classes (for the CDL / license record's "License Class" field). */
-const LICENSE_CLASSES = ['Class A', 'Class B', 'Class C', 'Class D', 'Class E', 'Class G', 'Class 1', 'Class 2', 'Class 3', 'Class 5'];
-
-/** Best-effort parse of a jurisdiction string into { country, state } to pre-fill the selectors. */
-function parseJurisdiction(j: string): { country: string; state: string } {
-    const lower = j.toLowerCase();
-    let country = '';
-    if (lower.includes('canada')) country = 'Canada';
-    else if (lower.includes('mexico') && !lower.includes('new mexico')) country = 'Mexico';
-    else if (lower.includes('united states') || lower.includes('u.s') || /\bus\b/.test(lower) || lower.includes('federal')) country = 'United States';
-    // If a province/state name is present, infer both the state and (if unset) its country.
-    for (const [ctry, states] of Object.entries(STATES_BY_COUNTRY)) {
-        const hit = states.find(s => lower.includes(s.toLowerCase()));
-        if (hit) return { country: country || ctry, state: hit };
-    }
-    return { country, state: '' };
-}
-
-/** Deterministic sample value for the "Fill demo data" button. */
-function sampleNumber(r: SafetyRecord): string {
-    let h = 0;
-    for (const c of r.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    const digits = String((h % 900000) + 100000);
-    const prefix = (r.numberName.match(/[A-Za-z]/g)?.slice(0, 3).join('') || 'NUM').toUpperCase();
-    return `${prefix}-${digits}`;
-}
-
-/** Deterministic sample uploaded file for the demo / click-to-upload. */
-function sampleFile(r: SafetyRecord): { name: string; size: string } {
-    const slug = r.documentName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'document';
-    let h = 0;
-    for (const c of r.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    return { name: `${slug}.pdf`, size: `${(h % 900) + 120} KB` };
-}
-
-/** Human-readable size for a real uploaded file. */
-function fmtSize(bytes: number): string {
-    if (!bytes) return '—';
-    return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
-}
-
-/** Name of the signed-in user (for "uploaded by"), falling back gracefully. */
-function currentUserName(): string {
-    try {
-        const id = localStorage.getItem('app_current_user_id');
-        return APP_USERS.find(u => u.id === id)?.name ?? 'You';
-    } catch {
-        return 'You';
-    }
-}
-
-/** Format an ISO/date string as "Jan 15, 2026 · 9:24 AM". */
-function fmtDateTime(iso: string): string {
-    if (!iso) return '—';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    const date = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    return `${date} · ${time}`;
-}
-
-function FieldPreview({ label, required, optional, hint, children }: {
-    label: string; required?: boolean; optional?: boolean; hint?: string; children: React.ReactNode;
-}) {
-    return (
-        <div>
-            <div className="mb-1 flex items-center gap-2">
-                <label className="text-[12px] font-semibold text-slate-600">{label}</label>
-                {required && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}
-                {optional && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">Optional</span>}
-            </div>
-            {children}
-            {hint && <p className="mt-1 text-[11px] text-slate-400">{hint}</p>}
-        </div>
-    );
-}
-
-/** Drag-and-drop (or click) file dropzone. Reused by the single document and each dated version. */
-function Dropzone({ editable, onFile, label, hint, compact }: {
-    editable: boolean;
-    onFile: (f: File) => void;
-    label: string;
-    hint?: string;
-    compact?: boolean;
-}) {
-    const [dragging, setDragging] = useState(false);
-    const take = (list: FileList | null | undefined) => { const f = list?.[0]; if (f) onFile(f); };
-    return (
-        <label
-            onDragOver={editable ? e => { e.preventDefault(); setDragging(true); } : undefined}
-            onDragLeave={editable ? () => setDragging(false) : undefined}
-            onDrop={editable ? e => { e.preventDefault(); setDragging(false); take(e.dataTransfer.files); } : undefined}
-            className={cn(
-                'flex w-full flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-center transition-colors',
-                compact ? 'px-3 py-3' : 'px-4 py-6',
-                !editable
-                    ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'
-                    : dragging
-                        ? 'cursor-copy border-blue-400 bg-blue-50 ring-2 ring-blue-200'
-                        : 'cursor-pointer border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/40',
-            )}
-        >
-            <input type="file" className="hidden" disabled={!editable} onChange={e => { take(e.target.files); e.target.value = ''; }} />
-            <UploadCloud size={compact ? 16 : 20} className={dragging ? 'text-blue-500' : 'text-slate-400'} />
-            <p className="text-[12px] font-medium text-slate-600">{dragging ? 'Drop file to upload' : label}</p>
-            {hint && <span className="text-[10px] text-slate-400">{hint}</span>}
-        </label>
-    );
-}
-
-/**
- * Open an uploaded document in a new tab. Real uploads open their actual object-URL (the real
- * PDF/image); demo/sample files (no url) open a labelled stand-in preview so "View" always works.
- */
-function openFilePreview(url: string, name: string) {
-    if (url) { window.open(url, '_blank', 'noopener,noreferrer'); return; }
-    const safe = name.replace(/[<>&]/g, '');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${safe}</title></head>`
-        + `<body style="margin:0;font-family:system-ui,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f1f5f9;color:#334155">`
-        + `<div style="text-align:center;padding:24px"><div style="font-size:56px">📄</div>`
-        + `<h1 style="font-size:18px;margin:12px 0 4px">${safe}</h1>`
-        + `<p style="color:#64748b;font-size:13px;max-width:360px">Sample document preview — no real file was uploaded for this demo record. Upload a file to view the actual document.</p></div></body></html>`;
-    const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    window.open(blobUrl, '_blank', 'noopener,noreferrer');
-}
-
-/** Uploaded-file chip with View + Remove. `compact` = the small in-version card; default = the prominent single-doc card. */
-function FileCard({ name, size, url, editable, onRemove, compact }: {
-    name: string; size: string; url?: string; editable: boolean; onRemove: () => void; compact?: boolean;
-}) {
-    if (compact) {
-        return (
-            <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
-                <FileText size={15} className="shrink-0 text-slate-500" />
-                <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-700">{name}</span>
-                <span className="shrink-0 text-[11px] text-slate-400">{size}</span>
-                <button type="button" onClick={() => openFilePreview(url ?? '', name)} title="View document" className="shrink-0 text-slate-400 hover:text-blue-600"><Eye size={14} /></button>
-                {editable && <button type="button" onClick={onRemove} title="Remove file" className="shrink-0 text-slate-400 hover:text-rose-600"><X size={13} /></button>}
-            </div>
-        );
-    }
-    // Prominent tile — matches the hiring Application's uploaded-document tile.
-    return (
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500 shadow-sm"><FileText size={18} /></div>
-            <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-slate-800">{name}</div>
-                <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check size={13} /> Uploaded{size ? ` · ${size}` : ''}</div>
-            </div>
-            <button type="button" onClick={() => openFilePreview(url ?? '', name)} title="View document" className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                <Eye size={13} /> View
-            </button>
-            {editable && <button type="button" onClick={onRemove} title="Remove file" className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-white hover:text-rose-600"><X size={14} /></button>}
-        </div>
-    );
-}
-
-/** A stored uploaded file (real upload keeps an object URL; demo files have none). */
-type DocFile = { name: string; size: string; url: string };
-
-const SINGLE_SLOT = '__main__';
-
-/** Upload slots for a record's document — its labelled slots (Front/Back) or one implicit slot. */
-function docSlots(r: SafetyRecord): string[] {
-    return r.slotLabels && r.slotLabels.length ? r.slotLabels : [SINGLE_SLOT];
-}
-
-/** DocFile from a real uploaded File (keeps an object URL so it can be viewed). */
-function toDocFile(f: File): DocFile {
-    return { name: f.name, size: fmtSize(f.size), url: URL.createObjectURL(f) };
-}
-
-/** Deterministic demo filename for a slot. */
-function slotFileName(r: SafetyRecord, slot: string, year?: number): string {
-    const slug = r.documentName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'document';
-    const parts = [slug];
-    if (slot !== SINGLE_SLOT) parts.push(slot.toLowerCase());
-    if (year) parts.push(String(year));
-    return `${parts.join('-')}.pdf`;
-}
-
-/** Demo file map for a record's document (fills every slot). */
-function demoDocFiles(r: SafetyRecord, year?: number): Record<string, DocFile> {
-    if (!r.documentName) return {};
-    const size = sampleFile(r).size;
-    return Object.fromEntries(docSlots(r).map(s => [s, { name: slotFileName(r, s, year), size, url: '' }]));
-}
-
-/**
- * Document upload area — one uploader for a single-slot document, or a labelled uploader per slot
- * (e.g. Driver's License Front / Back). Files are keyed by slot label.
- */
-function DocumentUploader({ r, files, editable, compact, onChange }: {
-    r: SafetyRecord;
-    files: Record<string, DocFile>;
-    editable: boolean;
-    compact?: boolean;
-    onChange: (files: Record<string, DocFile>) => void;
-}) {
-    const slots = docSlots(r);
-    const setSlot = (slot: string, file: DocFile | null) => {
-        const next = { ...files };
-        if (file) next[slot] = file; else delete next[slot];
-        onChange(next);
-    };
-
-    // Single implicit slot — the original single-file uploader.
-    if (slots.length === 1 && slots[0] === SINGLE_SLOT) {
-        const f = files[SINGLE_SLOT];
-        return f
-            ? <FileCard compact={compact} name={f.name} size={f.size} url={f.url} editable={editable} onRemove={() => setSlot(SINGLE_SLOT, null)} />
-            : <Dropzone compact={compact} editable={editable} label={`Drag ${r.documentName} here or click${compact ? '' : ' to upload'}`} hint={compact ? undefined : 'PDF, image or scan'} onFile={file => setSlot(SINGLE_SLOT, toDocFile(file))} />;
-    }
-
-    // Labelled slots (Front / Back) — one application-style tile each, side by side.
-    return (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {slots.map(slot => {
-                const f = files[slot];
-                return (
-                    <div key={slot}>
-                        <p className="mb-1 text-xs font-semibold text-slate-500">{slot}</p>
-                        {f
-                            ? <FileCard compact={compact} name={f.name} size={f.size} url={f.url} editable={editable} onRemove={() => setSlot(slot, null)} />
-                            : <Dropzone compact={compact} editable={editable} label={`Drag ${slot} here or click`} onFile={file => setSlot(slot, toDocFile(file))} />}
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-/** One dated version bundles its OWN jurisdiction + number + dates + document(s) + tags + monitoring. */
-type Ver = {
-    label: string;                // editable display name (rename via pencil)
-    number: string; issueDate: string; monitorDate: string; status: string;
-    files: Record<string, DocFile>; year: number;   // document files keyed by slot
-    country: string; stateProv: string; tags: string[];
-    licenseClass: string; cdl: string; endorsements: string;   // driver-license fields (isLicense records)
-    monitoring: MonitoringConfig;
-    uploadedBy: string;           // who uploaded this version
-    uploadedAt: string;           // when (ISO date-time)
-};
-
-/**
- * Removable tag chips + a "saved tag" dropdown (reuse) + a "new tag" input.
- * `catalog` = all previously-saved tags (from the Settings ▸ Tags store); adding a new tag
- * bubbles up via onAdd, and the parent both selects it here and persists it to the catalog.
- */
-function TagEditor({ tags, editable, catalog, onAdd, onRemove }: {
-    tags: string[]; editable: boolean; catalog: string[]; onAdd: (t: string) => void; onRemove: (t: string) => void;
-}) {
-    const [query, setQuery] = useState('');
-    const [open, setOpen] = useState(false);
-    const atMax = tags.length >= MAX_DOC_TAGS;
-
-    const add = (t: string) => {
-        const v = t.trim();
-        if (!v || atMax || tags.some(x => x.toLowerCase() === v.toLowerCase())) { setQuery(''); return; }
-        onAdd(v);
-        setQuery('');
-        setOpen(false);
-    };
-
-    const qTrim = query.trim();
-    const ql = qTrim.toLowerCase();
-    // 3-tier ranking: direct name matches, then same-section (group-title) matches, then synonym
-    // matches — so "permit" shows the permit tags, then the rest of Permits & Authority, then related.
-    const candidates = catalog.filter(t => !tags.some(x => x.toLowerCase() === t.toLowerCase()));
-    const groupHit = (t: string) => {
-        const g = groupTitleOf(t)?.toLowerCase();
-        return !!g && !!ql && (g.includes(ql) || ql.includes(g));
-    };
-    const direct = candidates.filter(t => t.toLowerCase().includes(ql));
-    const rest = candidates.filter(t => !t.toLowerCase().includes(ql));
-    const group = rest.filter(groupHit);
-    const related = rest.filter(t => !groupHit(t) && smartTagMatch(query, t));
-    const suggestions = [...direct, ...group, ...related].slice(0, 10);
-    const exactExists = [...catalog, ...tags].some(t => t.toLowerCase() === qTrim.toLowerCase());
-    const canCreate = qTrim.length > 0 && !exactExists;
-    const handleAdd = () => {
-        if (canCreate) add(qTrim);
-        else if (suggestions.length) add(suggestions[0]);
-        else if (qTrim) add(qTrim);
-    };
-
-    return (
-        <div className="w-full">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                    <Tag size={12} className="text-slate-400" />
-                    <span className="text-[11px] font-semibold text-slate-500">Tags</span>
-                </div>
-                {editable && <span className={cn('text-[10px] font-bold tabular-nums', atMax ? 'text-amber-600' : 'text-slate-400')}>{tags.length}/{MAX_DOC_TAGS}</span>}
-            </div>
-
-            {/* Selected tags — colour-coded chips, full width */}
-            {(tags.length > 0 || !editable) && (
-                <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                    {tags.map(t => (
-                        <span key={t} className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold', tagColor(t))}>
-                            {t}
-                            {editable && (
-                                <button type="button" onClick={() => onRemove(t)} className="opacity-60 hover:opacity-100" title="Remove tag"><X size={10} /></button>
-                            )}
-                        </span>
-                    ))}
-                    {tags.length === 0 && !editable && <span className="text-[12px] text-slate-400">No tags</span>}
-                </div>
-            )}
-
-            {/* Searchable smart combobox — full width */}
-            {editable && (
-                atMax ? (
-                    <p className="text-[11px] font-medium text-amber-600">Maximum of {MAX_DOC_TAGS} tags reached — remove one to add another.</p>
-                ) : (
-                    <div className="relative w-full">
-                        {/* z-30 keeps the input + Add button clickable above the dropdown's z-10 backdrop */}
-                        <div className="relative z-30 flex items-center gap-2">
-                            <div className="relative flex-1">
-                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input
-                                    value={query}
-                                    onChange={e => { setQuery(e.target.value); setOpen(true); }}
-                                    onFocus={() => setOpen(true)}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }
-                                        else if (e.key === 'Escape') { setOpen(false); }
-                                    }}
-                                    placeholder="Search or add a tag…"
-                                    className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 text-[13px] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-400"
-                                />
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleAdd}
-                                disabled={!qTrim}
-                                className={cn(
-                                    'inline-flex shrink-0 items-center gap-1 h-9 px-3.5 rounded-lg text-[13px] font-semibold transition-colors',
-                                    qTrim ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed',
-                                )}
-                            >
-                                <Plus size={14} /> Add
-                            </button>
-                        </div>
-                        {open && (
-                            <>
-                                <button type="button" aria-hidden className="fixed inset-0 z-10 cursor-default" onClick={() => setOpen(false)} />
-                                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                                    {suggestions.length === 0 && !canCreate && (
-                                        <p className="px-2 py-2 text-[12px] text-slate-400">No matching tags.</p>
-                                    )}
-                                    {suggestions.map(t => (
-                                        <button key={t} type="button" onClick={() => add(t)} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-50">
-                                            <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold', tagColor(t))}>{t}</span>
-                                        </button>
-                                    ))}
-                                    {canCreate && (
-                                        <button type="button" onClick={() => add(qTrim)} className={cn('mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12px] font-semibold text-blue-700 hover:bg-blue-50', suggestions.length > 0 && 'border-t border-slate-100 pt-2')}>
-                                            <Plus size={13} /> Create &ldquo;{qTrim}&rdquo;
-                                        </button>
-                                    )}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )
-            )}
-        </div>
-    );
-}
-
-/** A single dated version — the same clean form as the "single" layout, repeated per renewal, fully self-contained. */
-function VersionCard({ r, v, index, editable, inputCls, numberRequired, tagCatalog, onAddToCatalog, onChange, onRemove }: {
-    r: SafetyRecord;
-    v: Ver;
-    index: number;
-    editable: boolean;
-    inputCls: string;
-    numberRequired: boolean;
-    tagCatalog: string[];
-    onAddToCatalog: (t: string) => void;
-    onChange: (patch: Partial<Ver>) => void;
-    onRemove: () => void;
-}) {
-    const isCurrent = index === 0;
-    const [renaming, setRenaming] = useState(false);
-    const [draft, setDraft] = useState(v.label);
-    const [infoOpen, setInfoOpen] = useState(false);
-    const states = STATES_BY_COUNTRY[v.country] ?? [];
-    const onCountry = (val: string) => {
-        const patch: Partial<Ver> = { country: val };
-        if (!(STATES_BY_COUNTRY[val] ?? []).includes(v.stateProv)) patch.stateProv = '';
-        onChange(patch);
-    };
-    const commitRename = () => { const t = draft.trim(); onChange({ label: t || v.label }); if (!t) setDraft(v.label); setRenaming(false); };
-    return (
-        <div className={cn('rounded-xl border p-4', isCurrent ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-white')}>
-            <div className="mb-3 flex items-start justify-between gap-2">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    {isCurrent && <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700"><Check size={9} /> Current</span>}
-                    {renaming ? (
-                        <input
-                            autoFocus
-                            value={draft}
-                            onChange={e => setDraft(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitRename(); } else if (e.key === 'Escape') { setDraft(v.label); setRenaming(false); } }}
-                            onBlur={commitRename}
-                            className="h-7 w-44 rounded-md border border-blue-300 bg-white px-2 text-[13px] font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                    ) : (
-                        <span className="truncate text-[13px] font-semibold text-slate-700">{v.label}</span>
-                    )}
-                    {editable && !renaming && (
-                        <button type="button" onClick={() => { setDraft(v.label); setRenaming(true); }} title="Rename version" className="rounded p-0.5 text-slate-400 hover:text-blue-600"><SquarePen size={13} /></button>
-                    )}
-                    {/* Version details (who uploaded it, when) */}
-                    <div className="relative">
-                        <button type="button" onClick={() => setInfoOpen(o => !o)} title="Version details" className={cn('rounded p-0.5 hover:text-blue-600', infoOpen ? 'text-blue-600' : 'text-slate-400')}><Info size={14} /></button>
-                        {infoOpen && (
-                            <>
-                                <button type="button" aria-hidden className="fixed inset-0 z-10 cursor-default" onClick={() => setInfoOpen(false)} />
-                                <div className="absolute left-0 top-full z-20 mt-1 w-60 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-                                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Version details</p>
-                                    <div className="space-y-1.5 text-[12px]">
-                                        <div className="flex items-center gap-2">
-                                            <User size={13} className="shrink-0 text-slate-400" />
-                                            <span className="text-slate-500">Uploaded by</span>
-                                            <span className="ml-auto truncate font-semibold text-slate-800">{v.uploadedBy || '—'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <CalendarClock size={13} className="shrink-0 text-slate-400" />
-                                            <span className="text-slate-500">When</span>
-                                            <span className="ml-auto font-semibold text-slate-800">{fmtDateTime(v.uploadedAt)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                    {r.isLicense && v.licenseClass && (
-                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{v.licenseClass}</span>
-                    )}
-                    {editable && (
-                        <button type="button" onClick={onRemove} title="Remove version" className="rounded-md p-1 text-slate-400 hover:text-rose-600"><X size={14} /></button>
-                    )}
-                </div>
-            </div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Details</p>
-            {r.isLicense ? (
-                // Driver-license field set — matches the hiring Application license card.
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <FieldPreview label="License Number" required={numberRequired}>
-                        <input disabled={!editable} value={v.number} onChange={e => onChange({ number: e.target.value })} placeholder="Enter license number" className={inputCls} />
-                    </FieldPreview>
-                    <FieldPreview label="Country">
-                        <select disabled={!editable} value={v.country} onChange={e => onCountry(e.target.value)} className={inputCls}>
-                            <option value="">Select country</option>
-                            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    </FieldPreview>
-                    <FieldPreview label="Licensing Authority">
-                        <select disabled={!editable || states.length === 0} value={v.stateProv} onChange={e => onChange({ stateProv: e.target.value })} className={inputCls}>
-                            <option value="">{states.length ? 'Select state / province' : '—'}</option>
-                            {states.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </FieldPreview>
-                    <FieldPreview label="License Class">
-                        <select disabled={!editable} value={v.licenseClass} onChange={e => onChange({ licenseClass: e.target.value })} className={inputCls}>
-                            <option value="">Select class</option>
-                            {LICENSE_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    </FieldPreview>
-                    <FieldPreview label="Issue Date">
-                        <input type="date" disabled={!editable} value={v.issueDate} onChange={e => onChange({ issueDate: e.target.value })} className={inputCls} />
-                    </FieldPreview>
-                    <FieldPreview label="Expiration Date" required>
-                        <input type="date" disabled={!editable} value={v.monitorDate} onChange={e => onChange({ monitorDate: e.target.value })} className={inputCls} />
-                    </FieldPreview>
-                    <FieldPreview label="Commercial (CDL)">
-                        <select disabled={!editable} value={v.cdl} onChange={e => onChange({ cdl: e.target.value })} className={inputCls}>
-                            <option value="">—</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                        </select>
-                    </FieldPreview>
-                    <FieldPreview label="Endorsements">
-                        <input disabled={!editable} value={v.endorsements} onChange={e => onChange({ endorsements: e.target.value })} placeholder="e.g. HazMat, Tanker" className={inputCls} />
-                    </FieldPreview>
-                </div>
-            ) : (
-                // Generic field set — jurisdiction + number + dates.
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <FieldPreview label="Country">
-                        <select disabled={!editable} value={v.country} onChange={e => onCountry(e.target.value)} className={inputCls}>
-                            <option value="">Select country</option>
-                            {(r.allCountries ? ALL_COUNTRIES : COUNTRIES).map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    </FieldPreview>
-                    {!r.hideState && (
-                        <FieldPreview label="State / Province">
-                            <select disabled={!editable || states.length === 0} value={v.stateProv} onChange={e => onChange({ stateProv: e.target.value })} className={inputCls}>
-                                <option value="">{states.length ? 'Select state / province' : '—'}</option>
-                                {states.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </FieldPreview>
-                    )}
-                    {r.numberName && (
-                        <FieldPreview label={r.numberName} required={numberRequired}>
-                            <input disabled={!editable} value={v.number} onChange={e => onChange({ number: e.target.value })} placeholder={`Enter ${r.numberName}`} className={inputCls} />
-                        </FieldPreview>
-                    )}
-                    {r.tracksIssueDate && (
-                        <FieldPreview label="Issue / Effective Date">
-                            <input type="date" disabled={!editable} value={v.issueDate} onChange={e => onChange({ issueDate: e.target.value })} className={inputCls} />
-                        </FieldPreview>
-                    )}
-                    {isDateMonitored(r) ? (
-                        <FieldPreview label={r.monitorType} required>
-                            <input type="date" disabled={!editable} value={v.monitorDate} onChange={e => onChange({ monitorDate: e.target.value })} className={inputCls} />
-                        </FieldPreview>
-                    ) : (
-                        <FieldPreview label="Status" required>
-                            <select disabled={!editable} value={v.status} onChange={e => onChange({ status: e.target.value })} className={inputCls}>
-                                <option value="">Select status</option>
-                                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </FieldPreview>
-                    )}
-                </div>
-            )}
-            {/* Uploaded document(s) — application-style tile(s); single file, or Front/Back slots */}
-            <div className="mt-4 border-t border-slate-200 pt-4">
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Uploaded Document</p>
-                <DocumentUploader r={r} files={v.files} editable={editable} onChange={files => onChange({ files })} />
-            </div>
-            {/* Monitoring — its own separated section (enable on the current version; previous versions stay off) */}
-            <div className="mt-4 border-t border-slate-200 pt-4">
-                <MonitoringSettings r={r} value={v.monitoring} expiryDate={v.monitorDate} issueDate={v.issueDate} status={v.status} editable={editable} onChange={m => onChange({ monitoring: m })} />
-            </div>
-            {/* Tags — its own separated section */}
-            {r.documentName && (
-                <div className="mt-4 border-t border-slate-200 pt-4">
-                    <TagEditor
-                        tags={v.tags}
-                        editable={editable}
-                        catalog={tagCatalog}
-                        onAdd={t => {
-                            if (!v.tags.some(x => x.toLowerCase() === t.toLowerCase())) onChange({ tags: [...v.tags, t] });
-                            onAddToCatalog(t);
-                        }}
-                        onRemove={t => onChange({ tags: v.tags.filter(x => x !== t) })}
-                    />
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ── Monitoring & Notifications ────────────────────────────────────────
-
-type MonitorBasis = 'issue' | 'expiry' | 'custom' | 'status';
-interface MonitoringConfig {
-    enabled: boolean;
-    basis: MonitorBasis;          // what drives the reminders (a date, or the status value)
-    customDate: string;           // manually-entered date when basis === 'custom'
-    recurrence: string;           // renewal cadence (id from RECURRENCE_OPTIONS)
-    reminders: number[];          // days-before reminder offsets (0 = on the date)
-    channels: { email: boolean; inApp: boolean };
-}
-
-// Status values for status-based records (the monitored value captured in the form).
-const STATUS_OPTIONS = ['Active', 'Pending', 'On File', 'Complete', 'Incomplete', 'Expired', 'Inactive'];
-
-const RECURRENCE_OPTIONS: { id: string; label: string }[] = [
-    { id: 'none', label: 'Does not recur' },
-    { id: 'monthly', label: 'Monthly' },
-    { id: 'quarterly', label: 'Quarterly (Every 3 Months)' },
-    { id: 'semiannually', label: 'Semi-Annually (Every 6 Months)' },
-    { id: 'annually', label: 'Annually (Every 1 Year)' },
-    { id: 'biennially', label: 'Every 2 Years' },
-    { id: 'triennially', label: 'Every 3 Years' },
-    { id: 'fiveyearly', label: 'Every 5 Years' },
-];
-const REMINDER_OPTIONS = [90, 60, 30, 7, 0]; // 0 = "On the date"
-const reminderLabel = (d: number) => (d === 0 ? 'On the date' : `${d} Days Before`);
-
-/** Map the record's free-text `recurring` note onto a recurrence option. */
-function recurrenceFromRecord(r: SafetyRecord): string {
-    const s = r.recurring.toLowerCase();
-    if (/no (fixed|normal|scheduled|independent)|does not expire|usually static|static/.test(s)) return 'none';
-    if (s.includes('month')) return 'monthly';
-    if (s.includes('quarter')) return 'quarterly';
-    if (s.includes('semi')) return 'semiannually';
-    if (s.includes('bienn') || s.includes('every 2') || s.includes('2 year')) return 'biennially';
-    if (s.includes('annual') || s.includes('yearly') || s.includes('year')) return 'annually';
-    // "Recurring" / "Yes" / "Variable" / "Account-based" / "Periodic" → default to annual, user can change.
-    return 'annually';
-}
-
-/** Sensible starting monitoring config derived from the record's classification. Starts OFF. */
-function defaultMonitoring(r: SafetyRecord): MonitoringConfig {
-    const statusBased = !isDateMonitored(r);
-    return {
-        enabled: false,                        // off by default — user opts in per record / current version
-        basis: statusBased ? 'status' : 'expiry',
-        customDate: '',
-        recurrence: recurrenceFromRecord(r),
-        reminders: statusBased ? [] : [90, 60, 30],
-        channels: { email: true, inApp: true },
-    };
-}
-
-function RadioPill({ label, checked, disabled, onClick }: { label: string; checked: boolean; disabled?: boolean; onClick: () => void }) {
-    return (
-        <button type="button" disabled={disabled} onClick={onClick} className={cn('inline-flex items-center gap-2 text-[13px]', disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
-            <span className={cn('flex h-4 w-4 items-center justify-center rounded-full border-2', checked ? 'border-blue-600' : 'border-slate-300')}>
-                {checked && <span className="h-2 w-2 rounded-full bg-blue-600" />}
-            </span>
-            <span className={checked ? 'font-semibold text-slate-800' : 'text-slate-600'}>{label}</span>
-        </button>
-    );
-}
-
-function CheckRow({ label, checked, disabled, onClick }: { label: string; checked: boolean; disabled?: boolean; onClick: () => void }) {
-    return (
-        <button type="button" disabled={disabled} onClick={onClick} className={cn('inline-flex items-center gap-2 text-[13px] text-left', disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
-            <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300')}>
-                {checked && <Check size={11} />}
-            </span>
-            <span className={checked ? 'font-medium text-slate-800' : 'text-slate-600'}>{label}</span>
-        </button>
-    );
-}
-
-/**
- * Monitoring & Notifications module — embedded in the form so each record's renewal / expiry
- * (or status) can be watched with reminder offsets and channels. Reflects the record's own
- * monitorType (never the issue date unless tracked) and recurrence.
- */
-function MonitoringSettings({ r, value, expiryDate = '', issueDate = '', status = '', editable, onChange }: {
-    r: SafetyRecord; value: MonitoringConfig; expiryDate?: string; issueDate?: string; status?: string; editable: boolean; onChange: (next: MonitoringConfig) => void;
-}) {
-    const set = (patch: Partial<MonitoringConfig>) => onChange({ ...value, ...patch });
-    // Switching basis: status monitoring has no date reminders → clear them; returning to a date basis restores sensible defaults.
-    const setBasis = (basis: MonitorBasis) => {
-        if (basis === 'status') onChange({ ...value, basis, reminders: [] });
-        else onChange({ ...value, basis, reminders: value.reminders.length ? value.reminders : [90, 60, 30] });
-    };
-    const [collapsed, setCollapsed] = useState(false); // when enabled, the body can be collapsed to just the header
-    const dateMonitored = isDateMonitored(r);
-    const isStatus = value.basis === 'status';
-    const basisLabel = value.basis === 'issue' ? 'Issue date' : value.basis === 'custom' ? 'Custom date' : value.basis === 'status' ? 'Status' : 'Expiry date';
-    // The single concrete date the alerts are computed from — resolved from the chosen basis (status has no date).
-    const monitoredDate = value.basis === 'issue' ? issueDate : value.basis === 'custom' ? value.customDate : value.basis === 'status' ? '' : expiryDate;
-    const recLabel = RECURRENCE_OPTIONS.find(o => o.id === value.recurrence)?.label ?? 'Annually';
-    const sortedReminders = [...value.reminders].sort((a, b) => b - a);
-    const daysBefore = sortedReminders.filter(d => d > 0);
-    const onDateReminder = sortedReminders.includes(0);
-    const remindText = [daysBefore.length ? `${daysBefore.join(', ')} days before` : null, onDateReminder ? 'on the date' : null].filter(Boolean).join(' and ');
-    const remindSentence = remindText ? `Reminders ${remindText}` : 'No reminders selected';
-    const channelText = [value.channels.email && 'Email', value.channels.inApp && 'In-App'].filter(Boolean).join(', ') || 'no channels';
-
-    const toggleReminder = (d: number) =>
-        set({ reminders: value.reminders.includes(d) ? value.reminders.filter(x => x !== d) : [...value.reminders, d] });
-
-    return (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            {/* Header + enable toggle */}
-            <div className="flex items-center justify-between gap-3 border-l-2 border-blue-500 bg-slate-50/70 px-4 py-3">
-                <div className="flex items-center gap-2">
-                    <Bell size={15} className="text-blue-500" />
-                    <h4 className="text-[13px] font-bold text-slate-800">Monitoring &amp; Notifications</h4>
-                    {value.enabled && (
-                        <button
-                            type="button"
-                            onClick={() => setCollapsed(c => !c)}
-                            title={collapsed ? 'Expand' : 'Collapse'}
-                            aria-expanded={!collapsed}
-                            className="ml-0.5 rounded p-0.5 text-slate-400 hover:text-slate-700"
-                        >
-                            {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                        </button>
-                    )}
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-semibold text-slate-600">{value.enabled ? 'Enabled' : 'Disabled'}</span>
-                    <button
-                        type="button"
-                        role="switch"
-                        aria-checked={value.enabled}
-                        aria-label="Enable monitoring"
-                        disabled={!editable}
-                        onClick={() => set({ enabled: !value.enabled })}
-                        className={cn('relative h-5 w-9 rounded-full transition-colors', value.enabled ? 'bg-blue-600' : 'bg-slate-300', !editable && 'opacity-60 cursor-not-allowed')}
-                    >
-                        <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', value.enabled ? 'left-[18px]' : 'left-0.5')} />
-                    </button>
-                </div>
-            </div>
-
-            {value.enabled && !collapsed ? (
-                <div className="p-4 space-y-4">
-                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        {/* Monitor based on + date/status + recurrence */}
-                        <div className="space-y-4">
-                            <div>
-                                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Monitor based on</p>
-                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                    {r.tracksIssueDate && <RadioPill label="Issue date" checked={value.basis === 'issue'} disabled={!editable} onClick={() => setBasis('issue')} />}
-                                    {dateMonitored && <RadioPill label="Expiry date" checked={value.basis === 'expiry'} disabled={!editable} onClick={() => setBasis('expiry')} />}
-                                    <RadioPill label="Custom date" checked={value.basis === 'custom'} disabled={!editable} onClick={() => setBasis('custom')} />
-                                    {!dateMonitored && <RadioPill label="Status based" checked={value.basis === 'status'} disabled={!editable} onClick={() => setBasis('status')} />}
-                                </div>
-                            </div>
-                            {isStatus ? (
-                                <div>
-                                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Status to monitor</p>
-                                    <div className={cn('inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] font-semibold',
-                                        status ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400')}>
-                                        <Activity size={14} /> {status || 'Set the status in the form above'}
-                                    </div>
-                                    <p className="mt-1 text-[10px] text-slate-400">Monitors the Status field above — you’re alerted when it changes.</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div>
-                                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Date to monitor</p>
-                                        {value.basis === 'custom' ? (
-                                            <>
-                                                <input
-                                                    type="date"
-                                                    disabled={!editable}
-                                                    value={value.customDate}
-                                                    onChange={e => set({ customDate: e.target.value })}
-                                                    className={editable ? MODAL_INPUT_EDIT : MODAL_INPUT_VIEW}
-                                                />
-                                                <p className="mt-1 text-[10px] text-slate-400">Enter a specific date to monitor — independent of the expiry / issue date.</p>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className={cn(
-                                                    'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] font-semibold',
-                                                    monitoredDate ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400',
-                                                )}>
-                                                    <CalendarClock size={14} />
-                                                    {monitoredDate || `Set the ${basisLabel.toLowerCase()} above`}
-                                                </div>
-                                                <p className="mt-1 text-[10px] text-slate-400">Pulled from the {basisLabel.toLowerCase()} above — pick “Custom date” to enter your own.</p>
-                                            </>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Renewal recurrence</p>
-                                        <select disabled={!editable} value={value.recurrence} onChange={e => set({ recurrence: e.target.value })} className={editable ? MODAL_INPUT_EDIT : MODAL_INPUT_VIEW}>
-                                            {RECURRENCE_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                                        </select>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Reminders + channels */}
-                        <div className="space-y-4">
-                            <div>
-                                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Notification reminders</p>
-                                {isStatus ? (
-                                    <p className="text-[11px] text-slate-400">Date reminders don’t apply to status monitoring — you’re notified whenever the status changes.</p>
-                                ) : (
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                        {REMINDER_OPTIONS.map(d => (
-                                            <CheckRow key={d} label={reminderLabel(d)} checked={value.reminders.includes(d)} disabled={!editable} onClick={() => toggleReminder(d)} />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">Notification channels</p>
-                                <div className="flex flex-wrap items-center gap-4">
-                                    <CheckRow label="Email" checked={value.channels.email} disabled={!editable} onClick={() => set({ channels: { ...value.channels, email: !value.channels.email } })} />
-                                    <CheckRow label="In-App" checked={value.channels.inApp} disabled={!editable} onClick={() => set({ channels: { ...value.channels, inApp: !value.channels.inApp } })} />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Projected schedule */}
-                    <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[12px] text-blue-800">
-                        <Bell size={14} className="mt-0.5 shrink-0 text-blue-500" />
-                        <div className="min-w-0">
-                            <p className="font-semibold">Projected Notification Schedule</p>
-                            <p className="text-blue-700">
-                                {isStatus
-                                    ? `Monitor status${status ? ` (${status})` : ''}. Notify on any status change · via ${channelText}.`
-                                    : `Monitor ${basisLabel.toLowerCase()}${monitoredDate ? ` (${monitoredDate})` : ''}. ${remindSentence}${value.recurrence !== 'none' ? ` · repeats ${recLabel.replace(/\s*\(.*\)/, '')}` : ''} · via ${channelText}.`}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            ) : null /* OFF → only the header/switch is shown */}
-        </div>
-    );
-}
-
-function FormPreview({ r, editable }: { r: SafetyRecord; editable: boolean }) {
-    const numberRequired = r.type === 'C' || r.type === 'DC';
-    const inputCls = editable ? MODAL_INPUT_EDIT : MODAL_INPUT_VIEW;
-    const parsed = useMemo(() => parseJurisdiction(r.jurisdiction), [r.jurisdiction]);
-
-    const multiUpload = r.uploadMode === 'recurring' || r.uploadMode === 'event';
-
-    // Reusable tag catalog (Settings ▸ Tags) — powers the "saved tag" dropdown; custom tags persist back here.
+/** Settings preview of the ACTUAL Default Compliances & Documents data-entry form
+ *  (the shared `VersionFields`), so the catalog's edit form matches the live page 1:1.
+ *  State is local — changes are a preview and are not persisted. In view mode the whole
+ *  form is rendered read-only via a disabled fieldset. */
+function DefaultFormPreview({ r, editable }: { r: SafetyRecord; editable: boolean }) {
     const { tags: tagCatalog, add: addToCatalog } = useSafetyTags();
-
-    // Single set (single-upload document or compliance-only record): shared jurisdiction + one number + dates + one file + tags.
-    const [country, setCountry] = useState(parsed.country);
-    const [stateProv, setStateProv] = useState(parsed.state);
-    const [tags, setTags] = useState<string[]>([]);
-    const [number, setNumber] = useState('');
-    const [issueDate, setIssueDate] = useState('');
-    const [monitorDate, setMonitorDate] = useState('');
-    const [status, setStatus] = useState('');
-    const [singleFiles, setSingleFiles] = useState<Record<string, DocFile>>({});
-
-    // Multi (recurring / event): each dated version is fully self-contained (own jurisdiction + number + dates + document + tags).
-    const [versions, setVersions] = useState<Ver[]>([]);
-
-    // Monitoring & notifications config for this record (preview-only).
-    const [monitoring, setMonitoring] = useState<MonitoringConfig>(() => defaultMonitoring(r));
-
-    const states = STATES_BY_COUNTRY[country] ?? [];
-    const onCountry = (v: string) => {
-        setCountry(v);
-        if (!(STATES_BY_COUNTRY[v] ?? []).includes(stateProv)) setStateProv('');
-    };
-
-    const isLic = !!r.isLicense;
-    const mkVersion = (year: number, demoTags: string[] = []): Ver => ({
-        label: `Version ${year}`,
-        number: r.numberName ? sampleNumber(r) : '',
-        issueDate: r.tracksIssueDate ? `${year - 1}-01-15` : '',
-        monitorDate: `${year}-12-31`,
-        status: isDateMonitored(r) ? '' : 'Active',
-        files: demoDocFiles(r, year),
-        year,
-        country: isLic ? 'United States' : parsed.country,
-        stateProv: isLic ? 'Illinois' : parsed.state,
-        licenseClass: isLic ? 'Class A' : '',
-        cdl: isLic ? 'Yes' : '',
-        endorsements: isLic ? 'HazMat, Tanker' : '',
-        tags: demoTags,
-        monitoring: defaultMonitoring(r),
-        uploadedBy: currentUserName(),
-        uploadedAt: `${year - 1}-12-20T10:15:00`,
-    });
-    // Blank version (no files) that inherits jurisdiction — user fills number/dates/document(s).
-    const addBlankVersion = () => {
-        const prev = versions[0];
-        const base = mkVersion((prev?.year ?? 2025) + 1);
-        return { ...base, files: {}, tags: [], country: prev?.country ?? base.country, stateProv: prev?.stateProv ?? base.stateProv, uploadedBy: currentUserName(), uploadedAt: new Date().toISOString() };
-    };
-    const addEmptyVersion = () => setVersions([addBlankVersion(), ...versions]);
-    // Single-slot docs: dropping a file creates a new dated version carrying that file.
-    const addVersionWithFile = (f: File) => setVersions([{ ...addBlankVersion(), files: { [SINGLE_SLOT]: toDocFile(f) } }, ...versions]);
-    const updateVersion = (i: number, patch: Partial<Ver>) => setVersions(versions.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
-    const removeVersion = (i: number) => setVersions(versions.filter((_, idx) => idx !== i));
-
-    const fillDemo = () => {
-        if (multiUpload) {
-            // Enable monitoring only on the current (first) version; previous versions stay off.
-            const current = mkVersion(2026, ['Verified', 'Primary']);
-            current.monitoring = { ...current.monitoring, enabled: true };
-            setVersions([current, mkVersion(2025, ['Superseded'])]);
-        } else {
-            setMonitoring(m => ({ ...m, enabled: true }));
-            const c = parsed.country || 'Canada';
-            setCountry(c);
-            setStateProv(parsed.state || (STATES_BY_COUNTRY[c]?.[0] ?? ''));
-            setTags(t => (t.length ? t : ['Verified', 'Primary']));
-            if (r.numberName) setNumber(sampleNumber(r));
-            if (r.tracksIssueDate) setIssueDate('2024-01-15');
-            if (isDateMonitored(r)) setMonitorDate(r.configuredDate ?? '2026-12-31');
-            else setStatus(s => s || 'Active');
-            if (r.documentName) setSingleFiles(demoDocFiles(r));
-        }
-    };
-
-    const jurisdictionFields = (
-        <>
-            <FieldPreview label="Country">
-                <select disabled={!editable} value={country} onChange={e => onCountry(e.target.value)} className={inputCls}>
-                    <option value="">Select country</option>
-                    {(r.allCountries ? ALL_COUNTRIES : COUNTRIES).map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-            </FieldPreview>
-            {!r.hideState && (
-                <FieldPreview label="State / Province">
-                    <select disabled={!editable || states.length === 0} value={stateProv} onChange={e => setStateProv(e.target.value)} className={inputCls}>
-                        <option value="">{states.length ? 'Select state / province' : '—'}</option>
-                        {states.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </FieldPreview>
-            )}
-        </>
-    );
-
+    const seed = (): DocVersion => ({ ...newVersion(`Record ${new Date().getFullYear()}`), monitoring: seedMonitoring(r) });
+    const [v, setV] = useState<DocVersion>(seed);
+    // Re-seed when the modal is pointed at a different record.
+    useEffect(() => { setV(seed()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [r.id]);
     return (
         <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
                 <p className="text-[12px] text-slate-500">
                     {editable
-                        ? 'Edit the data-entry form for this record. Changes are a preview and are not persisted.'
-                        : 'Preview of the data-entry form for this record. Fields are derived from its classification (read-only).'}
+                        ? 'Edit the data-entry form for this record — the same form used on Default Compliances & Documents. Changes are a preview and are not persisted.'
+                        : 'Preview of the data-entry form for this record — the same form used on Default Compliances & Documents (read-only).'}
                 </p>
                 {editable && (
-                    <button
-                        type="button"
-                        onClick={fillDemo}
-                        className="inline-flex shrink-0 items-center gap-1.5 h-8 px-3 rounded-lg border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-700 hover:bg-blue-100"
-                    >
+                    <button type="button" onClick={() => setV(cur => fillVersionDemo(r, cur))}
+                        className="inline-flex shrink-0 items-center gap-1.5 h-8 px-3 rounded-lg border border-blue-200 bg-blue-50 text-[12px] font-semibold text-blue-700 hover:bg-blue-100">
                         <Sparkles size={13} /> Fill demo data
                     </button>
                 )}
             </div>
+            <fieldset disabled={!editable} className="m-0 min-w-0 border-0 p-0">
+                <VersionFields record={r} version={v} onChange={setV} tagCatalog={tagCatalog} addToCatalog={addToCatalog} editableLabel />
+            </fieldset>
+        </div>
+    );
+}
 
-            {multiUpload ? (
-                <>
-                    {/* Versioned sets — each dated version is a fully self-contained form (jurisdiction + number + dates + document + tags). */}
-                    <div>
-                        <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                            <label className="text-[13px] font-semibold text-slate-700">{r.documentName}</label>
-                            {r.docRequirement === 'required' && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}
-                            {r.docRequirement === 'optional' && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">Optional</span>}
-                            {r.uploadMode && <UploadModeChip mode={r.uploadMode} />}
-                        </div>
-                        <p className="mb-3 text-[11px] text-slate-400">
-                            Each renewal/reissue captures its own country/state, number, dates, document and tags as a new dated version. Previous versions are retained.
-                        </p>
+/** Small status chip for a defined form field — Required / Optional / Off. */
+function FieldStatus({ enabled, required }: { enabled: boolean; required?: boolean }) {
+    if (!enabled) return <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-400">Off</span>;
+    if (required) return <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Required</span>;
+    return <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500">Optional</span>;
+}
 
-                        {versions.length > 0 && (
-                            <div className="space-y-3">
-                                {versions.map((v, i) => (
-                                    <VersionCard
-                                        key={`${v.year}-${i}`}
-                                        r={r}
-                                        v={v}
-                                        index={i}
-                                        editable={editable}
-                                        inputCls={inputCls}
-                                        numberRequired={numberRequired}
-                                        tagCatalog={tagCatalog}
-                                        onAddToCatalog={addToCatalog}
-                                        onChange={patch => updateVersion(i, patch)}
-                                        onRemove={() => removeVersion(i)}
-                                    />
-                                ))}
-                            </div>
-                        )}
-
-                        {editable && (
-                            <div className="mt-3">
-                                {docSlots(r).length > 1 ? (
-                                    // Multi-slot docs (e.g. Front/Back): add an empty version, then upload each slot.
-                                    <button
-                                        type="button"
-                                        onClick={addEmptyVersion}
-                                        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-[12px] font-semibold text-slate-600 hover:border-blue-300 hover:bg-blue-50/40"
-                                    >
-                                        <Plus size={15} /> Add a new dated version
-                                    </button>
-                                ) : (
-                                    <Dropzone
-                                        editable
-                                        onFile={addVersionWithFile}
-                                        label="Drag a file here — or click — to add a new dated version"
-                                        hint="Captures its own country/state, number, dates, document and tags; previous versions retained"
-                                    />
-                                )}
-                            </div>
-                        )}
-                        {!editable && versions.length === 0 && <p className="text-[12px] text-slate-400">No versions uploaded.</p>}
+/** Per-field status list for a CUSTOM record — which fields the form shows and whether they're
+ *  required. Renders nothing for system records. Auto-derived from the record's `customForm`. */
+function FormFieldsSummary({ r }: { r: SafetyRecord }) {
+    const cf = r.customForm;
+    if (!cf) return null;
+    const fields: { label: string; enabled: boolean; required?: boolean }[] = [
+        { label: cf.numberField.enabled && r.numberName ? r.numberName : 'Number / code field', enabled: cf.numberField.enabled, required: cf.numberField.required },
+        { label: 'Country', enabled: cf.country.enabled, required: cf.country.required },
+        { label: 'State / Province', enabled: cf.state.enabled, required: cf.state.required },
+        { label: 'Issue date', enabled: cf.issueDate.enabled, required: cf.issueDate.required },
+        { label: 'Expiry date', enabled: cf.expiryDate.enabled, required: cf.expiryDate.required },
+        { label: 'Status', enabled: cf.status.enabled, required: cf.status.required },
+        { label: `Document upload${cf.upload.enabled ? ` — ${r.documentName || 'Document'}${cf.upload.multi ? ' (multiple)' : ''}` : ''}`, enabled: cf.upload.enabled, required: cf.upload.required },
+        { label: 'Monitoring', enabled: cf.monitoring.enabled },
+        { label: 'Tags', enabled: cf.tags.enabled },
+        { label: 'Notes', enabled: cf.notes.enabled },
+    ];
+    return (
+        <div>
+            <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">Form fields</div>
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
+                {fields.map(f => (
+                    <div key={f.label} className={cn('flex items-center justify-between gap-3 px-4 py-2.5', !f.enabled && 'opacity-60')}>
+                        <span className="text-[13px] text-slate-800">{f.label}</span>
+                        <FieldStatus enabled={f.enabled} required={f.required} />
                     </div>
-                </>
-            ) : (
-                <>
-                    {/* Details — one number + dates + jurisdiction. */}
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Details</p>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        {r.numberName && (
-                            <FieldPreview label={r.numberName} required={numberRequired}>
-                                <input disabled={!editable} value={number} onChange={e => setNumber(e.target.value)} placeholder={`Enter ${r.numberName}`} className={inputCls} />
-                            </FieldPreview>
-                        )}
-                        {r.tracksIssueDate && (
-                            <FieldPreview label="Issue / Effective Date" hint="Stored for history — not the monitored date.">
-                                <input type="date" disabled={!editable} value={issueDate} onChange={e => setIssueDate(e.target.value)} className={inputCls} />
-                            </FieldPreview>
-                        )}
-                        {isDateMonitored(r) && (
-                            <FieldPreview label={r.monitorType} required hint="Monitored date">
-                                <input type="date" disabled={!editable} value={monitorDate} onChange={e => setMonitorDate(e.target.value)} className={inputCls} />
-                            </FieldPreview>
-                        )}
-                        {!isDateMonitored(r) && (
-                            <FieldPreview label="Status" required hint="Monitored status">
-                                <select disabled={!editable} value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
-                                    <option value="">Select status</option>
-                                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                            </FieldPreview>
-                        )}
-                        {jurisdictionFields}
-                    </div>
-
-                    {r.documentName && (
-                        <div className="border-t border-slate-200 pt-4">
-                            <div className="mb-1 flex items-center gap-2">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Uploaded Document</p>
-                                {r.uploadMode && <UploadModeChip mode={r.uploadMode} />}
-                                {r.docRequirement === 'required' && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-600">Required</span>}
-                                {r.docRequirement === 'optional' && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">Optional</span>}
-                            </div>
-                            <label className="mb-1.5 block text-[12px] font-semibold text-slate-600">{r.documentName}</label>
-                            <DocumentUploader r={r} files={singleFiles} editable={editable} onChange={setSingleFiles} />
-                        </div>
-                    )}
-                </>
-            )}
-
-            {/* Monitoring & Notifications — single/compliance record (multi-upload monitoring lives per version). */}
-            {!multiUpload && (
-                <div className="border-t border-slate-200 pt-4">
-                    <MonitoringSettings r={r} value={monitoring} expiryDate={monitorDate} issueDate={issueDate} status={status} editable={editable} onChange={setMonitoring} />
-                </div>
-            )}
-
-            {/* Tags for the single document (multi-upload tags live inside each version). */}
-            {!multiUpload && r.documentName && (
-                <div className="border-t border-slate-200 pt-4">
-                    <TagEditor
-                        tags={tags}
-                        editable={editable}
-                        catalog={tagCatalog}
-                        onAdd={t => {
-                            setTags(prev => (prev.some(x => x.toLowerCase() === t.toLowerCase()) ? prev : [...prev, t]));
-                            addToCatalog(t);
-                        }}
-                        onRemove={t => setTags(prev => prev.filter(x => x !== t))}
-                    />
-                </div>
-            )}
-
-            <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[12px] text-blue-800">
-                <Info size={14} className="mt-0.5 shrink-0 text-blue-500" />
-                <span>{r.monitor}</span>
+                ))}
             </div>
         </div>
     );
 }
 
+/** Data tab — the record's full metadata, auto-populated from the record (custom or system).
+ *  Custom records additionally get a per-field "Form fields" status list. */
 function DataView({ r }: { r: SafetyRecord }) {
     const reqLabel = r.docRequirement === 'none' ? 'No document' : r.docRequirement === 'required' ? 'Required' : 'Optional';
     const rows: [string, string][] = [
@@ -1796,14 +1114,17 @@ function DataView({ r }: { r: SafetyRecord }) {
         ['Note', r.note || '—'],
     ];
     return (
-        <dl className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
-            {rows.map(([k, v]) => (
-                <div key={k} className="grid grid-cols-3 gap-3 px-4 py-2.5 odd:bg-slate-50/40">
-                    <dt className="text-[12px] font-semibold text-slate-500">{k}</dt>
-                    <dd className="col-span-2 text-[13px] text-slate-800">{v}</dd>
-                </div>
-            ))}
-        </dl>
+        <div className="space-y-4">
+            <dl className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
+                {rows.map(([k, v]) => (
+                    <div key={k} className="grid grid-cols-3 gap-3 px-4 py-2.5 odd:bg-slate-50/40">
+                        <dt className="text-[12px] font-semibold text-slate-500">{k}</dt>
+                        <dd className="col-span-2 text-[13px] text-slate-800">{v}</dd>
+                    </div>
+                ))}
+            </dl>
+            <FormFieldsSummary r={r} />
+        </div>
     );
 }
 

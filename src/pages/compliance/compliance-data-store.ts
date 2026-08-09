@@ -28,6 +28,8 @@ export interface DataDocFile {
     url?: string;
     /** Optional slot label (e.g. "Front of License"). */
     slot?: string;
+    /** Optional free-text tag for an extra supporting document on the same record (e.g. "Endorsement", "Declaration page"). */
+    tag?: string;
     uploadedAt: string; // ISO
 }
 
@@ -66,6 +68,10 @@ export interface DocVersion {
     uploadedAt: string;  // ISO
     uploadedBy?: string; // name of the person who captured/uploaded this version
     state?: string;      // lifecycle state override: current | historical | superseded | cancelled | expired | pending (unset → derived from position)
+    // Insurance-only fields (multi-instance records).
+    producer?: string;    // broker / producer of record
+    insurer?: string;     // insurance carrier
+    policyLimit?: string; // coverage limit, e.g. "$1,000,000"
 }
 
 /**
