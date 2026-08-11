@@ -25,6 +25,13 @@ import { type SubTab } from '@/components/ui/SubTabs';
 import { getSafetyEventsForDriver } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
 import { computeDriverScorecards, type DriverScorecard } from '@/pages/safety-analysis/fleet-safety-score.data';
+// Embedded Default Compliances & Documents + Default Monitoring, scoped to this driver.
+import { useComplianceData } from '@/pages/compliance/compliance-data-store';
+import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
+import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data';
+import { SubjectDocuments } from '@/pages/compliance/DefaultComplianceDataPage';
+import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage';
+import { getAccountById } from '@/pages/accounts/accounts.data';
 
 // --- Individual Section Edit Modals ---
 
@@ -438,7 +445,7 @@ const ProfileTab = ({ data, onEdit }: any) => {
   );
 
   const Fields = ({ children }: { children: React.ReactNode }) => (
-    <div className="px-5 py-5"><div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">{children}</div></div>
+    <div className="px-5 py-5"><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">{children}</div></div>
   );
   const TableWrap = ({ children }: { children: React.ReactNode }) => (
     <div className="overflow-x-auto"><table className="w-full text-sm text-left">{children}</table></div>
@@ -981,14 +988,14 @@ function DriverSafetyAnalysisSection({
                         {components.map(c => {
                             const tone = colorFor(c.score);
                             return (
-                                <div key={c.id} className="grid items-center gap-2" style={{ gridTemplateColumns: '128px minmax(0,1fr) 52px 44px 44px' }}>
+                                <div key={c.id} className="grid items-center gap-2 grid-cols-[84px_minmax(0,1fr)_40px] sm:grid-cols-[128px_minmax(0,1fr)_52px_44px_44px]">
                                     <span className="text-[11px] font-semibold text-slate-700 truncate">{c.label}</span>
                                     <div className={cn('h-2 rounded-full overflow-hidden', tone.track)}>
                                         <div className={cn('h-full rounded-full', tone.bar)} style={{ width: `${c.score}%` }} />
                                     </div>
                                     <span className={cn('text-[11px] font-bold tabular-nums text-right', tone.txt)}>{c.score.toFixed(1)}</span>
-                                    <span className="text-[10px] font-mono text-slate-400 text-right">×{c.weight.toFixed(2)}</span>
-                                    <span className="text-[10px] text-slate-500 tabular-nums text-right">{c.events} ev</span>
+                                    <span className="hidden sm:block text-[10px] font-mono text-slate-400 text-right">×{c.weight.toFixed(2)}</span>
+                                    <span className="hidden sm:block text-[10px] text-slate-500 tabular-nums text-right">{c.events} ev</span>
                                 </div>
                             );
                         })}
@@ -1006,6 +1013,12 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
   // Sync state if initialData changes
   useEffect(() => { setDriverData(initialDriverData); }, [initialDriverData]);
+
+  // Default Compliances & Documents data for THIS driver (embedded in the Compliances / Monitoring tabs).
+  const { all: cdAll, getEntry: cdGetEntry, setEntry: cdSetEntry, setEntries: cdSetEntries } = useComplianceData(accountId);
+  const { records: cdCustomRecords } = useCustomSafetyRecords(accountId);
+  const cdRecords = React.useMemo(() => [...cdCustomRecords, ...SAFETY_RECORDS], [cdCustomRecords]);
+  const cdCarrierName = React.useMemo(() => { const a = accountId ? getAccountById(accountId) : undefined; return a ? (a.dbaName || a.legalName) : 'Carrier'; }, [accountId]);
 
   // Helper to update both local state and notify parent
   const updateDriverData = (newData: any) => {
@@ -1652,9 +1665,9 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         // Identity
         { id: 'Overview',       label: 'Overview',         icon: LayoutDashboard, group: 'identity' },
         { id: 'Profile',        label: 'Profile',          icon: User,            group: 'identity' },
-        { id: 'Compliance',     label: 'Compliance',       icon: ShieldCheck,     group: 'identity' },
+        { id: 'Compliance',     label: 'Monitoring',       icon: ShieldCheck,     group: 'identity' },
         // Records
-        { id: 'Documents',      label: 'Documents',        icon: FileText,        group: 'records' },
+        { id: 'Documents',      label: 'Compliances',      icon: FileText,        group: 'records' },
         { id: 'Application',    label: 'Application',      icon: ClipboardList,   group: 'records' },
         { id: 'Training',       label: 'Training',         icon: GraduationCap,   group: 'records' },
         { id: 'Certificates',   label: 'Certificates',     icon: Award,           group: 'records' },
@@ -1810,7 +1823,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         {/* Breadcrumb bar — Pattern B (matches Asset Detail + MyProfile shell):
             explicit Back-to-list button + vertical divider + breadcrumb chain.
             Thin h-11 strip on slate-50 with a single bottom border. */}
-        <header className="h-11 px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
+        <header className="h-11 px-4 sm:px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
           <button
             type="button"
             onClick={onBack}
@@ -1993,12 +2006,22 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         </div>
       </div>
         
-        <div className="w-full p-8">
+        <div className="w-full p-4 sm:p-8">
             {activeTab === 'Compliance' && (
+                <div className="animate-in fade-in">
+                    <DefaultComplianceMonitoringPage
+                        accountId={accountId}
+                        embedded
+                        lockSubject={{ entity: 'Driver', subjectId: driverData.id, label: `${driverData.firstName} ${driverData.lastName}` }}
+                    />
+                </div>
+            )}
+            {/* Superseded by the embedded Default Monitoring above — old per-driver compliance kept disabled. */}
+            {false && (
                 <div className="space-y-6 animate-in fade-in">
                     {/* COMPLIANCE STAT INDICATORS */}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                        <button 
+                        <button
                             onClick={() => setActiveComplianceFilter(activeComplianceFilter === 'missing-number' ? null : 'missing-number')} 
                             className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${activeComplianceFilter === 'missing-number' ? 'ring-1 ring-red-600 border-l-red-600' : 'border-l-red-600 border-slate-200'}`}
                         >
@@ -2475,7 +2498,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
 
                         {/* Financial summary — fines + accident costs */}
                         {(violFines > 0 || incCost > 0) && (
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div className="flex items-center gap-3">
                                         <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
@@ -2514,10 +2537,27 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
             )}
 
             {activeTab === 'Documents' && (
+                <div className="animate-in fade-in">
+                    <SubjectDocuments
+                        embedded
+                        entity="Driver"
+                        subjectId={driverData.id}
+                        subjectLabel={`${driverData.firstName} ${driverData.lastName}`}
+                        carrierName={cdCarrierName}
+                        records={cdRecords}
+                        getEntry={cdGetEntry}
+                        setEntry={cdSetEntry}
+                        setEntries={cdSetEntries}
+                        all={cdAll}
+                    />
+                </div>
+            )}
+            {/* Superseded by the embedded Default Compliances & Documents above — old driver documents kept disabled. */}
+            {false && (
                 <div className="space-y-6 animate-in fade-in">
                     {/* DOCUMENT FILTER INDICATORS */}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                        <button 
+                        <button
                             onClick={() => setDocFilter(docFilter === 'required_missing' ? 'all' : 'required_missing')} 
                             className={`flex items-center justify-between p-3 bg-white rounded-lg border border-l-4 shadow-sm hover:shadow transition-all ${docFilter === 'required_missing' ? 'ring-1 ring-red-600 border-l-red-600' : 'border-l-red-600 border-slate-200'}`}
                         >
@@ -2719,8 +2759,8 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                             <p className="text-xs text-slate-500 mt-1">This driver has no fuel cards, transponders, ELDs, GPS, or dashcams on file.</p>
                         </div>
                     ) : (
-                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                            <table className="w-full text-sm">
+                        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+                            <table className="w-full min-w-[720px] text-sm">
                                 <thead className="bg-slate-50 border-b border-slate-200">
                                     <tr>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Vendor</th>
@@ -3929,7 +3969,7 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
               return (
                 <div className="space-y-4 animate-in fade-in">
                   {/* KPI Cards */}
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
                       <div className="w-11 h-11 rounded-lg bg-red-50 flex items-center justify-center text-red-600"><DollarSign className="w-5 h-5" /></div>
                       <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Outstanding Fines</p><p className="text-xl font-bold text-slate-900">${outstandingFines.toLocaleString()}</p></div>

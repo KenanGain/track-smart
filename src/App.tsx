@@ -43,6 +43,7 @@ import { NewComplianceDocumentsPage } from '@/pages/compliance/NewComplianceDocu
 import { SafetyCatalogView } from '@/pages/compliance/SafetyCatalogView'
 import { DefaultComplianceDataPage } from '@/pages/compliance/DefaultComplianceDataPage'
 import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage'
+import { SettingsDefaultMonitoringPage } from '@/pages/compliance/SettingsDefaultMonitoringPage'
 import { SafetyTagsPage } from '@/pages/compliance/SafetyTagsPage'
 import { ComplianceMonitoringPage } from '@/pages/compliance/ComplianceMonitoringPage'
 import TrainingsPage from '@/pages/settings/TrainingsPage'
@@ -472,6 +473,11 @@ function App() {
             const account = selectedAccount
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return <SafetyCatalogView accountId={account?.id} />
+        }
+        if (path === "/settings/default-compliance-monitoring") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <SettingsDefaultMonitoringPage accountId={account?.id} onNavigate={handleNavigate} />
         }
         if (path === "/default-compliance-documents") {
             const account = selectedAccount

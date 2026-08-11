@@ -329,7 +329,7 @@ function sampleVersion(record: SafetyRecord, label: string, over: Partial<DocVer
     return v;
 }
 /** Deterministic sample entry for a record at list position `i` — spread across every row state. */
-function buildSampleEntry(record: SafetyRecord, i: number): RecordDataEntry | null {
+export function buildSampleEntry(record: SafetyRecord, i: number): RecordDataEntry | null {
     // Multi-instance records (e.g. Insurance) → two concurrent active policies, each with its own current.
     if (record.multiInstance) {
         // Insurance policies carry no record-level tags — each document is tagged individually.
@@ -935,7 +935,40 @@ function SubjectRoster({ entity, subjects, records, getEntry, onOpen, all }: {
 }
 
 // ── Subject documents (Carrier / one Asset / one Driver) ──────────────
-function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange }: {
+// Compact, refined subject stats for the EMBEDDED view (asset/driver detail tab) — a single slim bar
+// instead of the four big KPI cards used on the standalone page.
+function MiniStat({ value, label, dot }: { value: number | string; label: string; dot: string }) {
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className={cn('h-2 w-2 rounded-full shrink-0', dot)} />
+            <span className="text-lg font-bold text-slate-900 tabular-nums leading-none">{value}</span>
+            <span className="text-[12px] font-medium text-slate-500">{label}</span>
+        </div>
+    );
+}
+function SubjectStatBar({ stats }: { stats: { total: number; complete: number; requiredMissing: number; optionalPending: number; pct: number } }) {
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex items-center gap-x-5 gap-y-3 flex-wrap">
+            <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
+                <MiniStat value={stats.total} label="Records" dot="bg-slate-300" />
+                <MiniStat value={stats.complete} label="Complete" dot="bg-emerald-500" />
+                <MiniStat value={stats.requiredMissing} label="Missing" dot="bg-rose-500" />
+                {stats.optionalPending > 0 && <MiniStat value={stats.optionalPending} label="Optional" dot="bg-amber-400" />}
+            </div>
+            <div className="ml-auto min-w-[170px] flex-1 max-w-[280px]">
+                <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                    <span>Required complete</span>
+                    <span className="tabular-nums text-slate-800">{stats.pct}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className={cn('h-full rounded-full transition-all', stats.pct >= 100 ? 'bg-emerald-500' : stats.pct >= 60 ? 'bg-blue-500' : 'bg-amber-500')} style={{ width: `${stats.pct}%` }} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded }: {
     entity: EntityId;
     subjectId: string;
     subjectLabel: string;
@@ -954,6 +987,8 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
     alsoSeedSubjects?: { subjectId: string; entity: EntityId }[];
     // Notify the parent when a record's dedicated detail page opens/closes → it hides the page header + entity tabs.
     onDetailChange?: (open: boolean) => void;
+    // Embedded inside an entity detail tab → drop the redundant subject header + big KPI cards for a compact, refined look.
+    embedded?: boolean;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
     const [category, setCategory] = useState<KeyNumberGroup | 'All'>('All');
@@ -978,11 +1013,11 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
     const entityRecords = useMemo(() => records.filter(r => r.entity === entity), [records, entity]);
     const entryFor = (r: SafetyRecord) => getEntry(subjectId, r.id);
 
-    // Deep-link from the Monitoring page → auto-open the requested record's Manage modal once.
+    // Deep-link from the Monitoring page → auto-open the requested record's dedicated detail page once.
     useEffect(() => {
         if (!autoOpenRecordId) return;
         const rec = entityRecords.find(r => r.id === autoOpenRecordId);
-        if (rec) setManage(rec);
+        if (rec) setDetailRecord(rec);
         onFocusConsumed?.();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoOpenRecordId]);
@@ -1075,7 +1110,8 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
                 />
             ) : (
             <>
-            {/* Breadcrumb / subject header */}
+            {/* Breadcrumb / subject header — hidden when embedded (the detail page already names the subject). */}
+            {!embedded && (
             <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
                     {onBack && (
@@ -1089,14 +1125,19 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
                     </span>
                 </div>
             </div>
+            )}
 
-            {/* KPI tiles for this subject */}
+            {/* Subject stats — a compact refined bar when embedded, full KPI cards on the standalone page. */}
+            {embedded ? (
+                <SubjectStatBar stats={stats} />
+            ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KpiTile label="Records" value={stats.total} Icon={Layers} accent="slate" />
                 <KpiTile label="Complete" value={stats.complete} Icon={Check} accent="emerald" />
                 <KpiTile label="Required Missing" value={stats.requiredMissing} Icon={CircleAlert} accent="rose" />
                 <KpiTile label="Required Complete" value={`${stats.pct}%`} Icon={CalendarClock} accent="blue" />
             </div>
+            )}
 
             {/* List card */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -1154,27 +1195,42 @@ function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, record
                 {pageRows.length === 0 ? (
                     <div className="px-5 py-12 text-center text-sm text-slate-500">No records match your search / filters.</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[980px]">
-                            <thead className="border-b border-slate-200 bg-slate-50/50">
-                                <tr className="text-left">
-                                    <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="pl-5" />
-                                    {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pageRows.map(r => (
-                                    <RecordTableRow
-                                        key={r.id}
-                                        r={r}
-                                        entry={entryFor(r)}
-                                        visibleCols={visibleCols}
-                                        onOpen={() => setDetailRecord(r)}
-                                    />
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    <>
+                        {/* Mobile / narrow screens — stacked cards */}
+                        <div className="lg:hidden divide-y divide-slate-100">
+                            {pageRows.map(r => (
+                                <RecordCard
+                                    key={r.id}
+                                    r={r}
+                                    entry={entryFor(r)}
+                                    visibleCols={visibleCols}
+                                    onOpen={() => setDetailRecord(r)}
+                                />
+                            ))}
+                        </div>
+                        {/* Desktop — full table */}
+                        <div className="hidden lg:block overflow-x-auto">
+                            <table className="w-full min-w-[980px]">
+                                <thead className="border-b border-slate-200 bg-slate-50/50">
+                                    <tr className="text-left">
+                                        <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} className="pl-5" />
+                                        {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageRows.map(r => (
+                                        <RecordTableRow
+                                            key={r.id}
+                                            r={r}
+                                            entry={entryFor(r)}
+                                            visibleCols={visibleCols}
+                                            onOpen={() => setDetailRecord(r)}
+                                        />
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 )}
 
                 {/* Pagination footer */}
@@ -1452,29 +1508,45 @@ function AllRecordsView({ entity, subjects, records, getEntry, setEntry, setEntr
                 {pageRows.length === 0 ? (
                     <div className="px-5 py-12 text-center text-sm text-slate-500">No records match your search / filters.</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1080px]">
-                            <thead className="border-b border-slate-200 bg-slate-50/50">
-                                <tr className="text-left">
-                                    <th className="px-4 py-2.5 pl-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">{entity}</th>
-                                    <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} />
-                                    {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pageRows.map(({ subject, record }) => (
-                                    <RecordTableRow
-                                        key={`${subject.id}-${record.id}`}
-                                        r={record}
-                                        entry={getEntry(subject.id, record.id)}
-                                        visibleCols={visibleCols}
-                                        onOpen={() => setDetail({ subject, record })}
-                                        leadCell={<SubjectCell s={subject} />}
-                                    />
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    <>
+                        {/* Mobile / narrow screens — stacked cards (subject block on top of each) */}
+                        <div className="lg:hidden divide-y divide-slate-100">
+                            {pageRows.map(({ subject, record }) => (
+                                <RecordCard
+                                    key={`${subject.id}-${record.id}`}
+                                    r={record}
+                                    entry={getEntry(subject.id, record.id)}
+                                    visibleCols={visibleCols}
+                                    onOpen={() => setDetail({ subject, record })}
+                                    leadCell={<SubjectCell s={subject} />}
+                                />
+                            ))}
+                        </div>
+                        {/* Desktop — full table */}
+                        <div className="hidden lg:block overflow-x-auto">
+                            <table className="w-full min-w-[1080px]">
+                                <thead className="border-b border-slate-200 bg-slate-50/50">
+                                    <tr className="text-left">
+                                        <th className="px-4 py-2.5 pl-5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">{entity}</th>
+                                        <SortableTh col="record" label="Record & Fields" sort={sort} onSort={toggleSort} />
+                                        {cols.map(c => <SortableTh key={c.id} col={c.id} label={c.label} sort={sort} onSort={toggleSort} />)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pageRows.map(({ subject, record }) => (
+                                        <RecordTableRow
+                                            key={`${subject.id}-${record.id}`}
+                                            r={record}
+                                            entry={getEntry(subject.id, record.id)}
+                                            visibleCols={visibleCols}
+                                            onOpen={() => setDetail({ subject, record })}
+                                            leadCell={<SubjectCell s={subject} />}
+                                        />
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 )}
 
                 {/* Pagination */}
@@ -1664,6 +1736,97 @@ function RecordTableRow({ r, entry, visibleCols, onOpen, leadCell }: {
             </tr>
 
         </>
+    );
+}
+
+// ── Record card — mobile / narrow-screen counterpart of RecordTableRow ──────────────
+// Column-driven (mirrors visibleCols) so the Columns chooser affects it just like the table.
+function RecordCard({ r, entry, visibleCols, onOpen, leadCell }: {
+    r: SafetyRecord; entry: RecordDataEntry; visibleCols: Set<DataColId>;
+    onOpen: () => void;
+    /** Optional leading block (the aggregated "Records" view passes the Asset/Driver subject here). */
+    leadCell?: ReactNode;
+}) {
+    const status = entryStatus(r, entry);
+    const isMulti = !!r.multiInstance;
+    const insts = instancesOf(entry);
+    const noun = r.instanceNoun || 'document';
+    const nounPl = (n: number) => (n === 1 ? noun : (noun.endsWith('y') ? noun.slice(0, -1) + 'ies' : noun + 's'));
+    const cur = isMulti ? (insts[0]?.versions[0] ?? null) : currentVersion(entry);
+    const versionCount = isMulti ? insts.length : entry.versions.length;
+    const monitoringOn = isMulti ? insts.some(i => !!i.versions[0]?.monitoring?.enabled) : !!cur?.monitoring?.enabled;
+
+    return (
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onOpen}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+            className="px-4 py-3.5 cursor-pointer hover:bg-slate-50/60 active:bg-slate-100 transition-colors"
+        >
+            {leadCell !== undefined && <div className="mb-2.5">{leadCell}</div>}
+            {/* Title + status */}
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold text-slate-900">{r.recordName}</span>
+                        {r.custom && <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700"><Sparkles size={8} /> Custom</span>}
+                    </div>
+                    {r.description && <div className="mt-0.5 text-[11px] leading-snug text-slate-500">{r.description}</div>}
+                </div>
+                <div className="shrink-0 flex items-center gap-1.5 pt-0.5">
+                    {visibleCols.has('status') && <StatusPill status={status} />}
+                    <ChevronRight size={15} className="text-slate-300" />
+                </div>
+            </div>
+
+            {/* Number / document chips */}
+            {(r.numberName || r.documentName) && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                    {r.numberName && (
+                        <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"><Hash size={9} /> {r.numberName}</span>
+                    )}
+                    {r.documentName && (
+                        <span className="inline-flex items-center gap-1 rounded bg-violet-50 border border-violet-200 px-1.5 py-0.5 text-[10px] font-medium text-violet-700"><FileText size={9} /> {r.documentName}</span>
+                    )}
+                </div>
+            )}
+
+            {/* Category / Record Type chips */}
+            {(visibleCols.has('category') || visibleCols.has('type')) && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {visibleCols.has('category') && (
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{CATEGORY_SHORT[r.category] ?? r.category}</span>
+                    )}
+                    {visibleCols.has('type') && (
+                        <span className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', RECORD_TYPE_TONE[r.type])}>{RECORD_TYPE_LABEL[r.type]}</span>
+                    )}
+                </div>
+            )}
+
+            {/* Monitoring values */}
+            {visibleCols.has('monitoring') && (
+                <div className="mt-2.5 rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2 flex flex-col gap-1 text-[12px]">
+                    {r.numberName && (
+                        <div className="leading-snug text-slate-700"><span className="text-slate-400">{r.numberName}: </span><span className="font-semibold">{cur?.numberValue || '—'}</span></div>
+                    )}
+                    <div className="flex items-start gap-1.5 leading-snug text-slate-600">
+                        {isDateMonitored(r) ? <CalendarClock size={12} className="mt-0.5 shrink-0 text-slate-400" /> : <CircleDashed size={12} className="mt-0.5 shrink-0 text-slate-400" />}
+                        <span><span className="text-slate-400">{r.monitorType}: </span><span className="font-semibold text-slate-700">{isDateMonitored(r) ? (cur?.expiryDate || '—') : (cur?.status || '—')}</span></span>
+                    </div>
+                    {(monitoringOn || isMulti || versionCount > 1) && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            {monitoringOn && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600"><Bell size={9} /> Monitoring on</span>
+                            )}
+                            {isMulti
+                                ? insts.length > 0 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{insts.length} {nounPl(insts.length)} · all active</span>
+                                : versionCount > 1 && <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{versionCount} records</span>}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
     );
 }
 

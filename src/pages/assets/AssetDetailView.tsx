@@ -37,6 +37,13 @@ import { Boxes } from 'lucide-react';
 import { getSafetyEventsForAsset } from '@/data/safety-records';
 import { SafetyRecordsPanel } from '@/components/safety/SafetyRecordsPanel';
 import { computeAssetScorecards, type AssetScorecard } from '@/pages/safety-analysis/fleet-safety-score.data';
+// Embedded Default Compliances & Documents + Default Monitoring, scoped to this asset.
+import { useComplianceData } from '@/pages/compliance/compliance-data-store';
+import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
+import { SAFETY_RECORDS } from '@/pages/compliance/safety-software-catalog.data';
+import { SubjectDocuments } from '@/pages/compliance/DefaultComplianceDataPage';
+import { DefaultComplianceMonitoringPage } from '@/pages/compliance/DefaultComplianceMonitoringPage';
+import { getAccountById } from '@/pages/accounts/accounts.data';
 
 // Banner shown above the Schedule / Work Order forms when launched from an
 // asset detail page — makes the pre-selected vehicle visually unmistakable so
@@ -488,6 +495,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
   //   4. Alerts                 — cross-cutting summary of action items
   const tabs: Array<{
     name: string;
+    label?: string; // display text (falls back to name); keeps internal `name` id stable for logic + deep-links
     count: number;
     group: string;
     alert?: boolean;
@@ -496,8 +504,8 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
     // 0. At-a-glance summary
     { name: 'Overview',              count: 0,                              group: 'identity',   icon: LayoutDashboard },
     // 1. Compliance & Documents
-    { name: 'Compliance Monitoring', count: 0,                              group: 'compliance', icon: ShieldCheck },
-    { name: 'Documents',             count: 0,                              group: 'compliance', icon: FileText },
+    { name: 'Compliance Monitoring', label: 'Monitoring',   count: 0,       group: 'compliance', icon: ShieldCheck },
+    { name: 'Documents',             label: 'Compliances',  count: 0,       group: 'compliance', icon: FileText },
     // 2. Operations
     { name: 'Maintenance',           count: _maintenanceTaskCountForTab,    group: 'operations', icon: Wrench },
     { name: 'Inventory',             count: inventoryRecords.length,        group: 'operations', icon: Boxes },
@@ -513,6 +521,12 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
   const [currentVehicle, setCurrentVehicle] = useState(asset);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   useEffect(() => { setCurrentVehicle(asset); }, [asset]);
+
+  // Default Compliances & Documents data for THIS asset (embedded in the Compliances / Monitoring tabs).
+  const { all: cdAll, getEntry: cdGetEntry, setEntry: cdSetEntry, setEntries: cdSetEntries } = useComplianceData(accountId);
+  const { records: cdCustomRecords } = useCustomSafetyRecords(accountId);
+  const cdRecords = useMemo(() => [...cdCustomRecords, ...SAFETY_RECORDS], [cdCustomRecords]);
+  const cdCarrierName = useMemo(() => { const a = accountId ? getAccountById(accountId) : undefined; return a ? (a.dbaName || a.legalName) : 'Carrier'; }, [accountId]);
 
   // Per-asset monitoring configs (keyed kn:<id> / doc:<id>), reloaded per vehicle.
   const [mon, setMon] = useState<Record<string, import('@/pages/compliance/compliance-monitoring.data').MonitoringConfig>>(() => loadMonitoringConfigs(asset.id));
@@ -1448,7 +1462,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
         {/* Breadcrumb bar — Pattern B (matches DriverProfile + MyProfile shell):
             explicit Back-to-list button + vertical divider + breadcrumb chain.
             Thin h-11 strip on slate-50 with a single bottom border. */}
-        <header className="h-11 px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
+        <header className="h-11 px-4 sm:px-8 flex items-center gap-3 border-b border-slate-100 bg-slate-50/60">
           <button
             type="button"
             onClick={onBack}
@@ -1480,7 +1494,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
         {/* Header strip — flat edge-to-edge on white with bottom border,
             matches the MyProfilePage pattern (no surrounding Card wrapper). */}
-        <div className="bg-white border-b border-slate-200 px-8 pt-6 pb-6">
+        <div className="bg-white border-b border-slate-200 px-4 sm:px-8 pt-6 pb-6">
             <div>
               <div className="flex items-start gap-5 flex-wrap">
                 {/* Image-as-avatar with status dot, mirrors the driver avatar. */}
@@ -1678,7 +1692,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
             separators between categories so the bar reads as four sections:
             Compliance · Operations · Safety · Alerts. Same blue-underline
             active style as the SubTabs component. */}
-        <div className="bg-white px-8 border-b border-slate-200">
+        <div className="bg-white px-4 sm:px-8 border-b border-slate-200">
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
             {tabs.map((tab, idx) => {
               const showSeparator = idx > 0 && tabs[idx - 1].group !== tab.group;
@@ -1700,7 +1714,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                     aria-current={active ? 'page' : undefined}
                   >
                     <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                    <span>{tab.name}</span>
+                    <span>{tab.label ?? tab.name}</span>
                     {tab.count > 0 && (
                       <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold tabular-nums ${active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
                         {tab.count}
@@ -1716,7 +1730,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
         {/* Tab content — slate-50 page background visible around the content,
             same outer padding as MyProfilePage. */}
-        <div className="px-8 py-8">
+        <div className="px-4 py-6 sm:px-8 sm:py-8">
             {/* ── Overview tab — at-a-glance health card for this asset ─── */}
             {activeTab === 'Overview' && (() => {
                 // Pull asset-scoped slices once. Same filters the Inspections /
@@ -2066,8 +2080,18 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
             {/* Compliance Monitoring Content - NOW IN LIST VIEW */}
             {activeTab === 'Compliance Monitoring' && (
+              <div className="animate-in fade-in">
+                <DefaultComplianceMonitoringPage
+                  accountId={accountId}
+                  embedded
+                  lockSubject={{ entity: 'Asset', subjectId: currentVehicle.id, label: currentVehicle.unitNumber }}
+                />
+              </div>
+            )}
+            {/* Superseded by the embedded Default Monitoring above — old per-asset monitoring kept disabled. */}
+            {false && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                
+
                 {/* Compliance Stat Filters — single-line labels, accent bar,
                     refined ring active state. Same template across cards so the
                     grid stays aligned at every breakpoint. */}
@@ -3166,7 +3190,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
                     {/* ─────────── Left: Maintenance Tasks ─────────── */}
                     <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                        <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60">
                             <div className="flex items-center gap-2">
                                 <Wrench size={16} className="text-slate-500" />
                                 <h3 className="font-bold text-slate-800 text-sm">Scheduled Maintenance Tasks</h3>
@@ -3379,7 +3403,7 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
                     {/* ─────────── Right: Work Orders ─────────── */}
                     <Card className="flex flex-col overflow-hidden border-slate-200 shadow-sm">
-                        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                        <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60">
                             <div className="flex items-center gap-2">
                                 <FileText size={16} className="text-slate-500" />
                                 <h3 className="font-bold text-slate-800 text-sm">Work Orders</h3>
@@ -3762,12 +3786,12 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
             {/* Expenses Content */}
             {activeTab === 'Expenses' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
                       <h3 className="font-bold text-slate-900 text-base">Expense History</h3>
                       <p className="text-xs font-medium text-slate-500">Track operating costs, recurring fees, and maintenance expenses</p>
                     </div>
-                    <Button onClick={() => { setIsExpenseModalOpen(true); setEditingExpense(null); }} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200">
+                    <Button onClick={() => { setIsExpenseModalOpen(true); setEditingExpense(null); }} size="sm" className="shrink-0 gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200">
                        <Plus size={14} /> Add Expense
                     </Button>
                   </div>
@@ -3858,6 +3882,23 @@ export function AssetDetailView({ asset, onBack, onEdit, accountId }: AssetDetai
 
             {/* Documents Content */}
             {activeTab === 'Documents' && (
+              <div className="animate-in fade-in">
+                <SubjectDocuments
+                  embedded
+                  entity="Asset"
+                  subjectId={currentVehicle.id}
+                  subjectLabel={`${currentVehicle.unitNumber} · ${currentVehicle.make} ${currentVehicle.model}`}
+                  carrierName={cdCarrierName}
+                  records={cdRecords}
+                  getEntry={cdGetEntry}
+                  setEntry={cdSetEntry}
+                  setEntries={cdSetEntries}
+                  all={cdAll}
+                />
+              </div>
+            )}
+            {/* Superseded by the embedded Default Compliances & Documents above — old asset documents kept disabled. */}
+            {false && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="flex items-center justify-between">
                     <div>

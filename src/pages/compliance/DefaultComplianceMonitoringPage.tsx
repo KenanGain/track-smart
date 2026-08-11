@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
     BellRing, Building2, Truck, User, Search, CalendarClock, CircleAlert, AlertTriangle,
-    Clock, Filter, Eye, Layers, Mail, Smartphone, ArrowRight, CircleDashed, ChevronsUpDown,
+    Clock, Filter, Eye, Layers, Mail, Smartphone, ArrowRight, CircleDashed, ChevronsUpDown, ChevronUp,
     LayoutDashboard, CalendarDays, ChevronLeft, ChevronRight, X,
     History, Activity, Columns, ChevronDown, ExternalLink,
     Zap, Trash2, CalendarPlus, ClipboardList, RefreshCw, Check, UserPlus,
-    Send, Upload, ClipboardCheck, Wrench,
+    Send, Upload, ClipboardCheck, Wrench, Sliders, Info, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubTabs } from '@/components/ui/SubTabs';
@@ -13,10 +13,13 @@ import {
     SAFETY_RECORDS, type SafetyRecord, type EntityId,
 } from '@/pages/compliance/safety-software-catalog.data';
 import {
-    useComplianceData, instancesOf, CARRIER_SUBJECT,
-    type DocVersion, type DataDocFile, type MonitoringConfig, type MonitorBasis,
+    useComplianceData, instancesOf, CARRIER_SUBJECT, emptyEntry,
+    type DocVersion, type DataDocFile, type MonitoringConfig, type MonitorBasis, type RecordDataEntry,
 } from '@/pages/compliance/compliance-data-store';
+import { buildSampleEntry } from '@/pages/compliance/DefaultComplianceDataPage';
+import { useCustomSafetyRecords } from '@/pages/compliance/safety-custom-records.data';
 import { useMonitoringActions, type MonitoringAction, type MonitoringActionType } from '@/pages/compliance/monitoring-actions.data';
+import { useMonitoringRouting, useMonitoringResponses, resolveRouting, activeStageDay, stageState, DEFAULT_REMINDERS, type ResolvedRouting, type AlertResponse } from '@/pages/compliance/monitoring-routing.data';
 import { getAccountById } from '@/pages/accounts/accounts.data';
 import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
 import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
@@ -72,13 +75,30 @@ const PRIORITY_META: Record<PriorityLevel, { label: string; tone: string; dot: s
     medium: { label: 'Medium', tone: 'border-blue-200 bg-blue-50 text-blue-700', dot: 'bg-blue-500', bar: 'bg-blue-500' },
     low: { label: 'Low', tone: 'border-slate-200 bg-slate-50 text-slate-600', dot: 'bg-slate-400', bar: 'bg-slate-400' },
 };
-function priorityForDays(d: number): PriorityLevel {
+/**
+ * Reminder-aware priority. Instead of arbitrary global day cutoffs, severity escalates relative
+ * to the record's OWN monitoring reminders (e.g. [90,60,30]): critical inside the final reminder
+ * window, high while any reminder is firing, then upcoming / scheduled. Falls back to 7/30 when a
+ * record has no reminders configured.
+ */
+function priorityFor(d: number, reminders: number[]): PriorityLevel {
     if (d < 0) return 'overdue';
-    if (d <= 7) return 'critical';
-    if (d <= 30) return 'high';
-    if (d <= 90) return 'medium';
+    const valid = reminders.filter(r => r > 0);
+    const near = valid.length ? Math.min(...valid) : 7;   // nearest reminder to the due date (smallest lead)
+    const far = valid.length ? Math.max(...valid) : 30;   // earliest reminder (largest lead)
+    if (d <= near) return 'critical';
+    if (d <= far) return 'high';
+    if (d <= far + 90) return 'medium';
     return 'low';
 }
+/** Human explanation of each level for the "How priority works" legend. */
+const PRIORITY_LEGEND: { level: PriorityLevel; when: string }[] = [
+    { level: 'overdue', when: 'Past its due date — action needed now.' },
+    { level: 'critical', when: 'Inside the record’s final reminder window (the nearest reminder has fired).' },
+    { level: 'high', when: 'A reminder is actively firing — due within the earliest reminder lead.' },
+    { level: 'medium', when: 'Upcoming — due within ~90 days after the reminder window.' },
+    { level: 'low', when: 'Scheduled further out — nothing to do yet.' },
+];
 function priorityForStatus(status: string): PriorityLevel {
     const s = status.toLowerCase();
     if (/expired|incomplete|inactive/.test(s)) return 'high';
@@ -113,18 +133,20 @@ const TYPE_META: Record<AlertType, { label: string; Icon: typeof BellRing; tone:
 };
 
 // ── List columns (show/hide via the Columns dropdown) ─────────────────
-type ColId = 'priority' | 'type' | 'monitors' | 'due' | 'assignee' | 'reminders' | 'channels' | 'nextAlert';
+type ColId = 'priority' | 'type' | 'monitors' | 'due' | 'assignee' | 'notified' | 'reminders' | 'channels' | 'nextAlert';
 const COLUMNS: { id: ColId; label: string }[] = [
     { id: 'priority', label: 'Priority' },
     { id: 'type', label: 'Type' },
     { id: 'monitors', label: 'Monitors' },
     { id: 'due', label: 'Due / Status' },
     { id: 'assignee', label: 'Assigned to' },
+    { id: 'notified', label: 'Notified' },
     { id: 'reminders', label: 'Reminders' },
     { id: 'channels', label: 'Channels' },
     { id: 'nextAlert', label: 'Next alert' },
 ];
-const DEFAULT_COLS: ColId[] = ['priority', 'type', 'monitors', 'due', 'assignee', 'nextAlert'];
+// Keep the default list lean — the essentials only. Everything else stays one click away in Columns.
+const DEFAULT_COLS: ColId[] = ['priority', 'due', 'notified'];
 
 /** Convert any stored data: URL to a blob URL before opening (browsers block data: navigation); real file URLs open directly. */
 function openFile(f: DataDocFile) {
@@ -200,10 +222,20 @@ function nextAlert(date: string, d: number | null, reminders: number[]): string 
 
 type SortKey = 'date' | 'priority';
 
-export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { accountId?: string; onNavigate?: (path: string) => void }) {
+// A driver / asset the roster view lists.
+interface RosterSubj { id: string; label: string; sub?: string; initials?: string }
+
+export function DefaultComplianceMonitoringPage({ accountId, onNavigate, embedded, lockSubject }: {
+    accountId?: string;
+    onNavigate?: (path: string) => void;
+    /** Embedded in an entity detail tab — hides the full-page header/chrome and page background. */
+    embedded?: boolean;
+    /** Lock the whole page to a single subject (asset/driver) — hides entity scope tabs + the roster switch. */
+    lockSubject?: { entity: EntityId; subjectId: string; label: string };
+}) {
     const account = accountId ? getAccountById(accountId) : undefined;
     const carrierName = account ? (account.dbaName || account.legalName) : 'the selected carrier';
-    const { acct, all, getEntry, setEntry } = useComplianceData(accountId);
+    const { acct, all, getEntry, setEntry, setEntries } = useComplianceData(accountId);
     const { actions, log } = useMonitoringActions(acct);
     const assets = useMemo(() => getAssetsForAccount(acct), [acct]);
     const drivers = useMemo(() => getDriversForAccount(acct), [acct]);
@@ -215,6 +247,37 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
     const currentUserName = currentUser?.name ?? 'You';
     const assignableUsers = useMemo<AppUser[]>(() => APP_USERS.filter(u =>
         u.status === 'Active' && (u.role === 'super-admin' || (getManagedAccountIds(u) ?? []).includes(acct))), [acct]);
+    // Routing rules resolve the "Notified" column; seed a fresh carrier from its own users.
+    // Reminders come from EACH record's own Monitoring & Notifications config (per-record), not a
+    // carrier-wide schedule — so Reminders / Next alert / priority / stages follow that record.
+    // `roles` = Simple-mode notification roles (additive to the Advanced rules).
+    const { rules: routingRules, roles: routingRoles } = useMonitoringRouting(accountId, assignableUsers);
+    // A single response per alert — set when its record is actually updated (new date / status /
+    // document) via Take action. One response flips the alert green.
+    const { responses, markResponded } = useMonitoringResponses(accountId);
+    // Records this carrier can alert on = system defaults + this carrier's CUSTOM records, so custom
+    // records (e.g. "Business License") also surface as alerts and deep-link back to their detail page.
+    const { records: customRecords } = useCustomSafetyRecords(accountId);
+    // Custom records first so, when seeding sample data, they land on the low (monitored) sample modes.
+    const allRecords = useMemo(() => [...customRecords, ...SAFETY_RECORDS], [customRecords]);
+    const recordsById = useMemo(() => {
+        const m = new Map<string, SafetyRecord>();
+        for (const r of allRecords) m.set(r.id, r);
+        return m;
+    }, [allRecords]);
+
+    // "Load sample data" — populate the compliance-data store with monitored records across the
+    // carrier + every asset & driver (reuses the Default C&D sample builder), so this page has alerts to test.
+    const seedSampleData = () => {
+        const items: { subjectId: string; recordId: string; entry: RecordDataEntry }[] = [];
+        const push = (subjectId: string, entity: EntityId) =>
+            allRecords.filter(r => r.entity === entity).forEach((r, i) =>
+                items.push({ subjectId, recordId: r.id, entry: buildSampleEntry(r, i) ?? emptyEntry() }));
+        push(CARRIER_SUBJECT, 'Carrier');
+        for (const a of assets) push(a.id, 'Asset');
+        for (const d of drivers) push(d.id, 'Driver');
+        setEntries(items);
+    };
 
     const [tab, setTab] = useState<'Dashboard' | 'Calendar' | 'Activity'>('Dashboard');
     const [actionAlert, setActionAlert] = useState<Alert | null>(null);
@@ -223,10 +286,24 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
     const [priorityFilter, setPriorityFilter] = useState<'all' | PriorityLevel>('all');
     const [typeFilter, setTypeFilter] = useState<'all' | AlertType>('all');
     const [sortKey, setSortKey] = useState<SortKey>('date');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc'); // asc = most urgent / soonest first
+    const [pageSize, setPageSize] = useState(25);
+    const [page, setPage] = useState(1);
+    // Driver/Asset scopes: flat "Records" (alerts) view vs a per-subject roster. subjectFilter drills into one subject.
+    const [subView, setSubView] = useState<'records' | 'roster'>('records');
+    const [subjectFilter, setSubjectFilter] = useState<{ id: string; label: string } | null>(null);
     const [visibleCols, setVisibleCols] = useState<Set<ColId>>(() => new Set(DEFAULT_COLS));
     const toggleCol = (id: ColId) => setVisibleCols(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    // Click a sortable header: toggle direction if it's the active key, else switch to it (ascending).
+    const sortBy = (key: SortKey) => { if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc')); else { setSortKey(key); setSortDir('asc'); } };
+    const changeEntity = (e: 'all' | EntityId) => { setEntityFilter(e); setSubView('records'); setSubjectFilter(null); };
+    const changeSubView = (v: 'records' | 'roster') => { setSubView(v); setSubjectFilter(null); };
 
-    // Deep-link to the linked record in Default Compliances & Documents (opens its Manage modal there).
+    // Per-entity subject lists for the roster view.
+    const driverSubjects = useMemo<RosterSubj[]>(() => drivers.map(d => ({ id: d.id, label: d.name, sub: d.driverType ?? undefined, initials: d.avatarInitials })), [drivers]);
+    const assetSubjects = useMemo<RosterSubj[]>(() => assets.map(a => ({ id: a.id, label: a.unitNumber, sub: `${a.make} ${a.model}` })), [assets]);
+
+    // Deep-link to the linked record in Default Compliances & Documents (opens its detail page there).
     const openLinked = (a: Alert) => {
         try { localStorage.setItem('dcd-focus', JSON.stringify({ acct, entity: a.entity, subjectId: a.subjectId, recordId: a.record.id })); } catch { /* ignore */ }
         onNavigate?.('/default-compliance-documents');
@@ -248,8 +325,9 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
             const sep = rest.indexOf('::');
             if (sep < 0) continue;
             const subjectId = rest.slice(0, sep);
+            if (lockSubject && subjectId !== lockSubject.subjectId) continue; // embedded per-subject view
             const recordId = rest.slice(sep + 2);
-            const record = SAFETY_RECORDS.find(r => r.id === recordId);
+            const record = recordsById.get(recordId);
             if (!record) continue;
             const subjectLabel = labelForSubject(record.entity, subjectId);
 
@@ -265,21 +343,24 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
                 const date = isStatus ? '' : monitoredDateFor(cfg, v);
                 if (!isStatus && !date) continue; // enabled but no date captured → nothing to alert on yet
                 const d = date ? daysUntil(date) : null;
-                const priority = isStatus ? priorityForStatus(v.status) : priorityForDays(d ?? 9999);
+                // Reminders / next-alert / priority follow THIS record's own reminder checkboxes
+                // (Monitoring & Notifications panel), falling back to the standard 90/30/7 when unset.
+                const recReminders = (cfg.reminders && cfg.reminders.length ? cfg.reminders : DEFAULT_REMINDERS).slice().sort((a, b) => b - a);
+                const priority = isStatus ? priorityForStatus(v.status) : priorityFor(d ?? 9999, recReminders);
                 out.push({
                     id: `${key}::${instanceId ?? ''}::${v.id}`,
                     record, entity: record.entity, subjectId, subjectLabel, instanceName, instanceId,
                     basis: cfg.basis, type: typeForBasis(cfg.basis), isStatus, recurrence: cfg.recurrence || 'annually',
                     date, daysUntil: d, status: v.status, numberValue: v.numberValue,
-                    priority, reminders: [...cfg.reminders].sort((a, b) => b - a),
-                    nextAlertDate: nextAlert(date, d, cfg.reminders),
+                    priority, reminders: recReminders,
+                    nextAlertDate: nextAlert(date, d, recReminders),
                     channels: cfg.channels, assignee: cfg.assignee, file: v.files[0] ?? null,
                 });
             }
         }
         return out;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [all, acct, assets, drivers, carrierName]);
+    }, [all, acct, assets, drivers, carrierName, lockSubject, recordsById]);
 
     // Per-entity counts (drive the Carrier / Drivers / Assets scope tabs).
     const entityCounts = useMemo(() => {
@@ -340,11 +421,13 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
             ? { ...v, monitoring: { ...v.monitoring, customDate: newDate } }
             : a.basis === 'issue' ? { ...v, issueDate: newDate } : { ...v, expiryDate: newDate }));
         log({ ...logBase(a), type: 'renewed', detail: `Next ${BASIS_LABEL[a.basis].toLowerCase()} set to ${fmtNice(newDate)}` });
+        markResponded(a.id, 'date', `date set to ${fmtNice(newDate)}`, currentUserName);
         setActionAlert(null);
     };
     const updateStatus = (a: Alert, status: string) => {
         applyToCurrent(a, v => ({ ...v, status }));
         log({ ...logBase(a), type: 'status', detail: `Status updated to “${status}”` });
+        markResponded(a.id, 'status', `status set to “${status}”`, currentUserName);
         setActionAlert(null);
     };
     const removeMonitoring = (a: Alert) => {
@@ -373,6 +456,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         return scopedAlerts.filter(a => {
+            if (subjectFilter && a.subjectId !== subjectFilter.id) return false;
             if (priorityFilter !== 'all' && a.priority !== priorityFilter) return false;
             if (typeFilter !== 'all' && a.type !== typeFilter) return false;
             if (q) {
@@ -381,7 +465,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
             }
             return true;
         });
-    }, [scopedAlerts, search, priorityFilter, typeFilter]);
+    }, [scopedAlerts, search, priorityFilter, typeFilter, subjectFilter]);
 
     const sorted = useMemo(() => {
         const arr = [...filtered];
@@ -392,16 +476,31 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
             arr.sort((a, b) => (a.daysUntil ?? Infinity) - (b.daysUntil ?? Infinity)
                 || PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority));
         }
+        if (sortDir === 'desc') arr.reverse();
         return arr;
-    }, [filtered, sortKey]);
+    }, [filtered, sortKey, sortDir]);
+
+    // Pagination (system list pattern — mirrors SubjectRoster / AllRecordsView on the Default C&D page).
+    const total = sorted.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const pageRows = sorted.slice(start, start + pageSize);
+    useEffect(() => { setPage(1); }, [search, entityFilter, priorityFilter, typeFilter, sortKey, sortDir, pageSize, subjectFilter, subView]);
+
+    // Records | Drivers/Assets view switch is only offered on the Driver & Asset scopes.
+    const showSwitch = entityFilter === 'Driver' || entityFilter === 'Asset';
+    const rosterSubjects = entityFilter === 'Driver' ? driverSubjects : assetSubjects;
+    const isRoster = showSwitch && subView === 'roster';
 
     const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
 
     return (
-        <div className="flex-1 bg-slate-50 min-h-screen">
-            {/* Header */}
-            <div className="bg-white border-b border-slate-200">
-                <div className="px-8 pt-5 flex items-start justify-between gap-4 flex-wrap">
+        <div className={embedded ? '' : 'flex-1 bg-slate-50 min-h-screen'}>
+            {/* Header — hidden in embedded (entity-detail tab) mode */}
+            <div className={embedded ? '' : 'bg-white border-b border-slate-200'}>
+                {!embedded && (
+                <div className="px-4 sm:px-8 pt-5 flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-start gap-3 min-w-0">
                         <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                             <BellRing size={20} />
@@ -413,13 +512,28 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
                             </p>
                         </div>
                     </div>
-                    {account && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
-                            <Building2 size={15} /> {carrierName}
-                        </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {account && (
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+                                <Building2 size={15} /> {carrierName}
+                            </span>
+                        )}
+                        <button type="button" onClick={seedSampleData}
+                            title="Populate the carrier plus every asset & driver with monitored sample records so you can test this page"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                            <Sparkles size={15} className="text-amber-500" /> Load sample data
+                        </button>
+                        {onNavigate && (
+                            <button type="button" onClick={() => onNavigate('/settings/default-compliance-monitoring')}
+                                title="Manage which notifications go to whom"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                                <Sliders size={15} /> Notification routing
+                            </button>
+                        )}
+                    </div>
                 </div>
-                <div className="px-8 mt-4">
+                )}
+                <div className={embedded ? '' : 'px-4 sm:px-8 mt-4'}>
                     <SubTabs
                         tabs={[
                             { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard, count: alerts.length },
@@ -433,7 +547,7 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
                 </div>
             </div>
 
-            <div className="px-8 py-6 space-y-5">
+            <div className={embedded ? 'pt-5 space-y-5' : 'px-4 sm:px-8 py-6 space-y-5'}>
                 {tab === 'Dashboard' ? (
                 <>
                 {/* Compliance health meter */}
@@ -449,8 +563,23 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
 
                 {/* List card */}
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                    {/* Entity scope tabs — atop the list, like the category tabs on Default Compliances & Documents */}
-                    <EntityScopeTabs value={entityFilter} counts={entityCounts} onChange={setEntityFilter} />
+                    {/* Entity scope tabs — atop the list, like the category tabs on Default Compliances & Documents.
+                        Driver/Asset scopes also get a Records | Drivers/Assets view switch on the right.
+                        Hidden when locked to a single subject (embedded per-subject monitoring). */}
+                    {!lockSubject && (
+                    <EntityScopeTabs value={entityFilter} counts={entityCounts} onChange={changeEntity}
+                        right={showSwitch ? (
+                            <SubViewSwitch value={subView} onChange={changeSubView}
+                                label={entityFilter === 'Driver' ? 'Drivers' : 'Assets'} Icon={entityFilter === 'Driver' ? User : Truck}
+                                recordCount={scopedAlerts.length} subjectCount={rosterSubjects.length} />
+                        ) : undefined} />
+                    )}
+
+                    {isRoster ? (
+                        <SubjectAlertRoster entity={entityFilter as EntityId} subjects={rosterSubjects} alerts={scopedAlerts}
+                            onOpen={(id, label) => { setSubjectFilter({ id, label }); setSubView('records'); }} />
+                    ) : (
+                    <>
                     {/* Toolbar */}
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
                         <div className="relative flex-1 min-w-[220px] max-w-sm">
@@ -458,6 +587,12 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
                             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search records, subject, number…"
                                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
                         </div>
+                        {subjectFilter && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[12px] font-semibold text-blue-700 whitespace-nowrap">
+                                {subjectFilter.label}
+                                <button type="button" onClick={() => setSubjectFilter(null)} className="text-blue-400 hover:text-blue-700"><X size={13} /></button>
+                            </span>
+                        )}
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Filter size={13} /></span>
                         <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value as 'all' | PriorityLevel)} className={selectCls} title="Filter by priority">
                             <option value="all">All priorities</option>
@@ -478,36 +613,75 @@ export function DefaultComplianceMonitoringPage({ accountId, onNavigate }: { acc
                     </div>
 
                     {sorted.length === 0 ? (
-                        <EmptyState hasAny={alerts.length > 0} onNavigate={onNavigate} />
+                        <EmptyState hasAny={alerts.length > 0} onNavigate={onNavigate} onLoadSample={seedSampleData} />
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[1180px]">
+                        <>
+                        {/* Mobile / narrow: stacked cards — column-driven, same as the table */}
+                        <div className="lg:hidden divide-y divide-slate-100">
+                            {pageRows.map(a => <AlertCard key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} />)}
+                        </div>
+                        {/* Desktop: full table */}
+                        <div className="hidden lg:block overflow-x-auto">
+                            <table className="w-full min-w-[820px]">
                                 <thead className="border-b border-slate-200 bg-slate-50/50">
                                     <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
                                         <th className="px-4 py-2.5 pl-5">Record &amp; Subject</th>
-                                        {COLUMNS.filter(c => visibleCols.has(c.id)).map(c => (
-                                            <th key={c.id} className="px-4 py-2.5 whitespace-nowrap">{c.label}</th>
-                                        ))}
+                                        {COLUMNS.filter(c => visibleCols.has(c.id)).map(c => {
+                                            const sortForCol: SortKey | null = c.id === 'priority' ? 'priority' : c.id === 'due' ? 'date' : null;
+                                            if (!sortForCol) return <th key={c.id} className="px-4 py-2.5 whitespace-nowrap">{c.label}</th>;
+                                            const active = sortKey === sortForCol;
+                                            return (
+                                                <th key={c.id} className="px-4 py-2.5 whitespace-nowrap">
+                                                    <button type="button" onClick={() => sortBy(sortForCol)}
+                                                        className={cn('inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700', active ? 'text-blue-600' : 'text-slate-500')}>
+                                                        {c.label}
+                                                        {active ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronsUpDown size={12} className="text-slate-300" />}
+                                                    </button>
+                                                </th>
+                                            );
+                                        })}
                                         <th className="px-4 py-2.5 pr-5 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {sorted.map(a => <AlertRow key={a.id} a={a} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} />)}
+                                    {pageRows.map(a => <AlertRow key={a.id} a={a} routing={resolveRouting(routingRules, a, a.reminders, routingRoles)} response={responses[a.id]} visibleCols={visibleCols} onOpenLinked={onNavigate ? openLinked : undefined} onTakeAction={setActionAlert} />)}
                                 </tbody>
                             </table>
                         </div>
+                        </>
                     )}
 
-                    {sorted.length > 0 && (
-                        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap text-[12px] text-slate-500">
-                            <span className="tabular-nums">{sorted.length} of {scopedAlerts.length} monitored item{scopedAlerts.length === 1 ? '' : 's'}</span>
-                            {onNavigate && (
-                                <button type="button" onClick={() => onNavigate('/default-compliance-documents')}
-                                    className="inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-700">
-                                    Manage in Default Compliances &amp; Documents <ArrowRight size={13} />
+                    {total > 0 && (
+                        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
+                            <div className="flex items-center gap-3 text-[12px] text-slate-500 flex-wrap">
+                                <label className="flex items-center gap-1.5">
+                                    Rows per page
+                                    <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                        {[10, 25, 50, 100].map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </label>
+                                <span className="tabular-nums">{total === 0 ? '0' : `${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
+                                {onNavigate && (
+                                    <button type="button" onClick={() => onNavigate('/default-compliance-documents')}
+                                        className="hidden sm:inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-700">
+                                        Manage in Default Compliances &amp; Documents <ArrowRight size={13} />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
+                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <ChevronLeft size={14} /> Prev
                                 </button>
-                            )}
+                                <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
+                                <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
+                                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    Next <ChevronRight size={14} />
+                                </button>
+                            </div>
                         </div>
+                    )}
+                    </>
                     )}
                 </div>
                 </>
@@ -572,22 +746,52 @@ const SCOPE_TABS: { id: 'all' | EntityId; label: string; Icon: typeof Layers }[]
     { id: 'Driver', label: 'Drivers', Icon: User },
     { id: 'Asset', label: 'Assets', Icon: Truck },
 ];
-function EntityScopeTabs({ value, counts, onChange }: {
+function EntityScopeTabs({ value, counts, onChange, right }: {
     value: 'all' | EntityId;
     counts: Record<'all' | EntityId, number>;
     onChange: (v: 'all' | EntityId) => void;
+    right?: ReactNode;
 }) {
     return (
-        <div className="flex items-center gap-1 px-4 pt-3 border-b border-slate-100 overflow-x-auto no-scrollbar">
-            {SCOPE_TABS.map(t => {
-                const active = value === t.id;
+        <div className="flex items-end justify-between gap-2 px-4 pt-3 border-b border-slate-100">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                {SCOPE_TABS.map(t => {
+                    const active = value === t.id;
+                    return (
+                        <button key={t.id} type="button" onClick={() => onChange(t.id)}
+                            className={cn('inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+                                active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
+                            <t.Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                            {t.label}
+                            <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>{counts[t.id]}</span>
+                        </button>
+                    );
+                })}
+            </div>
+            {right && <div className="shrink-0 pb-1.5">{right}</div>}
+        </div>
+    );
+}
+
+// ── Records | Drivers/Assets view switch (mirrors the SubViewSwitch on the Default C&D page) ──
+function SubViewSwitch({ value, onChange, label, Icon, recordCount, subjectCount }: {
+    value: 'records' | 'roster'; onChange: (v: 'records' | 'roster') => void;
+    label: string; Icon: typeof Truck; recordCount: number; subjectCount: number;
+}) {
+    const opts = [
+        { id: 'records' as const, label: 'Records', Icon: Layers, count: recordCount },
+        { id: 'roster' as const, label, Icon, count: subjectCount },
+    ];
+    return (
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/70 p-0.5">
+            {opts.map(o => {
+                const active = value === o.id;
                 return (
-                    <button key={t.id} type="button" onClick={() => onChange(t.id)}
-                        className={cn('inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors',
-                            active ? 'text-blue-600 border-blue-600' : 'text-slate-500 hover:text-slate-800 border-transparent')}>
-                        <t.Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                        {t.label}
-                        <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums', active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500')}>{counts[t.id]}</span>
+                    <button key={o.id} type="button" onClick={() => onChange(o.id)}
+                        className={cn('inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-colors',
+                            active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
+                        <o.Icon size={13} className={active ? 'text-blue-600' : 'text-slate-400'} /> {o.label}
+                        <span className={cn('inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums', active ? 'bg-blue-50 text-blue-600' : 'bg-slate-200/70 text-slate-500')}>{o.count}</span>
                     </button>
                 );
             })}
@@ -595,17 +799,255 @@ function EntityScopeTabs({ value, counts, onChange }: {
     );
 }
 
+// ── Subject roster (per-driver / per-asset monitoring summary) ────────
+interface RosterRow { subject: RosterSubj; monitored: number; overdue: number; dueSoon: number; onTrack: number; worst: PriorityLevel | null }
+function CountPill({ n, tone }: { n: number; tone: string }) {
+    if (n === 0) return <span className="text-[12px] text-slate-300">—</span>;
+    return <span className={cn('inline-flex min-w-[22px] items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums', tone)}>{n}</span>;
+}
+function SubjectAlertRoster({ entity, subjects, alerts, onOpen }: {
+    entity: EntityId; subjects: RosterSubj[]; alerts: Alert[]; onOpen: (id: string, label: string) => void;
+}) {
+    const [search, setSearch] = useState('');
+    const [sortKey, setSortKey] = useState<'priority' | 'name' | 'monitored'>('priority');
+    const [pageSize, setPageSize] = useState(25);
+    const [page, setPage] = useState(1);
+    useEffect(() => { setPage(1); }, [search, sortKey, pageSize]);
+
+    const bySubject = useMemo(() => {
+        const m = new Map<string, Alert[]>();
+        for (const a of alerts) { const arr = m.get(a.subjectId); if (arr) arr.push(a); else m.set(a.subjectId, [a]); }
+        return m;
+    }, [alerts]);
+
+    const rows = useMemo<RosterRow[]>(() => subjects.map(s => {
+        const list = bySubject.get(s.id) ?? [];
+        let overdue = 0, dueSoon = 0, onTrack = 0, worstIdx = 99;
+        for (const a of list) {
+            if (a.priority === 'overdue') overdue++;
+            else if (a.priority === 'critical' || a.priority === 'high') dueSoon++;
+            else onTrack++;
+            worstIdx = Math.min(worstIdx, PRIORITY_ORDER.indexOf(a.priority));
+        }
+        return { subject: s, monitored: list.length, overdue, dueSoon, onTrack, worst: worstIdx < 99 ? PRIORITY_ORDER[worstIdx] : null };
+    }), [subjects, bySubject]);
+
+    const kpis = useMemo(() => {
+        let withOverdue = 0, allClear = 0, monitored = 0;
+        for (const r of rows) { monitored += r.monitored; if (r.overdue > 0) withOverdue++; if (r.monitored > 0 && r.overdue === 0 && r.dueSoon === 0) allClear++; }
+        return { total: rows.length, withOverdue, allClear, monitored };
+    }, [rows]);
+
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return q ? rows.filter(r => `${r.subject.label} ${r.subject.sub ?? ''}`.toLowerCase().includes(q)) : rows;
+    }, [rows, search]);
+    const sorted = useMemo(() => {
+        const arr = [...filtered];
+        if (sortKey === 'name') arr.sort((a, b) => a.subject.label.localeCompare(b.subject.label));
+        else if (sortKey === 'monitored') arr.sort((a, b) => b.monitored - a.monitored || a.subject.label.localeCompare(b.subject.label));
+        else arr.sort((a, b) => (b.overdue - a.overdue) || (b.dueSoon - a.dueSoon) || (b.monitored - a.monitored) || a.subject.label.localeCompare(b.subject.label));
+        return arr;
+    }, [filtered, sortKey]);
+
+    const total = sorted.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    const pageRows = sorted.slice(start, start + pageSize);
+
+    const noun = entity === 'Driver' ? 'Drivers' : 'Assets';
+    const SubjIcon = entity === 'Driver' ? User : Truck;
+    const selectCls = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30';
+
+    return (
+        <div>
+            {/* KPI tiles */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-4">
+                <KpiTile label={noun} value={kpis.total} Icon={SubjIcon} accent="blue" />
+                <KpiTile label="With overdue" value={kpis.withOverdue} Icon={AlertTriangle} accent="rose" />
+                <KpiTile label="All clear" value={kpis.allClear} Icon={Check} accent="emerald" />
+                <KpiTile label="Monitored items" value={kpis.monitored} Icon={BellRing} accent="amber" />
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 px-4 pb-3 border-b border-slate-100 flex-wrap">
+                <div className="relative flex-1 min-w-[220px] max-w-sm">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${noun.toLowerCase()}…`}
+                        className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                </div>
+                <div className="ml-auto inline-flex items-center gap-1.5 text-[12px] text-slate-500">
+                    <ChevronsUpDown size={13} className="text-slate-400" /> Sort
+                    <select value={sortKey} onChange={e => setSortKey(e.target.value as 'priority' | 'name' | 'monitored')} className={selectCls} title="Sort by">
+                        <option value="priority">Most urgent</option>
+                        <option value="monitored">Most monitored</option>
+                        <option value="name">Name (A–Z)</option>
+                    </select>
+                </div>
+            </div>
+
+            {total === 0 ? (
+                <div className="px-6 py-14 text-center">
+                    <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><SubjIcon size={22} /></div>
+                    <h3 className="text-base font-bold text-slate-800">No {noun.toLowerCase()} to show</h3>
+                    <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">This carrier has no {noun.toLowerCase()} matching your search.</p>
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[820px]">
+                        <thead className="border-b border-slate-200 bg-slate-50/50">
+                            <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                <th className="px-4 py-2.5 pl-5">{noun.slice(0, -1)}</th>
+                                <th className="px-4 py-2.5 whitespace-nowrap">Monitored</th>
+                                <th className="px-4 py-2.5 whitespace-nowrap">Overdue</th>
+                                <th className="px-4 py-2.5 whitespace-nowrap">Due soon</th>
+                                <th className="px-4 py-2.5 whitespace-nowrap">On track</th>
+                                <th className="px-4 py-2.5 whitespace-nowrap">Status</th>
+                                <th className="px-4 py-2.5 pr-5 text-right">View</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {pageRows.map(r => (
+                                <tr key={r.subject.id} onClick={() => onOpen(r.subject.id, r.subject.label)}
+                                    className="border-b border-slate-100 hover:bg-slate-50/60 cursor-pointer">
+                                    <td className="px-4 py-3 pl-5">
+                                        <div className="flex items-center gap-2.5 min-w-[160px]">
+                                            {r.subject.initials
+                                                ? <div className="h-8 w-8 rounded-full bg-blue-50 text-blue-600 text-[11px] font-bold flex items-center justify-center shrink-0">{r.subject.initials}</div>
+                                                : <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><SubjIcon size={15} /></div>}
+                                            <div className="min-w-0">
+                                                <div className="text-[13px] font-semibold text-slate-800 truncate">{r.subject.label}</div>
+                                                {r.subject.sub && <div className="text-[11px] text-slate-400 truncate">{r.subject.sub}</div>}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-[13px] font-semibold text-slate-700 tabular-nums">{r.monitored}</td>
+                                    <td className="px-4 py-3"><CountPill n={r.overdue} tone="bg-rose-50 text-rose-700" /></td>
+                                    <td className="px-4 py-3"><CountPill n={r.dueSoon} tone="bg-amber-50 text-amber-700" /></td>
+                                    <td className="px-4 py-3"><CountPill n={r.onTrack} tone="bg-emerald-50 text-emerald-700" /></td>
+                                    <td className="px-4 py-3">
+                                        {r.monitored === 0
+                                            ? <span className="text-[11px] text-slate-400">Not monitored</span>
+                                            : r.overdue === 0 && r.dueSoon === 0
+                                                ? <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><Check size={11} /> All clear</span>
+                                                : r.worst && <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', PRIORITY_META[r.worst].tone)}><span className={cn('h-1.5 w-1.5 rounded-full', PRIORITY_META[r.worst].dot)} /> {PRIORITY_META[r.worst].label}</span>}
+                                    </td>
+                                    <td className="px-4 py-3 pr-5 text-right"><ChevronRight size={16} className="inline text-slate-300" /></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {total > 0 && (
+                <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 flex-wrap">
+                    <div className="flex items-center gap-3 text-[12px] text-slate-500">
+                        <label className="flex items-center gap-1.5">
+                            Rows per page
+                            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                                {[10, 25, 50, 100].map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </label>
+                        <span className="tabular-nums">{`${start + 1}–${Math.min(start + pageSize, total)}`} of {total}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button type="button" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <ChevronLeft size={14} /> Prev
+                        </button>
+                        <span className="px-2 text-[12px] text-slate-600 tabular-nums">Page {safePage} of {totalPages}</span>
+                        <button type="button" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}
+                            className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                            Next <ChevronRight size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Reminder-stage chips ──────────────────────────────────────────────
+// Renders the schedule (90d/30d/7d) with the CURRENT stage solid-blue, already-fired stages
+// light-blue, and not-yet-reached stages a muted outline — so it's obvious which reminder is live.
+function StageChips({ reminders, daysUntil, isStatus, size = 'sm' }: { reminders: number[]; daysUntil: number | null; isStatus: boolean; size?: 'sm' | 'md' }) {
+    if (isStatus) return <span className="text-[11px] text-slate-400">On change</span>;
+    if (!reminders.length) return <span className="text-[11px] text-slate-400">—</span>;
+    const activeDay = activeStageDay(daysUntil, reminders);
+    const desc = [...reminders].sort((x, y) => y - x);
+    const pad = size === 'md' ? 'px-2 py-0.5 text-[11px]' : 'px-1.5 py-0.5 text-[10px]';
+    return (
+        <div className="flex flex-wrap items-center gap-1">
+            {desc.map(r => {
+                const st = stageState(r, daysUntil, activeDay);
+                return (
+                    <span key={r} title={st === 'active' ? 'Current stage — notifying now' : st === 'past' ? 'Already sent' : 'Upcoming'}
+                        className={cn('inline-flex items-center rounded border font-semibold', pad,
+                            st === 'active' ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                                : st === 'past' ? 'bg-blue-50 border-blue-200 text-blue-600'
+                                    : 'bg-slate-50 border-slate-200 text-slate-400')}>
+                        {reminderLabel(r)}
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
+/** Small "stage" caption tying the Notified list to the active reminder (only when escalation is on). */
+function StageCaption({ routing }: { routing: ResolvedRouting }) {
+    if (!routing.staged || routing.activeDay === null) return null;
+    return <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600"><BellRing size={10} /> at {reminderLabel(routing.activeDay)} stage</span>;
+}
+
+// ── Notified + response status ────────────────────────────────────────
+// The recipients an alert routes to (from Settings ▸ roles) + a single RESPONSE badge: green once the
+// record has been updated (date / status / document) via Take action, amber while still awaiting.
+const RESPONSE_KIND_LABEL: Record<AlertResponse['kind'], string> = { date: 'date updated', document: 'document added', status: 'status updated' };
+function NotifiedRecipients({ recipients, response, max = 3 }: {
+    recipients: ResolvedRouting['recipients'];
+    response?: AlertResponse;
+    max?: number;
+}) {
+    if (recipients.length === 0) return <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><BellRing size={12} /> No route</span>;
+    return (
+        <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap gap-1">
+                {recipients.slice(0, max).map(r => <AssigneeChip key={r.id} assignee={{ id: r.id.replace(/^(user|driver):/, ''), name: r.name }} />)}
+                {recipients.length > max && (
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">+{recipients.length - max}</span>
+                )}
+            </div>
+            {response
+                ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600" title={response.detail}><Check size={11} /> Responded · {RESPONSE_KIND_LABEL[response.kind]}</span>
+                : <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600"><Clock size={11} /> Awaiting response</span>}
+        </div>
+    );
+}
+
 // ── Alert row (column-driven) ─────────────────────────────────────────
-function AlertRow({ a, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void }) {
+function AlertRow({ a, routing, response, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void }) {
     const EntityIcon = ENTITY_ICON[a.entity];
     const pm = PRIORITY_META[a.priority];
     const tm = TYPE_META[a.type];
     const has = (c: ColId) => visibleCols.has(c);
+    // One response (record updated via Take action) = resolved → tint the row green.
+    const responded = !!response;
     return (
-        <tr className="border-b border-slate-100 hover:bg-slate-50/50 align-top">
-            {/* Record & Subject (locked) */}
+        <tr className={cn('border-b align-top transition-colors', responded ? 'border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50' : 'border-slate-100 hover:bg-slate-50/50')}>
+            {/* Record & Subject (locked) — record name opens the record on the Default C&D page */}
             <td className="px-4 py-3.5 pl-5">
-                <div className="text-sm font-semibold text-slate-900">{a.record.recordName}</div>
+                {onOpenLinked ? (
+                    <button type="button" onClick={() => onOpenLinked(a)} title="Open this record in Default Compliances & Documents"
+                        className="group inline-flex items-center gap-1 text-left text-sm font-semibold text-slate-900 hover:text-blue-700">
+                        <span className="hover:underline">{a.record.recordName}</span>
+                        <ExternalLink size={12} className="text-slate-300 group-hover:text-blue-500 shrink-0" />
+                    </button>
+                ) : (
+                    <div className="text-sm font-semibold text-slate-900">{a.record.recordName}</div>
+                )}
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                     <span className="inline-flex items-center gap-1"><EntityIcon size={11} className="text-slate-400" /> {a.subjectLabel}</span>
                     {a.instanceName && <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">{a.instanceName}</span>}
@@ -650,8 +1092,8 @@ function AlertRow({ a, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; vi
                             <div className="mt-1 text-[10px] text-slate-400">Watching for change</div>
                         </div>
                     ) : (
-                        <div className="text-[12px]">
-                            <div className="font-semibold text-slate-800">{fmtNice(a.date)}</div>
+                        <div className="text-[12px] leading-tight">
+                            <div className="font-semibold text-slate-800 whitespace-nowrap">{fmtNice(a.date)}</div>
                             <DuePill d={a.daysUntil ?? 0} priority={a.priority} />
                         </div>
                     )}
@@ -665,16 +1107,24 @@ function AlertRow({ a, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; vi
                         : <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><UserPlus size={12} /> Unassigned</span>}
                 </td>
             )}
-            {/* Reminders */}
+            {/* Notified — who this alert routes to (from Settings ▸ roles) + response status */}
+            {has('notified') && (
+                <td className="px-4 py-3.5">
+                    <div className="flex flex-col gap-1 max-w-[230px]">
+                        <NotifiedRecipients recipients={routing.recipients} response={response} max={3} />
+                        {routing.recipients.length > 0 && ((routing.staged && routing.activeDay !== null) || routing.scoped) ? (
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <StageCaption routing={routing} />
+                                {routing.scoped && <span className="inline-flex items-center rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Specific</span>}
+                            </div>
+                        ) : null}
+                    </div>
+                </td>
+            )}
+            {/* Reminders — current stage solid, fired stages light, upcoming muted */}
             {has('reminders') && (
                 <td className="px-4 py-3.5">
-                    {a.isStatus ? <span className="text-[11px] text-slate-400">On change</span> : a.reminders.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-[150px]">
-                            {a.reminders.map(r => (
-                                <span key={r} className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{reminderLabel(r)}</span>
-                            ))}
-                        </div>
-                    ) : <span className="text-[11px] text-slate-400">—</span>}
+                    <div className="max-w-[160px]"><StageChips reminders={a.reminders} daysUntil={a.daysUntil} isStatus={a.isStatus} /></div>
                 </td>
             )}
             {/* Channels */}
@@ -699,13 +1149,19 @@ function AlertRow({ a, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; vi
                     ) : <span className="text-slate-400">—</span>}
                 </td>
             )}
-            {/* Actions — Take action (fix) · View document · Manage linked record */}
+            {/* Actions — Take action (fix) · Open record · View document */}
             <td className="px-4 py-3.5 pr-5">
                 <div className="flex items-center justify-end gap-1.5">
                     {onTakeAction && (
                         <button type="button" title="Take action — set next date / update status / remove" onClick={() => onTakeAction(a)}
                             className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 shadow-sm">
                             <Zap size={14} /> Take action
+                        </button>
+                    )}
+                    {onOpenLinked && (
+                        <button type="button" title="Open this record in Default Compliances & Documents" onClick={() => onOpenLinked(a)}
+                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[12px] font-semibold hover:bg-blue-100">
+                            <ExternalLink size={14} /> <span className="hidden xl:inline">Open</span>
                         </button>
                     )}
                     <button type="button" title={a.file?.url ? 'View document' : 'No document'} disabled={!a.file?.url}
@@ -715,22 +1171,116 @@ function AlertRow({ a, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; vi
                                 : 'border-slate-200 text-slate-300 cursor-not-allowed')}>
                         <Eye size={15} />
                     </button>
-                    {onOpenLinked && (
-                        <button type="button" title="Open the linked record in Default Compliances & Documents" onClick={() => onOpenLinked(a)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
-                            <ExternalLink size={15} />
-                        </button>
-                    )}
                 </div>
             </td>
         </tr>
     );
 }
 
+// ── Alert card (mobile / narrow screens — replaces the wide table row) ──
+// Column-driven, exactly like the table: only the columns selected in the Columns dropdown render.
+function AlertCard({ a, routing, response, visibleCols, onOpenLinked, onTakeAction }: { a: Alert; routing: ResolvedRouting; response?: AlertResponse; visibleCols: Set<ColId>; onOpenLinked?: (a: Alert) => void; onTakeAction?: (a: Alert) => void }) {
+    const EntityIcon = ENTITY_ICON[a.entity];
+    const pm = PRIORITY_META[a.priority];
+    const tm = TYPE_META[a.type];
+    const has = (c: ColId) => visibleCols.has(c);
+
+    const field = (id: string, label: string, node: ReactNode) => (
+        <div key={id} className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+            <div className="mt-0.5">{node}</div>
+        </div>
+    );
+    const fields: ReactNode[] = [];
+    if (has('type')) fields.push(field('type', 'Type', <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold', tm.tone)}><tm.Icon size={11} /> {tm.label}</span>));
+    if (has('monitors')) fields.push(field('monitors', 'Monitors', <span className="inline-flex items-center gap-1 text-[12px] font-medium text-slate-700">{a.isStatus ? <CircleDashed size={12} className="text-slate-400" /> : <CalendarClock size={12} className="text-slate-400" />} {BASIS_LABEL[a.basis]}</span>));
+    if (has('due')) fields.push(field('due', 'Due / Status', a.isStatus
+        ? <span className="text-[12px] font-medium text-slate-700">{a.status || '—'} <span className="text-slate-400">· watching</span></span>
+        : <div className="text-[12px]"><span className="font-semibold text-slate-800">{fmtNice(a.date)}</span> <DuePill d={a.daysUntil ?? 0} priority={a.priority} /></div>));
+    if (has('assignee')) fields.push(field('assignee', 'Assigned to', a.assignee ? <AssigneeChip assignee={a.assignee} /> : <span className="text-[11px] text-slate-400">Unassigned</span>));
+    if (has('notified')) fields.push(field('notified', 'Notified', (
+        <div className="flex flex-col gap-1">
+            <NotifiedRecipients recipients={routing.recipients} response={response} max={3} />
+            {routing.recipients.length > 0 && ((routing.staged && routing.activeDay !== null) || routing.scoped) ? (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <StageCaption routing={routing} />
+                    {routing.scoped && <span className="inline-flex items-center rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Specific</span>}
+                </div>
+            ) : null}
+        </div>
+    )));
+    if (has('reminders')) fields.push(field('reminders', 'Reminders', <StageChips reminders={a.reminders} daysUntil={a.daysUntil} isStatus={a.isStatus} />));
+    if (has('channels')) fields.push(field('channels', 'Channels', <div className="flex items-center gap-2 text-[11px] text-slate-500">{a.channels.email && <span className="inline-flex items-center gap-1"><Mail size={11} className="text-slate-400" /> Email</span>}{a.channels.inApp && <span className="inline-flex items-center gap-1"><Smartphone size={11} className="text-slate-400" /> In-App</span>}{!a.channels.email && !a.channels.inApp && <span className="text-slate-300">—</span>}</div>));
+    if (has('nextAlert')) fields.push(field('nextAlert', 'Next alert', a.isStatus
+        ? <span className="text-[12px] text-slate-500">On any change</span>
+        : a.daysUntil !== null && a.daysUntil < 0
+            ? <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-rose-600"><AlertTriangle size={12} /> Action needed</span>
+            : a.nextAlertDate ? <span className="text-[12px] text-slate-600">{fmtNice(a.nextAlertDate)}</span> : <span className="text-slate-400">—</span>));
+
+    const responded = !!response;
+    return (
+        <div className={cn('px-4 py-3.5 border-l-2 transition-colors', responded ? 'border-l-emerald-400 bg-emerald-50/50' : 'border-l-transparent')}>
+            <div className="flex items-start justify-between gap-2">
+                <button type="button" onClick={() => onOpenLinked?.(a)} disabled={!onOpenLinked} className="min-w-0 text-left">
+                    <div className="flex items-center gap-1 text-[14px] font-semibold text-slate-900">
+                        <span className="truncate">{a.record.recordName}</span>
+                        {onOpenLinked && <ExternalLink size={12} className="text-slate-300 shrink-0" />}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                        <span className="inline-flex items-center gap-1"><EntityIcon size={11} className="text-slate-400" /> {a.subjectLabel}</span>
+                        {a.instanceName && <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-1.5 py-0.5 font-semibold text-blue-600">{a.instanceName}</span>}
+                        {a.record.numberName && a.numberValue && <span className="text-slate-400">{a.record.numberName}: <span className="font-medium text-slate-600">{a.numberValue}</span></span>}
+                    </div>
+                </button>
+                {has('priority') && (
+                    <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap shrink-0', pm.tone)}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', pm.dot)} /> {pm.label}
+                    </span>
+                )}
+            </div>
+
+            {fields.length > 0 && (
+                <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2.5">{fields}</div>
+            )}
+
+            <div className="mt-3 flex items-center gap-2">
+                {onTakeAction && (
+                    <button type="button" onClick={() => onTakeAction(a)}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm">
+                        <Zap size={15} /> Take action
+                    </button>
+                )}
+                {onOpenLinked && (
+                    <button type="button" onClick={() => onOpenLinked(a)}
+                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[13px] font-semibold hover:bg-blue-100">
+                        <ExternalLink size={15} /> Open
+                    </button>
+                )}
+                <button type="button" disabled={!a.file?.url} onClick={() => a.file && openFile(a.file)} title={a.file?.url ? 'View document' : 'No document'}
+                    className={cn('inline-flex h-9 w-9 items-center justify-center rounded-lg border shrink-0',
+                        a.file?.url ? 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-blue-600' : 'border-slate-200 text-slate-300 cursor-not-allowed')}>
+                    <Eye size={16} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// Soft (borderless) tone per priority — used for the relative "due" label so the cell reads cleaner.
+const DUE_SOFT: Record<PriorityLevel, string> = {
+    overdue: 'bg-rose-50 text-rose-600',
+    critical: 'bg-orange-50 text-orange-600',
+    high: 'bg-amber-50 text-amber-700',
+    medium: 'bg-blue-50 text-blue-600',
+    low: 'bg-slate-100 text-slate-500',
+};
 function DuePill({ d, priority }: { d: number; priority: PriorityLevel }) {
-    const pm = PRIORITY_META[priority];
     const label = d < 0 ? `Overdue by ${-d} day${-d === 1 ? '' : 's'}` : d === 0 ? 'Due today' : `in ${d} day${d === 1 ? '' : 's'}`;
-    return <div className={cn('mt-0.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', pm.tone)}>{label}</div>;
+    return (
+        <span className={cn('mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap', DUE_SOFT[priority])}>
+            {d < 0 && <AlertTriangle size={10} />}{label}
+        </span>
+    );
 }
 
 function AssigneeChip({ assignee, size = 'sm' }: { assignee: Assignee; size?: 'sm' | 'md' }) {
@@ -744,7 +1294,7 @@ function AssigneeChip({ assignee, size = 'sm' }: { assignee: Assignee; size?: 's
     );
 }
 
-function EmptyState({ hasAny, onNavigate }: { hasAny: boolean; onNavigate?: (path: string) => void }) {
+function EmptyState({ hasAny, onNavigate, onLoadSample }: { hasAny: boolean; onNavigate?: (path: string) => void; onLoadSample?: () => void }) {
     return (
         <div className="px-6 py-16 text-center">
             <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
@@ -754,13 +1304,23 @@ function EmptyState({ hasAny, onNavigate }: { hasAny: boolean; onNavigate?: (pat
             <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
                 {hasAny
                     ? 'Adjust the entity / priority filters or search to see monitored items.'
-                    : 'Enable monitoring on records in Default Compliances & Documents (each version has a Monitoring panel). Enabled records with a due date or watched status appear here as alerts.'}
+                    : 'Load sample data to preview this page, or enable monitoring on records in Default Compliances & Documents (each version has a Monitoring panel).'}
             </p>
-            {!hasAny && onNavigate && (
-                <button type="button" onClick={() => onNavigate('/default-compliance-documents')}
-                    className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
-                    <Layers size={15} /> Go to Default Compliances &amp; Documents
-                </button>
+            {!hasAny && (
+                <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+                    {onLoadSample && (
+                        <button type="button" onClick={onLoadSample}
+                            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
+                            <Sparkles size={15} /> Load sample data
+                        </button>
+                    )}
+                    {onNavigate && (
+                        <button type="button" onClick={() => onNavigate('/default-compliance-documents')}
+                            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border border-slate-200 bg-white text-slate-600 text-sm font-semibold hover:bg-slate-50">
+                            <Layers size={15} /> Go to Default Compliances &amp; Documents
+                        </button>
+                    )}
+                </div>
             )}
         </div>
     );
@@ -987,6 +1547,32 @@ const SCOPE_HEALTH_TITLE: Record<'all' | EntityId, string> = {
     all: 'Compliance Health', Carrier: 'Carrier Compliance Health', Driver: 'Driver Compliance Health', Asset: 'Asset Compliance Health',
 };
 const SCOPE_NOUN: Record<'all' | EntityId, string> = { all: 'monitored item', Carrier: 'carrier item', Driver: 'driver item', Asset: 'asset item' };
+/** Hover ⓘ explaining how each priority level is derived (reminder-aware). */
+function PriorityLegend() {
+    return (
+        <span className="group relative inline-flex">
+            <Info size={14} className="cursor-help text-slate-400 hover:text-slate-600" />
+            <span className="pointer-events-none absolute left-0 top-full z-30 mt-1.5 hidden w-80 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block">
+                <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">How priority works</span>
+                <span className="mb-2 block text-[11px] leading-snug text-slate-500">Each item’s priority escalates against its <span className="font-semibold text-slate-600">own monitoring reminders</span> — not a fixed calendar.</span>
+                <span className="block space-y-1.5">
+                    {PRIORITY_LEGEND.map(({ level, when }) => {
+                        const pm = PRIORITY_META[level];
+                        return (
+                            <span key={level} className="flex items-start gap-2">
+                                <span className={cn('mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', pm.tone)}>
+                                    <span className={cn('h-1.5 w-1.5 rounded-full', pm.dot)} /> {pm.label}
+                                </span>
+                                <span className="text-[11px] leading-snug text-slate-600">{when}</span>
+                            </span>
+                        );
+                    })}
+                </span>
+            </span>
+        </span>
+    );
+}
+
 function HealthMeter({ health, scope }: { health: { score: number; overdue: number; dueSoon: number; onTrack: number; total: number }; scope: 'all' | EntityId }) {
     const { score, overdue, dueSoon, onTrack, total } = health;
     const noun = SCOPE_NOUN[scope];
@@ -1010,6 +1596,7 @@ function HealthMeter({ health, scope }: { health: { score: number; overdue: numb
                 <div className="flex items-center gap-2">
                     <BellRing size={16} className="text-blue-500" />
                     <h3 className="text-base font-bold text-slate-800">{SCOPE_HEALTH_TITLE[scope]}</h3>
+                    <PriorityLegend />
                 </div>
                 <p className="mt-0.5 text-[12px] text-slate-500">
                     {total === 0 ? `No ${noun}s being monitored yet.` : `Across ${total} ${noun}${total === 1 ? '' : 's'} — ${onTrack} on track, ${dueSoon} due soon, ${overdue} overdue.`}
@@ -1327,6 +1914,7 @@ const ACCENT: Record<string, string> = {
     orange: 'text-orange-600 bg-orange-50',
     amber: 'text-amber-600 bg-amber-50',
     blue: 'text-blue-600 bg-blue-50',
+    emerald: 'text-emerald-600 bg-emerald-50',
 };
 function KpiTile({ label, value, Icon, accent }: { label: string; value: string | number; Icon: typeof Layers; accent: string }) {
     return (

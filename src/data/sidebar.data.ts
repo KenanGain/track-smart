@@ -182,6 +182,7 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "compliance-setup", label: "Compliance and Documents", icon: ShieldCheck, path: "/settings/compliance-setup" },
             { key: "settings-compliance-and-documents", label: "Compliance Setup", icon: FileText, path: "/settings/compliance-and-documents" },
             { key: "settings-new-compliance-documents", label: "New Compliance & Documents", icon: Layers, path: "/settings/new-compliance-documents", badge: "New" },
+            { key: "settings-default-compliance-monitoring", label: "Default Compliance & Monitoring", icon: BellRing, path: "/settings/default-compliance-monitoring", badge: "New" },
             { key: "settings-tags", label: "Tags", icon: Tags, path: "/settings/tags", badge: "New" },
             { key: "maintenance", label: "Maintenance", icon: Wrench, path: "/settings/maintenance" },
             {
