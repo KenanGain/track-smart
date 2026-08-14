@@ -1070,6 +1070,7 @@ export function CarrierProfilePage({
             onEditProfile={handleEditProfileInit}
             onUpdate={handleDriverUpdate}
             accountId={accountId}
+            onNavigate={onNavigate}
         />;
     }
 
@@ -2466,10 +2467,12 @@ export function CarrierProfilePage({
             )}
             {viewingDriverId && (
                 <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
-                    <DriverProfileView 
+                    <DriverProfileView
                         driverId={viewingDriverId}
                         onBack={() => setViewingDriverId(null)}
                         data={selectedDriverData}
+                        accountId={accountId}
+                        onNavigate={onNavigate}
                     />
                 </div>
             )}

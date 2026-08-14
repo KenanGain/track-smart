@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DqFileDocument } from "@/pages/dq-files/DqFileDocument";
 import { emptyFill, type DqFileFill } from "@/pages/dq-files/dq-driver-files.data";
-import { useDqCatalog, getDqChecklist } from "./settings-dq-checklists.data";
+import { getDqChecklist } from "./settings-dq-checklists.data";
 
 /**
  * DQ Checklist runner — the same checklist rendered two ways (matches the
@@ -19,7 +19,6 @@ export function SettingsDqChecklistRunner({ checklistId, initialMode, onBack }: 
     initialMode: "test" | "pdf";
     onBack: () => void;
 }) {
-    const { items } = useDqCatalog();
     const checklist = getDqChecklist(checklistId);
     const [mode, setMode] = useState<"test" | "pdf">(initialMode);
     const [fill, setFill] = useState<DqFileFill>(emptyFill);
@@ -58,7 +57,7 @@ export function SettingsDqChecklistRunner({ checklistId, initialMode, onBack }: 
                 {!isPdf && (
                     <p className="mb-3 text-xs text-slate-400">Test mode — set each item's verification, add notes, then switch to PDF view to print.</p>
                 )}
-                <DqFileDocument checklist={checklist} catalog={items} mode={mode} fill={fill} onFillChange={setFill} />
+                <DqFileDocument checklist={checklist} mode={mode} fill={fill} onFillChange={setFill} />
             </div>
         </div>
     );

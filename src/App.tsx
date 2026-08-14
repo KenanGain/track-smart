@@ -454,7 +454,8 @@ function App() {
             return <GeneralSettingsPage />
         }
         if (path === "/settings/dq-files") {
-            return <SettingsDqFilesPage />
+            const account = selectedAccount ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return <SettingsDqFilesPage accountId={account?.id} />
         }
         if (path === "/settings/compliance-setup") {
             // Settings view — same catalog UI (heads + filters) as Super Admin,

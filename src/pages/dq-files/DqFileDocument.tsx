@@ -1,14 +1,14 @@
-import { useMemo } from "react";
+import { FileText, FileSignature, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReviewSignOff, newSignOff, type SignOffData } from "@/pages/hiring-process/FormKit";
 import {
-    itemsInCategory, driverTypeLabel, DQ_CATEGORIES,
-    type DqChecklist, type DqCatalogItem, type DqDriverTypeId,
+    driverTypeLabel, requirementMeta, monitoringSummary,
+    type DqChecklist, type DqDriverTypeId, type DqItem, type DqItemSource, type DqFulfill,
 } from "@/pages/settings/settings-dq-checklists.data";
 import type { DqFileFill, Verification } from "./dq-driver-files.data";
 
 /**
- * DQ File document body — the FMCSA-style rendering shared by the Settings
+ * DQ File document body — the section-based rendering shared by the Settings
  * checklist runner (session fill) and the per-driver DQ file (persisted fill).
  * Fully controlled via `fill` / `onFillChange`.
  *   • mode "test" — editable verification select + notes + inputs.
@@ -31,6 +31,10 @@ const VERIF_CELL: Record<Verification, string> = {
     na: "bg-slate-100 text-slate-500",
 };
 
+const SOURCE_ICON: Record<DqItemSource, React.ElementType> = { document: FileText, form: FileSignature, custom: PenLine };
+const SOURCE_TINT: Record<DqItemSource, string> = { document: "text-slate-400", form: "text-blue-500", custom: "text-violet-500" };
+const FULFILL_LABEL: Record<DqFulfill, string> = { fill: "Fill", upload: "Upload" };
+
 // Driver / Vehicle information header fields (from the FMCSA template).
 const HEADER_FIELDS: { key: string; label: string; type: "text" | "date" }[] = [
     { key: "driverName", label: "Driver's Name", type: "text" },
@@ -43,9 +47,8 @@ const HEADER_FIELDS: { key: string; label: string; type: "text" | "date" }[] = [
     { key: "reviewDate", label: "Date of Review / Inspection", type: "date" },
 ];
 
-export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, subjectName, typeLabelOverride }: {
+export function DqFileDocument({ checklist, mode, fill, onFillChange, subjectName, typeLabelOverride }: {
     checklist: DqChecklist | undefined;
-    catalog: DqCatalogItem[];
     mode: "test" | "pdf";
     fill: DqFileFill;
     onFillChange: (f: DqFileFill) => void;
@@ -53,14 +56,7 @@ export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, s
     typeLabelOverride?: DqDriverTypeId;
 }) {
     const isPdf = mode === "pdf";
-
-    const grouped = useMemo(() => {
-        if (!checklist) return [];
-        const sel = new Set(checklist.itemIds);
-        return DQ_CATEGORIES
-            .map(cat => ({ cat, items: itemsInCategory(catalog, cat.id).filter(i => sel.has(i.id)) }))
-            .filter(g => g.items.length > 0);
-    }, [checklist, catalog]);
+    const sections = (checklist?.sections ?? []).filter(s => s.items.length > 0);
 
     const itemFill = (id: string) => fill.items[id] ?? { verification: "" as Verification, notes: "" };
     const setItem = (id: string, patch: Partial<{ verification: Verification; notes: string }>) =>
@@ -93,7 +89,7 @@ export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, s
                         <div key={f.key} className="flex flex-col gap-1">
                             <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{f.label}</label>
                             {isPdf ? (
-                                <div className="min-h-[26px] border-b border-slate-200 pb-1 text-sm text-slate-800">{fill.header[f.key] || " "}</div>
+                                <div className="min-h-[26px] border-b border-slate-200 pb-1 text-sm text-slate-800">{fill.header[f.key] || " "}</div>
                             ) : (
                                 <input type={f.type} value={fill.header[f.key] ?? ""} onChange={e => setHeader(f.key, e.target.value)}
                                     className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-400 focus:outline-none" />
@@ -103,31 +99,46 @@ export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, s
                 </div>
             </div>
 
-            {/* Category tables */}
+            {/* Section tables */}
             <div className="space-y-6 px-6 py-5">
-                {grouped.map(({ cat, items: catItems }) => (
-                    <section key={cat.id}>
-                        <h3 className="mb-2 text-sm font-bold text-slate-800">{cat.label}</h3>
+                {sections.map(section => (
+                    <section key={section.id}>
+                        <h3 className="mb-2 text-sm font-bold text-slate-800">{section.title}</h3>
                         <div className="overflow-hidden rounded-lg border border-slate-200">
                             <table className="w-full border-collapse text-sm">
                                 <thead>
                                     <tr className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                                        <th className="w-1/2 border-b border-slate-200 px-3 py-2">Check Item</th>
-                                        <th className="w-32 border-b border-slate-200 px-3 py-2">Verification</th>
+                                        <th className="w-[36%] border-b border-slate-200 px-3 py-2">Check Item</th>
+                                        <th className="w-20 border-b border-slate-200 px-3 py-2">Requirement</th>
+                                        <th className="w-28 border-b border-slate-200 px-3 py-2">Monitoring</th>
+                                        <th className="w-24 border-b border-slate-200 px-3 py-2">Verification</th>
                                         <th className="border-b border-slate-200 px-3 py-2">Notes</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {catItems.map((item: DqCatalogItem) => {
+                                    {section.items.map((item: DqItem) => {
                                         const st = itemFill(item.id);
+                                        const Icon = SOURCE_ICON[item.source];
+                                        const req = requirementMeta(item.requirement);
+                                        const monOn = !!item.monitoring?.enabled;
                                         return (
                                             <tr key={item.id} className="align-top">
                                                 <td className="border-b border-slate-100 px-3 py-2.5">
-                                                    <p className="font-semibold text-slate-800">
-                                                        {item.label}
-                                                        {item.citation && <span className="ml-1.5 text-[11px] font-medium text-slate-400">({item.citation})</span>}
+                                                    <p className="flex items-start gap-1.5 font-semibold text-slate-800">
+                                                        <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", SOURCE_TINT[item.source])} />
+                                                        <span className="min-w-0">
+                                                            {item.label || <span className="italic text-slate-400">Untitled item</span>}
+                                                            {item.list && <span className="ml-1.5 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-500">list</span>}
+                                                            {item.source === "form" && item.fulfill && <span className="ml-1.5 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-semibold text-blue-600">{FULFILL_LABEL[item.fulfill]}</span>}
+                                                        </span>
                                                     </p>
-                                                    {item.note && <p className="mt-0.5 text-[11px] text-slate-400">{item.note}</p>}
+                                                    {item.note && <p className="mt-0.5 pl-5 text-[11px] text-slate-400">{item.note}</p>}
+                                                </td>
+                                                <td className="border-b border-slate-100 px-3 py-2.5">
+                                                    <span className={cn("inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold", req.chip)}>{req.label}</span>
+                                                </td>
+                                                <td className="border-b border-slate-100 px-3 py-2.5">
+                                                    <span className={cn("inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", monOn ? "bg-blue-50 text-blue-700 ring-blue-200" : "bg-slate-100 text-slate-500 ring-slate-200")}>{monitoringSummary(item.monitoring)}</span>
                                                 </td>
                                                 <td className={cn("border-b border-slate-100 px-3 py-2.5", isPdf && VERIF_CELL[st.verification])}>
                                                     {isPdf ? (
@@ -141,7 +152,7 @@ export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, s
                                                 </td>
                                                 <td className="border-b border-slate-100 px-3 py-2.5">
                                                     {isPdf ? (
-                                                        <span className="text-[13px] text-slate-700">{st.notes || " "}</span>
+                                                        <span className="text-[13px] text-slate-700">{st.notes || " "}</span>
                                                     ) : (
                                                         <input value={st.notes} onChange={e => setItem(item.id, { notes: e.target.value })} placeholder="Add a note…"
                                                             className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-[13px] focus:border-blue-400 focus:outline-none" />
@@ -155,8 +166,8 @@ export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, s
                         </div>
                     </section>
                 ))}
-                {grouped.length === 0 && (
-                    <p className="py-8 text-center text-sm text-slate-400">This checklist has no check items selected. Edit it in Settings ▸ DQ Files.</p>
+                {sections.length === 0 && (
+                    <p className="py-8 text-center text-sm text-slate-400">This checklist has no items yet. Edit it in Settings ▸ DQ Files.</p>
                 )}
             </div>
 
@@ -166,7 +177,7 @@ export function DqFileDocument({ checklist, catalog, mode, fill, onFillChange, s
                 <div className="mb-4 max-w-xs">
                     <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Next Review Due (Annual)</label>
                     {isPdf ? (
-                        <div className="mt-1 min-h-[26px] border-b border-slate-200 pb-1 text-sm text-slate-800">{fill.nextReview || " "}</div>
+                        <div className="mt-1 min-h-[26px] border-b border-slate-200 pb-1 text-sm text-slate-800">{fill.nextReview || " "}</div>
                     ) : (
                         <input type="date" value={fill.nextReview} onChange={e => setNextReview(e.target.value)}
                             className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-blue-400 focus:outline-none" />

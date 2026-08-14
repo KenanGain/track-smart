@@ -10,8 +10,8 @@ import { useEffect, useState } from "react";
 import type { SignOffData } from "@/pages/hiring-process/FormKit";
 import type { Driver } from "@/pages/profile/carrier-profile.data";
 import {
-    loadDqChecklists, loadDqCatalog,
-    type DqDriverTypeId, type DqChecklist, type DqCatalogItem,
+    loadDqChecklists, flattenItems,
+    type DqDriverTypeId, type DqChecklist,
 } from "@/pages/settings/settings-dq-checklists.data";
 
 // ── Fill state (shared with DqFileDocument) ────────────────────────────────────
@@ -42,17 +42,21 @@ export function checklistForType(type: DqDriverTypeId): DqChecklist | undefined 
 export interface DqCompletion { total: number; present: number; na: number; missing: number; required: number; pct: number; complete: boolean }
 
 export function computeCompletion(record: DriverDqRecord, checklist: DqChecklist | undefined): DqCompletion {
-    const ids = checklist?.itemIds ?? [];
-    let present = 0, na = 0, missing = 0;
-    for (const id of ids) {
-        const v = record.fill.items[id]?.verification ?? "";
-        if (v === "present") present++;
-        else if (v === "na") na++;
-        else missing++; // "", "missing", "expired"
+    const items = checklist ? flattenItems(checklist) : [];
+    let present = 0, na = 0, missing = 0;           // overall counts
+    let reqDenom = 0, reqPresent = 0, reqMissing = 0; // non-optional items only
+    for (const it of items) {
+        const v = record.fill.items[it.id]?.verification ?? "";
+        const isPresent = v === "present", isNa = v === "na";
+        if (isPresent) present++; else if (isNa) na++; else missing++; // "", "missing", "expired"
+        if (it.requirement !== "optional" && !isNa) {
+            reqDenom++;
+            if (isPresent) reqPresent++; else reqMissing++;
+        }
     }
-    const required = ids.length - na;
-    const pct = required > 0 ? Math.round((present / required) * 100) : (ids.length === 0 ? 0 : 100);
-    return { total: ids.length, present, na, missing, required, pct, complete: ids.length > 0 && missing === 0 };
+    // Optional items never block completion or count toward the required denominator.
+    const pct = reqDenom > 0 ? Math.round((reqPresent / reqDenom) * 100) : (items.length === 0 ? 0 : 100);
+    return { total: items.length, present, na, missing, required: reqDenom, pct, complete: items.length > 0 && reqMissing === 0 };
 }
 
 // ── Persistence (keyed by `${accountId}::${driverId}`) ──────────────────────────
@@ -99,6 +103,3 @@ export function useDriverDqFiles(accountId?: string) {
 
     return { records: all, getRecord, setType, setFill };
 }
-
-// Convenience: catalog loader re-export so callers don't import two files.
-export function loadCatalog(): DqCatalogItem[] { return loadDqCatalog(); }

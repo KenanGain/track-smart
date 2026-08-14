@@ -968,7 +968,7 @@ function SubjectStatBar({ stats }: { stats: { total: number; complete: number; r
     );
 }
 
-export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded }: {
+export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName, records, getEntry, setEntry, setEntries, all, onBack, backLabel, autoOpenRecordId, onFocusConsumed, alsoSeedSubjects, onDetailChange, embedded, detailExtra, detailExtraFor, hideCategoryTabs }: {
     entity: EntityId;
     subjectId: string;
     subjectLabel: string;
@@ -989,6 +989,13 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
     onDetailChange?: (open: boolean) => void;
     // Embedded inside an entity detail tab → drop the redundant subject header + big KPI cards for a compact, refined look.
     embedded?: boolean;
+    // Optional extra section rendered inside a record's detail page (e.g. a "Fill out the form" card for DQ forms).
+    detailExtra?: ReactNode;
+    // Per-record variant of detailExtra — receives the open record so a list (e.g. the DQ Forms tab)
+    // can render the RIGHT form's fill card. Falls back to detailExtra when not provided.
+    detailExtraFor?: (record: SafetyRecord) => ReactNode;
+    // Hide the category tab row (e.g. the DQ Forms tab, where every record is one category → redundant).
+    hideCategoryTabs?: boolean;
 }) {
     const { tags: tagCatalog } = useSafetyTags();
     const [category, setCategory] = useState<KeyNumberGroup | 'All'>('All');
@@ -1107,6 +1114,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                     subjectId={subjectId}
                     setEntry={setEntry}
                     onBack={() => setDetailRecord(null)}
+                    detailExtra={detailExtraFor ? detailExtraFor(detailRecord) : detailExtra}
                 />
             ) : (
             <>
@@ -1141,6 +1149,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
 
             {/* List card */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                {!hideCategoryTabs && (
                 <div className="flex items-center gap-1 px-4 pt-3 border-b border-slate-100 overflow-x-auto">
                     {categoryTabs.map(t => {
                         const active = category === t.id;
@@ -1154,6 +1163,7 @@ export function SubjectDocuments({ entity, subjectId, subjectLabel, carrierName,
                         );
                     })}
                 </div>
+                )}
 
                 {/* Toolbar — search + filters + column selector */}
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 flex-wrap">
@@ -2640,10 +2650,11 @@ function DocumentsTable({ record, entry, subjectId, setEntry, compact = false, s
 }
 
 type DetailTab = 'documents' | 'monitoring';
-function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack }: {
+function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setEntry, onBack, detailExtra }: {
     record: SafetyRecord; entry: RecordDataEntry; entity: EntityId; subjectLabel: string;
     subjectId: string; setEntry: EntrySetter;
     onBack: () => void;
+    detailExtra?: ReactNode;
 }) {
     const [tab, setTab] = useState<DetailTab>('documents');
     const status = entryStatus(record, entry);
@@ -2699,6 +2710,9 @@ function RecordDetailPage({ record, entry, entity, subjectLabel, subjectId, setE
                     <InfoRow label="Jurisdiction">{record.jurisdiction || <span className="text-slate-400">—</span>}</InfoRow>
                 </div>
             </div>
+
+            {/* Optional extra section (e.g. DQ "Fill out the form" card) */}
+            {detailExtra}
 
             {/* Tabs + content */}
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
