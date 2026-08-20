@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
     ArrowLeft,
     Save,
@@ -14,9 +14,9 @@ import {
     Plus,
     Trash2,
     Search,
-    Check,
 } from 'lucide-react';
 import { UI_DATA, DIRECTOR_UI } from '../profile/carrier-profile.data';
+import { WizardSectionHeader as SectionHeader, WizardStepNav } from '@/components/ui/WizardEditor';
 import {
     addAccountRecord,
     type AccountRecord,
@@ -101,33 +101,6 @@ export const StatusSelect = ({
             ))}
         </select>
         <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-60 pointer-events-none" />
-    </div>
-);
-
-// ── Section header (used inside each section card) ──────────────────────────
-
-const SectionHeader = ({
-    icon: Icon,
-    title,
-    subtitle,
-    right,
-}: {
-    icon: any;
-    title: string;
-    subtitle?: string;
-    right?: React.ReactNode;
-}) => (
-    <div className="flex items-center justify-between px-6 py-4 bg-slate-50/60 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                <Icon className="w-5 h-5" />
-            </div>
-            <div>
-                <h4 className="text-base font-bold text-slate-900">{title}</h4>
-                {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
-            </div>
-        </div>
-        {right}
     </div>
 );
 
@@ -562,58 +535,8 @@ export function AddAccountPage({ onNavigate }: AddAccountPageProps) {
 
             {/* Two-pane Body */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Side navigation */}
-                <aside className="w-72 shrink-0 border-r border-slate-200 bg-white hidden md:flex flex-col">
-                    <div className="px-5 py-4 border-b border-slate-100">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Progress</p>
-                        <p className="text-sm font-semibold text-slate-700 mt-0.5">Complete each section</p>
-                    </div>
-                    <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-                        {SECTIONS.map((s, idx) => {
-                            const Icon = s.icon;
-                            const isActive = activeSection === s.id;
-                            const count = completionFor(s.id);
-                            return (
-                                <button
-                                    key={s.id}
-                                    type="button"
-                                    onClick={() => scrollToSection(s.id)}
-                                    className={cn(
-                                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all group',
-                                        isActive
-                                            ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-500/30'
-                                            : 'text-slate-600 hover:bg-slate-50'
-                                    )}
-                                >
-                                    <span
-                                        className={cn(
-                                            'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
-                                            isActive
-                                                ? 'bg-blue-600 text-white'
-                                                : count > 0
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : 'bg-slate-100 text-slate-500'
-                                        )}
-                                    >
-                                        {count > 0 && !isActive ? <Check className="w-3.5 h-3.5" /> : idx + 1}
-                                    </span>
-                                    <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-blue-600' : 'text-slate-400')} />
-                                    <span className="flex-1 text-sm font-semibold">{s.label}</span>
-                                    {count > 0 && (
-                                        <span
-                                            className={cn(
-                                                'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                                                isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
-                                            )}
-                                        >
-                                            {count}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </nav>
-                </aside>
+                {/* Side navigation (shared wizard rail) */}
+                <WizardStepNav steps={SECTIONS} active={activeSection} onGo={scrollToSection} completionFor={completionFor} />
 
                 {/* Main content scroll */}
                 <div ref={scrollRef} className="flex-1 overflow-y-auto">

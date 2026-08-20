@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { cn } from '@/lib/utils';
 import { calculateComplianceStatus, calculateDriverComplianceStats, getMaxReminderDays, isMonitoringEnabled } from '@/utils/compliance-utils';
 import {
     Columns,
@@ -48,6 +47,7 @@ import {
     ArrowUp,
     ArrowDown,
     ArrowUpDown,
+    ListChecks,
 } from 'lucide-react';
 import { StatusSelect } from '@/pages/accounts/AddAccountPage';
 import { LocationEditorModal } from '../../components/locations/LocationEditorModal';
@@ -63,6 +63,7 @@ import { THEME_STYLES } from '@/pages/settings/tags/tag-utils';
 import { US_STATES, CA_PROVINCES } from '@/pages/settings/MaintenancePage';
 import { DriverProfileView } from './DriverProfileView';
 import { AddDriverApplication } from './AddDriverApplication';
+import { useDriverDqHealth, ComplianceChecklist, CompletionBar } from '@/pages/ats/DqFilesPage';
 import { DriverImportModal } from './DriverImportModal';
 
 
@@ -71,6 +72,7 @@ import { LocationsPage } from '@/pages/account/LocationsPage';
 import { AssetDirectoryPage } from '@/pages/assets/AssetDirectoryPage';
 import { SubTabs, type SubTab } from '@/components/ui/SubTabs';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
+import { KpiStatCard } from '@/components/ui/KpiStatCard';
 
 
 // --- HELPER COMPONENTS ---
@@ -997,6 +999,9 @@ export function CarrierProfilePage({
         return filteredDrivers.slice(start, start + driverRowsPerPage);
     }, [filteredDrivers, driverPage, driverRowsPerPage]);
 
+    // Per-driver DQ file health (progress + checklist status) — same resolver as the DQ Files page.
+    const dqHealthFor = useDriverDqHealth(accountId);
+
     // Clamp page if filters cut the list shorter than the current page.
     useEffect(() => {
         const max = Math.max(1, Math.ceil(filteredDrivers.length / driverRowsPerPage));
@@ -1113,57 +1118,59 @@ export function CarrierProfilePage({
     ];
 
     return (
-        <div
-            className={cn(
-                "flex-1 overflow-x-hidden bg-slate-50 min-h-screen",
-                // Drop the outer page padding while reading an asset detail
-                // so the detail header can extend edge-to-edge (the detail
-                // page provides its own px-8 inner padding).
-                isAssetDetailActive ? "" : "p-4 lg:p-6"
-            )}
-        >
-            {/* Header Area — hidden while reading a single asset so the
-                detail page's own breadcrumb + back button is the only
-                navigational element on screen. The carrier-switcher in
-                the top navbar is the single carrier-pick surface; we no
-                longer render a duplicate one here. */}
+        <div className="flex-1 overflow-x-hidden bg-slate-50 min-h-screen">
+            {/* Header — white edge-to-edge bar with breadcrumb, page title +
+                subtitle and underline tabs, mirroring the New Compliance &
+                Documents catalog header. Hidden while reading a single asset
+                so the detail page's own header is the only navigational
+                element on screen. The carrier-switcher in the top navbar is
+                the single carrier-pick surface. */}
             {!isAssetDetailActive && (
-                <div className="mb-6 flex items-center gap-3 flex-wrap min-h-[36px]">
-                    {backTarget && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={() => onNavigate?.(backTarget.path)}
-                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
-                            >
-                                <ChevronDown size={13} className="rotate-90" />
-                                {backTarget.label}
-                            </button>
-                            <span aria-hidden className="h-4 w-px bg-slate-200" />
-                        </>
-                    )}
-                    <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Building2 className="w-4 h-4" />
-                        <span>{viewData.page.breadcrumb[0]}</span>
-                        <span className="text-slate-300">/</span>
-                        <span className="font-semibold text-slate-900">{viewData.page.breadcrumb[1]}</span>
+                <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-5">
+                    <div className="flex items-center gap-3 flex-wrap min-h-[18px]">
+                        {backTarget && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => onNavigate?.(backTarget.path)}
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+                                >
+                                    <ChevronDown size={13} className="rotate-90" />
+                                    {backTarget.label}
+                                </button>
+                                <span aria-hidden className="h-4 w-px bg-slate-200" />
+                            </>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <Building2 className="w-3.5 h-3.5" />
+                            <span>{viewData.page.breadcrumb[0]}</span>
+                            <span className="text-slate-300">/</span>
+                            <span className="font-semibold text-slate-600">{viewData.page.breadcrumb[1]}</span>
+                        </div>
                     </div>
+
+                    <div className="mt-3 min-w-0">
+                        <h1 className="text-2xl font-bold text-slate-900">Carrier Profile</h1>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                            {viewData.page.carrierHeader.name} — {profileBundle?.assets?.length ?? INITIAL_ASSETS.length} assets · {drivers.length} drivers
+                        </p>
+                    </div>
+
+                    {/* Entity tabs — underline style flush with the header's bottom border. */}
+                    <SubTabs
+                        tabs={tabs}
+                        activeId={activeTab}
+                        onChange={setActiveTab}
+                        variant="underline"
+                        bordered={false}
+                        className="mt-4 -mb-5"
+                    />
                 </div>
             )}
 
-            {/* Tab Navigation — same hide-on-detail rule as the breadcrumb. */}
-            {!isAssetDetailActive && (
-                <SubTabs
-                    tabs={tabs}
-                    activeId={activeTab}
-                    onChange={setActiveTab}
-                    className="mb-6"
-                />
-            )}
-
-            {/* Tab Content — drop the top margin while reading an asset
-                detail so the detail page sits flush with the top edge. */}
-            <div className={isAssetDetailActive ? "" : "mt-6"}>
+            {/* Tab Content — edge-to-edge (no body padding) while reading an
+                asset detail so it sits flush with the top edge. */}
+            <div className={isAssetDetailActive ? "" : "px-4 sm:px-8 py-6"}>
 
 
                 {activeTab === 'fleet' && (
@@ -1519,7 +1526,8 @@ export function CarrierProfilePage({
 
                 {activeTab === 'drivers' && (
                     <div className="w-full space-y-5">
-                        {/* DRIVER STATUS CARDS — single-line labels, accent bar, refined active state */}
+                        {/* DRIVER STATUS CARDS — Default Compliance catalog KpiTile look
+                            (label + number left, icon square right); still click-to-filter. */}
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                             {[
                                 { id: 'All',        label: 'Total',      value: driverStats.total,      Icon: Users,     accent: 'blue'    },
@@ -1527,33 +1535,17 @@ export function CarrierProfilePage({
                                 { id: 'Inactive',   label: 'Inactive',   value: driverStats.inactive,   Icon: UserMinus, accent: 'slate'   },
                                 { id: 'On Leave',   label: 'On Leave',   value: driverStats.onLeave,    Icon: Clock,     accent: 'amber'   },
                                 { id: 'Terminated', label: 'Terminated', value: driverStats.terminated, Icon: UserX,     accent: 'red'     },
-                            ].map((card) => {
-                                const active = driverStatusFilter === card.id;
-                                const tones: Record<string, { iconBg: string; iconFg: string; bar: string; ring: string }> = {
-                                    blue:    { iconBg: 'bg-blue-50',    iconFg: 'text-blue-600',    bar: 'bg-blue-500',    ring: 'ring-blue-500/30' },
-                                    emerald: { iconBg: 'bg-emerald-50', iconFg: 'text-emerald-600', bar: 'bg-emerald-500', ring: 'ring-emerald-500/30' },
-                                    slate:   { iconBg: 'bg-slate-100',  iconFg: 'text-slate-600',   bar: 'bg-slate-500',   ring: 'ring-slate-500/30' },
-                                    amber:   { iconBg: 'bg-amber-50',   iconFg: 'text-amber-600',   bar: 'bg-amber-500',   ring: 'ring-amber-500/30' },
-                                    red:     { iconBg: 'bg-red-50',     iconFg: 'text-red-600',     bar: 'bg-red-500',     ring: 'ring-red-500/30' },
-                                };
-                                const t = tones[card.accent];
-                                return (
-                                    <button
-                                        key={card.id}
-                                        onClick={() => setDriverStatusFilter(card.id)}
-                                        className={`relative flex items-center justify-between gap-2 px-3 py-2 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden text-left transition-all hover:shadow hover:border-slate-300 ${active ? `ring-2 ${t.ring} border-transparent` : ''}`}
-                                    >
-                                        <span className={`absolute left-0 top-0 bottom-0 w-0.5 transition-all ${t.bar} ${active ? 'opacity-100' : 'opacity-30'}`} />
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <div className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${t.iconBg} ${t.iconFg}`}>
-                                                <card.Icon className="w-3.5 h-3.5" />
-                                            </div>
-                                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 truncate">{card.label}</span>
-                                        </div>
-                                        <div className="text-lg font-bold text-slate-900 tabular-nums shrink-0">{card.value}</div>
-                                    </button>
-                                );
-                            })}
+                            ].map((card) => (
+                                <KpiStatCard
+                                    key={card.id}
+                                    label={card.label}
+                                    value={card.value}
+                                    Icon={card.Icon}
+                                    accent={card.accent}
+                                    active={driverStatusFilter === card.id}
+                                    onClick={() => setDriverStatusFilter(card.id)}
+                                />
+                            ))}
                         </div>
 
                         {/* TOOLBAR — search (with clear) + actions, wraps cleanly on small screens */}
@@ -1636,6 +1628,7 @@ export function CarrierProfilePage({
                                             <DriverSortTH id="id"      label="ID / Details" current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
                                             <DriverSortTH id="status"  label="Status"      current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
                                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Compliance</th>
+                                            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[220px]">DQ File</th>
                                             <DriverSortTH id="license" label="License"     current={driverSortKey} dir={driverSortDir} onClick={handleDriverSort} />
                                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contact</th>
                                             <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right pr-6">Actions</th>
@@ -1647,6 +1640,7 @@ export function CarrierProfilePage({
                                                 const stats = calculateDriverComplianceStats(driver, keyNumbers, documents);
                                                 const totalIssues = stats.missingNumber + stats.missingExpiry + stats.missingDoc + stats.expired;
                                                 const isCompliant = totalIssues === 0 && stats.expiring === 0;
+                                                const dqHealth = dqHealthFor(driver);
 
                                                 return (
                                                     <tr key={driver.id} onClick={() => handleDriverClick(driver.id)} className="hover:bg-blue-50/40 transition-colors group cursor-pointer">
@@ -1704,6 +1698,15 @@ export function CarrierProfilePage({
                                                             )}
                                                         </td>
                                                         <td className="px-4 py-3">
+                                                            <div className="flex flex-col gap-1.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <CompletionBar h={dqHealth} />
+                                                                    <span className="text-[12px] font-bold tabular-nums text-slate-700">{dqHealth.pct}%</span>
+                                                                </div>
+                                                                <ComplianceChecklist h={dqHealth} hasChecklist={dqHealth.total > 0} />
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
                                                             <div className="text-slate-900 font-medium text-xs">{driver.licenseNumber || '—'}</div>
                                                             <div className="text-[11px] text-slate-500 mt-0.5">{driver.licenseState || '—'} • Exp: {driver.licenseExpiry || '—'}</div>
                                                         </td>
@@ -1715,7 +1718,10 @@ export function CarrierProfilePage({
                                                         </td>
                                                         <td className="px-4 py-3 text-right pr-6">
                                                             <div className="flex items-center justify-end gap-1">
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDriverClick(driver.id); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                                                <button onClick={(e) => { e.stopPropagation(); onNavigate?.('/dq-files'); }} title="Open DQ Files" className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors">
+                                                                    <ListChecks className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDriverClick(driver.id); }} title="Edit driver" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
                                                                     <Edit3 className="w-4 h-4" />
                                                                 </button>
                                                             </div>
@@ -1725,7 +1731,7 @@ export function CarrierProfilePage({
                                             })
                                         ) : (
                                             <tr>
-                                                <td colSpan={7} className="py-20 text-center bg-slate-50/30">
+                                                <td colSpan={8} className="py-20 text-center bg-slate-50/30">
                                                     <div className="flex flex-col items-center gap-3">
                                                         <div className="p-5 bg-white rounded-full shadow-sm border border-slate-100 text-slate-300">
                                                             <Search size={40} strokeWidth={1.25} />

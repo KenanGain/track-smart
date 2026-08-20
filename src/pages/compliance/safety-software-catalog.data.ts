@@ -101,6 +101,9 @@ export interface SafetyRecord {
     jurisdiction: string;
     /** Full monitoring guidance (shown as helper text / tooltip). */
     monitor: string;
+    /** Default notification-reminder windows (days before the monitored date). Falls back to
+     *  the global default [90, 60, 30] when unset. Only applies to date-monitored records. */
+    defaultReminders?: number[];
     /** Optional normalization note surfaced under the record name. */
     note?: string;
     /** Upload / versioning behaviour for the document (undefined when the record has no document). */
@@ -331,10 +334,11 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'MVR', description: 'Motor Vehicle Record (MVR)', numberName: 'MVR Order / Reference Number', documentName: 'Motor Vehicle Record (MVR)',
       recurring: 'Annual', monitorType: 'Next annual review due', jurisdiction: 'Driver licensing state / province',
       monitor: 'Reviewed at least every 12 months (§391.25).' },
-    { id: 'driver-abstract', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required',
-      recordName: 'Driver Abstract', description: 'Provincial Driver Abstract / CVOR Driver Record', numberName: 'Abstract Reference Number', documentName: 'Driver Abstract',
-      recurring: 'Annual', monitorType: 'Next annual review due', jurisdiction: 'Issuing province (ON CVOR, AB, SAAQ, ICBC, SGI)',
-      monitor: 'Annual review of the provincial driving abstract.', note: 'Canadian equivalent of the MVR (CVOR / CVDR driver record).' },
+    { id: 'driver-cvdr', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'DC', docRequirement: 'required', tracksIssueDate: true,
+      recordName: 'Driver CVDR / CDR / CDA', description: 'Driver Commercial Vehicle Driving Record (CVDR / CDR / CDA)', numberName: 'CVDR / CDR / CDA Reference Number', documentName: 'Driver CVDR / CDR / CDA',
+      recurring: 'Annual', monitorType: 'Next annual review due', jurisdiction: 'Issuing province / state',
+      monitor: 'Annual review of the driver commercial driving record (CVDR / CDR / CDA). Reminders 30 / 15 days before the review due date.',
+      note: 'Canadian commercial driver record — provincial equivalent of the MVR.', defaultReminders: [30, 15] },
     { id: 'psp-report', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'required',
       recordName: 'PSP Report', description: 'FMCSA Pre-Employment Screening Program Report', numberName: '', documentName: 'FMCSA PSP Report',
       recurring: 'Per hire', monitorType: 'Pre-employment / status', jurisdiction: 'United States, federal (FMCSA)',
@@ -387,19 +391,11 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'Abstract Number', description: 'Driver Abstract / Driving Record Reference Number', numberName: 'Abstract Number', documentName: '',
       recurring: 'Number does not expire', monitorType: 'No expiry', jurisdiction: 'Issuing province / state',
       monitor: 'Reference number for the driver abstract; the abstract document itself is reviewed annually.',
-      note: 'The abstract document is tracked under Driver Abstract.' },
+      note: 'The abstract document is tracked under Driver CVDR / CDR / CDA.' },
     { id: 'da-consortium-id', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'C', docRequirement: 'none',
       recordName: 'Drug & Alcohol Consortium ID', description: 'Drug & Alcohol Consortium / C-TPA Membership ID', numberName: 'Consortium / C-TPA Member ID', documentName: '',
       recurring: 'While enrolled', monitorType: 'Active/inactive status', jurisdiction: 'United States, federal (FMCSA)',
       monitor: 'Membership ID for the driver’s random-testing consortium (C/TPA). Track active enrollment.' },
-    { id: 'offense-ticket', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'optional',
-      recordName: 'Offense Ticket', description: 'Traffic Offense / Violation Ticket', numberName: '', documentName: 'Offense / Violation Ticket',
-      recurring: 'Per incident', monitorType: 'On file', tracksIssueDate: true, jurisdiction: 'Issuing jurisdiction',
-      monitor: 'Traffic violation ticket issued to the driver; feeds the certificate of violations and abstract review.' },
-    { id: 'notice-of-trial', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'optional',
-      recordName: 'Notice of Trial', description: 'Court Notice of Trial (traffic / offense matter)', numberName: '', documentName: 'Notice of Trial',
-      recurring: 'Per notice', monitorType: 'Court / hearing date', tracksIssueDate: true, jurisdiction: 'Issuing court',
-      monitor: 'Scheduled court / hearing date for a contested offense ticket.' },
     { id: 'criminal-record', category: 'Regulatory and Safety Numbers', entity: 'Driver', type: 'D', docRequirement: 'optional',
       recordName: 'Criminal Record Document', description: 'Criminal Record / Background Check Result', numberName: '', documentName: 'Criminal Record Check',
       recurring: 'Per hire / periodic', monitorType: 'On file', tracksIssueDate: true, jurisdiction: 'National / provincial police service',
@@ -408,14 +404,6 @@ export const SAFETY_RECORDS: SafetyRecord[] = [
       recordName: 'Payroll Statement', description: 'Driver Payroll Statement / Pay Stub', numberName: '', documentName: 'Payroll Statement',
       recurring: 'Per pay period', monitorType: 'On file', tracksIssueDate: true, jurisdiction: 'Company payroll',
       monitor: 'Driver pay statements retained per pay period.' },
-    { id: 'travel-receipt', category: 'Other', entity: 'Driver', type: 'D', docRequirement: 'optional',
-      recordName: 'Travel Receipt', description: 'Driver Travel / Expense Receipt', numberName: '', documentName: 'Travel Receipt',
-      recurring: 'Per trip / expense', monitorType: 'On file', tracksIssueDate: true, jurisdiction: 'Company policy',
-      monitor: 'Travel / expense receipts submitted by the driver for reimbursement.' },
-    { id: 'payment-receipt', category: 'Other', entity: 'Driver', type: 'D', docRequirement: 'optional',
-      recordName: 'Payment Receipt', description: 'Payment / Reimbursement Receipt', numberName: '', documentName: 'Payment Receipt',
-      recurring: 'Per payment', monitorType: 'On file', tracksIssueDate: true, jurisdiction: 'Company policy',
-      monitor: 'Proof-of-payment receipts on file.' },
     { id: 'experience-letter', category: 'Other', entity: 'Driver', type: 'D', docRequirement: 'optional',
       recordName: 'Employer Experience Letter', description: 'Previous Employer Experience / Reference Letter', numberName: '', documentName: 'Employer Experience Letter',
       recurring: 'Per prior employer', monitorType: 'On file', jurisdiction: 'Prior employer',
@@ -455,8 +443,7 @@ const SINGLE_UPLOAD_IDS = new Set(['mc', 'fein', 'articles', 'carrier-code', 'bo
     'criminal-record', 'birth-certificate', 'ssn-sin-card', 'resume-cv', 'offer-letter']);
 // Event/replacement (re-pulled ad-hoc) also covers the PSP report and per-incident / ad-hoc driver documents.
 const EVENT_UPLOAD_IDS = new Set(['drug-test', 'mcs90', 'dtops', 'ezpass', 'prepass', 'bestpass', 'apass', 'bwb-pass',
-    'psp-report',
-    'offense-ticket', 'notice-of-trial', 'travel-receipt', 'payment-receipt', 'experience-letter']);
+    'psp-report', 'experience-letter']);
 for (const r of SAFETY_RECORDS) {
     if (r.type === 'C') continue; // Compliance-only — no document, no upload mode.
     r.uploadMode = SINGLE_UPLOAD_IDS.has(r.id) ? 'single' : EVENT_UPLOAD_IDS.has(r.id) ? 'event' : 'recurring';

@@ -12,6 +12,7 @@ import { INITIAL_ASSETS, type Asset } from './assets.data';
 import { AssetModal } from './AssetModal';
 import { AssetDetailView, type DetailedAsset } from './AssetDetailView';
 import { PaginationBar } from '@/components/ui/DataListToolbar';
+import { KpiStatCard } from '@/components/ui/KpiStatCard';
 
 // --- UI Utility ---
 const cn = (...classes: (string | boolean | undefined)[]) => classes.filter(Boolean).join(' ');
@@ -336,7 +337,8 @@ export function AssetDirectoryPage({
                                 </div>
                             )}
                             
-                            {/* KPI CARDS — single-line labels, tighter padding, clearer active state */}
+                            {/* KPI CARDS — Default Compliance catalog KpiTile look
+                                (label + number left, icon square right); still click-to-filter. */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                                 {[
                                     { id: 'all',          label: 'Total Assets',  value: stats.total,        Icon: LayoutGrid, accent: 'blue'    },
@@ -345,40 +347,17 @@ export function AssetDirectoryPage({
                                     { id: 'OutOfService', label: 'Out of Service',value: stats.outOfService, Icon: AlertCircle,accent: 'amber'   },
                                     { id: 'Drafted',      label: 'Draft',         value: stats.draft,        Icon: FileText,   accent: 'sky'     },
                                     { id: 'Deactivated',  label: 'Deactivated',   value: stats.deactivated,  Icon: XCircle,    accent: 'slate'   },
-                                ].map((card) => {
-                                    const active = activeStatusFilter === card.id;
-                                    const tones: Record<string, { iconBg: string; iconFg: string; bar: string; ring: string }> = {
-                                        blue:    { iconBg: 'bg-blue-50',    iconFg: 'text-blue-600',    bar: 'bg-blue-500',    ring: 'ring-blue-500/30' },
-                                        emerald: { iconBg: 'bg-emerald-50', iconFg: 'text-emerald-600', bar: 'bg-emerald-500', ring: 'ring-emerald-500/30' },
-                                        rose:    { iconBg: 'bg-rose-50',    iconFg: 'text-rose-600',    bar: 'bg-rose-500',    ring: 'ring-rose-500/30' },
-                                        amber:   { iconBg: 'bg-amber-50',   iconFg: 'text-amber-600',   bar: 'bg-amber-500',   ring: 'ring-amber-500/30' },
-                                        sky:     { iconBg: 'bg-sky-50',     iconFg: 'text-sky-600',     bar: 'bg-sky-500',     ring: 'ring-sky-500/30' },
-                                        slate:   { iconBg: 'bg-slate-100',  iconFg: 'text-slate-600',   bar: 'bg-slate-500',   ring: 'ring-slate-500/30' },
-                                    };
-                                    const t = tones[card.accent];
-                                    return (
-                                        <button
-                                            key={card.id}
-                                            onClick={() => setActiveStatusFilter(card.id)}
-                                            className={cn(
-                                                'relative flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm transition-all overflow-hidden text-left',
-                                                'hover:shadow hover:border-slate-300',
-                                                active && `ring-2 ${t.ring} border-transparent`
-                                            )}
-                                        >
-                                            <span className={cn('absolute left-0 top-0 bottom-0 w-1 transition-all', t.bar, active ? 'opacity-100' : 'opacity-30')} />
-                                            <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', t.iconBg, t.iconFg)}>
-                                                    <card.Icon className="w-4 h-4" />
-                                                </div>
-                                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">
-                                                    {card.label}
-                                                </span>
-                                            </div>
-                                            <div className="text-2xl font-bold text-slate-900 tabular-nums shrink-0">{card.value}</div>
-                                        </button>
-                                    );
-                                })}
+                                ].map((card) => (
+                                    <KpiStatCard
+                                        key={card.id}
+                                        label={card.label}
+                                        value={card.value}
+                                        Icon={card.Icon}
+                                        accent={card.accent}
+                                        active={activeStatusFilter === card.id}
+                                        onClick={() => setActiveStatusFilter(card.id)}
+                                    />
+                                ))}
                             </div>
 
                             {/* TOOLBAR — search row + filter row, wraps cleanly on small screens */}

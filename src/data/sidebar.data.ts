@@ -36,6 +36,7 @@ import {
     Tags,
     Workflow,
     UserPlus,
+    Smartphone,
 } from "lucide-react";
 
 import type { SidebarNode } from "@/types/sidebar";
@@ -156,6 +157,12 @@ export const SIDEBAR_NODES: SidebarNode[] = [
         path: "/accidents",
     },
     {
+        key: "default-accidents",
+        label: "Default Accidents",
+        icon: ShieldAlert,
+        path: "/default-accidents",
+    },
+    {
         key: "tickets",
         label: "Tickets",
         icon: Ticket,
@@ -251,5 +258,11 @@ export const SIDEBAR_NODES: SidebarNode[] = [
             { key: "super-admin-service-profile-compliance", label: "Service Profile Configuration", icon: Building2, path: "/admin/service-profile-compliance" },
             { key: "super-admin-carrier-profile-config", label: "Carrier Profile Configuration", icon: Truck, path: "/admin/carrier-profile-configuration" },
         ],
+    },
+    {
+        key: "driver-mobile-app",
+        label: "Driver Mobile App",
+        icon: Smartphone,
+        path: "/driver-mobile-app",
     },
 ];

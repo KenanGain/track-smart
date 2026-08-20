@@ -246,7 +246,7 @@ const SEED_SECTIONS: SeedSection[] = [
     { title: "Driver Personal & Commercial Abstracts", items: [
         doc("Driver Abstracts / MVR", "mvr", "must", "annual", { list: true }),
         doc("Driver PSP", "psp-report", "optional", "status", { note: "If going to USA" }),
-        doc("Driver CVDR / CDR / CDA", "driver-abstract", "must", "annual", { list: true }),
+        doc("Driver CVDR / CDR / CDA", "driver-cvdr", "must", "annual", { list: true }),
         doc("Proof of Citizenship", "birth-certificate", "must", "status"),
         doc("US Visa", "visa", "optional", "expiry", { note: "If going to USA" }),
         custom("Copy of Work Permit", "optional", "expiry", { note: "If applicable" }),
@@ -259,7 +259,7 @@ const SEED_SECTIONS: SeedSection[] = [
         doc("Driver Training Certificates", "training-cert", "must", "annual", { list: true, note: "Pre-employment and ongoing" }),
     ] },
     { title: "Ongoing", items: [
-        doc("Annual Driver Abstract Review", "driver-abstract", "must", "annual", { list: true }),
+        doc("Annual Driver Abstract Review", "driver-cvdr", "must", "annual", { list: true }),
         custom("Annual CVDR / CDA / CDR Record Review", "must", "annual", { list: true }),
         doc("Annual Review of Driver Records (Violations)", "annual-review", "must", "annual", { list: true }),
         custom("Disciplinary Records", "optional", "status", { list: true }),
@@ -331,8 +331,8 @@ export function getDqChecklist(id?: string): DqChecklist | undefined {
     return loadDqChecklists().find(c => c.id === id);
 }
 
-export function blankDqChecklist(): DqChecklist {
-    return { id: uidDq("dqcl"), name: "", type: "cross_border", description: "", jurisdiction: defaultJurisdictionFor("cross_border"), sections: [emptyDqSection("Documents")], updatedAt: today() };
+export function blankDqChecklist(type: DqDriverTypeId = "cross_border"): DqChecklist {
+    return { id: uidDq("dqcl"), name: "", type, description: "", jurisdiction: defaultJurisdictionFor(type), sections: [emptyDqSection("Documents")], updatedAt: today() };
 }
 
 export function useDqChecklists() {

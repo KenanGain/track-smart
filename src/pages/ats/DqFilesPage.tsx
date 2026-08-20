@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ListChecks, Users, Check, AlertTriangle, ChevronRight, Search, FileText, Eye,
     ChevronsUpDown, ChevronUp, ChevronDown, ChevronLeft as ChevronLeftIcon,
+    CircleAlert, Clock, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader, TabStrip, SelectFilter, type TabDef } from "./ats-ui";
 import { getAccountById } from "@/pages/accounts/accounts.data";
 import { getDriversForAccount } from "@/pages/accounts/carrier-drivers.data";
 import type { Driver } from "@/pages/profile/carrier-profile.data";
-import { SAFETY_RECORDS, type SafetyRecord } from "@/pages/compliance/safety-software-catalog.data";
+import { SAFETY_RECORDS, isDateMonitored, type SafetyRecord } from "@/pages/compliance/safety-software-catalog.data";
 import { useCustomSafetyRecords } from "@/pages/compliance/safety-custom-records.data";
-import { useComplianceData, entryStatus, type RecordDataEntry } from "@/pages/compliance/compliance-data-store";
+import { useComplianceData, entryStatus, currentVersion, type RecordDataEntry } from "@/pages/compliance/compliance-data-store";
 import { useDriverDqFiles, checklistForType } from "@/pages/dq-files/dq-driver-files.data";
 import { DqFilePreview, formToRecord } from "@/pages/settings/SettingsDqChecklistBuilder";
 import { assignedChecklistId } from "@/pages/settings/SettingsDqAssignDrivers";
@@ -38,22 +39,63 @@ const PAGE_TABS: TabDef[] = [
 ];
 const PAGE_SIZES = [10, 25, 50, 100];
 
-type Completion = { total: number; present: number; missing: number; pct: number; complete: boolean };
+// Per-driver DQ compliance health — the document + form items on file for a driver,
+// categorised against the Default Compliance store the SAME way the compliance list does:
+// missing (not on file), expired (past its monitored date), expiring (≤30 days), status
+// (status-monitored record with a non-good status). Custom "points" aren't store-tracked.
+export type Health = {
+    total: number; complete: number; missing: number;
+    expired: number; expiring: number; statusAlert: number; valid: number;
+    issues: number; pct: number; allGood: boolean;
+};
 type EntryGetter = (subjectId: string, recordId: string) => RecordDataEntry;
 
-// Completion from the compliance store — the document + form items on file for a driver.
-// (Custom "points" are manual reminders shown in the detail; they aren't store-tracked.)
-function driverCompletion(checklist: DqChecklist | undefined, driverId: string, getEntry: EntryGetter, recordById: Map<string, SafetyRecord>): Completion {
+const EXPIRING_DAYS = 30;
+const GOOD_STATUS = new Set(["active", "complete", "on file", "valid", "current"]);
+
+function driverHealth(checklist: DqChecklist | undefined, driverId: string, getEntry: EntryGetter, recordById: Map<string, SafetyRecord>): Health {
     const items: DqItem[] = checklist ? checklist.sections.flatMap(s => s.items) : [];
     const trackable = items.filter(i => (i.source === "document" || i.source === "form") && i.requirement !== "optional");
-    let present = 0;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let complete = 0, missing = 0, expired = 0, expiring = 0, statusAlert = 0, valid = 0;
     for (const it of trackable) {
         const rec = it.source === "document" ? recordById.get(it.refId ?? "") : formToRecord(it);
-        if (rec && entryStatus(rec, getEntry(driverId, rec.id)) === "complete") present++;
+        if (!rec) { missing++; continue; }
+        const entry = getEntry(driverId, rec.id);
+        if (entryStatus(rec, entry) !== "complete") { missing++; continue; }
+        complete++;
+        const cur = currentVersion(entry);
+        if (isDateMonitored(rec) && cur?.expiryDate) {
+            const exp = new Date(cur.expiryDate + "T00:00:00");
+            const days = Math.ceil((exp.getTime() - today.getTime()) / 86400000);
+            if (days < 0) expired++;
+            else if (days <= EXPIRING_DAYS) expiring++;
+            else valid++;
+        } else {
+            const s = (cur?.status ?? "").trim().toLowerCase();
+            if (s && !GOOD_STATUS.has(s)) statusAlert++;
+            else valid++;
+        }
     }
     const total = trackable.length;
-    const pct = total ? Math.round((present / total) * 100) : 0;
-    return { total, present, missing: total - present, pct, complete: total > 0 && present === total };
+    const issues = missing + expired + expiring + statusAlert;
+    const pct = total ? Math.round((complete / total) * 100) : 0;
+    return { total, complete, missing, expired, expiring, statusAlert, valid, issues, pct, allGood: total > 0 && issues === 0 };
+}
+
+/**
+ * Reusable per-driver DQ health resolver — wires the compliance store + custom records +
+ * each driver's DQ type once, and returns a `healthFor(driver)` callable. Used by the DQ
+ * Files page AND the Account ▸ Drivers roster (CarrierProfilePage) so both read the same
+ * DQ progress + checklist status. Re-renders the caller when the compliance store changes.
+ */
+export function useDriverDqHealth(accountId?: string): (driver: Driver) => Health {
+    const acct = accountId ?? "acct-001";
+    const { getRecord } = useDriverDqFiles(acct);
+    const { getEntry } = useComplianceData(acct); // subscribes → caller re-renders on store change
+    const { records: customRecords } = useCustomSafetyRecords(acct);
+    const recordById = useMemo(() => new Map<string, SafetyRecord>([...customRecords, ...SAFETY_RECORDS].map(r => [r.id, r])), [customRecords]);
+    return (driver: Driver) => driverHealth(checklistForType(getRecord(driver).driverType), driver.id, getEntry, recordById);
 }
 
 export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: string) => void; accountId?: string } = {}) {
@@ -75,17 +117,18 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
     const rows = useMemo(() => drivers.map(driver => {
         const driverType = getRecord(driver).driverType;
         const checklist = checklistForType(driverType);
-        const comp = driverCompletion(checklist, driver.id, getEntry, recordById);
+        const comp = driverHealth(checklist, driver.id, getEntry, recordById);
         return { driver, driverType, checklist, comp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [drivers, all, recordById]);
 
     const kpis = useMemo(() => {
         const total = rows.length;
-        const complete = rows.filter(r => r.comp.complete).length;
+        const compliant = rows.filter(r => r.comp.allGood).length;
         const missing = rows.reduce((s, r) => s + r.comp.missing, 0);
+        const attention = rows.reduce((s, r) => s + r.comp.expired + r.comp.expiring + r.comp.statusAlert, 0);
         const avg = total ? Math.round(rows.reduce((s, r) => s + r.comp.pct, 0) / total) : 0;
-        return { total, complete, missing, avg };
+        return { total, compliant, missing, attention, avg };
     }, [rows]);
 
     const filtered = useMemo(() => {
@@ -124,10 +167,11 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
 
             <div className="space-y-4 p-4 sm:space-y-6 sm:p-8">
                 {/* KPI cards */}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                     <StatTile label="Drivers" value={kpis.total} Icon={Users} accent="violet" />
-                    <StatTile label="DQ Complete" value={kpis.complete} Icon={Check} accent="emerald" />
-                    <StatTile label="Items Missing" value={kpis.missing} Icon={AlertTriangle} accent="amber" />
+                    <StatTile label="Fully Compliant" value={kpis.compliant} Icon={Check} accent="emerald" />
+                    <StatTile label="Items Missing" value={kpis.missing} Icon={AlertTriangle} accent="rose" />
+                    <StatTile label="Needs Attention" value={kpis.attention} Icon={Clock} accent="amber" />
                     <StatTile label="Avg Completion" value={`${kpis.avg}%`} Icon={ListChecks} accent="blue" />
                 </div>
 
@@ -161,8 +205,8 @@ export function DqFilesPage({ onNavigate, accountId }: { onNavigate?: (path: str
 }
 
 // ── Drivers table (sortable + paginated; desktop table + mobile cards) ────────────
-type Row = { driver: Driver; driverType: DqDriverTypeId; checklist: DqChecklist | undefined; comp: Completion };
-type SortCol = "name" | "type" | "items" | "missing" | "pct";
+type Row = { driver: Driver; driverType: DqDriverTypeId; checklist: DqChecklist | undefined; comp: Health };
+type SortCol = "name" | "type" | "items" | "issues" | "pct";
 
 function DriversTable({ rows, carrierName, onOpen, title, noMatch }: {
     rows: Row[]; carrierName: string; onOpen: (id: string) => void; title?: string; noMatch?: boolean;
@@ -176,7 +220,7 @@ function DriversTable({ rows, carrierName, onOpen, title, noMatch }: {
         col === "name" ? r.driver.name.toLowerCase()
             : col === "type" ? driverTypeLabel(r.driverType)
                 : col === "items" ? r.comp.total
-                    : col === "missing" ? r.comp.missing
+                    : col === "issues" ? r.comp.issues
                         : r.comp.pct;
     const sorted = useMemo(() => {
         if (!sort) return rows;
@@ -214,14 +258,14 @@ function DriversTable({ rows, carrierName, onOpen, title, noMatch }: {
             )}
             {/* Desktop table */}
             <div className="hidden overflow-x-auto lg:block">
-                <table className="w-full min-w-[760px]">
+                <table className="w-full min-w-[880px]">
                     <thead className="border-b border-slate-200 bg-slate-50/50">
                         <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">
                             <SortTh col="name" label="Driver" sort={sort} onSort={toggleSort} className="pl-5" />
                             <SortTh col="type" label="Type" sort={sort} onSort={toggleSort} className="w-28" />
                             <SortTh col="items" label="Items" sort={sort} onSort={toggleSort} className="w-16 justify-center text-center" />
-                            <SortTh col="missing" label="Missing" sort={sort} onSort={toggleSort} className="w-20 justify-center text-center" />
-                            <SortTh col="pct" label="Completion" sort={sort} onSort={toggleSort} className="w-52" />
+                            <SortTh col="issues" label="Compliance Checklist" sort={sort} onSort={toggleSort} className="min-w-[240px]" />
+                            <SortTh col="pct" label="DQ Progress" sort={sort} onSort={toggleSort} className="w-48" />
                             <th className="w-20 px-4 py-2.5 pr-5 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -240,14 +284,10 @@ function DriversTable({ rows, carrierName, onOpen, title, noMatch }: {
                                 </td>
                                 <td className="px-3 py-3"><TypeBadge type={r.driverType} /></td>
                                 <td className="px-3 py-3 text-center text-[13px] font-semibold tabular-nums text-slate-700">{r.comp.total}</td>
-                                <td className="px-3 py-3 text-center">
-                                    {!r.checklist ? <span className="text-[11px] font-semibold text-slate-400">—</span>
-                                        : r.comp.complete ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">0</span>
-                                            : <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 tabular-nums">{r.comp.missing}</span>}
-                                </td>
+                                <td className="px-3 py-3"><ComplianceChecklist h={r.comp} hasChecklist={!!r.checklist} /></td>
                                 <td className="px-3 py-3">
                                     <div className="flex items-center gap-2.5">
-                                        <CompletionBar pct={r.comp.pct} complete={r.comp.complete} />
+                                        <CompletionBar h={r.comp} />
                                         <span className="w-9 text-right text-[13px] font-bold tabular-nums text-slate-700">{r.comp.pct}%</span>
                                     </div>
                                 </td>
@@ -272,13 +312,13 @@ function DriversTable({ rows, carrierName, onOpen, title, noMatch }: {
                                     <span className="truncate font-semibold text-slate-900">{r.driver.name}</span>
                                     <TypeBadge type={r.driverType} />
                                 </div>
-                                <div className="mt-1 flex items-center gap-2">
-                                    <CompletionBar pct={r.comp.pct} complete={r.comp.complete} />
+                                <div className="mt-1.5 flex items-center gap-2">
+                                    <CompletionBar h={r.comp} />
                                     <span className="text-[12px] font-bold tabular-nums text-slate-700">{r.comp.pct}%</span>
-                                    {!r.comp.complete && r.checklist && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">{r.comp.missing} missing</span>}
                                 </div>
+                                <div className="mt-1.5"><ComplianceChecklist h={r.comp} hasChecklist={!!r.checklist} /></div>
                             </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                            <ChevronRight className="h-4 w-4 shrink-0 self-center text-slate-300" />
                         </button>
                     </li>
                 ))}
@@ -329,6 +369,7 @@ const STAT_ACCENT = {
     violet: { border: "border-l-violet-500", iconBg: "bg-violet-50", iconColor: "text-violet-600" },
     emerald: { border: "border-l-emerald-500", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
     amber: { border: "border-l-amber-500", iconBg: "bg-amber-50", iconColor: "text-amber-600" },
+    rose: { border: "border-l-rose-500", iconBg: "bg-rose-50", iconColor: "text-rose-600" },
 } as const;
 function StatTile({ label, value, Icon, accent }: { label: string; value: React.ReactNode; Icon: React.ElementType; accent: keyof typeof STAT_ACCENT }) {
     const cls = STAT_ACCENT[accent];
@@ -343,10 +384,44 @@ function StatTile({ label, value, Icon, accent }: { label: string; value: React.
     );
 }
 
-function CompletionBar({ pct, complete }: { pct: number; complete: boolean }) {
+// DQ progress bar — % of required items on file. Colour reflects HEALTH, not just fill:
+// emerald = fully compliant, amber = on file but items expired/expiring/status, violet = still missing.
+// A tiny non-zero % keeps a visible sliver (min 6%).
+export function CompletionBar({ h }: { h: Health }) {
+    const tone = h.allGood ? "bg-emerald-500" : h.missing > 0 ? "bg-violet-500" : "bg-amber-500";
+    const w = h.pct <= 0 ? 0 : Math.max(h.pct, 6);
     return (
-        <div className="h-1.5 w-28 overflow-hidden rounded-full bg-slate-100">
-            <div className={cn("h-full rounded-full", complete ? "bg-emerald-500" : "bg-violet-500")} style={{ width: `${pct}%` }} />
+        <div className="h-2 w-full max-w-[130px] overflow-hidden rounded-full bg-slate-100">
+            <div className={cn("h-full rounded-full transition-all", tone)} style={{ width: `${w}%` }} />
+        </div>
+    );
+}
+
+// Compliance Checklist — the DQ file's items rolled up against the Default Compliance store:
+// what's missing, expired, about to expire, or has a status change. All-clear shows a single chip.
+const CHIP_TONE: Record<string, string> = {
+    rose: "border-rose-200 bg-rose-50 text-rose-700",
+    red: "border-red-200 bg-red-50 text-red-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+};
+function StatusChip({ tone, Icon, n, label }: { tone: keyof typeof CHIP_TONE; Icon: React.ElementType; n: number; label: string }) {
+    return (
+        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold tabular-nums", CHIP_TONE[tone])}>
+            <Icon className="h-3 w-3" /> {n} {label}
+        </span>
+    );
+}
+export function ComplianceChecklist({ h, hasChecklist }: { h: Health; hasChecklist: boolean }) {
+    if (!hasChecklist || h.total === 0) return <span className="text-[11px] font-medium text-slate-400">No checklist</span>;
+    if (h.allGood) return <StatusChip tone="emerald" Icon={Check} n={h.total} label="valid" />;
+    return (
+        <div className="flex flex-wrap gap-1">
+            {h.missing > 0 && <StatusChip tone="rose" Icon={AlertTriangle} n={h.missing} label="missing" />}
+            {h.expired > 0 && <StatusChip tone="red" Icon={CircleAlert} n={h.expired} label="expired" />}
+            {h.expiring > 0 && <StatusChip tone="amber" Icon={Clock} n={h.expiring} label="expiring" />}
+            {h.statusAlert > 0 && <StatusChip tone="blue" Icon={Activity} n={h.statusAlert} label="status" />}
         </div>
     );
 }

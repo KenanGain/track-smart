@@ -79,6 +79,8 @@ import { TestingFormsPage } from '@/pages/hiring-process/TestingFormsPage'
 import { TicketsPage } from '@/pages/tickets/TicketsPage'
 
 import { AccidentsPage } from '@/pages/incidents/IncidentsPage'
+import { DefaultAccidentsPage } from '@/pages/incidents/DefaultAccidentsPage'
+import { DriverMobileAppPage } from '@/pages/driver-app/DriverMobileAppPage'
 import { ViolationsListPage } from '@/pages/violations/ViolationsListPage'
 import { InspectionsPage } from '@/pages/inspections/InspectionsPage'
 import { SafetyEventsPage } from '@/pages/safety-events/SafetyEventsPage'
@@ -509,6 +511,27 @@ function App() {
                 ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
             return (
                 <AccidentsPage
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
+                />
+            )
+        }
+        if (path === "/default-accidents") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <DefaultAccidentsPage
+                    key={account?.id ?? 'default'}
+                    accountId={account?.id}
+                    currentUserName={currentUser?.name}
+                />
+            )
+        }
+        if (path === "/driver-mobile-app") {
+            const account = selectedAccount
+                ?? (currentUser ? getDefaultCarrierForUser(currentUser) : null)
+            return (
+                <DriverMobileAppPage
                     key={account?.id ?? 'default'}
                     accountId={account?.id}
                 />

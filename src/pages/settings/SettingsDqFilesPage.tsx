@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SettingsDqChecklistBuilder, type BuilderTab } from "./SettingsDqChecklistBuilder";
-import { assignedDriverCount } from "./SettingsDqAssignDrivers";
 import {
     useDqChecklists, driverTypeLabel, documentCount, formCount, itemCount,
     DQ_DRIVER_TYPES,
@@ -28,11 +27,11 @@ const TYPE_BADGE: Record<string, string> = {
 const PAGE_SIZES = [10, 25, 50, 100];
 
 export function SettingsDqFilesPage({ accountId }: { accountId?: string }) {
-    const [edit, setEdit] = useState<{ id: string; tab?: BuilderTab } | null>(null);
+    const [edit, setEdit] = useState<{ id: string; tab?: BuilderTab; type?: DqDriverTypeId } | null>(null);
     const { checklists, save: saveChecklist, remove: removeChecklist } = useDqChecklists();
 
     if (edit !== null) {
-        return <SettingsDqChecklistBuilder checklistId={edit.id} initialTab={edit.tab} onBack={() => setEdit(null)} onSave={saveChecklist} accountId={accountId} />;
+        return <SettingsDqChecklistBuilder checklistId={edit.id} initialTab={edit.tab} initialType={edit.type} onBack={() => setEdit(null)} onSave={saveChecklist} accountId={accountId} />;
     }
 
     return (
@@ -41,8 +40,8 @@ export function SettingsDqFilesPage({ accountId }: { accountId?: string }) {
             <div className="border-b border-slate-200 bg-white">
                 <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Settings · DQ Files</p>
-                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">Driver Qualification File Checklist</h1>
-                    <p className="mt-1 max-w-2xl text-sm text-slate-500">Create and manage the FMCSA DQ file templates your drivers must complete, and assign them to drivers.</p>
+                    <h1 className="mt-1 text-2xl font-semibold text-slate-900">Driver Qualification File Templates</h1>
+                    <p className="mt-1 max-w-2xl text-sm text-slate-500">One DQ file template per driver type. Each template <span className="font-medium text-slate-600">auto-applies to drivers by their type</span> — no manual assignment.</p>
                 </div>
             </div>
 
@@ -50,7 +49,7 @@ export function SettingsDqFilesPage({ accountId }: { accountId?: string }) {
                 <KpiCards checklists={checklists} />
                 <ChecklistsList
                     checklists={checklists}
-                    onNew={() => setEdit({ id: "new" })}
+                    onNew={type => setEdit({ id: "new", type })}
                     onEdit={id => setEdit({ id })}
                     onRemove={removeChecklist}
                 />
@@ -65,13 +64,13 @@ function KpiCards({ checklists }: { checklists: DqChecklist[] }) {
         templates: checklists.length,
         compliances: checklists.reduce((s, c) => s + documentCount(c), 0),
         forms: checklists.reduce((s, c) => s + formCount(c), 0),
-        drivers: checklists.reduce((s, c) => s + assignedDriverCount(c.id), 0),
+        types: new Set(checklists.map(c => c.type)).size,
     }), [checklists]);
     const cards = [
         { label: "Templates", value: totals.templates, Icon: FileCheck2, tone: "bg-emerald-50 text-emerald-600" },
         { label: "Compliances", value: totals.compliances, Icon: ShieldCheck, tone: "bg-blue-50 text-blue-600" },
         { label: "Forms", value: totals.forms, Icon: FileSignature, tone: "bg-violet-50 text-violet-600" },
-        { label: "Drivers assigned", value: totals.drivers, Icon: Users, tone: "bg-amber-50 text-amber-600" },
+        { label: "Driver types", value: `${totals.types} / 3`, Icon: Users, tone: "bg-amber-50 text-amber-600" },
     ];
     return (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -89,11 +88,11 @@ function KpiCards({ checklists }: { checklists: DqChecklist[] }) {
 }
 
 // ── Checklists list (table) ─────────────────────────────────────────────────────
-type SortCol = "name" | "compliances" | "forms" | "items" | "drivers" | "updated";
+type SortCol = "name" | "compliances" | "forms" | "items" | "updated";
 
 function ChecklistsList({ checklists, onNew, onEdit, onRemove }: {
     checklists: DqChecklist[];
-    onNew: () => void; onEdit: (id: string) => void; onRemove: (id: string) => void;
+    onNew: (type: DqDriverTypeId) => void; onEdit: (id: string) => void; onRemove: (id: string) => void;
 }) {
     const [q, setQ] = useState("");
     const [typeFilter, setTypeFilter] = useState<DqDriverTypeId | "all">("all");
@@ -113,8 +112,7 @@ function ChecklistsList({ checklists, onNew, onEdit, onRemove }: {
             : col === "compliances" ? documentCount(c)
                 : col === "forms" ? formCount(c)
                     : col === "items" ? itemCount(c)
-                        : col === "drivers" ? assignedDriverCount(c.id)
-                            : c.updatedAt;
+                        : c.updatedAt;
     const sorted = useMemo(() => {
         if (!sort) return filtered;
         const arr = [...filtered];
@@ -156,7 +154,8 @@ function ChecklistsList({ checklists, onNew, onEdit, onRemove }: {
                         <option value="all">All types</option>
                         {DQ_DRIVER_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                     </select>
-                    <Button size="sm" onClick={onNew} className="shrink-0"><Plus className="h-4 w-4" /> Add</Button>
+                    <Button size="sm" onClick={() => onNew(typeFilter !== "all" ? typeFilter : "cross_border")} className="shrink-0"
+                        title={`New ${driverTypeLabel(typeFilter !== "all" ? typeFilter : "cross_border")} template`}><Plus className="h-4 w-4" /> Add</Button>
                 </div>
             </div>
 
@@ -178,7 +177,6 @@ function ChecklistsList({ checklists, onNew, onEdit, onRemove }: {
                                     <SortTh col="compliances" label="Compliances" sort={sort} onSort={toggleSort} className="w-24 justify-center text-center" />
                                     <SortTh col="forms" label="Forms" sort={sort} onSort={toggleSort} className="w-16 justify-center text-center" />
                                     <SortTh col="items" label="Items" sort={sort} onSort={toggleSort} className="w-16 justify-center text-center" />
-                                    <SortTh col="drivers" label="Drivers" sort={sort} onSort={toggleSort} className="w-16 justify-center text-center" />
                                     <SortTh col="updated" label="Updated" sort={sort} onSort={toggleSort} className="w-28" />
                                     <th className="w-24 px-4 py-2.5 pr-5 text-right">Actions</th>
                                 </tr>
@@ -206,7 +204,6 @@ function ChecklistsList({ checklists, onNew, onEdit, onRemove }: {
                                         <td className="px-3 py-3 text-center text-[13px] font-semibold tabular-nums text-slate-700">{documentCount(c)}</td>
                                         <td className="px-3 py-3 text-center text-[13px] font-semibold tabular-nums text-slate-700">{formCount(c)}</td>
                                         <td className="px-3 py-3 text-center text-[13px] font-semibold tabular-nums text-slate-700">{itemCount(c)}</td>
-                                        <td className="px-3 py-3 text-center text-[13px] font-semibold tabular-nums text-slate-700">{assignedDriverCount(c.id)}</td>
                                         <td className="px-3 py-3 text-[12px] text-slate-500 whitespace-nowrap">{c.updatedAt}</td>
                                         <td className="px-4 py-3 pr-5">
                                             <div className="flex items-center justify-end gap-1.5">
@@ -238,7 +235,6 @@ function ChecklistsList({ checklists, onNew, onEdit, onRemove }: {
                                             <Stat value={documentCount(c)} label="compliances" />
                                             <Stat value={formCount(c)} label="forms" />
                                             <Stat value={itemCount(c)} label="items" />
-                                            <Stat value={assignedDriverCount(c.id)} label="drivers" />
                                             <span className="text-[11px] text-slate-400">· Updated {c.updatedAt}</span>
                                         </div>
                                     </div>
@@ -298,13 +294,13 @@ function Stat({ value, label }: { value: number; label: string }) {
     );
 }
 
-function EmptyState({ onNew }: { onNew: () => void }) {
+function EmptyState({ onNew }: { onNew: (type: DqDriverTypeId) => void }) {
     return (
         <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-500"><ListChecks className="h-7 w-7" /></div>
             <h3 className="mt-5 text-base font-semibold text-slate-700">No DQ templates yet</h3>
-            <p className="mt-1.5 max-w-md text-sm text-slate-500">A template is a named, typed set of compliances, forms and check items a driver's qualification file must contain.</p>
-            <Button className="mt-5" onClick={onNew}><Plus className="h-4 w-4" /> Add template</Button>
+            <p className="mt-1.5 max-w-md text-sm text-slate-500">A template is a typed set of compliances, forms and check items a driver's qualification file must contain — it auto-applies to drivers of that type.</p>
+            <Button className="mt-5" onClick={() => onNew("cross_border")}><Plus className="h-4 w-4" /> Add template</Button>
         </div>
     );
 }

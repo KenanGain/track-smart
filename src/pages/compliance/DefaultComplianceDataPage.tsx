@@ -209,7 +209,7 @@ const DATA_COLUMNS: { id: DataColId; label: string }[] = [
 const ALL_DATA_COLS: DataColId[] = DATA_COLUMNS.map(c => c.id);
 const STATUS_RANK: Record<DataStatus, number> = { complete: 0, missing: 1, optional: 2 };
 const PAGE_SIZES = [10, 25, 50, 100];
-const REMINDER_DAYS = [90, 60, 30, 7, 0]; // 0 = "On the date"
+const REMINDER_DAYS = [90, 60, 30, 15, 7, 0]; // 0 = "On the date"
 const reminderLabel = (d: number) => (d === 0 ? 'On the date' : `${d} Days Before`);
 // Status values for status-based records (the monitored value captured in the form).
 const STATUS_OPTIONS = ['Active', 'Pending', 'On File', 'Complete', 'Incomplete', 'Expired', 'Inactive'];
@@ -243,6 +243,7 @@ export function seedMonitoring(record: SafetyRecord, existing?: MonitoringConfig
     // Status-only records default to status-based monitoring (no date reminders).
     base.basis = isDateMonitored(record) ? 'expiry' : 'status';
     if (base.basis === 'status') base.reminders = [];
+    else if (record.defaultReminders) base.reminders = [...record.defaultReminders]; // per-record reminder default
     return existing ? { ...base, ...existing } : base;
 }
 

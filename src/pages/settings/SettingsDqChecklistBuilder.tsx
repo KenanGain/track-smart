@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ChevronLeft, ChevronRight, ChevronsUpDown, Check, Plus, Trash2, ChevronUp, ChevronDown, X, Search, Info,
     FileText, FileSignature, PenLine, ClipboardList, FolderPlus, SlidersHorizontal, FileCheck2, ListChecks,
-    Hash, Sparkles, MapPin, Calendar, CalendarClock, Activity, History, Eye, ExternalLink, FileDown, Users, AlertTriangle, Lock,
+    Hash, Sparkles, MapPin, Calendar, CalendarClock, Activity, History, Eye, ExternalLink, FileDown, AlertTriangle, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/toggle";
 import {
     getDqChecklist, blankDqChecklist, newDqItem, emptyDqSection,
-    inferRequirement, inferMonitoring, defaultJurisdictionFor, driverTypeLabel,
+    inferRequirement, inferMonitoring, driverTypeLabel,
     documentCount, formCount, itemCount, checkTimeFromMonitoring, checkTimeMeta,
     requirementMeta, monitoringSummary,
-    DQ_DRIVER_TYPES, DQ_JURISDICTIONS, DQ_CHECK_TIMES,
+    DQ_JURISDICTIONS, DQ_CHECK_TIMES,
     type DqChecklist, type DqDriverTypeId, type DqItem, type DqItemSource, type DqRequirement, type DqCheckTime,
 } from "./settings-dq-checklists.data";
 import {
@@ -30,7 +30,6 @@ import { PolicyForm } from "@/pages/hiring-process/PolicyForm";
 import { ReviewSignOff, newSignOff, type SignOffData } from "@/pages/hiring-process/FormKit";
 import { ThemedDocumentViewer } from "@/pages/hiring-process/ThemedDocumentViewer";
 import type { DocSection } from "@/pages/hiring-process/FormDocument";
-import { DriverAssignPanel, assignedDriverCount } from "./SettingsDqAssignDrivers";
 
 /**
  * DQ template builder — assemble a Driver Qualification File from two sources
@@ -87,7 +86,7 @@ export function formToRecord(item: DqItem): SafetyRecord {
     };
 }
 
-export type BuilderTab = "details" | "documents" | "forms" | "checklist" | "drivers";
+export type BuilderTab = "details" | "documents" | "forms" | "checklist";
 
 const SOURCE_ICON: Record<DqItemSource, React.ElementType> = { document: FileText, form: FileSignature, custom: PenLine };
 const SOURCE_TINT: Record<DqItemSource, string> = { document: "text-slate-400", form: "text-blue-500", custom: "text-violet-500" };
@@ -98,15 +97,16 @@ const SOURCE_TYPE_CHIP: Record<DqItemSource, string> = {
     custom: "bg-slate-100 text-slate-600 ring-slate-200",
 };
 
-export function SettingsDqChecklistBuilder({ checklistId, onBack, onSave, accountId, initialTab }: {
+export function SettingsDqChecklistBuilder({ checklistId, onBack, onSave, accountId, initialTab, initialType }: {
     checklistId: string;
     onBack: () => void;
     onSave: (c: DqChecklist) => void;
     accountId?: string;
     initialTab?: BuilderTab;
+    initialType?: DqDriverTypeId;
 }) {
     const existing = checklistId !== "new" ? getDqChecklist(checklistId) : undefined;
-    const [cl, setCl] = useState<DqChecklist>(existing ?? blankDqChecklist());
+    const [cl, setCl] = useState<DqChecklist>(existing ?? blankDqChecklist(initialType));
     const [tab, setTab] = useState<BuilderTab>(initialTab ?? "details");
     const [landingId, setLandingId] = useState<string>(cl.sections[0]?.id ?? "");
     const [preview, setPreview] = useState(false);
@@ -225,7 +225,6 @@ export function SettingsDqChecklistBuilder({ checklistId, onBack, onSave, accoun
         { id: "documents", label: "Compliances", Icon: ListChecks, count: documentCount(cl) },
         { id: "forms", label: "Forms", Icon: FileSignature, count: formCount(cl) },
         { id: "checklist", label: "Checklist", Icon: ClipboardList, count: itemCount(cl) },
-        { id: "drivers", label: "Drivers", Icon: Users, count: assignedDriverCount(cl.id) || undefined },
     ];
 
     if (preview) {
@@ -284,49 +283,34 @@ export function SettingsDqChecklistBuilder({ checklistId, onBack, onSave, accoun
                         onPatchItem={patchItem} onRemoveItem={removeItem} onMoveItem={moveItem} onReorderItem={reorderItem}
                         onPreview={() => setPreview(true)} />
                 )}
-                {tab === "drivers" && (
-                    <div className="max-w-[1100px]">
-                        <DriverAssignPanel checklist={cl} accountId={accountId} />
-                    </div>
-                )}
             </div>
         </div>
     );
 }
 
 // ── Tab: Define ─────────────────────────────────────────────────────────────────
+const TYPE_TONE: Record<string, string> = {
+    cross_border: "bg-violet-50 text-violet-700 ring-violet-200",
+    us_only: "bg-blue-50 text-blue-700 ring-blue-200",
+    canada_only: "bg-rose-50 text-rose-700 ring-rose-200",
+};
 function DetailsTab({ cl, setField }: { cl: DqChecklist; setField: (patch: Partial<DqChecklist>) => void }) {
     return (
         <div className="space-y-5">
-            {/* Driver type */}
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3">
-                    <p className="text-sm font-bold text-slate-800">Driver type</p>
-                    <p className="text-[11px] leading-snug text-slate-500">Who this DQ file is for — sets the default jurisdiction.</p>
-                </div>
-                <div className="grid grid-cols-1 gap-2.5 p-5 sm:grid-cols-3">
-                    {DQ_DRIVER_TYPES.map(dt => {
-                        const on = cl.type === dt.id;
-                        return (
-                            <button key={dt.id} type="button"
-                                onClick={() => setField({ type: dt.id as DqDriverTypeId, jurisdiction: defaultJurisdictionFor(dt.id as DqDriverTypeId) })}
-                                className={cn("rounded-xl border px-3.5 py-3 text-left transition", on ? "border-blue-400 bg-blue-50 ring-1 ring-blue-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50")}>
-                                <div className="flex items-center justify-between">
-                                    <p className={cn("text-sm font-semibold", on ? "text-blue-700" : "text-slate-800")}>{dt.label}</p>
-                                    {on && <Check className="h-4 w-4 text-blue-600" />}
-                                </div>
-                                <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{dt.blurb}</p>
-                            </button>
-                        );
-                    })}
-                </div>
-            </section>
+            {/* Auto-apply — the DQ file each driver sees is chosen by their driver type. */}
+            <div className="flex items-start gap-2.5 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-[13px] text-blue-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                <p>This template <span className="font-semibold">auto-applies to every {driverTypeLabel(cl.type)} driver</span>. A driver's DQ file is chosen by their driver type — there's no manual assignment.</p>
+            </div>
 
             {/* Details */}
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-3">
-                    <p className="text-sm font-bold text-slate-800">Template details</p>
-                    <p className="text-[11px] leading-snug text-slate-500">Name this template and set the jurisdiction it applies to.</p>
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+                    <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800">Template details</p>
+                        <p className="text-[11px] leading-snug text-slate-500">Name this template and set the jurisdiction it applies to.</p>
+                    </div>
+                    <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ring-1", TYPE_TONE[cl.type] ?? "bg-slate-100 text-slate-600 ring-slate-200")}>{driverTypeLabel(cl.type)}</span>
                 </div>
                 <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
                     <label className="block text-xs font-semibold text-slate-500">Template name

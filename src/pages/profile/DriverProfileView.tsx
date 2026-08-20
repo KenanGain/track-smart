@@ -18,7 +18,7 @@ import { inspectionsData } from '@/pages/inspections/inspectionsData';
 import { DataListToolbar, PaginationBar, type ColumnDef } from '@/components/ui/DataListToolbar';
 import { MOCK_TICKETS } from '@/pages/tickets/tickets.data';
 import { HOS_DAILY_LOGS as HOS_DAILY_LOGS_IMPORT, HOS_LOGS as HOS_LOGS_IMPORT, HOS_TRIPS as HOS_TRIPS_IMPORT } from '@/pages/hos/hos.data';
-import { Boxes, ClipboardList, ClipboardCheck } from 'lucide-react';
+import { Boxes, ClipboardList } from 'lucide-react';
 import { DriverDqFile } from '@/pages/ats/DqFilesPage';
 import { getInventoryByDriverId, getVendorById, VENDOR_CATEGORIES, getCategoryLabel } from '@/pages/inventory/inventory.data';
 import { type SubTab } from '@/components/ui/SubTabs';
@@ -1669,7 +1669,6 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
         // Records
         { id: 'Documents',      label: 'Compliances',      icon: FileText,        group: 'records' },
         { id: 'Application',    label: 'Forms',            icon: ClipboardList,   group: 'records' },
-        { id: 'DqFiles',        label: 'DQ Files',         icon: ClipboardCheck,  group: 'records' },
         { id: 'Training',       label: 'Training',         icon: GraduationCap,   group: 'records' },
         { id: 'Certificates',   label: 'Certificates',     icon: Award,           group: 'records' },
         // Operations
@@ -2539,17 +2538,6 @@ export const DriverProfileView = ({ onBack, initialDriverData, onEditProfile, on
                         accountId={accountId}
                         onNavigate={onNavigate}
                         formsOnly
-                    />
-                </div>
-            )}
-
-            {activeTab === 'DqFiles' && (
-                <div className="animate-in fade-in">
-                    <DriverDqFile
-                        driverId={driverData.id}
-                        driverName={`${driverData.firstName ?? ''} ${driverData.lastName ?? ''}`.trim() || driverData.name || 'Driver'}
-                        accountId={accountId}
-                        onNavigate={onNavigate}
                     />
                 </div>
             )}

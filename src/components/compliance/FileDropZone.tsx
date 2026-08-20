@@ -8,7 +8,7 @@ export interface DropFile { id: string; fileName: string; fileSize?: number }
  *  (the standalone Upload modal and the key number form's supporting document).
  *  Prototype: records the file name/size only. */
 export function FileDropZone({
-    files, onAdd, onRemove, multiple = false, compact = false,
+    files, onAdd, onRemove, multiple = false, compact = false, accept, hint,
 }: {
     files: DropFile[];
     onAdd: (list: FileList | null) => void;
@@ -16,6 +16,10 @@ export function FileDropZone({
     multiple?: boolean;
     /** Slightly tighter padding when embedded inside another form. */
     compact?: boolean;
+    /** Optional `accept` attribute for the file input (e.g. "image/*", "video/*"). */
+    accept?: string;
+    /** Optional override for the helper line under the drop prompt. */
+    hint?: string;
 }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [dragging, setDragging] = useState(false);
@@ -40,9 +44,9 @@ export function FileDropZone({
                     Drag &amp; drop {multiple ? 'files' : 'a file'}, or <span className="text-blue-600">click to browse</span>
                 </p>
                 <p className="text-[11px] text-slate-400">
-                    {multiple ? 'Multiple files allowed. ' : ''}PDF, JPG or PNG — prototype records the file name only.
+                    {hint ?? `${multiple ? 'Multiple files allowed. ' : ''}PDF, JPG or PNG — prototype records the file name only.`}
                 </p>
-                <input ref={inputRef} type="file" multiple={multiple} className="hidden" onChange={(e) => onAdd(e.target.files)} />
+                <input ref={inputRef} type="file" accept={accept} multiple={multiple} className="hidden" onChange={(e) => onAdd(e.target.files)} />
             </div>
 
             {files.length > 0 && (
