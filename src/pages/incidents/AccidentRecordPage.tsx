@@ -1,19 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Save, ShieldCheck, AlertTriangle, MapPin, Truck, CalendarClock,
     FileText, Camera, Trash2, BadgeCheck, Building2, User, Shield, Cloud, Check,
-    Car, Users, Plus, X, Video, Paperclip, type LucideIcon,
+    Car, Users, Plus, X, Video, Paperclip, Wrench, Boxes, ClipboardList, Eye,
+    Search, ChevronDown, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AccidentDisclosure } from './AccidentDisclosure';
 import { WizardHeader, WizardStepNav, WizardSection, type WizardStep } from '@/components/ui/WizardEditor';
 import { FileDropZone } from '@/components/compliance/FileDropZone';
-import { loadSafetyTags, tagColor, MAX_DOC_TAGS } from '@/pages/compliance/safety-tags.data';
+import { TagField } from '@/components/ui/TagField';
+import { getAssetsForAccount } from '@/pages/accounts/carrier-assets.data';
+import { getDriversForAccount } from '@/pages/accounts/carrier-drivers.data';
 import { ACCIDENT_TYPES, RISK_TYPE_TONE, type AccidentRiskType } from '@/data/accident-types.data';
 import {
     ACCIDENT_STATUS_META, SOURCE_META, PREVENTABILITY_OPTIONS,
     MAX_OTHER_VEHICLES, MAX_WITNESSES, VEHICLE_ACTION_OPTS,
-    newOtherVehicle, newWitness, appendUploads, newActivity, nowStamp,
+    newOtherVehicle, newWitness, appendUploads, newActivity, nowStamp, driverAccidentInfo,
     type AccidentRecord, type OtherVehicle, type Witness, type AccidentFile,
 } from '@/data/accident-records.data';
 
@@ -27,10 +30,12 @@ const STEPS: readonly WizardStep[] = [
     { id: 'driver', label: 'Driver information', icon: User },
     { id: 'details', label: 'Accident details', icon: FileText },
     { id: 'environment', label: 'Road & environment', icon: Cloud },
+    { id: 'uploads', label: 'Evidence & documents', icon: Paperclip },
+    { id: 'repair', label: 'Repair', icon: Wrench },
     { id: 'othervehicles', label: 'Other vehicles', icon: Car },
     { id: 'witnesses', label: 'Witnesses', icon: Users },
     { id: 'police', label: 'Police report', icon: Shield },
-    { id: 'evidence', label: 'Evidence & documents', icon: Paperclip },
+    { id: 'claim', label: 'Claim', icon: ClipboardList },
     { id: 'verify', label: 'Verification', icon: ShieldCheck },
 ];
 
@@ -72,6 +77,12 @@ const DIRECTION_OPTS = ['Northbound', 'Southbound', 'Eastbound', 'Westbound', 'N
 const DUTY_STATUS_OPTS = ['Off duty', 'Sleeper berth', 'Driving', 'On-duty (not driving)'] as const;
 const DVIR_STATUS_OPTS = ['No defects reported', 'Defects noted', 'Defects corrected', 'Not completed'] as const;
 const REPAIR_STATUS_OPTS = ['Not started', 'Estimate pending', 'In repair', 'Completed', 'Total loss'] as const;
+const CLAIM_STATUS_OPTS = ['Initiated', 'Pending', 'Partially Paid', 'Paid and Closed'] as const;
+const HAZMAT_CLASS_OPTS = [
+    'Class 1 — Explosives', 'Class 2 — Gases', 'Class 3 — Flammable Liquids', 'Class 4 — Flammable Solids',
+    'Class 5 — Oxidizers / Organic Peroxides', 'Class 6 — Toxic / Infectious', 'Class 7 — Radioactive',
+    'Class 8 — Corrosives', 'Class 9 — Miscellaneous',
+] as const;
 
 // ── Multi-select checklists (from the collision-report "Road / weather condition" form) ──
 const ROAD_COND_OPTS = ['Straight', 'Level', 'Curve', 'Grade', 'Hilly', 'Hill crest', 'Divided highway', 'Marked lanes', 'Unmarked lane', 'Debris/construction', 'Pot holes', 'Wet', 'Dry', 'Icy', 'Snowy', 'Muddy', 'Oily'] as const;
@@ -117,35 +128,198 @@ function YesNo({ value, onChange }: { value: boolean; onChange: (v: boolean) => 
     );
 }
 
-const autoNote = (text: string) => <span className="text-[11px] font-semibold text-blue-600">{text}</span>;
 
-/** Tag picker — reuses the shared document-tag catalog (safety-tags): coloured chips
- *  with remove, plus an "add tag" dropdown, capped at MAX_DOC_TAGS. */
-function TagPicker({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
-    const all = loadSafetyTags();
-    const remaining = all.filter(t => !value.includes(t));
+const CURRENCIES = ['USD', 'CAD'] as const;
+/** Amount input with a USD / CAD currency toggle. */
+function CurrencyField({ label, amount, currency, onAmount, onCurrency, placeholder = '0.00', full }: {
+    label: string; amount: string; currency: string; onAmount: (v: string) => void; onCurrency: (v: string) => void; placeholder?: string; full?: boolean;
+}) {
     return (
-        <div className="flex flex-wrap items-center gap-1.5">
-            {value.map(t => (
-                <span key={t} className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold', tagColor(t))}>
-                    {t}
-                    <button type="button" onClick={() => onChange(value.filter(x => x !== t))} className="hover:opacity-70"><X size={10} /></button>
-                </span>
-            ))}
-            {value.length < MAX_DOC_TAGS && (
-                <select value="" onChange={e => { const v = e.target.value; if (v) onChange([...value, v]); }}
-                    className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 focus:outline-none">
-                    <option value="">+ Tag…</option>
-                    {remaining.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+        <div className={full ? 'sm:col-span-2' : ''}>
+            <label className={labelCls}>{label}</label>
+            <div className="flex gap-2">
+                <input className={inputCls} inputMode="decimal" value={amount} onChange={e => onAmount(e.target.value)} placeholder={placeholder} />
+                <div className="inline-flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5">
+                    {CURRENCIES.map(c => (
+                        <button key={c} type="button" onClick={() => onCurrency(c)}
+                            className={cn('rounded-md px-2.5 py-1 text-sm font-semibold transition-colors', (currency || 'USD') === c ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50')}>{c}</button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+type FleetAsset = { id: string; unitNumber: string; plateNumber?: string; plateJurisdiction?: string; vin?: string; make?: string; model?: string; year?: number; assetType?: string };
+/** Searchable fleet picker — type to filter units/plates/VINs, click to select. */
+function AssetPicker({ label, assets, valueLabel, onPick, placeholder = 'Search unit, plate or VIN…' }: {
+    label: string; assets: FleetAsset[]; valueLabel?: string; onPick: (a: FleetAsset) => void; placeholder?: string;
+}) {
+    const [q, setQ] = useState('');
+    const [open, setOpen] = useState(false);
+    const query = (open ? q : (valueLabel ?? '')).trim().toLowerCase();
+    const matches = assets
+        .filter(a => `${a.unitNumber} ${a.plateNumber ?? ''} ${a.vin ?? ''} ${a.make ?? ''} ${a.model ?? ''}`.toLowerCase().includes(open ? q.trim().toLowerCase() : ''))
+        .slice(0, 8);
+    void query;
+    return (
+        <div className="relative">
+            <label className={labelCls}>{label}</label>
+            <input className={inputCls} value={open ? q : (valueLabel ?? '')}
+                onChange={e => { setQ(e.target.value); setOpen(true); }}
+                onFocus={() => { setQ(''); setOpen(true); }}
+                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                placeholder={placeholder} />
+            {open && matches.length > 0 && (
+                <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {matches.map(a => (
+                        <li key={a.id}>
+                            <button type="button" onMouseDown={e => e.preventDefault()}
+                                onClick={() => { onPick(a); setOpen(false); }}
+                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50">
+                                <span className="text-[13px] font-semibold text-slate-800">{a.unitNumber}</span>
+                                <span className="truncate text-[11px] text-slate-500">{[a.make, a.model].filter(Boolean).join(' ')} · {a.plateNumber} · {a.plateJurisdiction}</span>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
             )}
         </div>
     );
 }
 
-/** A labelled document/photo/video upload block — reuses the shared FileDropZone.
- *  One document holds multiple files (capped at MAX_UPLOAD_FILES = 10); each file
- *  can carry a note and tags (shared document-tag catalog). */
+type FleetDriver = { id: string; name: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; country?: string; licenseNumber?: string; licenseState?: string; licenseExpiry?: string };
+/** Searchable driver picker — type to filter the roster, click to auto-fill driver info. */
+function DriverPicker({ drivers, valueLabel, onPick }: { drivers: FleetDriver[]; valueLabel?: string; onPick: (d: FleetDriver) => void }) {
+    const [q, setQ] = useState('');
+    const [open, setOpen] = useState(false);
+    const matches = drivers.filter(d => `${d.name} ${d.licenseNumber ?? ''} ${d.city ?? ''}`.toLowerCase().includes(open ? q.trim().toLowerCase() : '')).slice(0, 8);
+    return (
+        <div className="relative">
+            <label className={labelCls}>Select driver from the roster</label>
+            <input className={inputCls} value={open ? q : (valueLabel ?? '')}
+                onChange={e => { setQ(e.target.value); setOpen(true); }}
+                onFocus={() => { setQ(''); setOpen(true); }}
+                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                placeholder="Search a driver by name or licence…" />
+            {open && matches.length > 0 && (
+                <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {matches.map(d => (
+                        <li key={d.id}>
+                            <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { onPick(d); setOpen(false); }}
+                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50">
+                                <span className="text-[13px] font-semibold text-slate-800">{d.name}</span>
+                                <span className="truncate text-[11px] text-slate-500">{d.licenseNumber} · {[d.city, d.state].filter(Boolean).join(', ')}</span>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+/** Search-and-select accident type(s) rendered as removable tags. The options come from the
+ *  ACCIDENT_TYPES catalogue (NOT the shared document-tag catalog) — type to filter, click a
+ *  suggestion to add a chip, and × a chip to remove it. Multi-select. */
+function AccidentTypeTagSelect({ selectedIds, onToggle }: { selectedIds: string[]; onToggle: (id: string) => void }) {
+    const [q, setQ] = useState('');
+    const [open, setOpen] = useState(false);
+    const boxRef = useRef<HTMLDivElement>(null);
+    const query = q.trim().toLowerCase();
+    const selected = selectedIds
+        .map(id => ACCIDENT_TYPES.find(t => t.id === id))
+        .filter((t): t is (typeof ACCIDENT_TYPES)[number] => Boolean(t));
+    // Dropdown lists every matching type (selected ones stay, shown with a check) so it works
+    // as a proper multi-select — click a row to add, click again (or × a chip) to remove.
+    const matches = ACCIDENT_TYPES
+        .filter(t => !query || `${t.displayName} ${t.group} ${t.description}`.toLowerCase().includes(query))
+        .slice(0, 12);
+    // Close when clicking outside the whole control.
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+    return (
+        <div ref={boxRef}>
+            <label className={labelCls}>Accident type(s)</label>
+            {/* Proper search field */}
+            <div className="relative">
+                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input className={cn(inputCls, 'pl-9 pr-9')}
+                    value={q}
+                    onChange={e => { setQ(e.target.value); setOpen(true); }}
+                    onFocus={() => setOpen(true)}
+                    placeholder="Search accident type…" />
+                <button type="button" tabIndex={-1} onClick={() => setOpen(o => !o)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <ChevronDown size={16} className={cn('transition-transform', open && 'rotate-180')} />
+                </button>
+                {open && (
+                    <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        {matches.length === 0 && (
+                            <li className="px-3 py-2 text-[12px] text-slate-400">No accident type matches “{q}”.</li>
+                        )}
+                        {matches.map(t => {
+                            const on = selectedIds.includes(t.id);
+                            return (
+                                <li key={t.id}>
+                                    <button type="button" onClick={() => onToggle(t.id)}
+                                        className={cn('flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-slate-50', on && 'bg-blue-50/60')}>
+                                        <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white')}>
+                                            {on && <Check size={11} strokeWidth={3} />}
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className={cn('block truncate text-[13px] font-semibold', on ? 'text-blue-800' : 'text-slate-800')}>{t.displayName}</span>
+                                            <span className="block truncate text-[11px] text-slate-500">{t.description}</span>
+                                        </span>
+                                        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{t.group}</span>
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </div>
+            {/* Selected types as removable tags */}
+            {selected.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selected.map(t => (
+                        <span key={t.id} className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[12px] font-semibold text-blue-700">
+                            <AlertTriangle size={11} /> {t.displayName}
+                            <button type="button" onClick={() => onToggle(t.id)} className="ml-0.5 inline-flex items-center rounded-full hover:text-blue-900" aria-label={`Remove ${t.displayName}`}><X size={11} /></button>
+                        </span>
+                    ))}
+                </div>
+            ) : (
+                <p className="mt-2 text-[12px] text-slate-400">No accident type selected yet.</p>
+            )}
+            <p className="mt-1 text-[11px] text-slate-400">Select all that apply — the first one drives the default severity and risk points.</p>
+        </div>
+    );
+}
+
+/** Small sharing-scope badge shown in a section header (who this section is visible to). */
+function ShareBadge({ label, tone }: { label: string; tone: string }) {
+    return <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold', tone)}>{label}</span>;
+}
+const SHARE_DRIVER = <ShareBadge label="Shared with driver" tone="border-violet-200 bg-violet-50 text-violet-700" />;
+const SHARE_ADJUSTER = <ShareBadge label="Shared with adjuster" tone="border-amber-200 bg-amber-50 text-amber-700" />;
+const SHARE_INTERNAL = <ShareBadge label="Internal only" tone="border-slate-300 bg-slate-100 text-slate-600" />;
+
+const fmtBytes = (b?: number) => (b == null ? '—' : b < 1024 ? `${b} B` : `${(b / 1024).toFixed(1)} KB`);
+
+/** Per-upload document tags — the shared chip control (search / add / create over the
+ *  safety-tag catalog, capped at MAX_DOC_TAGS). Same UI used in the detail list's edit modal. */
+function DocTagControl({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
+    return <TagField value={tags} onChange={onChange} label="Document tags" />;
+}
+
+/** A labelled document/photo/video upload block — reuses the shared FileDropZone drop
+ *  area, then renders each uploaded file as a "Document N" card (image-2 style) with a
+ *  View / delete row, a "DOCUMENT TAG" control and a note. Up to MAX_UPLOAD_FILES files. */
 function DocUpload({ label, hint, accept, icon: Icon, files, onChange }: {
     label: string; hint?: string; accept?: string; icon?: LucideIcon;
     files: AccidentFile[]; onChange: (files: AccidentFile[]) => void;
@@ -166,21 +340,30 @@ function DocUpload({ label, hint, accept, icon: Icon, files, onChange }: {
                 compact
                 accept={accept}
                 hint={hint}
+                hideList
             />
             {files.length > 0 && (
-                <div className="mt-3 space-y-2.5">
-                    {files.map(f => (
-                        <div key={f.id} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                            <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-slate-700"><FileText size={12} className="shrink-0 text-slate-400" /> <span className="truncate">{f.fileName}</span></p>
-                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                <div>
-                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">Note</label>
-                                    <input className={cn(inputCls, 'text-[13px]')} value={f.note ?? ''} onChange={e => patch(f.id, { note: e.target.value })} placeholder="Add a note…" />
+                <div className="mt-3 space-y-3">
+                    {files.map((f, i) => (
+                        <div key={f.id} className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500"><FileText size={12} /> Document {i + 1}</p>
+                            <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-3 py-2.5">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><FileText size={16} /></span>
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-slate-800" title={f.fileName}>{f.fileName}</p>
+                                        <p className="text-[11px] font-medium text-emerald-600">✓ Uploaded · {fmtBytes(f.fileSize)}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="mb-1 block text-[11px] font-semibold text-slate-500">Tags</label>
-                                    <TagPicker value={f.tags ?? []} onChange={tags => patch(f.id, { tags })} />
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                    <button type="button" title="Preview isn't available in the prototype" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"><Eye size={12} /> View</button>
+                                    <button type="button" onClick={() => onChange(files.filter(x => x.id !== f.id))} title="Remove document" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={14} /></button>
                                 </div>
+                            </div>
+                            <div className="mt-3"><DocTagControl tags={f.tags ?? []} onChange={tags => patch(f.id, { tags })} /></div>
+                            <div className="mt-3">
+                                <label className="mb-1 block text-[11px] font-semibold text-slate-500">Note</label>
+                                <input className={cn(inputCls, 'bg-white text-[13px]')} value={f.note ?? ''} onChange={e => patch(f.id, { note: e.target.value })} placeholder="Add a note…" />
                             </div>
                         </div>
                     ))}
@@ -210,11 +393,13 @@ function OtherVehicleCard({ v, index, onChange, onRemove, onToggleAction }: {
             </div>
 
             {/* Vehicle */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <TextField label="Year" value={v.year ?? ''} onChange={val => onChange({ year: val })} placeholder="Year" />
                 <TextField label="Make" value={v.make ?? ''} onChange={val => onChange({ make: val })} placeholder="Make" />
+                <TextField label="Model" value={v.model ?? ''} onChange={val => onChange({ model: val })} placeholder="Model" />
                 <TextField label="Colour" value={v.colour ?? ''} onChange={val => onChange({ colour: val })} placeholder="Colour" />
                 <TextField label="Plate number" value={v.plate ?? ''} onChange={val => onChange({ plate: val })} placeholder="Plate number" />
+                <TextField label="Plate jurisdiction" value={v.plateJurisdiction ?? ''} onChange={val => onChange({ plateJurisdiction: val })} placeholder="Jurisdiction" />
             </div>
 
             {/* Driver */}
@@ -261,6 +446,7 @@ function OtherVehicleCard({ v, index, onChange, onRemove, onToggleAction }: {
                     <TextField label="Insurance company" value={v.insuranceCompany ?? ''} onChange={val => onChange({ insuranceCompany: val })} placeholder="Insurance company" />
                     <TextField label="Policy number" value={v.policyNumber ?? ''} onChange={val => onChange({ policyNumber: val })} placeholder="Policy number" />
                 </div>
+                <DocUpload label="Certificate of insurance (COI)" icon={FileText} accept="image/*,application/pdf" hint="Upload the other vehicle's COI copy — up to 10 files." files={v.coiFiles ?? []} onChange={files => onChange({ coiFiles: files })} />
             </div>
 
             {/* Action / movement checklist */}
@@ -322,16 +508,21 @@ function WitnessCard({ w, index, onChange, onRemove }: {
  * cards) so it's the exact same UI as the Add New Account editor.
  */
 export function AccidentRecordPage({
-    initial, isNew, verifierName, onBack, onSave, onDelete,
+    initial, isNew, accountId, verifierName, onBack, onSave, onDelete,
 }: {
     initial: AccidentRecord;
     isNew: boolean;
+    accountId?: string;
     verifierName: string;
     onBack: () => void;
     onSave: (r: AccidentRecord) => void;
     onDelete?: (id: string) => void;
 }) {
     const [form, setForm] = useState<AccidentRecord>(initial);
+    const fleet = useMemo(() => getAssetsForAccount(accountId ?? '') as FleetAsset[], [accountId]);
+    const powerUnits = useMemo(() => fleet.filter(a => a.assetType === 'Truck' || a.assetType === 'Van'), [fleet]);
+    const trailers = useMemo(() => fleet.filter(a => a.assetType === 'Trailer'), [fleet]);
+    const roster = useMemo(() => getDriversForAccount(accountId ?? '') as FleetDriver[], [accountId]);
     const set = <K extends keyof AccidentRecord>(k: K, v: AccidentRecord[K]) => setForm(f => ({ ...f, [k]: v }));
     const toggleIn = (key: 'roadCondsList' | 'trafficControlsList' | 'trafficCondsList' | 'weatherList' | 'visibilityList', val: string) =>
         setForm(f => {
@@ -372,15 +563,21 @@ export function AccidentRecordPage({
     const statusMeta = ACCIDENT_STATUS_META[form.status];
     const srcMeta = SOURCE_META[form.source];
 
-    const onPickType = (id: string) => {
-        const t = ACCIDENT_TYPES.find(x => x.id === id);
-        setForm(f => ({
+    // Multi-select accident types (Internal Review). Toggling keeps a primary `accidentTypeId`
+    // (the first selected) and seeds severity / risk points from it if not already set.
+    const toggleAccidentType = (id: string) => setForm(f => {
+        const cur = f.accidentTypeIds ?? (f.accidentTypeId ? [f.accidentTypeId] : []);
+        const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
+        const primary = next[0] ?? '';
+        const t = ACCIDENT_TYPES.find(x => x.id === primary);
+        return {
             ...f,
-            accidentTypeId: id,
+            accidentTypeIds: next,
+            accidentTypeId: primary,
             severity: f.severity || (t?.defaultRiskType ?? ''),
             points: f.points === '' || f.points === undefined ? (t?.defaultRiskPoints ?? '') : f.points,
-        }));
-    };
+        };
+    });
 
     const save = (verify: boolean) => {
         const next: AccidentRecord = { ...form };
@@ -439,15 +636,19 @@ export function AccidentRecordPage({
         switch (id) {
             case 'owner': return filled(form.ownerName, form.ownerStreet, form.ownerCity, form.ownerState, form.ownerZip, form.ownerCountry, form.ownerPhone, form.policyNumber, form.nscCvor);
             case 'driver': return filled(form.driverName, form.driverPhone, form.driverStreet, form.driverCity, form.driverState, form.driverZip, form.driverCountry, form.licenceNumber, form.licenceExpiry, form.licenceProvince);
-            case 'details': return filled(form.unitId, form.accidentTypeId, form.description, form.location, form.numFatalities, form.numInjuries, form.numVehiclesTowed, form.towAway, form.hazmatSpill, form.commodityLost, form.cargoLost, form.cargoDamaged, form.odometerAfter, form.hrsDrivingAtCrash, form.hrsOnDutyAtCrash, form.directionOfTravel, form.travelSpeed, form.laneNumber, form.lanesWide, form.landmarks, form.accStreet, form.accCity, form.locationType) + (form.photoFiles?.length ? 1 : 0) + (form.videoFiles?.length ? 1 : 0);
-            case 'environment': return filled(form.roadType, form.postedSpeed, form.gradePercent, form.roadCondsOther)
+            case 'details': return filled(form.dateTime, form.description, form.location, form.accStreet, form.accCity, form.unitId, form.vehiclePlate, form.trailerUnit, form.commodityDamaged, form.commodityDescription, form.hazmatSpill, form.numFatalities, form.numInjuries, form.vehiclesInCollision, form.numVehiclesTowed, form.towingCompany, form.directionOfTravel, form.travelSpeed, form.laneNumber, form.landmarks, form.odometerAfter);
+            case 'environment': return filled(form.roadType, form.postedSpeed, form.vehicleSpeed, form.gradePercent, form.roadCondsOther)
                 + (form.roadCondsList?.length ? 1 : 0) + (form.trafficControlsList?.length ? 1 : 0)
                 + (form.trafficCondsList?.length ? 1 : 0) + (form.weatherList?.length ? 1 : 0) + (form.visibilityList?.length ? 1 : 0);
+            case 'uploads': return (form.driverStatementFiles?.length ? 1 : 0) + filled(form.driverStatementText)
+                + (form.vehicleDamageFiles?.length ? 1 : 0) + (form.photoFiles?.length ? 1 : 0)
+                + (form.videoFiles?.length ? 1 : 0) + (form.dashcamFiles?.length ? 1 : 0) + (form.elogFiles?.length ? 1 : 0);
+            case 'repair': return filled(form.repairVendor, form.repairStatus, form.estimatedRepair, form.totalRepairAmount) + (form.repairFiles?.length ? 1 : 0);
             case 'othervehicles': return form.otherVehicles?.length ?? 0;
             case 'witnesses': return (form.witnesses?.length ?? 0) + filled(form.witnessNotes);
             case 'police': return form.policePresent ? filled(form.policeReport, form.policeAgency, form.officer1Name, form.citationIssued, form.citationNumber) + 1 + (form.policeReportFiles?.length ? 1 : 0) : 0;
-            case 'evidence': return (form.driverStatementFiles?.length ? 1 : 0);
-            case 'verify': return filled(form.severity, form.points, form.preventable, form.claimNumber, form.insurer, form.thirdParty, form.managerNotes);
+            case 'claim': return filled(form.claimNumber, form.claimStatus, form.insuranceCarrier, form.insurancePolicyNumber, form.adjusterName, form.adjusterPhone, form.adjusterEmail, form.tpaAdmin, form.totalLoss, form.subrogation, form.amountPaid, form.cashReserve, form.totalIncurred, form.adjusterNote) + (form.ledgerFiles?.length ? 1 : 0) + (form.claimDocsFiles?.length ? 1 : 0);
+            case 'verify': return filled(form.severity, form.points, form.preventable, form.thirdParty, form.internalNotes) + (form.accidentTypeIds?.length ?? 0) + (form.additionalDocsFiles?.length ? 1 : 0);
             default: return 0;
         }
     };
@@ -493,7 +694,7 @@ export function AccidentRecordPage({
                     <div className="mx-auto max-w-4xl space-y-6 px-6 py-8">
                         <AccidentDisclosure />
 
-                        <WizardSection id="owner" icon={Building2} title="Owner information" subtitle="Registered owner of the vehicle." right={autoNote('Auto-filled from the carrier')}>
+                        <WizardSection id="owner" icon={Building2} title="Owner information" subtitle="Registered owner of the vehicle." right={SHARE_DRIVER}>
                             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                 <TextField label="Name" value={form.ownerName ?? ''} onChange={v => set('ownerName', v)} placeholder="Carrier legal name" />
                                 <TextField label="Phone" value={form.ownerPhone ?? ''} onChange={v => set('ownerPhone', v)} placeholder="Phone" />
@@ -504,10 +705,15 @@ export function AccidentRecordPage({
                                 <TextField label="Country" value={form.ownerCountry ?? ''} onChange={v => set('ownerCountry', v)} placeholder="Country" />
                                 <TextField label="Policy number" value={form.policyNumber ?? ''} onChange={v => set('policyNumber', v)} placeholder="Insurance policy number" />
                                 <TextField label="NSC / CVOR number" value={form.nscCvor ?? ''} onChange={v => set('nscCvor', v)} placeholder="NSC / CVOR" />
+                                <TextField label="DOT number" value={form.dotNumber ?? ''} onChange={v => set('dotNumber', v)} placeholder="US DOT number" />
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="driver" icon={User} title="Driver information" subtitle="The driver involved in the collision." right={autoNote('Auto-filled from the driver')}>
+                        <WizardSection id="driver" icon={User} title="Driver information" subtitle="The driver involved in the collision." right={SHARE_DRIVER}>
+                            <div className="mb-5">
+                                <DriverPicker drivers={roster} valueLabel={form.driverName}
+                                    onPick={d => setForm(f => ({ ...f, driverId: d.id, ...driverAccidentInfo(d) }))} />
+                            </div>
                             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                 <TextField label="Name" value={form.driverName} onChange={v => set('driverName', v)} placeholder="Driver name" />
                                 <TextField label="Phone" value={form.driverPhone ?? ''} onChange={v => set('driverPhone', v)} placeholder="Phone" />
@@ -519,156 +725,20 @@ export function AccidentRecordPage({
                                 <TextField label="Licence number" value={form.licenceNumber ?? ''} onChange={v => set('licenceNumber', v)} placeholder="Licence number" />
                                 <TextField label="Expiration date" type="date" value={form.licenceExpiry ?? ''} onChange={v => set('licenceExpiry', v)} />
                                 <TextField label="Province of issue" value={form.licenceProvince ?? ''} onChange={v => set('licenceProvince', v)} placeholder="Province / state" />
-                                <SelectField label="Last duty status" value={form.lastDutyStatus ?? ''} onChange={v => set('lastDutyStatus', v)} options={DUTY_STATUS_OPTS} />
-                                <SelectField label="Last DVIR status" value={form.lastDvirStatus ?? ''} onChange={v => set('lastDvirStatus', v)} options={DVIR_STATUS_OPTS} />
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="details" icon={FileText} title="Accident details" subtitle="What happened, collision details and where it occurred.">
+                        <WizardSection id="details" icon={FileText} title="Accident details" subtitle="When, where, the vehicles involved, commodity and collision details." right={SHARE_DRIVER}>
                             <div className="space-y-5">
-                                {/* Core */}
+                                {/* When */}
                                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                     <div>
-                                        <label className={labelCls}><CalendarClock size={12} className="mr-1 inline" /> Date &amp; time</label>
+                                        <label className={labelCls}><CalendarClock size={12} className="mr-1 inline" /> Accident date &amp; time</label>
                                         <input type="datetime-local" className={inputCls} value={form.dateTime} onChange={e => set('dateTime', e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <label className={labelCls}><Truck size={12} className="mr-1 inline" /> Vehicle unit</label>
-                                        <input className={inputCls} value={form.unitId} onChange={e => set('unitId', e.target.value)} placeholder="Unit number" />
-                                    </div>
-                                    <div>
-                                        <label className={labelCls}>Accident type</label>
-                                        <select className={inputCls} value={form.accidentTypeId} onChange={e => onPickType(e.target.value)}>
-                                            <option value="">Select a type…</option>
-                                            {ACCIDENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.displayName} · {t.group}</option>)}
-                                        </select>
                                     </div>
                                     <div className="sm:col-span-2">
                                         <label className={labelCls}>What happened / how the collision occurred</label>
                                         <textarea className={cn(inputCls, 'min-h-[80px] resize-y')} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Describe all the details of the collision…" />
-                                    </div>
-                                    <div className="sm:col-span-2">
-                                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                            <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" checked={form.injuries} onChange={e => set('injuries', e.target.checked)} />
-                                            Injuries involved
-                                        </label>
-                                        {form.injuries && (
-                                            <textarea className={cn(inputCls, 'mt-2 min-h-[56px] resize-y')} value={form.injuryNotes ?? ''} onChange={e => set('injuryNotes', e.target.value)} placeholder="Injury details…" />
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Photos & video */}
-                                <div className="space-y-4 border-t border-slate-100 pt-5">
-                                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">Photos &amp; video</h5>
-                                    <DocUpload label="Photos of the scene" icon={Camera} accept="image/*" hint="Photos of the scene, vehicles and damage — up to 10 images." files={form.photoFiles ?? []} onChange={files => set('photoFiles', files)} />
-                                    <DocUpload label="Evidence video" icon={Video} accept="video/*" hint="Dashcam or scene video — up to 10 files." files={form.videoFiles ?? []} onChange={files => set('videoFiles', files)} />
-                                </div>
-
-                                {/* Severity */}
-                                <div className="space-y-4 border-t border-slate-100 pt-5">
-                                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">Severity</h5>
-                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                                        <TextField label="Number of Fatalities" type="number" value={form.numFatalities ?? ''} onChange={v => set('numFatalities', v)} placeholder="0" />
-                                        <TextField label="Number of Injuries" type="number" value={form.numInjuries ?? ''} onChange={v => set('numInjuries', v)} placeholder="0" />
-                                        <TextField label="Number of Vehicles Towed" type="number" value={form.numVehiclesTowed ?? ''} onChange={v => set('numVehiclesTowed', v)} placeholder="0" />
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                                            <span className="text-sm font-medium text-slate-700">Tow Away</span>
-                                            <YesNo value={form.towAway ?? false} onChange={v => set('towAway', v)} />
-                                        </div>
-                                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                                            <span className="text-sm font-medium text-slate-700">HAZMAT Spilled/Released</span>
-                                            <YesNo value={form.hazmatSpill ?? false} onChange={v => set('hazmatSpill', v)} />
-                                        </div>
-                                    </div>
-
-                                    {form.towAway && (
-                                        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                                            <h6 className="text-xs font-bold uppercase tracking-wider text-slate-500">Insurance, tow &amp; repair</h6>
-                                            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                                                <TextField label="Insurance carrier" value={form.insuranceCarrier ?? ''} onChange={v => set('insuranceCarrier', v)} placeholder="Insurance carrier" />
-                                                <TextField label="Policy number" value={form.insurancePolicyNumber ?? ''} onChange={v => set('insurancePolicyNumber', v)} placeholder="Policy number" />
-                                                <TextField label="Adjuster name" value={form.adjusterName ?? ''} onChange={v => set('adjusterName', v)} placeholder="Adjuster name" />
-                                                <TextField label="Adjuster phone" value={form.adjusterPhone ?? ''} onChange={v => set('adjusterPhone', v)} placeholder="Adjuster phone" />
-                                                <TextField full label="TPA / Third-Party Admin" value={form.tpaAdmin ?? ''} onChange={v => set('tpaAdmin', v)} placeholder="Third-party administrator" />
-                                                <TextField label="Tow company" value={form.towCompany ?? ''} onChange={v => set('towCompany', v)} placeholder="Tow company" />
-                                                <TextField label="Tow bill (amount)" value={form.towBill ?? ''} onChange={v => set('towBill', v)} placeholder="$" />
-                                                <TextField label="Repair vendor" value={form.repairVendor ?? ''} onChange={v => set('repairVendor', v)} placeholder="Repair vendor" />
-                                                <SelectField label="Repair status" value={form.repairStatus ?? ''} onChange={v => set('repairStatus', v)} options={REPAIR_STATUS_OPTS} />
-                                            </div>
-                                            <DocUpload label="Repairs document" icon={FileText} accept="image/*,application/pdf" hint="Repair estimates / invoices — up to 10 files." files={form.repairFiles ?? []} onChange={files => set('repairFiles', files)} />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Cargo */}
-                                <div className="space-y-4 border-t border-slate-100 pt-5">
-                                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">Cargo</h5>
-                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                                        <TextField label="Commodity lost" value={form.commodityLost ?? ''} onChange={v => set('commodityLost', v)} placeholder="Commodity being hauled" />
-                                        <TextField label="Cargo lost" value={form.cargoLost ?? ''} onChange={v => set('cargoLost', v)} placeholder="Cargo lost (quantity / value)" />
-                                    </div>
-                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                                        <span className="text-sm font-medium text-slate-700">Was the cargo damaged?</span>
-                                        <YesNo value={form.cargoDamaged ?? false} onChange={v => set('cargoDamaged', v)} />
-                                    </div>
-                                    {form.cargoDamaged && (
-                                        <div className="space-y-5">
-                                            <TextField label="Estimated value of the damage" value={form.cargoDamageValue ?? ''} onChange={v => set('cargoDamageValue', v)} placeholder="$" />
-                                            <div>
-                                                <label className={labelCls}>Describe the damage to the cargo</label>
-                                                <textarea className={cn(inputCls, 'min-h-[64px] resize-y')} value={form.cargoDamageDesc ?? ''} onChange={e => set('cargoDamageDesc', e.target.value)} placeholder="Describe the cargo damage…" />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Collision information */}
-                                <div className="space-y-4 border-t border-slate-100 pt-5">
-                                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">Collision information</h5>
-                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                                        <SelectField label="In what direction were you travelling?" value={form.directionOfTravel ?? ''} onChange={v => set('directionOfTravel', v)} options={DIRECTION_OPTS} />
-                                        <div>
-                                            <label className={labelCls}>Speed just prior to the collision</label>
-                                            <div className="flex gap-2">
-                                                <input className={inputCls} inputMode="numeric" value={form.travelSpeed ?? ''} onChange={e => set('travelSpeed', e.target.value)} placeholder="e.g. 90" />
-                                                <div className="inline-flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5">
-                                                    {(['km/h', 'mph'] as const).map(u => (
-                                                        <button key={u} type="button" onClick={() => set('travelSpeedUnit', u)}
-                                                            className={cn('rounded-md px-3 py-1 text-sm font-semibold transition-colors', (form.travelSpeedUnit ?? 'km/h') === u ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50')}>{u}</button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <TextField label="What lane were you in? (Lane 1 = closest to shoulder)" value={form.laneNumber ?? ''} onChange={v => set('laneNumber', v)} placeholder="e.g. 2" />
-                                        <TextField label="How many lanes wide (one direction)?" value={form.lanesWide ?? ''} onChange={v => set('lanesWide', v)} placeholder="e.g. 3" />
-                                        <TextField full label="Landmarks" value={form.landmarks ?? ''} onChange={v => set('landmarks', v)} placeholder="Nearby landmarks / cross streets…" />
-                                    </div>
-                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                                        <span className="text-sm font-medium text-slate-700">Were your headlights on when the collision occurred?</span>
-                                        <YesNo value={form.headlightsOn ?? false} onChange={v => set('headlightsOn', v)} />
-                                    </div>
-                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                                        <span className="text-sm font-medium text-slate-700">Were warning signals given prior to the collision?</span>
-                                        <YesNo value={form.warningSignals ?? false} onChange={v => set('warningSignals', v)} />
-                                    </div>
-                                    {form.warningSignals && (
-                                        <div>
-                                            <label className={labelCls}>If yes, what was the signal given and by whom?</label>
-                                            <input className={inputCls} value={form.warningSignalDesc ?? ''} onChange={e => set('warningSignalDesc', e.target.value)} placeholder="Signal given and by whom…" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* At the time of the crash */}
-                                <div className="space-y-4 border-t border-slate-100 pt-5">
-                                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">At the time of the crash</h5>
-                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                                        <TextField label="Odometer reading after crash" value={form.odometerAfter ?? ''} onChange={v => set('odometerAfter', v)} placeholder="e.g. 512,340" />
-                                        <TextField label="Hours driving at crash" value={form.hrsDrivingAtCrash ?? ''} onChange={v => set('hrsDrivingAtCrash', v)} placeholder="e.g. 6.5" />
-                                        <TextField label="Hours on duty at crash" value={form.hrsOnDutyAtCrash ?? ''} onChange={v => set('hrsOnDutyAtCrash', v)} placeholder="e.g. 9.0" />
                                     </div>
                                 </div>
 
@@ -680,7 +750,6 @@ export function AccidentRecordPage({
                                             <label className={labelCls}>Location description</label>
                                             <input className={inputCls} value={form.location} onChange={e => set('location', e.target.value)} placeholder="Road, exit, landmark…" />
                                         </div>
-                                        <TextField label="Unit number" value={form.accUnit ?? ''} onChange={v => set('accUnit', v)} placeholder="Unit number" />
                                         <TextField label="Street Address" value={form.accStreet ?? ''} onChange={v => set('accStreet', v)} placeholder="Street address" />
                                         <TextField label="City" value={form.accCity ?? ''} onChange={v => set('accCity', v)} placeholder="City" />
                                         <TextField label="State / Prov" value={form.accState ?? ''} onChange={v => set('accState', v)} placeholder="State / province" />
@@ -689,14 +758,161 @@ export function AccidentRecordPage({
                                         <SelectField label="Location Type" value={form.locationType ?? ''} onChange={v => set('locationType', v)} options={LOCATION_TYPE_OPTS} />
                                     </div>
                                 </div>
+
+                                {/* Vehicle involved */}
+                                <div className="space-y-4 border-t border-slate-100 pt-5">
+                                    <h5 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500"><Truck size={13} /> Vehicle involved</h5>
+                                    <AssetPicker label="Search &amp; select from the fleet" assets={powerUnits} valueLabel={form.unitId} onPick={a => setForm(f => ({ ...f, unitId: a.unitNumber, vehiclePlate: a.plateNumber ?? '', vehicleJurisdiction: a.plateJurisdiction ?? '', vehicleVin: a.vin ?? '', vehicleAssetId: a.id }))} />
+                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                        <TextField label="Unit" value={form.unitId ?? ''} onChange={v => set('unitId', v)} placeholder="Unit number" />
+                                        <TextField label="VIN" value={form.vehicleVin ?? ''} onChange={v => set('vehicleVin', v)} placeholder="VIN" />
+                                        <TextField label="Plate" value={form.vehiclePlate ?? ''} onChange={v => set('vehiclePlate', v)} placeholder="Plate number" />
+                                        <TextField label="Jurisdiction" value={form.vehicleJurisdiction ?? ''} onChange={v => set('vehicleJurisdiction', v)} placeholder="Plate jurisdiction" />
+                                    </div>
+                                </div>
+
+                                {/* Trailer involved */}
+                                <div className="space-y-4 border-t border-slate-100 pt-5">
+                                    <h5 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500"><Truck size={13} /> Trailer involved</h5>
+                                    <AssetPicker label="Search &amp; select from the fleet" assets={trailers} valueLabel={form.trailerUnit} onPick={a => setForm(f => ({ ...f, trailerUnit: a.unitNumber, trailerPlate: a.plateNumber ?? '', trailerJurisdiction: a.plateJurisdiction ?? '', trailerVin: a.vin ?? '', trailerAssetId: a.id }))} />
+                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                        <TextField label="Unit" value={form.trailerUnit ?? ''} onChange={v => set('trailerUnit', v)} placeholder="Trailer unit" />
+                                        <TextField label="VIN" value={form.trailerVin ?? ''} onChange={v => set('trailerVin', v)} placeholder="VIN" />
+                                        <TextField label="Plate" value={form.trailerPlate ?? ''} onChange={v => set('trailerPlate', v)} placeholder="Plate number" />
+                                        <TextField label="Jurisdiction" value={form.trailerJurisdiction ?? ''} onChange={v => set('trailerJurisdiction', v)} placeholder="Plate jurisdiction" />
+                                    </div>
+                                </div>
+
+                                {/* Commodity / cargo */}
+                                <div className="space-y-4 border-t border-slate-100 pt-5">
+                                    <h5 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500"><Boxes size={13} /> Commodity / cargo</h5>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                        <span className="text-sm font-medium text-slate-700">Was the commodity damaged?</span>
+                                        <YesNo value={form.commodityDamaged ?? false} onChange={v => set('commodityDamaged', v)} />
+                                    </div>
+                                    {form.commodityDamaged && (
+                                        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                                <TextField full label="Commodity description" value={form.commodityDescription ?? ''} onChange={v => set('commodityDescription', v)} placeholder="What commodity was being hauled…" />
+                                                <TextField label="Quantity" value={form.commodityQty ?? ''} onChange={v => set('commodityQty', v)} placeholder="e.g. 12 pallets" />
+                                                <CurrencyField label="Estimated value" amount={form.commodityValue ?? ''} currency={form.commodityValueCurrency ?? 'USD'} onAmount={v => set('commodityValue', v)} onCurrency={v => set('commodityValueCurrency', v)} />
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                                                    <span className="text-sm font-medium text-slate-700">HAZMAT?</span>
+                                                    <YesNo value={form.hazmatSpill ?? false} onChange={v => set('hazmatSpill', v)} />
+                                                </div>
+                                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                                                    <span className="text-sm font-medium text-slate-700">Loss</span>
+                                                    <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5">
+                                                        {(['Total', 'Partial'] as const).map(x => (
+                                                            <button key={x} type="button" onClick={() => set('commodityLoss', x)} className={cn('rounded-md px-3 py-1 text-sm font-semibold transition-colors', form.commodityLoss === x ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50')}>{x}</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {form.hazmatSpill && (
+                                                <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+                                                    <h6 className="text-xs font-bold uppercase tracking-wider text-slate-500">HAZMAT details</h6>
+                                                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                                        <SelectField label="HazMat class" value={form.hazmatClass ?? ''} onChange={v => set('hazmatClass', v)} options={HAZMAT_CLASS_OPTS} />
+                                                        <TextField label="UN / NA number" value={form.unNaNumber ?? ''} onChange={v => set('unNaNumber', v)} placeholder="e.g. UN1203" />
+                                                        <TextField label="Quantity released" value={form.quantityReleased ?? ''} onChange={v => set('quantityReleased', v)} placeholder="e.g. 40 L, 200 kg…" />
+                                                        <CurrencyField label="Estimated value" amount={form.hazmatValue ?? ''} currency={form.hazmatValueCurrency ?? 'USD'} onAmount={v => set('hazmatValue', v)} onCurrency={v => set('hazmatValueCurrency', v)} />
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                                        <span className="text-sm font-medium text-slate-700">Placard?</span>
+                                                        <YesNo value={form.placarded ?? false} onChange={v => set('placarded', v)} />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Collision details — severity */}
+                                <div className="space-y-4 border-t border-slate-100 pt-5">
+                                    <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">Collision details — severity</h5>
+                                    <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
+                                        <TextField label="Number of fatalities" type="number" value={form.numFatalities ?? ''} onChange={v => set('numFatalities', v)} placeholder="0" />
+                                        <TextField label="Number of injuries" type="number" value={form.numInjuries ?? ''} onChange={v => setForm(f => ({ ...f, numInjuries: v, injuries: Number(v) > 0 }))} placeholder="0" />
+                                        <TextField label="Vehicles in collision" type="number" value={form.vehiclesInCollision ?? ''} onChange={v => set('vehiclesInCollision', v)} placeholder="0" />
+                                        <TextField label="Vehicles towed" type="number" value={form.numVehiclesTowed ?? ''} onChange={v => set('numVehiclesTowed', v)} placeholder="0" />
+                                    </div>
+                                    {Number(form.numInjuries) > 0 && (
+                                        <div>
+                                            <label className={labelCls}>Injury details</label>
+                                            <textarea className={cn(inputCls, 'min-h-[56px] resize-y')} value={form.injuryNotes ?? ''} onChange={e => set('injuryNotes', e.target.value)} placeholder="Describe the injuries and who was hurt…" />
+                                        </div>
+                                    )}
+                                    {Number(form.numVehiclesTowed) > 0 && (
+                                        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                                            <h6 className="text-xs font-bold uppercase tracking-wider text-slate-500">Towing</h6>
+                                            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                                <TextField label="Towing company name" value={form.towingCompany ?? ''} onChange={v => set('towingCompany', v)} placeholder="Towing company" />
+                                                <CurrencyField label="Towing bill" amount={form.towingBill ?? ''} currency={form.towingBillCurrency ?? 'USD'} onAmount={v => set('towingBill', v)} onCurrency={v => set('towingBillCurrency', v)} />
+                                                <TextField full label="Address" value={form.towingAddress ?? ''} onChange={v => set('towingAddress', v)} placeholder="Address" />
+                                                <TextField label="Contact person" value={form.towingContact ?? ''} onChange={v => set('towingContact', v)} placeholder="Contact person" />
+                                                <TextField label="Phone number" value={form.towingPhone ?? ''} onChange={v => set('towingPhone', v)} placeholder="Phone" />
+                                                <TextField full label="Email address" value={form.towingEmail ?? ''} onChange={v => set('towingEmail', v)} placeholder="Email" />
+                                            </div>
+                                            <DocUpload label="Towing invoice" icon={FileText} accept="image/*,application/pdf" hint="Upload the towing invoice — up to 10 files." files={form.towingInvoiceFiles ?? []} onChange={files => set('towingInvoiceFiles', files)} />
+                                        </div>
+                                    )}
+                                    <div className="space-y-4 border-t border-slate-100 pt-4">
+                                        <h6 className="text-xs font-bold uppercase tracking-wider text-slate-500">Collision information</h6>
+                                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                            <SelectField label="In what direction were you travelling?" value={form.directionOfTravel ?? ''} onChange={v => set('directionOfTravel', v)} options={DIRECTION_OPTS} />
+                                            <div>
+                                                <label className={labelCls}>Speed just prior to the collision</label>
+                                                <div className="flex gap-2">
+                                                    <input className={inputCls} inputMode="numeric" value={form.travelSpeed ?? ''} onChange={e => set('travelSpeed', e.target.value)} placeholder="e.g. 90" />
+                                                    <div className="inline-flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5">
+                                                        {(['km/h', 'mph'] as const).map(u => (
+                                                            <button key={u} type="button" onClick={() => set('travelSpeedUnit', u)} className={cn('rounded-md px-3 py-1 text-sm font-semibold transition-colors', (form.travelSpeedUnit ?? 'km/h') === u ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50')}>{u}</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <TextField label="What lane were you in? (Lane 1 = closest to shoulder)" value={form.laneNumber ?? ''} onChange={v => set('laneNumber', v)} placeholder="e.g. 2" />
+                                            <TextField label="How many lanes wide (one direction)?" value={form.lanesWide ?? ''} onChange={v => set('lanesWide', v)} placeholder="e.g. 3" />
+                                            <TextField full label="Landmarks" value={form.landmarks ?? ''} onChange={v => set('landmarks', v)} placeholder="Nearby landmarks / cross streets…" />
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                            <span className="text-sm font-medium text-slate-700">Were your headlights on when the collision occurred?</span>
+                                            <YesNo value={form.headlightsOn ?? false} onChange={v => set('headlightsOn', v)} />
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                            <span className="text-sm font-medium text-slate-700">Were warning signals given prior to the collision?</span>
+                                            <YesNo value={form.warningSignals ?? false} onChange={v => set('warningSignals', v)} />
+                                        </div>
+                                        {form.warningSignals && (
+                                            <div>
+                                                <label className={labelCls}>If yes, what was the signal given and by whom?</label>
+                                                <input className={inputCls} value={form.warningSignalDesc ?? ''} onChange={e => set('warningSignalDesc', e.target.value)} placeholder="Signal given and by whom…" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="space-y-4 border-t border-slate-100 pt-4">
+                                        <h6 className="text-xs font-bold uppercase tracking-wider text-slate-500">At the time of the crash</h6>
+                                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                                            <TextField label="Odometer reading after crash" value={form.odometerAfter ?? ''} onChange={v => set('odometerAfter', v)} placeholder="e.g. 512,340" />
+                                            <TextField label="Hours driving at crash" value={form.hrsDrivingAtCrash ?? ''} onChange={v => set('hrsDrivingAtCrash', v)} placeholder="e.g. 6.5" />
+                                            <TextField label="Hours on duty at crash" value={form.hrsOnDutyAtCrash ?? ''} onChange={v => set('hrsOnDutyAtCrash', v)} placeholder="e.g. 9.0" />
+                                            <SelectField label="Last duty status" value={form.lastDutyStatus ?? ''} onChange={v => set('lastDutyStatus', v)} options={DUTY_STATUS_OPTS} />
+                                            <SelectField label="Last DVIR status" value={form.lastDvirStatus ?? ''} onChange={v => set('lastDvirStatus', v)} options={DVIR_STATUS_OPTS} />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="environment" icon={Cloud} title="Road & environment" subtitle="Road, traffic, weather and visibility conditions — check one or more of each.">
+                        <WizardSection id="environment" icon={Cloud} title="Road & environment" subtitle="Road, traffic, weather and visibility conditions — check one or more of each." right={SHARE_DRIVER}>
                             <div className="space-y-5">
-                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
                                     <SelectField label="Road Type" value={form.roadType ?? ''} onChange={v => set('roadType', v)} options={ROAD_TYPE_OPTS} />
-                                    <TextField label="Posted Speed Limit (km/h)" value={form.postedSpeed ?? ''} onChange={v => set('postedSpeed', v)} placeholder="e.g. 100" />
+                                    <TextField label="Posted speed limit" value={form.postedSpeed ?? ''} onChange={v => set('postedSpeed', v)} placeholder="e.g. 100" />
+                                    <TextField label="Vehicle speed" value={form.vehicleSpeed ?? ''} onChange={v => set('vehicleSpeed', v)} placeholder="e.g. 95" />
                                 </div>
 
                                 <div className="space-y-3 border-t border-slate-100 pt-5">
@@ -729,7 +945,7 @@ export function AccidentRecordPage({
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="othervehicles" icon={Car} title="Other vehicles involved" subtitle="Third-party / other vehicles in the collision — enter one card per vehicle.">
+                        <WizardSection id="othervehicles" icon={Car} title="Other vehicles involved" subtitle="Third-party / other vehicles in the collision — enter one card per vehicle." right={SHARE_DRIVER}>
                             <div className="space-y-5">
                                 <div>
                                     <label className={labelCls}>How many other vehicles were involved?</label>
@@ -765,7 +981,7 @@ export function AccidentRecordPage({
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="witnesses" icon={Users} title="Witnesses" subtitle="Anyone who saw the collision — add a card per witness, plus any additional notes.">
+                        <WizardSection id="witnesses" icon={Users} title="Witnesses" subtitle="Anyone who saw the collision — add a card per witness, plus any additional notes." right={SHARE_DRIVER}>
                             <div className="space-y-5">
                                 {(form.witnesses ?? []).map((w, i) => (
                                     <WitnessCard key={w.id} w={w} index={i}
@@ -791,7 +1007,7 @@ export function AccidentRecordPage({
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="police" icon={Shield} title="Police report" subtitle="Police attendance and report details.">
+                        <WizardSection id="police" icon={Shield} title="Police report" subtitle="Police attendance and report details." right={SHARE_DRIVER}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <span className="text-sm font-medium text-slate-700">Were the police present at the collision?</span>
                                 <YesNo value={form.policePresent ?? false} onChange={v => set('policePresent', v)} />
@@ -835,53 +1051,136 @@ export function AccidentRecordPage({
                             )}
                         </WizardSection>
 
-                        <WizardSection id="evidence" icon={Paperclip} title="Evidence & documents" subtitle="The driver's written statement — can hold up to 10 files.">
+                        <WizardSection id="uploads" icon={Paperclip} title="Evidence & documents" subtitle="Driver statement, damage photos, video, dashcam and e-log — each file can be tagged." right={SHARE_DRIVER}>
                             <div className="space-y-6">
-                                <DocUpload label="Driver statement" icon={FileText} accept="image/*,application/pdf" hint="The driver's written statement — up to 10 files." files={form.driverStatementFiles ?? []} onChange={files => set('driverStatementFiles', files)} />
+                                {/* Driver statement — upload and / or type */}
+                                <div className="space-y-3">
+                                    <DocUpload label="Driver accident statement" icon={FileText} accept="image/*,application/pdf" hint="Upload the driver's statement — up to 10 files." files={form.driverStatementFiles ?? []} onChange={files => set('driverStatementFiles', files)} />
+                                    <div>
+                                        <label className={labelCls}>…or type the statement</label>
+                                        <textarea className={cn(inputCls, 'min-h-[90px] resize-y')} value={form.driverStatementText ?? ''} onChange={e => set('driverStatementText', e.target.value)} placeholder="Type the driver's account of the accident…" />
+                                    </div>
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="Vehicle damage pictures" icon={Camera} accept="image/*" hint="Photos of vehicle damage — up to 10 images." files={form.vehicleDamageFiles ?? []} onChange={files => set('vehicleDamageFiles', files)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="Evidence pictures" icon={Camera} accept="image/*" hint="Scene / evidence photos — up to 10 images." files={form.photoFiles ?? []} onChange={files => set('photoFiles', files)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="Video" icon={Video} accept="video/*" hint="Scene / evidence video — up to 10 files." files={form.videoFiles ?? []} onChange={files => set('videoFiles', files)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="Dashcam video" icon={Video} accept="video/*" hint="Dashcam footage — up to 10 files." files={form.dashcamFiles ?? []} onChange={files => set('dashcamFiles', files)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="E-log" icon={FileText} accept="image/*,application/pdf" hint="Electronic logging device records — up to 10 files." files={form.elogFiles ?? []} onChange={files => set('elogFiles', files)} />
+                                </div>
                             </div>
                         </WizardSection>
 
-                        <WizardSection id="verify" icon={ShieldCheck} title="Verification & additional data" subtitle="Manager review — classify and attach claim details, then verify.">
+                        <WizardSection id="repair" icon={Wrench} title="Repair" subtitle="Repair vendor, status, estimated and total cost, plus invoices and supporting documents." right={SHARE_DRIVER}>
+                            <div className="space-y-5">
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                    <TextField label="Repair vendor" value={form.repairVendor ?? ''} onChange={v => set('repairVendor', v)} placeholder="Repair vendor / shop" />
+                                    <SelectField label="Repair status" value={form.repairStatus ?? ''} onChange={v => set('repairStatus', v)} options={REPAIR_STATUS_OPTS} />
+                                    <CurrencyField label="Estimated repair" amount={form.estimatedRepair ?? ''} currency={form.repairCurrency ?? 'USD'} onAmount={v => set('estimatedRepair', v)} onCurrency={v => set('repairCurrency', v)} />
+                                    <CurrencyField label="Total repair amount" amount={form.totalRepairAmount ?? ''} currency={form.repairCurrency ?? 'USD'} onAmount={v => set('totalRepairAmount', v)} onCurrency={v => set('repairCurrency', v)} />
+                                </div>
+                                <DocUpload label="Repair invoices & supporting documents" icon={FileText} accept="image/*,application/pdf" hint="Repair estimates / invoices — up to 10 files." files={form.repairFiles ?? []} onChange={files => set('repairFiles', files)} />
+                            </div>
+                        </WizardSection>
+
+                        <WizardSection id="claim" icon={ClipboardList} title="Claim" subtitle="Insurance claim, carrier, adjuster and financial details." right={SHARE_ADJUSTER}>
+                            <div className="space-y-5">
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                                    <TextField label="Claim number" value={form.claimNumber ?? ''} onChange={v => set('claimNumber', v)} placeholder="Claim number" />
+                                    <SelectField label="Claim status" value={form.claimStatus ?? ''} onChange={v => set('claimStatus', v)} options={CLAIM_STATUS_OPTS} />
+                                    <TextField label="Insurance carrier" value={form.insuranceCarrier ?? ''} onChange={v => set('insuranceCarrier', v)} placeholder="Insurance carrier" />
+                                    <TextField label="Policy number" value={form.insurancePolicyNumber ?? ''} onChange={v => set('insurancePolicyNumber', v)} placeholder="Policy number" />
+                                    <TextField label="Adjuster name" value={form.adjusterName ?? ''} onChange={v => set('adjusterName', v)} placeholder="Adjuster name" />
+                                    <TextField label="Adjuster phone" value={form.adjusterPhone ?? ''} onChange={v => set('adjusterPhone', v)} placeholder="Adjuster phone" />
+                                    <TextField label="Adjuster email" value={form.adjusterEmail ?? ''} onChange={v => set('adjusterEmail', v)} placeholder="Adjuster email" />
+                                    <TextField label="TPA / Third-Party Admin" value={form.tpaAdmin ?? ''} onChange={v => set('tpaAdmin', v)} placeholder="Third-party administrator" />
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                        <span className="text-sm font-medium text-slate-700">Total loss?</span>
+                                        <YesNo value={form.totalLoss ?? false} onChange={v => set('totalLoss', v)} />
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                        <span className="text-sm font-medium text-slate-700">Subrogation?</span>
+                                        <YesNo value={form.subrogation ?? false} onChange={v => set('subrogation', v)} />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                                    <CurrencyField label="Amount paid" amount={form.amountPaid ?? ''} currency={form.claimCurrency ?? 'USD'} onAmount={v => set('amountPaid', v)} onCurrency={v => set('claimCurrency', v)} />
+                                    <CurrencyField label="Cash reserve" amount={form.cashReserve ?? ''} currency={form.claimCurrency ?? 'USD'} onAmount={v => set('cashReserve', v)} onCurrency={v => set('claimCurrency', v)} />
+                                    <CurrencyField label="Total incurred" amount={form.totalIncurred ?? ''} currency={form.claimCurrency ?? 'USD'} onAmount={v => set('totalIncurred', v)} onCurrency={v => set('claimCurrency', v)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <label className={labelCls}>Adjuster note</label>
+                                    <textarea className={cn(inputCls, 'min-h-[72px] resize-y')} value={form.adjusterNote ?? ''} onChange={e => set('adjusterNote', e.target.value)} placeholder="Note shared with the adjuster…" />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                        <span className="text-sm font-medium text-slate-700">Attach ledger?</span>
+                                        <YesNo value={form.attachLedger ?? false} onChange={v => set('attachLedger', v)} />
+                                    </div>
+                                    {form.attachLedger && (
+                                        <div className="mt-4">
+                                            <DocUpload label="Ledger" icon={FileText} accept="image/*,application/pdf" hint="Attach the claim ledger — up to 10 files." files={form.ledgerFiles ?? []} onChange={files => set('ledgerFiles', files)} />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="Additional documents" icon={Paperclip} accept="image/*,application/pdf" hint="Any additional claim documents — up to 10 files." files={form.claimDocsFiles ?? []} onChange={files => set('claimDocsFiles', files)} />
+                                </div>
+                            </div>
+                        </WizardSection>
+
+                        <WizardSection id="verify" icon={ShieldCheck} title="Internal Review" subtitle="Internal-only — classify the accident type(s), assess risk and add internal notes, then verify." right={SHARE_INTERNAL}>
                             {form.status === 'verified' && (
-                                <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-semibold text-emerald-700">
+                                <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-semibold text-emerald-700">
                                     <BadgeCheck size={15} /> Verified by {form.verifiedBy} on {form.verifiedAt}
                                 </div>
                             )}
-                            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                                <div>
-                                    <label className={labelCls}>Severity</label>
-                                    <select className={inputCls} value={form.severity ?? ''} onChange={e => set('severity', e.target.value as AccidentRiskType | '')}>
-                                        <option value="">Not classified</option>
-                                        {RISK_LEVELS.map(r => <option key={r} value={r}>{r}</option>)}
-                                    </select>
-                                    {form.severity && <span className={cn('mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', RISK_TYPE_TONE[form.severity as AccidentRiskType])}>{form.severity}</span>}
+                            <div className="space-y-5">
+                                {/* Accident type — search & select as tags (multi-select) */}
+                                <AccidentTypeTagSelect
+                                    selectedIds={form.accidentTypeIds ?? (form.accidentTypeId ? [form.accidentTypeId] : [])}
+                                    onToggle={toggleAccidentType} />
+                                <div className="grid grid-cols-1 gap-5 border-t border-slate-100 pt-5 sm:grid-cols-2">
+                                    <div>
+                                        <label className={labelCls}>Severity</label>
+                                        <select className={inputCls} value={form.severity ?? ''} onChange={e => set('severity', e.target.value as AccidentRiskType | '')}>
+                                            <option value="">Not classified</option>
+                                            {RISK_LEVELS.map(r => <option key={r} value={r}>{r}</option>)}
+                                        </select>
+                                        {form.severity && <span className={cn('mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', RISK_TYPE_TONE[form.severity as AccidentRiskType])}>{form.severity}</span>}
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Risk points</label>
+                                        <input type="number" className={inputCls} value={form.points === '' || form.points === undefined ? '' : form.points} onChange={e => set('points', e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" />
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Preventability</label>
+                                        <select className={inputCls} value={form.preventable ?? ''} onChange={e => set('preventable', e.target.value as AccidentRecord['preventable'])}>
+                                            <option value="">Undetermined</option>
+                                            {PREVENTABILITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>Third party involved</label>
+                                        <input className={inputCls} value={form.thirdParty ?? ''} onChange={e => set('thirdParty', e.target.value)} placeholder="Other vehicle / party details" />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className={labelCls}>Internal notes</label>
+                                        <textarea className={cn(inputCls, 'min-h-[72px] resize-y')} value={form.internalNotes ?? ''} onChange={e => set('internalNotes', e.target.value)} placeholder="Internal review notes (not shared)…" />
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className={labelCls}>Risk points</label>
-                                    <input type="number" className={inputCls} value={form.points === '' || form.points === undefined ? '' : form.points} onChange={e => set('points', e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" />
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Preventability</label>
-                                    <select className={inputCls} value={form.preventable ?? ''} onChange={e => set('preventable', e.target.value as AccidentRecord['preventable'])}>
-                                        <option value="">Undetermined</option>
-                                        {PREVENTABILITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Claim number</label>
-                                    <input className={inputCls} value={form.claimNumber ?? ''} onChange={e => set('claimNumber', e.target.value)} placeholder="CLM-…" />
-                                </div>
-                                <div>
-                                    <label className={labelCls}>Insurer</label>
-                                    <input className={inputCls} value={form.insurer ?? ''} onChange={e => set('insurer', e.target.value)} placeholder="Insurance carrier" />
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <label className={labelCls}>Third party involved</label>
-                                    <input className={inputCls} value={form.thirdParty ?? ''} onChange={e => set('thirdParty', e.target.value)} placeholder="Other vehicle / party details" />
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <label className={labelCls}>Manager notes</label>
-                                    <textarea className={cn(inputCls, 'min-h-[64px] resize-y')} value={form.managerNotes ?? ''} onChange={e => set('managerNotes', e.target.value)} placeholder="Internal review notes…" />
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="Additional documents" icon={Paperclip} accept="image/*,application/pdf" hint="Any additional internal documents — up to 10 files." files={form.additionalDocsFiles ?? []} onChange={files => set('additionalDocsFiles', files)} />
                                 </div>
                             </div>
                         </WizardSection>

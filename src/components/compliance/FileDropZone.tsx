@@ -8,7 +8,7 @@ export interface DropFile { id: string; fileName: string; fileSize?: number }
  *  (the standalone Upload modal and the key number form's supporting document).
  *  Prototype: records the file name/size only. */
 export function FileDropZone({
-    files, onAdd, onRemove, multiple = false, compact = false, accept, hint,
+    files, onAdd, onRemove, multiple = false, compact = false, accept, hint, hideList = false,
 }: {
     files: DropFile[];
     onAdd: (list: FileList | null) => void;
@@ -20,6 +20,8 @@ export function FileDropZone({
     accept?: string;
     /** Optional override for the helper line under the drop prompt. */
     hint?: string;
+    /** Hide the built-in uploaded-file list (caller renders its own). */
+    hideList?: boolean;
 }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [dragging, setDragging] = useState(false);
@@ -49,7 +51,7 @@ export function FileDropZone({
                 <input ref={inputRef} type="file" accept={accept} multiple={multiple} className="hidden" onChange={(e) => onAdd(e.target.files)} />
             </div>
 
-            {files.length > 0 && (
+            {!hideList && files.length > 0 && (
                 <div className="space-y-1.5">
                     {files.map(f => (
                         <div key={f.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">

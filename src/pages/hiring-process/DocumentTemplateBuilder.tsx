@@ -74,11 +74,11 @@ const HANDLES: { dir: Dir; pos: string; cursor: string }[] = [
     { dir: "w", pos: "top-1/2 -left-1.5 -translate-y-1/2", cursor: "cursor-ew-resize" },
 ];
 
-export function DocumentTemplateBuilder({ templateId, onBack, onSave, startPreview, carrierId }: { templateId: string; onBack: () => void; onSave: (t: DocTemplate) => boolean | void; startPreview?: boolean; carrierId?: string }) {
+export function DocumentTemplateBuilder({ templateId, onBack, onSave, startPreview, carrierId, initialDocuments, initialName, saveLabel }: { templateId: string; onBack: () => void; onSave: (t: DocTemplate) => boolean | void; startPreview?: boolean; carrierId?: string; initialDocuments?: DocFile[]; initialName?: string; saveLabel?: string }) {
     const existing = templateId !== "new" ? getDocTemplate(templateId) : undefined;
     const { signature, save: saveSignature } = useCarrierSignature(carrierId);
-    const [name, setName] = useState(existing?.name ?? "");
-    const [documents, setDocuments] = useState<DocFile[]>(existing?.documents ?? []);
+    const [name, setName] = useState(existing?.name ?? initialName ?? "");
+    const [documents, setDocuments] = useState<DocFile[]>(existing?.documents ?? initialDocuments ?? []);
     const [fields, setFields] = useState<DocField[]>(existing?.fields ?? []);
     const [selection, setSelection] = useState<Set<string>>(new Set());
     const [uploadWarn, setUploadWarn] = useState<string | null>(null);
@@ -348,7 +348,7 @@ export function DocumentTemplateBuilder({ templateId, onBack, onSave, startPrevi
                                 </Button>
                             </>
                         )}
-                        {!preview && <Button size="sm" onClick={save} className={cn(!canSave && "opacity-90")} title={canSave ? "" : "Name the template and add at least one document"}><Check className="h-4 w-4" /> <span className="hidden sm:inline">Save template</span><span className="sm:hidden">Save</span></Button>}
+                        {!preview && <Button size="sm" onClick={save} className={cn(!canSave && "opacity-90")} title={canSave ? "" : "Name the template and add at least one document"}><Check className="h-4 w-4" /> <span className="hidden sm:inline">{saveLabel ?? "Save template"}</span><span className="sm:hidden">{saveLabel ? saveLabel.split(" ")[0] : "Save"}</span></Button>}
                     </div>
                 </div>
             </div>

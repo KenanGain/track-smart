@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
  * (docu-form/document-tags.data.ts) — this is scoped to the safety-software catalog only.
  */
 
-const STORAGE_KEY = 'safety-doc-tags-v3';
+const STORAGE_KEY = 'safety-doc-tags-v4';
 const EVENT = 'safety-doc-tags-change';
 
 /**
@@ -21,6 +21,7 @@ const EVENT = 'safety-doc-tags-change';
  */
 export const DEFAULT_TAG_GROUPS: { title: string; tags: string[] }[] = [
     { title: 'Status & Handling', tags: ['Verified', 'Primary', 'Original', 'Copy', 'Certified', 'Signed', 'Notarized', 'Renewed', 'Superseded', 'Pending Review', 'Expired'] },
+    { title: 'Accident & Damage', tags: ['Vehicle damaged', 'Other vehicle damage', 'Trailer damage', 'Cargo damage', 'Cargo spill picture', 'Vehicle - Front', 'Vehicle - Rear', 'Vehicle - Left', 'Vehicle - Right'] },
     { title: 'Insurance', tags: ['Cargo Insurance', 'Liability Insurance', 'Physical Damage Insurance', 'Auto Liability', 'General Liability', 'Workers Compensation', 'Umbrella / Excess', 'Non-Trucking Liability', 'Bobtail Insurance', 'Trailer Interchange'] },
     { title: 'Policies and Procedures', tags: ['Contract Agreements', 'Driver Manuals', 'Drug and Alcohol Policy', 'Preventive Maintenance Policy', 'Vehicle Maintenance Policy', 'General Health and Safety Policy', 'Hazard Prevention Program / Policy', 'Hours of Service Policy', 'ELD Policy', 'Cargo Securement Policy', 'Accident Procedure', 'Anti-Harassment Policy', 'Workplace Violence Policy'] },
     { title: 'Document Year', tags: ['Year'] },
