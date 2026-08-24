@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-    AlertTriangle, Search, Plus, Clock, BadgeCheck,
-    MapPin, Truck, Smartphone, Building2, ListChecks, Sparkles, Eye, Pencil, Trash2, MessageSquare,
-    ChevronDown, ChevronUp, ChevronsUpDown, Filter, Check, Columns,
+    AlertTriangle, Search, Plus,
+    MapPin, Truck, Smartphone, Building2, Sparkles, Eye, Pencil, Trash2, MessageSquare,
+    ChevronDown, ChevronUp, ChevronsUpDown, Filter, Check, Columns, Biohazard, HeartPulse, Skull, Layers, X, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/pages/ats/ats-ui";
-import { KpiStatCard } from "@/components/ui/KpiStatCard";
 import {
     ACCIDENT_TYPES, RISK_TYPE_TONE,
     type AccidentRiskType,
@@ -94,6 +93,37 @@ function CaseCell({ record: r }: { record: AccidentRecord }) {
     );
 }
 
+/** At-a-glance KPI card — the Accidents-page style (label on top, big value + sub at the
+ *  bottom, tinted icon square on the right, min height). Clickable as a filter with an
+ *  accent ring when active. */
+function AccidentKpiCard({ Icon, label, value, sub, accent, ring, active, onClick }: {
+    Icon: LucideIcon; label: string; value: string | number; sub?: string;
+    accent: string; ring: string; active?: boolean; onClick?: () => void;
+}) {
+    const cls = cn(
+        "flex min-h-[100px] items-start justify-between rounded-lg border bg-white p-4 text-left shadow-sm transition-all",
+        onClick && "hover:border-slate-300 hover:shadow",
+        active ? cn("border-transparent ring-2", ring) : "border-gray-100",
+    );
+    const body = (
+        <>
+            <div className="flex h-full flex-col justify-between">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+                <div>
+                    <p className="text-2xl font-bold leading-tight text-gray-900 tabular-nums">{value}</p>
+                    {sub && <p className="mt-1 text-[10px] text-gray-400">{sub}</p>}
+                </div>
+            </div>
+            <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", accent)}>
+                <Icon size={18} />
+            </div>
+        </>
+    );
+    return onClick
+        ? <button type="button" onClick={onClick} aria-pressed={active} className={cls}>{body}</button>
+        : <div className={cls}>{body}</div>;
+}
+
 // ── Sortable columns + column-visibility config ──────────────────────────
 type ColId = "when" | "driver" | "type" | "location" | "severity" | "source" | "addedBy" | "case" | "reviewedBy" | "claimedBy" | "status";
 const COLUMN_DEFS: { id: ColId; label: string; locked?: boolean; defaultOn: boolean }[] = [
@@ -112,6 +142,59 @@ const COLUMN_DEFS: { id: ColId; label: string; locked?: boolean; defaultOn: bool
 const SEV_RANK: Record<string, number> = { Critical: 5, High: 4, Medium: 3, Low: 2, Info: 1 };
 /** Does this accident's case have an adjuster reply we should flag in the list? */
 const caseHasReply = (r: AccidentRecord) => (r.case?.messages ?? []).some(m => m.from === "adjuster");
+
+// ── Severity-category predicates (Hazmat / Tow-away / Injuries / Fatalities / Others) ──
+type SeverityFlag = "hazmat" | "towaway" | "injuries" | "fatalities" | "others";
+const hasHazmat = (r: AccidentRecord) => r.hazmatSpill === true;
+const hasTowAway = (r: AccidentRecord) => r.towAway === true;
+const hasInjuries = (r: AccidentRecord) => r.injuries === true || Number(r.numInjuries) > 0;
+const hasFatalities = (r: AccidentRecord) => Number(r.numFatalities) > 0;
+/** "Others" = accidents that fall into none of the four severity categories. */
+const isOther = (r: AccidentRecord) => !hasHazmat(r) && !hasTowAway(r) && !hasInjuries(r) && !hasFatalities(r);
+const SEVERITY_PRED: Record<SeverityFlag, (r: AccidentRecord) => boolean> = {
+    hazmat: hasHazmat, towaway: hasTowAway, injuries: hasInjuries, fatalities: hasFatalities, others: isOther,
+};
+
+// Category tabs (mirrors the Accidents page) — active underline + count-badge tones.
+const TAB_ACTIVE_TONE: Record<string, string> = {
+    blue: "border-blue-600 text-blue-700 bg-blue-50/40",
+    amber: "border-amber-600 text-amber-700 bg-amber-50/40",
+    sky: "border-sky-600 text-sky-700 bg-sky-50/40",
+    rose: "border-rose-600 text-rose-700 bg-rose-50/40",
+    red: "border-red-600 text-red-700 bg-red-50/40",
+    slate: "border-slate-600 text-slate-700 bg-slate-100/60",
+};
+const TAB_BADGE_TONE: Record<string, string> = {
+    blue: "bg-blue-100 text-blue-700", amber: "bg-amber-100 text-amber-700",
+    sky: "bg-sky-100 text-sky-700", rose: "bg-rose-100 text-rose-700", red: "bg-red-100 text-red-700",
+    slate: "bg-slate-200 text-slate-700",
+};
+
+// Sub-category breakdown cards (Accidents-page style) — a cycled palette at rest, the active
+// tab's tone when a card is selected.
+const SUBCAT_PALETTE = [
+    { bar: "bg-sky-500",     bg: "bg-sky-50/60",     count: "text-sky-700",     chip: "bg-sky-50 text-sky-700 ring-sky-200",           barBg: "bg-sky-100",     barFill: "bg-sky-500" },
+    { bar: "bg-violet-500",  bg: "bg-violet-50/60",  count: "text-violet-700",  chip: "bg-violet-50 text-violet-700 ring-violet-200",   barBg: "bg-violet-100",  barFill: "bg-violet-500" },
+    { bar: "bg-emerald-500", bg: "bg-emerald-50/60", count: "text-emerald-700", chip: "bg-emerald-50 text-emerald-700 ring-emerald-200", barBg: "bg-emerald-100", barFill: "bg-emerald-500" },
+    { bar: "bg-amber-500",   bg: "bg-amber-50/60",   count: "text-amber-700",   chip: "bg-amber-50 text-amber-700 ring-amber-200",     barBg: "bg-amber-100",   barFill: "bg-amber-500" },
+    { bar: "bg-rose-500",    bg: "bg-rose-50/60",    count: "text-rose-700",    chip: "bg-rose-50 text-rose-700 ring-rose-200",        barBg: "bg-rose-100",    barFill: "bg-rose-500" },
+    { bar: "bg-indigo-500",  bg: "bg-indigo-50/60",  count: "text-indigo-700",  chip: "bg-indigo-50 text-indigo-700 ring-indigo-200",   barBg: "bg-indigo-100",  barFill: "bg-indigo-500" },
+    { bar: "bg-teal-500",    bg: "bg-teal-50/60",    count: "text-teal-700",    chip: "bg-teal-50 text-teal-700 ring-teal-200",        barBg: "bg-teal-100",    barFill: "bg-teal-500" },
+    { bar: "bg-fuchsia-500", bg: "bg-fuchsia-50/60", count: "text-fuchsia-700", chip: "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200", barBg: "bg-fuchsia-100", barFill: "bg-fuchsia-500" },
+];
+const SUBCAT_ACTIVE: Record<string, { bar: string; count: string; ring: string }> = {
+    blue:  { bar: "bg-blue-500",  count: "text-blue-700",  ring: "border-blue-600 ring-2 ring-blue-300/40" },
+    amber: { bar: "bg-amber-500", count: "text-amber-700", ring: "border-amber-600 ring-2 ring-amber-300/40" },
+    sky:   { bar: "bg-sky-500",   count: "text-sky-700",   ring: "border-sky-600 ring-2 ring-sky-300/40" },
+    rose:  { bar: "bg-rose-500",  count: "text-rose-700",  ring: "border-rose-600 ring-2 ring-rose-300/40" },
+    red:   { bar: "bg-red-500",   count: "text-red-700",   ring: "border-red-600 ring-2 ring-red-300/40" },
+    slate: { bar: "bg-slate-500", count: "text-slate-700", ring: "border-slate-600 ring-2 ring-slate-300/40" },
+};
+const SUBCAT_STRIP_BG: Record<string, string> = {
+    blue: "bg-blue-50/40", amber: "bg-amber-50/40", sky: "bg-sky-50/40", rose: "bg-rose-50/40", red: "bg-red-50/40", slate: "bg-slate-100/50",
+};
+const flagTone = (f: SeverityFlag | "all") =>
+    f === "all" ? "blue" : f === "hazmat" ? "amber" : f === "towaway" ? "sky" : f === "injuries" ? "rose" : f === "fatalities" ? "red" : "slate";
 const STATUS_RANK: Record<AccidentStatus, number> = { reported: 1, review: 2, verified: 3 };
 type SortState = { col: ColId; dir: "asc" | "desc" };
 function sortVal(r: AccidentRecord, col: ColId): string | number {
@@ -258,7 +341,11 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
     const [recSeverity, setRecSeverity] = useState<AccidentRiskType | "all">("all");
     const [recTypes, setRecTypes] = useState<Set<string>>(new Set());
     const [recLocation, setRecLocation] = useState<string>("all");
+    const [recFlag, setRecFlag] = useState<SeverityFlag | "all">("all");
+    const [recSubType, setRecSubType] = useState<string | null>(null);   // accident-type id from the sub-category chips
+    const [subExpanded, setSubExpanded] = useState(false);               // sub-category cards: top 12 vs all (scrollable)
     const [showHistorical, setShowHistorical] = useState(true);
+    const toggleFlag = (f: SeverityFlag) => setRecFlag(prev => (prev === f ? "all" : f));
     const toggleType = (id: string) => setRecTypes(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
     const clearTypes = () => setRecTypes(new Set());
 
@@ -285,9 +372,16 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
         reported: records.filter(r => r.status === "reported").length,
         review: records.filter(r => r.status === "review").length,
         verified: records.filter(r => r.status === "verified").length,
+        hazmat: records.filter(hasHazmat).length,
+        towaway: records.filter(hasTowAway).length,
+        injuries: records.filter(hasInjuries).length,
+        fatalities: records.filter(hasFatalities).length,
+        others: records.filter(isOther).length,
     }), [records]);
 
-    const filteredRecords = useMemo(() => {
+    // Everything except the sub-category (accident-type) chip filter — so the chips can show
+    // what's available in the current tab / filters.
+    const baseFiltered = useMemo(() => {
         const q = recSearch.trim().toLowerCase();
         return records.filter(r => {
             if (recStatus !== "all" && r.status !== recStatus) return false;
@@ -295,11 +389,27 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
             if (recSeverity !== "all" && r.severity !== recSeverity) return false;
             if (recTypes.size > 0 && !typeIdsOf(r).some(id => recTypes.has(id))) return false;
             if (recLocation !== "all" && r.location !== recLocation) return false;
+            if (recFlag !== "all" && !SEVERITY_PRED[recFlag](r)) return false;
             if (!showHistorical && r.status === "verified") return false;
             if (q && !`${r.driverName} ${r.location} ${typesOf(r)} ${r.unitId} ${r.claimNumber ?? ""}`.toLowerCase().includes(q)) return false;
             return true;
         });
-    }, [records, recSearch, recStatus, recSource, recSeverity, recTypes, recLocation, showHistorical]);
+    }, [records, recSearch, recStatus, recSource, recSeverity, recTypes, recLocation, recFlag, showHistorical]);
+
+    // Accident types present in the current view — drives the sub-category chip row.
+    const subTypeBreakdown = useMemo(() => {
+        const counts = new Map<string, number>();
+        baseFiltered.forEach(r => typeIdsOf(r).forEach(id => counts.set(id, (counts.get(id) ?? 0) + 1)));
+        return [...counts.entries()]
+            .map(([id, count]) => ({ id, count, label: typeLabel(id) }))
+            .filter(x => x.label)
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    }, [baseFiltered]);
+
+    const filteredRecords = useMemo(
+        () => (recSubType ? baseFiltered.filter(r => typeIdsOf(r).includes(recSubType)) : baseFiltered),
+        [baseFiltered, recSubType],
+    );
 
     const sortedRecords = useMemo(() => {
         if (!sort) return filteredRecords;
@@ -312,7 +422,8 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
         });
     }, [filteredRecords, sort]);
 
-    useEffect(() => { setRecPage(1); }, [recSearch, recStatus, recSource, recSeverity, recTypes, recLocation, showHistorical, recPageSize]);
+    useEffect(() => { setRecSubType(null); setSubExpanded(false); }, [recFlag]);   // switching tab clears the sub-category chip + collapses cards
+    useEffect(() => { setRecPage(1); }, [recSearch, recStatus, recSource, recSeverity, recTypes, recLocation, recFlag, recSubType, showHistorical, recPageSize]);
     const recTotal = sortedRecords.length;
     const recPages = Math.max(1, Math.ceil(recTotal / recPageSize));
     const recSafePage = Math.min(recPage, recPages);
@@ -370,19 +481,113 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
             />
 
             <div className="space-y-5 p-4 sm:p-8">
-                {/* KPI cards — click to filter by status */}
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    <KpiStatCard label="Total Accidents" value={recKpis.total} Icon={AlertTriangle} accent="slate"
-                        active={recStatus === "all"} onClick={() => setRecStatus("all")} />
-                    <KpiStatCard label="Reported" value={recKpis.reported} Icon={Clock} accent="amber"
-                        active={recStatus === "reported"} onClick={() => setRecStatus("reported")} />
-                    <KpiStatCard label="Under Review" value={recKpis.review} Icon={ListChecks} accent="blue"
-                        active={recStatus === "review"} onClick={() => setRecStatus("review")} />
-                    <KpiStatCard label="Verified" value={recKpis.verified} Icon={BadgeCheck} accent="emerald"
-                        active={recStatus === "verified"} onClick={() => setRecStatus("verified")} />
+                {/* At-a-glance accident metrics (Accidents-page KPI card style) — click a card to filter */}
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+                    <AccidentKpiCard label="Total Accidents" value={recKpis.total} sub="All records" Icon={AlertTriangle}
+                        accent="bg-blue-500/10 text-blue-600" ring="ring-blue-500/40"
+                        active={recStatus === "all" && recFlag === "all"} onClick={() => { setRecStatus("all"); setRecFlag("all"); }} />
+                    <AccidentKpiCard label="Hazmat" value={recKpis.hazmat} sub="Dangerous goods" Icon={Biohazard}
+                        accent="bg-amber-500/10 text-amber-600" ring="ring-amber-500/40"
+                        active={recFlag === "hazmat"} onClick={() => toggleFlag("hazmat")} />
+                    <AccidentKpiCard label="Tow-away" value={recKpis.towaway} sub="Towed away" Icon={Truck}
+                        accent="bg-sky-500/10 text-sky-600" ring="ring-sky-500/40"
+                        active={recFlag === "towaway"} onClick={() => toggleFlag("towaway")} />
+                    <AccidentKpiCard label="With Injuries" value={recKpis.injuries} sub="Non-fatal" Icon={HeartPulse}
+                        accent="bg-rose-500/10 text-rose-600" ring="ring-rose-500/40"
+                        active={recFlag === "injuries"} onClick={() => toggleFlag("injuries")} />
+                    <AccidentKpiCard label="Fatalities" value={recKpis.fatalities} sub="Critical events" Icon={Skull}
+                        accent="bg-gray-900/10 text-gray-900" ring="ring-gray-900/30"
+                        active={recFlag === "fatalities"} onClick={() => toggleFlag("fatalities")} />
+                    <AccidentKpiCard label="Others" value={recKpis.others} sub="Uncategorized" Icon={Layers}
+                        accent="bg-slate-500/10 text-slate-600" ring="ring-slate-500/40"
+                        active={recFlag === "others"} onClick={() => toggleFlag("others")} />
                 </div>
 
                         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                            {/* Category tabs — mirrors the Accidents page (All / Hazmat / Tow Away / Injuries / Fatalities) */}
+                            <div className="flex overflow-x-auto border-b border-slate-200">
+                                {[
+                                    { id: "all", label: "All Accidents", Icon: AlertTriangle, tone: "blue", count: recKpis.total },
+                                    { id: "hazmat", label: "Hazmat", Icon: Biohazard, tone: "amber", count: recKpis.hazmat },
+                                    { id: "towaway", label: "Tow Away", Icon: Truck, tone: "sky", count: recKpis.towaway },
+                                    { id: "injuries", label: "Injuries", Icon: HeartPulse, tone: "rose", count: recKpis.injuries },
+                                    { id: "fatalities", label: "Fatalities", Icon: Skull, tone: "red", count: recKpis.fatalities },
+                                    { id: "others", label: "Others", Icon: Layers, tone: "slate", count: recKpis.others },
+                                ].map(tab => {
+                                    const active = tab.id === "all" ? recFlag === "all" : recFlag === tab.id;
+                                    return (
+                                        <button key={tab.id} type="button" onClick={() => setRecFlag(tab.id === "all" ? "all" : (tab.id as SeverityFlag))}
+                                            className={cn("group relative flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 transition-colors",
+                                                active ? TAB_ACTIVE_TONE[tab.tone] : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800")}>
+                                            <tab.Icon size={14} className={active ? "" : "opacity-70 group-hover:opacity-100"} />
+                                            <span className="text-sm font-semibold">{tab.label}</span>
+                                            <span className={cn("inline-flex h-5 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums", active ? TAB_BADGE_TONE[tab.tone] : "bg-slate-100 text-slate-500")}>{tab.count}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Sub-category — accident-type breakdown cards (Accidents-page style) */}
+                            {(() => {
+                                const tone = flagTone(recFlag);
+                                const act = SUBCAT_ACTIVE[tone];
+                                const denom = baseFiltered.length || 1;
+                                const LIMIT = 12;
+                                const hidden = subTypeBreakdown.length - LIMIT;
+                                return (
+                                    <div className={cn("border-b border-slate-200 px-4 py-3", SUBCAT_STRIP_BG[tone])}>
+                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sub-categories — accident types in this view</div>
+                                                <div className="text-[11px] text-slate-400">Click a card to narrow the table to that accident type</div>
+                                            </div>
+                                            <div className="flex shrink-0 items-center gap-2">
+                                                {recSubType && (
+                                                    <button type="button" onClick={() => setRecSubType(null)} className={cn("inline-flex items-center gap-1 text-[11px] font-bold hover:opacity-80", act.count)}>Clear sub-filter <X size={11} /></button>
+                                                )}
+                                                {hidden > 0 && (
+                                                    <button type="button" onClick={() => setSubExpanded(v => !v)}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-800">
+                                                        {subExpanded ? "Show less" : "Show all types"}
+                                                        <ChevronDown size={13} className={cn("transition-transform", subExpanded && "rotate-180")} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {subTypeBreakdown.length === 0 ? (
+                                            <div className="py-4 text-center text-[12px] italic text-slate-400">No accident types in this view.</div>
+                                        ) : (
+                                            <div className={cn("grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6",
+                                                subExpanded && "max-h-[264px] overflow-y-auto overscroll-contain pr-1")}>
+                                                {(subExpanded ? subTypeBreakdown : subTypeBreakdown.slice(0, LIMIT)).map((t, i) => {
+                                                        const selected = recSubType === t.id;
+                                                        const sharePct = (t.count / denom) * 100;
+                                                        const c = SUBCAT_PALETTE[i % SUBCAT_PALETTE.length];
+                                                        return (
+                                                            <button key={t.id} type="button" onClick={() => setRecSubType(selected ? null : t.id)}
+                                                                title={`${t.label} — ${t.count} accident${t.count === 1 ? "" : "s"}`}
+                                                                className={cn("group flex h-full flex-col overflow-hidden rounded-lg border text-left shadow-sm transition-all",
+                                                                    selected ? cn(act.ring, "bg-white") : cn("border-slate-200 hover:border-slate-300 hover:shadow-md", c.bg))}>
+                                                                <div className={cn("h-1 w-full", selected ? act.bar : c.bar)} />
+                                                                <div className="flex flex-1 flex-col px-3 py-2.5">
+                                                                    <div className="line-clamp-2 min-h-[2.6em] text-[11px] font-semibold leading-snug text-slate-700" title={t.label}>{t.label}</div>
+                                                                    <div className="mt-2 flex items-end justify-between gap-2">
+                                                                        <span className={cn("text-[22px] font-bold leading-none tabular-nums", selected ? act.count : c.count)}>{t.count}</span>
+                                                                        <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ring-1", selected ? cn(act.count, "bg-white ring-current/30") : c.chip)}>{sharePct.toFixed(0)}%</span>
+                                                                    </div>
+                                                                    <div className={cn("mt-2 h-1 overflow-hidden rounded-full", selected ? "bg-slate-100" : c.barBg)}>
+                                                                        <div className={cn("h-full rounded-full transition-all", selected ? act.bar : c.barFill)} style={{ width: `${Math.min(100, sharePct)}%` }} />
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
                             {/* Toolbar — search + filters (wraps on small screens) */}
                             <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-3 sm:px-4">
                                 <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
@@ -432,7 +637,7 @@ export function DefaultAccidentsPage({ accountId, currentUserName = "Manager" }:
                             {recTotal === 0 ? (
                                 <div className="px-5 py-16 text-center">
                                     <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><AlertTriangle size={22} /></div>
-                                    <p className="text-sm font-semibold text-slate-700">No accidents {recStatus !== "all" || recSource !== "all" || recSeverity !== "all" || recTypes.size > 0 || recLocation !== "all" || recSearch ? "match your filters" : "reported yet"}</p>
+                                    <p className="text-sm font-semibold text-slate-700">No accidents {recStatus !== "all" || recSource !== "all" || recSeverity !== "all" || recTypes.size > 0 || recLocation !== "all" || recFlag !== "all" || recSubType || recSearch ? "match your filters" : "reported yet"}</p>
                                     <p className="mt-1 text-xs text-slate-400">Drivers can report from the mobile app, or add one here.</p>
                                 </div>
                             ) : (<>

@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 import {
     ChevronLeft, AlertTriangle, ShieldCheck, Pencil, Trash2, FileText, Camera, Video, Eye, X, Sparkles, Download,
     Building2, User, Car, Users, Shield, Cloud, MapPin, Truck, Wrench, Activity as ActivityIcon,
-    Boxes, Gauge, Clock, Search, ChevronsUpDown, Mail, Send, Paperclip, MessageSquare, Inbox, CornerUpLeft, Smartphone, Upload, Signature, MoreVertical, Check, ExternalLink, type LucideIcon,
+    Boxes, Gauge, Clock, Search, ChevronsUpDown, Mail, Send, Paperclip, MessageSquare, Inbox, CornerUpLeft, Smartphone, Upload, Signature, MoreVertical, Check, ExternalLink, HeartPulse, List, Image as ImageIcon, FolderOpen, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,9 @@ import { AccidentReportViewer } from './AccidentReportViewer';
 import { DocumentTemplateBuilder } from '@/pages/hiring-process/DocumentTemplateBuilder';
 import { type DocFile } from '@/pages/hiring-process/document-templates.data';
 import { accidentReportFileName } from './accident-report';
-import { ACCIDENT_TYPES, RISK_TYPE_TONE, type AccidentRiskType } from '@/data/accident-types.data';
+import { ACCIDENT_TYPES } from '@/data/accident-types.data';
 import {
-    ACCIDENT_STATUS_META, SOURCE_META, ACTIVITY_ROLE_META, CASE_STATUS_META, ALERT_META,
+    ACCIDENT_STATUS_META, SOURCE_META, ACTIVITY_ROLE_META, CASE_STATUS_META, ALERT_META, driverProfileStats,
     type AccidentRecord, type AccidentFile, type AccidentActivity, type AccidentCase, type CaseMessage, type CaseAttachment,
 } from '@/data/accident-records.data';
 
@@ -43,8 +43,9 @@ const has = (...vals: unknown[]) => vals.some(v => v !== undefined && v !== null
 
 // ── Small read-only building blocks ──────────────────────────────
 function InfoCard({ title, icon: Icon, right, children }: { title: string; icon: LucideIcon; right?: ReactNode; children: ReactNode }) {
+    const id = 'ov-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     return (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div id={id} data-ov-section={title} className="scroll-mt-4 rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
                 <Icon size={15} className="text-blue-600" />
                 <h3 className="text-sm font-bold text-slate-800">{title}</h3>
@@ -138,6 +139,56 @@ function UploadedByCell({ name, at }: { name?: string; at?: string }) {
                 {at && <div className="whitespace-nowrap text-[11px] text-slate-400">{fmt12h(at)}</div>}
             </div>
         </div>
+    );
+}
+
+/** Compact alert chip for the summary header — keeps the top section the same height whether or not
+ *  an alert exists (no full-width banner row). Click opens a popover with the full message + dismiss. */
+function AlertChip({ alert, onDismiss }: { alert: NonNullable<AccidentRecord['alert']>; onDismiss?: () => void }) {
+    const [open, setOpen] = useState(false);
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    const ref = useRef<HTMLButtonElement>(null);
+    const meta = ALERT_META[alert.level];
+    const toggle = () => {
+        if (open) { setOpen(false); return; }
+        const r = ref.current?.getBoundingClientRect();
+        if (r) setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 320)) });
+        setOpen(true);
+    };
+    useEffect(() => {
+        if (!open) return;
+        const close = () => setOpen(false);
+        window.addEventListener('scroll', close, true); window.addEventListener('resize', close); window.addEventListener('pointerdown', close);
+        return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); window.removeEventListener('pointerdown', close); };
+    }, [open]);
+    return (
+        <>
+            <button ref={ref} type="button" onClick={e => { e.stopPropagation(); toggle(); }} onPointerDown={e => e.stopPropagation()}
+                title={alert.message}
+                className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', meta.tone)}>
+                <AlertTriangle size={11} /> {alert.label || meta.label} alert
+            </button>
+            {open && pos && createPortal(
+                <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: 300, zIndex: 80 }} onPointerDown={e => e.stopPropagation()}
+                    className={cn('rounded-xl border p-3 shadow-xl', meta.tone)}>
+                    <div className="flex items-start gap-2">
+                        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[12px] font-bold">{alert.label || meta.label} alert</p>
+                            <p className="mt-0.5 text-[12px] leading-snug opacity-90">{alert.message}</p>
+                            {alert.at && <p className="mt-1 text-[10px] font-medium opacity-70">{fmtDateTime(alert.at)}</p>}
+                        </div>
+                    </div>
+                    {onDismiss && (
+                        <button type="button" onClick={() => { setOpen(false); onDismiss(); }}
+                            className="mt-2.5 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-white/70 px-2 py-1.5 text-[11px] font-bold hover:bg-white">
+                            <X size={12} /> Dismiss alert
+                        </button>
+                    )}
+                </div>,
+                document.body,
+            )}
+        </>
     );
 }
 
@@ -553,6 +604,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
 }) {
     const [tab, setTab] = useState<TabId>('overview');
     const [showReport, setShowReport] = useState(false);
+    const [pendingCompose, setPendingCompose] = useState(false);   // top "Send to adjuster" → open the Communication composer
     const st = ACCIDENT_STATUS_META[record.status];
     const src = SOURCE_META[record.source];
     const title = typesOf(record) || 'Accident report';
@@ -572,7 +624,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
 
     const docCount = (record.driverStatementFiles?.length ?? 0) + (record.policeReportFiles?.length ?? 0)
         + (record.citationFiles?.length ?? 0) + (record.repairFiles?.length ?? 0) + (record.towingInvoiceFiles?.length ?? 0)
-        + (record.elogFiles?.length ?? 0) + (record.ledgerFiles?.length ?? 0) + (record.claimDocsFiles?.length ?? 0) + (record.additionalDocsFiles?.length ?? 0)
+        + (record.elogFiles?.length ?? 0) + (record.ledgerFiles?.length ?? 0) + (record.claimDocsFiles?.length ?? 0) + (record.medicalReportFiles?.length ?? 0) + (record.additionalDocsFiles?.length ?? 0)
         + (record.witnesses ?? []).reduce((n, w) => n + (w.statementFiles?.length ?? 0), 0)
         + (record.otherVehicles ?? []).reduce((n, v) => n + (v.coiFiles?.length ?? 0), 0);
     const evidenceCount = (record.photoFiles?.length ?? 0) + (record.videoFiles?.length ?? 0)
@@ -582,20 +634,8 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
         { id: 'overview', label: 'Overview' },
         { id: 'documents', label: 'Documents', count: docCount },
         { id: 'evidence', label: 'Evidence', count: evidenceCount },
-        { id: 'case', label: 'Case', count: record.case?.messages.length || undefined },
+        { id: 'case', label: 'Communication', count: record.case?.messages.length || undefined },
         { id: 'activity', label: 'Activity', count: activity.length },
-    ];
-
-    // Compact key facts for the fixed header strip — driver / unit / date / type already show in the
-    // title line above, and everything is in the Overview tab, so keep this short to give the tab
-    // panels below their vertical room.
-    const summaryRows: { label: string; value: ReactNode }[] = [
-        { label: 'Location', value: record.location || '—' },
-        { label: 'Severity', value: record.severity ? <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold', RISK_TYPE_TONE[record.severity as AccidentRiskType])}>{record.severity}</span> : '—' },
-        { label: 'Preventability', value: record.preventable || '—' },
-        { label: 'Claim #', value: record.claimNumber || '—' },
-        { label: 'Reported', value: `${record.reportedBy} · ${record.reportedAt}` },
-        { label: 'Verified', value: record.verifiedBy ? `${record.verifiedBy} · ${record.verifiedAt}` : '—' },
     ];
 
     // Full-screen themed report view (theme tabs + Print + Download PDF), covering the accident
@@ -607,72 +647,49 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col bg-slate-50">
             {/* Fixed top section — back link, summary card, tabs (stays while the tab body scrolls). */}
-            <div className="shrink-0 border-b border-slate-200/70 bg-slate-50 px-4 pt-4 sm:px-8 sm:pt-6">
-                <div className="mx-auto max-w-[1600px] space-y-4">
+            <div className="shrink-0 border-b border-slate-200/70 bg-slate-50 px-4 pt-3 sm:px-8 sm:pt-4">
+                <div className="mx-auto max-w-[1600px] space-y-3">
                 <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800">
                     <ChevronLeft size={16} /> Back to list
                 </button>
 
-                {/* ── Summary header card ── */}
+                {/* ── Summary header card (collapsible — collapsed by default to give the tab panels room) ── */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex items-start gap-3">
-                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><AlertTriangle size={20} /></span>
-                            <div>
+                    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><AlertTriangle size={18} /></span>
+                            <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <h1 className="text-lg font-bold text-slate-900">{title}</h1>
+                                    <h1 className="text-base font-bold text-slate-900">{title}</h1>
                                     <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', st.tone)}><span className={cn('h-1.5 w-1.5 rounded-full', st.dot)} />{st.label}</span>
                                     <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold', src.tone)}>{src.label}</span>
                                     {record.injuries && <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">Injury</span>}
+                                    {record.alert && <AlertChip alert={record.alert} onDismiss={onUpdate ? () => onUpdate({ ...record, alert: undefined }) : undefined} />}
                                 </div>
                                 <p className="mt-1 text-sm text-slate-500">{record.driverName || '—'} · {record.unitId || '—'} · {fmtDateTime(record.dateTime)}</p>
                             </div>
                         </div>
-                        <div className="flex shrink-0 flex-wrap items-center gap-1">
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                            {onUpdate && (
+                                <Button size="sm" onClick={() => { setTab('case'); setPendingCompose(true); }} className="h-8 gap-1.5 px-2.5 text-[13px] bg-blue-600 text-white shadow-sm hover:bg-blue-700">
+                                    <Send className="h-3.5 w-3.5" /> Send to adjuster
+                                </Button>
+                            )}
                             {record.status !== 'verified' && (
-                                <Button size="sm" onClick={onEdit} className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">
-                                    <ShieldCheck className="h-4 w-4" /> Review &amp; verify
+                                <Button size="sm" onClick={onEdit} className="h-8 gap-1.5 px-2.5 text-[13px] bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">
+                                    <ShieldCheck className="h-3.5 w-3.5" /> Review &amp; verify
                                 </Button>
                             )}
-                            <Button variant="outline" size="sm" onClick={() => setShowReport(true)}>
-                                <FileText className="h-4 w-4" /> Report / PDF
+                            <Button variant="outline" size="sm" onClick={() => setShowReport(true)} className="h-8 gap-1.5 px-2.5 text-[13px]">
+                                <FileText className="h-3.5 w-3.5" /> Report / PDF
                             </Button>
-                            <Button variant="outline" size="sm" onClick={onEdit}>
-                                <Pencil className="h-4 w-4" /> Edit
-                            </Button>
-                            {onDelete && (
-                                <Button variant="outline" size="sm" onClick={() => { onDelete(record.id); onBack(); }} className="border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700">
-                                    <Trash2 className="h-4 w-4" /> Delete
-                                </Button>
-                            )}
+                            <RowActionsMenu items={[
+                                { label: 'Edit accident', icon: Pencil, onClick: onEdit },
+                                { label: 'Delete', icon: Trash2, onClick: () => { onDelete?.(record.id); onBack(); }, danger: true, hidden: !onDelete },
+                            ]} />
                         </div>
-                    </div>
-                    {/* Key facts — compact wrapping strip (keeps the fixed header short so the tab panels fill height) */}
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 border-t border-slate-100 px-5 py-2.5">
-                        {summaryRows.map((r, i) => (
-                            <span key={i} className="inline-flex items-center gap-1.5 text-[12px]">
-                                <span className="text-slate-400">{r.label}</span>
-                                <span className="font-semibold text-slate-800">{r.value}</span>
-                            </span>
-                        ))}
                     </div>
                 </div>
-
-                {/* ── Alert banner (notification raised against this accident) — dismissable ── */}
-                {record.alert && (
-                    <div className={cn('flex items-start gap-2.5 rounded-xl border px-4 py-3', ALERT_META[record.alert.level].tone)}>
-                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-bold">{record.alert.label || ALERT_META[record.alert.level].label} alert</p>
-                            <p className="text-[13px] leading-snug opacity-90">{record.alert.message}</p>
-                        </div>
-                        {record.alert.at && <span className="mt-0.5 shrink-0 text-[11px] font-medium opacity-70">{fmtDateTime(record.alert.at)}</span>}
-                        {onUpdate && (
-                            <button type="button" onClick={() => onUpdate({ ...record, alert: undefined })} title="Dismiss / turn off this alert"
-                                className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 opacity-60 transition-opacity hover:bg-black/5 hover:opacity-100"><X size={15} /></button>
-                        )}
-                    </div>
-                )}
 
                 {/* ── Tabs ── */}
                 <div className="-mb-px flex items-center gap-1 overflow-x-auto">
@@ -698,7 +715,7 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
                     {tab === 'overview' && <OverviewTab record={record} />}
                     {tab === 'documents' && <DocumentsTab record={record} onUpdate={onUpdate} accountId={accountId} />}
                     {tab === 'evidence' && <EvidenceTab record={record} onUpdate={onUpdate} />}
-                    {tab === 'case' && <CaseTab record={record} onUpdate={onUpdate} onEdit={onEdit} />}
+                    {tab === 'case' && <CaseTab record={record} onUpdate={onUpdate} onEdit={onEdit} autoCompose={pendingCompose} onAutoComposeHandled={() => setPendingCompose(false)} />}
                     {tab === 'activity' && <ActivityTab activity={activity} />}
                 </div>
             </div>
@@ -706,10 +723,106 @@ export function AccidentDetailPage({ record, onBack, onEdit, onUpdate, onDelete,
     );
 }
 
+/** Floating "Sections" widget for the Overview — hidden by default (just a small pill); opens a
+ *  jump-to-section list built from the InfoCards actually rendered. Works on mobile + desktop:
+ *  a sticky bottom-right FAB whose list opens upward and scrolls. */
+function OverviewSectionNav({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
+    const [open, setOpen] = useState(false);
+    const [sections, setSections] = useState<{ id: string; title: string }[]>([]);
+    useEffect(() => {
+        if (!open) return;
+        const els = containerRef.current?.querySelectorAll<HTMLElement>('[data-ov-section]');
+        setSections(Array.from(els ?? []).map(e => ({ id: e.id, title: e.getAttribute('data-ov-section') || '' })));
+        const onDown = (e: PointerEvent) => { if (!(e.target as HTMLElement).closest('[data-ov-nav]')) setOpen(false); };
+        document.addEventListener('pointerdown', onDown);
+        return () => document.removeEventListener('pointerdown', onDown);
+    }, [open, containerRef]);
+    const go = (id: string) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setOpen(false); };
+    return (
+        <div data-ov-nav className="pointer-events-none sticky bottom-3 z-30 flex justify-end">
+            <div className="pointer-events-auto relative">
+                {open && (
+                    <div className="absolute bottom-full right-0 mb-2 max-h-[min(60vh,360px)] w-60 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                        <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Jump to section</p>
+                        {sections.map(s => (
+                            <button key={s.id} type="button" onClick={() => go(s.id)}
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50">
+                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />{s.title}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <button type="button" onClick={() => setOpen(v => !v)} title="Jump to section" aria-expanded={open}
+                    className={cn('inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2.5 text-[13px] font-semibold shadow-lg transition-colors',
+                        open ? 'border-blue-300 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}>
+                    <List size={16} /> <span className="hidden sm:inline">Sections</span>
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ── Overview ─────────────────────────────────────────────────────
 function OverviewTab({ record: r }: { record: AccidentRecord }) {
+    const overviewRef = useRef<HTMLDivElement>(null);
+    const profile = driverProfileStats(r);
+    const fatalities = Number(r.numFatalities) || 0;
+    const injuries = Number(r.numInjuries) || (r.injuries ? 1 : 0);
+    const vehiclesTowed = Number(r.numVehiclesTowed) || 0;
+    // Severity mini-stats — counts, plus Yes/No for the boolean flags. Coloured when "positive".
+    const sev: { label: string; value: ReactNode; positive: boolean; tone: string }[] = [
+        { label: 'Fatalities', value: fatalities, positive: fatalities > 0, tone: 'text-red-600' },
+        { label: 'Injuries', value: injuries, positive: injuries > 0, tone: 'text-rose-600' },
+        { label: 'Tow Away', value: r.towAway ? 'Yes' : 'No', positive: !!r.towAway, tone: 'text-sky-600' },
+        { label: 'Vehicles Towed', value: vehiclesTowed, positive: vehiclesTowed > 0, tone: 'text-amber-600' },
+        { label: 'HAZMAT', value: r.hazmatSpill ? 'Yes' : 'No', positive: !!r.hazmatSpill, tone: 'text-orange-600' },
+    ];
+    // Document indicators — grey when nothing uploaded, coloured (with count) when present.
+    const docs: { label: string; icon: LucideIcon; count: number }[] = [
+        { label: 'Police Report', icon: Shield, count: r.policeReportFiles?.length ?? 0 },
+        { label: 'Citation / Ticket', icon: FileText, count: r.citationFiles?.length ?? 0 },
+        { label: 'Insurance Claim', icon: FileText, count: (r.claimDocsFiles?.length ?? 0) + (r.ledgerFiles?.length ?? 0) },
+        { label: 'Medical Report', icon: HeartPulse, count: r.medicalReportFiles?.length ?? 0 },
+        { label: 'Tow Receipt', icon: Truck, count: r.towingInvoiceFiles?.length ?? 0 },
+        { label: 'Photos', icon: Camera, count: (r.photoFiles?.length ?? 0) + (r.vehicleDamageFiles?.length ?? 0) },
+        { label: 'Telemetry', icon: Gauge, count: r.elogFiles?.length ?? 0 },
+        { label: 'Dashcam Video', icon: Video, count: r.dashcamFiles?.length ?? 0 },
+    ];
     return (
-        <div className="columns-1 gap-5 xl:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid">
+        <div ref={overviewRef} className="relative space-y-5">
+            {/* Mini KPI panel — reads as part of the page: severity counts + document status */}
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div>
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Severity</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                        {sev.map(s => (
+                            <div key={s.label} className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{s.label}</p>
+                                <p className={cn('mt-1 text-xl font-bold leading-none tabular-nums', s.positive ? s.tone : 'text-slate-800')}>{s.value}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="border-t border-slate-100 pt-3">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Documents</p>
+                    <div className="flex flex-wrap gap-2">
+                        {docs.map(d => {
+                            const has = d.count > 0;
+                            return (
+                                <span key={d.label} title={has ? 'Uploaded' : 'Not uploaded'}
+                                    className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold',
+                                        has ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400')}>
+                                    <d.icon size={13} className={has ? 'text-emerald-600' : 'text-slate-300'} />
+                                    {d.label}
+                                </span>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            {/* Form sections — single column (not a bento/masonry grid) */}
+            <div className="space-y-5">
             <InfoCard title="Owner information" icon={Building2}>
                 <Grid>
                     <Field label="Name" value={r.ownerName} />
@@ -726,6 +839,9 @@ function OverviewTab({ record: r }: { record: AccidentRecord }) {
                     <Field label="Name" value={r.driverName} />
                     <Field label="Phone" value={r.driverPhone} />
                     <Field label="Licence number" value={r.licenceNumber} />
+                    <Field label="Age band" value={r.driverAgeBand || profile.ageBand} />
+                    <Field label="Driving experience" value={r.driverDrivingExperience || profile.drivingExperience} />
+                    <Field label="Length of employment" value={r.driverLengthOfEmployment || profile.lengthOfEmployment} />
                     <Field label="Address" value={composed(r.driverStreet, r.driverCity, composed(r.driverState, r.driverZip), r.driverCountry)} wide />
                     <Field label="Licence expiry" value={r.licenceExpiry} />
                     <Field label="Province of issue" value={r.licenceProvince} />
@@ -953,6 +1069,10 @@ function OverviewTab({ record: r }: { record: AccidentRecord }) {
                     <Field label="Verified by" value={r.verifiedBy ? `${r.verifiedBy} · ${r.verifiedAt}` : ''} />
                 </Grid>
             </InfoCard>
+            </div>
+
+            {/* Hidden-by-default section navigator — jump through the sections on any screen */}
+            <OverviewSectionNav containerRef={overviewRef} />
         </div>
     );
 }
@@ -991,6 +1111,7 @@ function DocumentsTab({ record: r, onUpdate, accountId }: { record: AccidentReco
         { label: 'E-log', icon: FileText, uploader: office, files: r.elogFiles, onChange: onUpdate ? files => onUpdate({ ...r, elogFiles: files }) : undefined },
         { label: 'Claim ledger', icon: FileText, uploader: claims, files: r.ledgerFiles, onChange: onUpdate ? files => onUpdate({ ...r, ledgerFiles: files }) : undefined },
         { label: 'Claim documents', icon: FileText, uploader: claims, files: r.claimDocsFiles, onChange: onUpdate ? files => onUpdate({ ...r, claimDocsFiles: files }) : undefined },
+        { label: 'Medical report', icon: FileText, uploader: office, files: r.medicalReportFiles, onChange: onUpdate ? files => onUpdate({ ...r, medicalReportFiles: files }) : undefined },
         { label: 'Additional documents', icon: FileText, uploader: office, files: r.additionalDocsFiles, onChange: onUpdate ? files => onUpdate({ ...r, additionalDocsFiles: files }) : undefined },
         ...(r.witnesses ?? []).filter(w => (w.statementFiles?.length ?? 0) > 0).map((w, i) => ({
             label: `Witness statement — ${w.name || `Witness ${i + 1}`}`, icon: Users, uploader: w.name || `Witness ${i + 1}`, files: w.statementFiles,
@@ -1063,13 +1184,66 @@ const CASE_KIND_META: Record<CaseMessage['kind'], { label: string; icon: LucideI
     note: { label: 'Note', icon: MessageSquare, tone: 'text-slate-600' },
 };
 
+const IMG_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp'];
+const VID_EXT = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'];
+/** Pick an icon + solid tint for a file card by its extension (used by the shared-files rail). */
+function fileIconMeta(name: string): { icon: LucideIcon; tone: string } {
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    if (IMG_EXT.includes(ext)) return { icon: ImageIcon, tone: 'bg-violet-50 text-violet-600' };
+    if (VID_EXT.includes(ext)) return { icon: Video, tone: 'bg-rose-50 text-rose-600' };
+    if (ext === 'pdf') return { icon: FileText, tone: 'bg-red-50 text-red-600' };
+    return { icon: FileText, tone: 'bg-slate-100 text-slate-500' };
+}
+
+/** Preview one shared file from the case thread — a generated document for doc/PDF types,
+ *  a placeholder for image/video (the prototype has no real media bytes). */
+function CaseFileViewerModal({ record: r, file, onClose }: {
+    record: AccidentRecord; file: { name: string; group?: string; from: CaseMessage['from']; at: string }; onClose: () => void;
+}) {
+    const kind = fileKind(file.name);
+    const meta = fileIconMeta(file.name);
+    const isMedia = kind.label === 'Image' || kind.label === 'Video';
+    return createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', meta.tone)}><meta.icon size={16} /></span>
+                        <div className="min-w-0">
+                            <h4 className="truncate text-sm font-bold text-slate-800" title={file.name}>{file.name}</h4>
+                            <p className="truncate text-[11.5px] text-slate-400">{file.group ? `${file.group} · ` : ''}{file.from === 'carrier' ? 'Sent' : 'Received'} · {fmtDateTime(file.at)}</p>
+                        </div>
+                    </div>
+                    <button type="button" onClick={onClose} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={18} /></button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-4 sm:p-6">
+                    {isMedia ? (
+                        <div className="mx-auto flex min-h-[320px] max-w-md flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
+                            <div className={cn('mb-3 flex h-14 w-14 items-center justify-center rounded-2xl', meta.tone)}>{kind.label === 'Image' ? <Camera size={26} /> : <Video size={26} />}</div>
+                            <p className="text-sm font-semibold text-slate-700">{file.name}</p>
+                            <p className="mt-1 text-[12px] text-slate-400">{kind.label} preview</p>
+                            <p className="mt-3 max-w-[250px] text-[12px] text-slate-400">Media preview isn’t available in this prototype — the file stays attached to the case.</p>
+                        </div>
+                    ) : (
+                        <div className="mx-auto max-w-[760px] bg-white shadow-sm"><AccidentDocDocument record={r} group={file.group ?? 'Document'} fileName={file.name} /></div>
+                    )}
+                </div>
+            </div>
+        </div>,
+        document.body,
+    );
+}
+
 function CaseBubble({ m }: { m: CaseMessage }) {
     const meta = CASE_KIND_META[m.kind];
     const mine = m.from === 'carrier';
     return (
-        <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
-            <div className={cn('w-full max-w-2xl rounded-2xl border p-4 shadow-sm', mine ? 'border-blue-100 bg-blue-50/50' : 'border-amber-100 bg-amber-50/40')}>
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+        <div className={cn('flex', mine ? 'justify-end pl-8 sm:pl-16' : 'justify-start pr-8 sm:pr-16')}>
+            <div className={cn(
+                'max-w-full rounded-[22px] border px-4 py-3 shadow-sm sm:max-w-xl',
+                mine ? 'rounded-br-md border-blue-100 bg-blue-50/50' : 'rounded-bl-md border-amber-100 bg-amber-50/40',
+            )}>
+                <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className={cn('inline-flex items-center gap-1 text-[12px] font-bold', meta.tone)}><meta.icon size={13} /> {meta.label}</span>
                     <span className="text-[12px] font-semibold text-slate-700">{m.by}</span>
                     <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase', mine ? 'border-blue-200 bg-white text-blue-600' : 'border-amber-200 bg-white text-amber-700')}>{mine ? 'You · carrier' : 'Adjuster'}</span>
@@ -1468,7 +1642,7 @@ function FulfillRequestModal({ items, uploader, onSend, onClose }: {
     );
 }
 
-function CaseTab({ record: r, onUpdate, onEdit }: { record: AccidentRecord; onUpdate?: (rec: AccidentRecord) => void; onEdit: () => void }) {
+function CaseTab({ record: r, onUpdate, onEdit, autoCompose, onAutoComposeHandled }: { record: AccidentRecord; onUpdate?: (rec: AccidentRecord) => void; onEdit: () => void; autoCompose?: boolean; onAutoComposeHandled?: () => void }) {
     const c: AccidentCase = r.case ?? { status: 'not_started', adjusterName: r.adjusterName, adjusterEmail: r.adjusterEmail, messages: [] };
     const status = CASE_STATUS_META[c.status];
     const adjusterName = c.adjusterName || r.adjusterName || '';
@@ -1486,6 +1660,8 @@ function CaseTab({ record: r, onUpdate, onEdit }: { record: AccidentRecord; onUp
     const [compose, setCompose] = useState<null | { mode: 'send' | 'respond'; requested?: string[] }>(null);
     const lastRequest = [...c.messages].reverse().find(m => m.kind === 'request');
     const readOnly = !onUpdate;
+    // Opened from the top "Send to adjuster" button — auto-open the package composer.
+    useEffect(() => { if (autoCompose && !readOnly) { setCompose({ mode: 'send' }); onAutoComposeHandled?.(); } }, [autoCompose, readOnly, onAutoComposeHandled]);
 
     const push = (msg: CaseMessage, statusAfter: AccidentCase['status'], action: string, detail?: string) => {
         if (!onUpdate) return;
@@ -1579,60 +1755,113 @@ function CaseTab({ record: r, onUpdate, onEdit }: { record: AccidentRecord; onUp
         push(msg, c.status, 'Attached a document', `${label} · ${fileName}`);
         setAttachOpen(false);
     };
+    // Files shared through the thread (sent by us + received from the adjuster), de-duplicated by name.
+    const caseFiles = useMemo(() => {
+        const seen = new Set<string>();
+        const out: { name: string; group?: string; by: string; at: string; from: CaseMessage['from'] }[] = [];
+        c.messages.forEach(m => (m.attachments ?? []).forEach(a => {
+            if (seen.has(a.name)) return;
+            seen.add(a.name);
+            out.push({ name: a.name, group: a.group, by: m.by, at: m.at, from: m.from });
+        }));
+        return out;
+    }, [c.messages]);
+    // Mobile: one pane at a time (Messages / Files). Desktop shows both side-by-side.
+    const [mobileView, setMobileView] = useState<'chat' | 'files'>('chat');
+    // Preview a shared file from the rail.
+    const [viewFile, setViewFile] = useState<null | { name: string; group?: string; from: CaseMessage['from']; at: string }>(null);
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            {/* Chat window — actions on top, scrollable thread, composer at the bottom */}
+            {/* Chat window — header, then a two-column body: messages (left) + shared files (right) */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
-                    <div className="flex items-center gap-2">
+                {/* Header — title, status, adjuster + demo/adjuster-simulation actions */}
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-slate-100 px-4 py-3 sm:px-5">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <MessageSquare size={15} className="text-blue-600" />
-                        <h3 className="text-sm font-bold text-slate-800">Case communication</h3>
+                        <h3 className="text-sm font-bold text-slate-800">Communication</h3>
                         <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', status.tone)}><span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} />{status.label}</span>
+                        {adjusterName && <span className="hidden text-[12px] text-slate-500 sm:inline">· to <span className="font-semibold text-slate-700">{adjusterName}</span></span>}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                         {!readOnly && <>
                             {c.status === 'info_requested' && (
-                                <button type="button" onClick={() => setFulfill(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[13px] font-semibold text-white hover:bg-blue-700"><Upload size={14} /> Upload requested docs</button>
+                                <button type="button" onClick={() => setFulfill(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[12px] font-semibold text-white hover:bg-blue-700"><Upload size={13} /> Upload requested docs</button>
                             )}
-                            <button type="button" onClick={() => setCompose({ mode: 'send' })} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-50"><Mail size={14} /> {c.messages.length ? 'Send package' : 'Send to adjuster'}</button>
-                            <button type="button" onClick={() => setClaimForm(true)} title="Open the claim form the adjuster fills (only the claim section is editable)" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-700 hover:bg-amber-100"><FileText size={14} /> Adjuster fills claim</button>
-                            <button type="button" onClick={adjusterSendsDoc} title="Simulate the adjuster uploading a document (files into Additional documents)" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-700 hover:bg-amber-100"><Upload size={14} /> Adjuster sends doc</button>
-                            <button type="button" onClick={() => setRequestForm(true)} title="Open the form the adjuster fills to request documents" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] font-semibold text-amber-700 hover:bg-amber-100"><Inbox size={14} /> Adjuster requests docs</button>
+                            <button type="button" onClick={() => setClaimForm(true)} title="Open the claim form the adjuster fills (only the claim section is editable)" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-100"><FileText size={13} /> Adjuster fills claim</button>
+                            <button type="button" onClick={adjusterSendsDoc} title="Simulate the adjuster uploading a document (files into Additional documents)" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-100"><Upload size={13} /> Adjuster sends doc</button>
+                            <button type="button" onClick={() => setRequestForm(true)} title="Open the form the adjuster fills to request documents" className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-100"><Inbox size={13} /> Adjuster requests docs</button>
                         </>}
                     </div>
                 </div>
-                <div className="grid grid-cols-1 gap-3 border-b border-slate-100 px-5 py-3 sm:grid-cols-3">
-                    <div><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Adjuster</p><p className="text-[13px] font-medium text-slate-800">{adjusterName || <span className="text-slate-300">—</span>}</p></div>
-                    <div><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Adjuster email</p><p className="text-[13px] font-medium text-slate-800">{adjusterEmail || <span className="text-slate-300">—</span>}</p></div>
-                    <div><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Claim number</p><p className="text-[13px] font-medium text-slate-800">{r.claimNumber || <span className="text-slate-300">—</span>}</p></div>
-                </div>
                 {!adjusterEmail && !readOnly && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-amber-50 px-5 py-2 text-[12px] text-amber-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-amber-50 px-4 py-2 text-[12px] text-amber-700 sm:px-5">
                         <span>No adjuster email on file — add it in the Claim section for a complete case.</span>
                         <button type="button" onClick={onEdit} className="shrink-0 font-semibold underline hover:no-underline">Edit claim</button>
                     </div>
                 )}
-
-                {/* Thread — fills the panel so the Case tab matches the other tabs' height */}
-                <div className="min-h-[220px] flex-1 space-y-4 overflow-y-auto bg-slate-50 px-5 py-5">
-                    {c.messages.length === 0 ? (
-                        <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center">
-                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600"><MessageSquare size={22} /></div>
-                            <p className="text-sm font-semibold text-slate-700">No messages yet</p>
-                            <p className="mx-auto mt-1 max-w-sm text-[13px] text-slate-500">Send the accident package to the adjuster to start the conversation — or type a message below.</p>
-                        </div>
-                    ) : c.messages.map(m => <CaseBubble key={m.id} m={m} />)}
+                {/* Mobile pane switch — one column at a time */}
+                <div className="flex gap-1 border-b border-slate-100 bg-white p-1.5 lg:hidden">
+                    <button type="button" onClick={() => setMobileView('chat')} className={cn('flex-1 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors', mobileView === 'chat' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100')}>Messages</button>
+                    <button type="button" onClick={() => setMobileView('files')} className={cn('flex-1 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors', mobileView === 'files' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100')}>Files{caseFiles.length ? ` · ${caseFiles.length}` : ''}</button>
                 </div>
 
-                {/* Composer */}
-                {!readOnly && (
-                    <div className="flex items-center gap-2 border-t border-slate-100 bg-white px-4 py-3">
-                        <button type="button" onClick={() => setAttachOpen(true)} title="Attach a document" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"><Paperclip size={16} /></button>
-                        <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendNote(); } }} placeholder="Write a message to the adjuster…" className="h-10 flex-1 rounded-full border border-slate-300 bg-slate-50 px-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-                        <button type="button" onClick={sendNote} disabled={!draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Send size={16} /></button>
+                {/* Body — two columns on desktop, one selected pane on mobile */}
+                <div className="flex min-h-0 flex-1">
+                    {/* Messages column */}
+                    <div className={cn('min-h-0 flex-1 flex-col', mobileView === 'chat' ? 'flex' : 'hidden lg:flex')}>
+                        <div className="min-h-[220px] flex-1 space-y-4 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-5">
+                            {c.messages.length === 0 ? (
+                                <div className="flex h-full min-h-[200px] flex-col items-center justify-center text-center">
+                                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600"><MessageSquare size={22} /></div>
+                                    <p className="text-sm font-semibold text-slate-700">No messages yet</p>
+                                    <p className="mx-auto mt-1 max-w-sm text-[13px] text-slate-500">Use “Send to adjuster” at the top to start the conversation — or type a message below.</p>
+                                </div>
+                            ) : c.messages.map(m => <CaseBubble key={m.id} m={m} />)}
+                        </div>
+                        {/* Composer */}
+                        {!readOnly && (
+                            <div className="flex items-center gap-2 border-t border-slate-100 bg-white px-4 py-3">
+                                <button type="button" onClick={() => setAttachOpen(true)} title="Attach a document" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"><Paperclip size={16} /></button>
+                                <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendNote(); } }} placeholder="Write a message to the adjuster…" className="h-10 flex-1 rounded-full border border-slate-300 bg-slate-50 px-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                                <button type="button" onClick={sendNote} disabled={!draft.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Send size={16} /></button>
+                            </div>
+                        )}
                     </div>
-                )}
+
+                    {/* Shared files rail */}
+                    <aside className={cn('min-h-0 w-full flex-col bg-slate-50/60 lg:w-80 lg:shrink-0 lg:border-l lg:border-slate-200', mobileView === 'files' ? 'flex' : 'hidden lg:flex')}>
+                        <div className="flex items-center gap-2 border-b border-slate-100 bg-white px-4 py-3">
+                            <FolderOpen size={15} className="text-slate-500" />
+                            <h4 className="text-[13px] font-bold text-slate-700">Shared files</h4>
+                            {caseFiles.length > 0 && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{caseFiles.length}</span>}
+                        </div>
+                        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 py-2.5">
+                            {caseFiles.length === 0 ? (
+                                <div className="flex h-full min-h-[160px] flex-col items-center justify-center px-4 text-center">
+                                    <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400"><FolderOpen size={18} /></div>
+                                    <p className="text-[13px] font-semibold text-slate-600">No files yet</p>
+                                    <p className="mt-0.5 text-[11.5px] text-slate-400">Files sent to or received from the adjuster show up here.</p>
+                                </div>
+                            ) : caseFiles.map((f, i) => {
+                                const k = fileIconMeta(f.name);
+                                return (
+                                    <button key={i} type="button" onClick={() => setViewFile(f)} title="View file" className="group flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/40">
+                                        <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md', k.tone)}><k.icon size={13} /></span>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-[12px] font-semibold text-slate-800" title={f.name}>{f.name}</p>
+                                            <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400">
+                                                <span className={cn('shrink-0 rounded px-1 font-bold uppercase', f.from === 'carrier' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-700')}>{f.from === 'carrier' ? 'Sent' : 'Received'}</span>
+                                                <span className="truncate">{f.group ? `${f.group} · ` : ''}{fmtDateTime(f.at)}</span>
+                                            </p>
+                                        </div>
+                                        <Eye size={14} className="shrink-0 text-slate-300 transition-colors group-hover:text-blue-600" />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </aside>
+                </div>
             </div>
 
             {compose && (
@@ -1666,6 +1895,7 @@ function CaseTab({ record: r, onUpdate, onEdit }: { record: AccidentRecord; onUp
             )}
             {attachOpen && <ChatAttachModal onSend={doAttach} onClose={() => setAttachOpen(false)} />}
             {claimForm && <ClaimFormModal record={r} onSubmit={submitClaim} onClose={() => setClaimForm(false)} />}
+            {viewFile && <CaseFileViewerModal record={r} file={viewFile} onClose={() => setViewFile(null)} />}
         </div>
     );
 }

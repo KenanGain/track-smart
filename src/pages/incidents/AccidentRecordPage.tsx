@@ -16,7 +16,7 @@ import { ACCIDENT_TYPES, RISK_TYPE_TONE, type AccidentRiskType } from '@/data/ac
 import {
     ACCIDENT_STATUS_META, SOURCE_META, PREVENTABILITY_OPTIONS,
     MAX_OTHER_VEHICLES, MAX_WITNESSES, VEHICLE_ACTION_OPTS,
-    newOtherVehicle, newWitness, appendUploads, newActivity, nowStamp, driverAccidentInfo,
+    newOtherVehicle, newWitness, appendUploads, newActivity, nowStamp, driverAccidentInfo, driverProfileStats,
     type AccidentRecord, type OtherVehicle, type Witness, type AccidentFile,
 } from '@/data/accident-records.data';
 
@@ -44,13 +44,14 @@ function today(): string {
 }
 
 /** Compact labelled text/date input. */
-function TextField({ label, value, onChange, placeholder, type = 'text', full }: {
-    label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; full?: boolean;
+function TextField({ label, value, onChange, placeholder, type = 'text', full, hint }: {
+    label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; full?: boolean; hint?: string;
 }) {
     return (
         <div className={full ? 'sm:col-span-2' : ''}>
             <label className={labelCls}>{label}</label>
             <input type={type} className={inputCls} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+            {hint && <p className="mt-1 text-[11px] text-slate-400">{hint}</p>}
         </div>
     );
 }
@@ -317,12 +318,12 @@ function DocTagControl({ tags, onChange }: { tags: string[]; onChange: (tags: st
     return <TagField value={tags} onChange={onChange} label="Document tags" />;
 }
 
-/** A labelled document/photo/video upload block — reuses the shared FileDropZone drop
- *  area, then renders each uploaded file as a "Document N" card (image-2 style) with a
- *  View / delete row, a "DOCUMENT TAG" control and a note. Up to MAX_UPLOAD_FILES files. */
-function DocUpload({ label, hint, accept, icon: Icon, files, onChange }: {
+/** A labelled upload block — reuses the shared FileDropZone drop area, then lists each uploaded
+ *  file as a card. `itemNoun` renames the per-card header (e.g. "Image 1", "Video 1", "Document 1").
+ *  Up to MAX_UPLOAD_FILES files. */
+function DocUpload({ label, hint, accept, icon: Icon, files, onChange, itemNoun = 'Document' }: {
     label: string; hint?: string; accept?: string; icon?: LucideIcon;
-    files: AccidentFile[]; onChange: (files: AccidentFile[]) => void;
+    files: AccidentFile[]; onChange: (files: AccidentFile[]) => void; itemNoun?: string;
 }) {
     const patch = (id: string, partial: Partial<AccidentFile>) => onChange(files.map(f => (f.id === id ? { ...f, ...partial } : f)));
     return (
@@ -332,6 +333,7 @@ function DocUpload({ label, hint, accept, icon: Icon, files, onChange }: {
                     {Icon && <Icon size={14} className="text-slate-400" />}{label}
                 </span>
             </div>
+
             <FileDropZone
                 files={files}
                 onAdd={list => onChange(appendUploads(files, list))}
@@ -342,11 +344,12 @@ function DocUpload({ label, hint, accept, icon: Icon, files, onChange }: {
                 hint={hint}
                 hideList
             />
+
             {files.length > 0 && (
                 <div className="mt-3 space-y-3">
                     {files.map((f, i) => (
                         <div key={f.id} className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-                            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500"><FileText size={12} /> Document {i + 1}</p>
+                            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500"><FileText size={12} /> {itemNoun} {i + 1}</p>
                             <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white px-3 py-2.5">
                                 <div className="flex min-w-0 items-center gap-2.5">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><FileText size={16} /></span>
@@ -446,7 +449,7 @@ function OtherVehicleCard({ v, index, onChange, onRemove, onToggleAction }: {
                     <TextField label="Insurance company" value={v.insuranceCompany ?? ''} onChange={val => onChange({ insuranceCompany: val })} placeholder="Insurance company" />
                     <TextField label="Policy number" value={v.policyNumber ?? ''} onChange={val => onChange({ policyNumber: val })} placeholder="Policy number" />
                 </div>
-                <DocUpload label="Certificate of insurance (COI)" icon={FileText} accept="image/*,application/pdf" hint="Upload the other vehicle's COI copy — up to 10 files." files={v.coiFiles ?? []} onChange={files => onChange({ coiFiles: files })} />
+                <DocUpload label="Certificate of insurance (COI)" icon={FileText} accept="application/pdf,.doc,.docx" hint="Upload the other vehicle's COI copy — up to 10 files." files={v.coiFiles ?? []} onChange={files => onChange({ coiFiles: files })} />
             </div>
 
             {/* Action / movement checklist */}
@@ -495,7 +498,7 @@ function WitnessCard({ w, index, onChange, onRemove }: {
                     <textarea className={cn(inputCls, 'min-h-[56px] resize-y')} value={w.cause ?? ''} onChange={e => onChange({ cause: e.target.value })} placeholder="Probable cause…" />
                 </div>
                 <div className="sm:col-span-2">
-                    <DocUpload label="Witness statement" icon={FileText} accept="image/*,application/pdf" hint="Upload this witness's statement — up to 10 files." files={w.statementFiles ?? []} onChange={files => onChange({ statementFiles: files })} />
+                    <DocUpload label="Witness statement" icon={FileText} accept="application/pdf,.doc,.docx" hint="Upload this witness's statement — up to 10 files." files={w.statementFiles ?? []} onChange={files => onChange({ statementFiles: files })} />
                 </div>
             </div>
         </div>
@@ -636,13 +639,14 @@ export function AccidentRecordPage({
         switch (id) {
             case 'owner': return filled(form.ownerName, form.ownerStreet, form.ownerCity, form.ownerState, form.ownerZip, form.ownerCountry, form.ownerPhone, form.policyNumber, form.nscCvor);
             case 'driver': return filled(form.driverName, form.driverPhone, form.driverStreet, form.driverCity, form.driverState, form.driverZip, form.driverCountry, form.licenceNumber, form.licenceExpiry, form.licenceProvince);
-            case 'details': return filled(form.dateTime, form.description, form.location, form.accStreet, form.accCity, form.unitId, form.vehiclePlate, form.trailerUnit, form.commodityDamaged, form.commodityDescription, form.hazmatSpill, form.numFatalities, form.numInjuries, form.vehiclesInCollision, form.numVehiclesTowed, form.towingCompany, form.directionOfTravel, form.travelSpeed, form.laneNumber, form.landmarks, form.odometerAfter);
+            case 'details': return filled(form.dateTime, form.location, form.accStreet, form.accCity, form.unitId, form.vehiclePlate, form.trailerUnit, form.commodityDamaged, form.commodityDescription, form.hazmatSpill, form.numFatalities, form.numInjuries, form.vehiclesInCollision, form.numVehiclesTowed, form.towingCompany, form.directionOfTravel, form.travelSpeed, form.laneNumber, form.landmarks, form.odometerAfter);
             case 'environment': return filled(form.roadType, form.postedSpeed, form.vehicleSpeed, form.gradePercent, form.roadCondsOther)
                 + (form.roadCondsList?.length ? 1 : 0) + (form.trafficControlsList?.length ? 1 : 0)
                 + (form.trafficCondsList?.length ? 1 : 0) + (form.weatherList?.length ? 1 : 0) + (form.visibilityList?.length ? 1 : 0);
-            case 'uploads': return (form.driverStatementFiles?.length ? 1 : 0) + filled(form.driverStatementText)
+            case 'uploads': return (form.driverStatementFiles?.length ? 1 : 0) + filled(form.description, form.driverStatementText)
                 + (form.vehicleDamageFiles?.length ? 1 : 0) + (form.photoFiles?.length ? 1 : 0)
-                + (form.videoFiles?.length ? 1 : 0) + (form.dashcamFiles?.length ? 1 : 0) + (form.elogFiles?.length ? 1 : 0);
+                + (form.videoFiles?.length ? 1 : 0) + (form.dashcamFiles?.length ? 1 : 0)
+                + (form.medicalReportFiles?.length ? 1 : 0) + (form.elogFiles?.length ? 1 : 0);
             case 'repair': return filled(form.repairVendor, form.repairStatus, form.estimatedRepair, form.totalRepairAmount) + (form.repairFiles?.length ? 1 : 0);
             case 'othervehicles': return form.otherVehicles?.length ?? 0;
             case 'witnesses': return (form.witnesses?.length ?? 0) + filled(form.witnessNotes);
@@ -712,11 +716,18 @@ export function AccidentRecordPage({
                         <WizardSection id="driver" icon={User} title="Driver information" subtitle="The driver involved in the collision." right={SHARE_DRIVER}>
                             <div className="mb-5">
                                 <DriverPicker drivers={roster} valueLabel={form.driverName}
-                                    onPick={d => setForm(f => ({ ...f, driverId: d.id, ...driverAccidentInfo(d) }))} />
+                                    onPick={d => setForm(f => {
+                                        const info = driverAccidentInfo(d);
+                                        const s = driverProfileStats({ ...info, dateTime: f.dateTime });
+                                        return { ...f, driverId: d.id, ...info, driverAgeBand: s.ageBand ?? '', driverDrivingExperience: s.drivingExperience ?? '', driverLengthOfEmployment: s.lengthOfEmployment ?? '' };
+                                    })} />
                             </div>
                             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                 <TextField label="Name" value={form.driverName} onChange={v => set('driverName', v)} placeholder="Driver name" />
                                 <TextField label="Phone" value={form.driverPhone ?? ''} onChange={v => set('driverPhone', v)} placeholder="Phone" />
+                                <TextField label="Age band" value={form.driverAgeBand ?? ''} onChange={v => set('driverAgeBand', v)} placeholder="e.g. 31 - 35" hint="Auto-filled from the driver's date of birth" />
+                                <TextField label="Driving experience" value={form.driverDrivingExperience ?? ''} onChange={v => set('driverDrivingExperience', v)} placeholder="e.g. 4 Years" hint="Auto-filled from the licence issue date" />
+                                <TextField label="Length of employment" value={form.driverLengthOfEmployment ?? ''} onChange={v => set('driverLengthOfEmployment', v)} placeholder="e.g. 1 Year" hint="Auto-filled from the hire date" />
                                 <TextField label="Street address" full value={form.driverStreet ?? ''} onChange={v => set('driverStreet', v)} placeholder="Number and street" />
                                 <TextField label="City" value={form.driverCity ?? ''} onChange={v => set('driverCity', v)} placeholder="City" />
                                 <TextField label="State / Province" value={form.driverState ?? ''} onChange={v => set('driverState', v)} placeholder="State / province" />
@@ -735,10 +746,6 @@ export function AccidentRecordPage({
                                     <div>
                                         <label className={labelCls}><CalendarClock size={12} className="mr-1 inline" /> Accident date &amp; time</label>
                                         <input type="datetime-local" className={inputCls} value={form.dateTime} onChange={e => set('dateTime', e.target.value)} />
-                                    </div>
-                                    <div className="sm:col-span-2">
-                                        <label className={labelCls}>What happened / how the collision occurred</label>
-                                        <textarea className={cn(inputCls, 'min-h-[80px] resize-y')} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Describe all the details of the collision…" />
                                     </div>
                                 </div>
 
@@ -856,7 +863,7 @@ export function AccidentRecordPage({
                                                 <TextField label="Phone number" value={form.towingPhone ?? ''} onChange={v => set('towingPhone', v)} placeholder="Phone" />
                                                 <TextField full label="Email address" value={form.towingEmail ?? ''} onChange={v => set('towingEmail', v)} placeholder="Email" />
                                             </div>
-                                            <DocUpload label="Towing invoice" icon={FileText} accept="image/*,application/pdf" hint="Upload the towing invoice — up to 10 files." files={form.towingInvoiceFiles ?? []} onChange={files => set('towingInvoiceFiles', files)} />
+                                            <DocUpload label="Towing invoice" icon={FileText} accept="application/pdf,.doc,.docx" hint="Upload the towing invoice — up to 10 files." files={form.towingInvoiceFiles ?? []} onChange={files => set('towingInvoiceFiles', files)} />
                                         </div>
                                     )}
                                     <div className="space-y-4 border-t border-slate-100 pt-4">
@@ -1030,7 +1037,7 @@ export function AccidentRecordPage({
                                         {form.citationIssued && (
                                             <div className="space-y-4 border-t border-slate-200 pt-3">
                                                 <TextField label="Citation / ticket number" value={form.citationNumber ?? ''} onChange={v => set('citationNumber', v)} placeholder="Citation / ticket number" />
-                                                <DocUpload label="Citation / ticket document" icon={FileText} accept="image/*,application/pdf" hint="Upload the citation / ticket — up to 10 files." files={form.citationFiles ?? []} onChange={files => set('citationFiles', files)} />
+                                                <DocUpload label="Citation / ticket document" icon={FileText} accept="application/pdf,.doc,.docx" hint="Upload the citation / ticket — up to 10 files." files={form.citationFiles ?? []} onChange={files => set('citationFiles', files)} />
                                             </div>
                                         )}
                                     </div>
@@ -1045,7 +1052,7 @@ export function AccidentRecordPage({
                                         <textarea className={cn(inputCls, 'min-h-[64px] resize-y')} value={form.policeNote ?? ''} onChange={e => set('policeNote', e.target.value)} placeholder="Additional notes about the police report…" />
                                     </div>
                                     <div className="sm:col-span-2">
-                                        <DocUpload label="Police report document(s)" icon={Shield} accept="image/*,application/pdf" hint="Upload the police report — up to 10 files." files={form.policeReportFiles ?? []} onChange={files => set('policeReportFiles', files)} />
+                                        <DocUpload label="Police report document(s)" icon={Shield} accept="application/pdf,.doc,.docx" hint="Upload the police report — up to 10 files." files={form.policeReportFiles ?? []} onChange={files => set('policeReportFiles', files)} />
                                     </div>
                                 </div>
                             )}
@@ -1055,26 +1062,33 @@ export function AccidentRecordPage({
                             <div className="space-y-6">
                                 {/* Driver statement — upload and / or type */}
                                 <div className="space-y-3">
-                                    <DocUpload label="Driver accident statement" icon={FileText} accept="image/*,application/pdf" hint="Upload the driver's statement — up to 10 files." files={form.driverStatementFiles ?? []} onChange={files => set('driverStatementFiles', files)} />
+                                    <DocUpload label="Driver accident statement" icon={FileText} accept="application/pdf,.doc,.docx" hint="Upload the driver's statement (PDF / DOC) — up to 10 files." files={form.driverStatementFiles ?? []} onChange={files => set('driverStatementFiles', files)} />
+                                    <div>
+                                        <label className={labelCls}>What happened / how the collision occurred</label>
+                                        <textarea className={cn(inputCls, 'min-h-[80px] resize-y')} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Describe all the details of the collision…" />
+                                    </div>
                                     <div>
                                         <label className={labelCls}>…or type the statement</label>
                                         <textarea className={cn(inputCls, 'min-h-[90px] resize-y')} value={form.driverStatementText ?? ''} onChange={e => set('driverStatementText', e.target.value)} placeholder="Type the driver's account of the accident…" />
                                     </div>
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="Vehicle damage pictures" icon={Camera} accept="image/*" hint="Photos of vehicle damage — up to 10 images." files={form.vehicleDamageFiles ?? []} onChange={files => set('vehicleDamageFiles', files)} />
+                                    <DocUpload itemNoun="Image" label="Vehicle damage pictures" icon={Camera} accept="image/*" hint="Photos of vehicle damage — up to 10 images." files={form.vehicleDamageFiles ?? []} onChange={files => set('vehicleDamageFiles', files)} />
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="Evidence pictures" icon={Camera} accept="image/*" hint="Scene / evidence photos — up to 10 images." files={form.photoFiles ?? []} onChange={files => set('photoFiles', files)} />
+                                    <DocUpload itemNoun="Image" label="Evidence pictures" icon={Camera} accept="image/*" hint="Scene / evidence photos — up to 10 images." files={form.photoFiles ?? []} onChange={files => set('photoFiles', files)} />
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="Video" icon={Video} accept="video/*" hint="Scene / evidence video — up to 10 files." files={form.videoFiles ?? []} onChange={files => set('videoFiles', files)} />
+                                    <DocUpload itemNoun="Video" label="Video" icon={Video} accept="video/*" hint="Scene / evidence video — up to 10 files." files={form.videoFiles ?? []} onChange={files => set('videoFiles', files)} />
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="Dashcam video" icon={Video} accept="video/*" hint="Dashcam footage — up to 10 files." files={form.dashcamFiles ?? []} onChange={files => set('dashcamFiles', files)} />
+                                    <DocUpload itemNoun="Video" label="Dashcam video" icon={Video} accept="video/*" hint="Dashcam footage — up to 10 files." files={form.dashcamFiles ?? []} onChange={files => set('dashcamFiles', files)} />
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="E-log" icon={FileText} accept="image/*,application/pdf" hint="Electronic logging device records — up to 10 files." files={form.elogFiles ?? []} onChange={files => set('elogFiles', files)} />
+                                    <DocUpload label="Medical report" icon={FileText} accept="application/pdf,.doc,.docx" hint="Injury / medical report documents (PDF / DOC) — up to 10 files." files={form.medicalReportFiles ?? []} onChange={files => set('medicalReportFiles', files)} />
+                                </div>
+                                <div className="border-t border-slate-100 pt-5">
+                                    <DocUpload label="E-log" icon={FileText} accept="application/pdf,.doc,.docx" hint="Electronic logging device records (PDF / DOC) — up to 10 files." files={form.elogFiles ?? []} onChange={files => set('elogFiles', files)} />
                                 </div>
                             </div>
                         </WizardSection>
@@ -1087,7 +1101,7 @@ export function AccidentRecordPage({
                                     <CurrencyField label="Estimated repair" amount={form.estimatedRepair ?? ''} currency={form.repairCurrency ?? 'USD'} onAmount={v => set('estimatedRepair', v)} onCurrency={v => set('repairCurrency', v)} />
                                     <CurrencyField label="Total repair amount" amount={form.totalRepairAmount ?? ''} currency={form.repairCurrency ?? 'USD'} onAmount={v => set('totalRepairAmount', v)} onCurrency={v => set('repairCurrency', v)} />
                                 </div>
-                                <DocUpload label="Repair invoices & supporting documents" icon={FileText} accept="image/*,application/pdf" hint="Repair estimates / invoices — up to 10 files." files={form.repairFiles ?? []} onChange={files => set('repairFiles', files)} />
+                                <DocUpload label="Repair invoices & supporting documents" icon={FileText} accept="application/pdf,.doc,.docx" hint="Repair estimates / invoices — up to 10 files." files={form.repairFiles ?? []} onChange={files => set('repairFiles', files)} />
                             </div>
                         </WizardSection>
 
@@ -1129,12 +1143,12 @@ export function AccidentRecordPage({
                                     </div>
                                     {form.attachLedger && (
                                         <div className="mt-4">
-                                            <DocUpload label="Ledger" icon={FileText} accept="image/*,application/pdf" hint="Attach the claim ledger — up to 10 files." files={form.ledgerFiles ?? []} onChange={files => set('ledgerFiles', files)} />
+                                            <DocUpload label="Ledger" icon={FileText} accept="application/pdf,.doc,.docx" hint="Attach the claim ledger — up to 10 files." files={form.ledgerFiles ?? []} onChange={files => set('ledgerFiles', files)} />
                                         </div>
                                     )}
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="Additional documents" icon={Paperclip} accept="image/*,application/pdf" hint="Any additional claim documents — up to 10 files." files={form.claimDocsFiles ?? []} onChange={files => set('claimDocsFiles', files)} />
+                                    <DocUpload label="Additional documents" icon={Paperclip} accept="application/pdf,.doc,.docx" hint="Any additional claim documents — up to 10 files." files={form.claimDocsFiles ?? []} onChange={files => set('claimDocsFiles', files)} />
                                 </div>
                             </div>
                         </WizardSection>
@@ -1180,7 +1194,7 @@ export function AccidentRecordPage({
                                     </div>
                                 </div>
                                 <div className="border-t border-slate-100 pt-5">
-                                    <DocUpload label="Additional documents" icon={Paperclip} accept="image/*,application/pdf" hint="Any additional internal documents — up to 10 files." files={form.additionalDocsFiles ?? []} onChange={files => set('additionalDocsFiles', files)} />
+                                    <DocUpload label="Additional documents" icon={Paperclip} accept="application/pdf,.doc,.docx" hint="Any additional internal documents — up to 10 files." files={form.additionalDocsFiles ?? []} onChange={files => set('additionalDocsFiles', files)} />
                                 </div>
                             </div>
                         </WizardSection>

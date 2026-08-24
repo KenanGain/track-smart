@@ -26,7 +26,7 @@ export type Preventability = 'Preventable' | 'Non-preventable' | 'Undetermined' 
  *  the shared FileDropZone's DropFile so it can be passed straight through.
  *  `note` + `tags` let each uploaded document be annotated / tagged (reusing the
  *  shared document-tag catalog in safety-tags.data). */
-export interface AccidentFile { id: string; fileName: string; fileSize?: number; note?: string; tags?: string[]; uploadedBy?: string; uploadedAt?: string; }
+export interface AccidentFile { id: string; fileName: string; fileSize?: number; note?: string; tags?: string[]; uploadedBy?: string; uploadedAt?: string; previewUrl?: string; }
 
 /** One audit-trail entry — who did what, and when. */
 export type ActivityRole = 'driver' | 'office' | 'manager' | 'system' | 'adjuster';
@@ -170,6 +170,14 @@ export interface AccidentRecord {
     licenceNumber?: string;
     licenceExpiry?: string;
     licenceProvince?: string;
+    // Source dates for the auto-calculated driver profile (age band, experience, tenure)
+    driverDob?: string;              // 'YYYY-MM-DD'
+    driverHiredDate?: string;        // 'YYYY-MM-DD'
+    driverLicenceIssueDate?: string; // 'YYYY-MM-DD'
+    // Driver profile — auto-populated from the source dates on driver pick, then editable
+    driverAgeBand?: string;             // e.g. "31 - 35"
+    driverDrivingExperience?: string;   // e.g. "4 Years"
+    driverLengthOfEmployment?: string;  // e.g. "1 Year"
     // ── Owner information (auto-filled from the carrier) ──
     ownerName?: string;
     ownerAddress?: string;    // composed convenience string
@@ -327,6 +335,8 @@ export interface AccidentRecord {
     attachLedger?: boolean;
     ledgerFiles?: AccidentFile[];
     claimDocsFiles?: AccidentFile[];
+    // ── Medical report (injury documentation) ──
+    medicalReportFiles?: AccidentFile[];
     // ── Internal review ──
     internalNotes?: string;
     additionalDocsFiles?: AccidentFile[];
@@ -339,7 +349,7 @@ export interface AccidentRecord {
 }
 
 /** The auto-fillable Driver + Owner information subsets. */
-export type AccidentDriverInfo = Pick<AccidentRecord, 'driverName' | 'driverPhone' | 'driverAddress' | 'driverStreet' | 'driverCity' | 'driverState' | 'driverZip' | 'driverCountry' | 'licenceNumber' | 'licenceExpiry' | 'licenceProvince'>;
+export type AccidentDriverInfo = Pick<AccidentRecord, 'driverName' | 'driverPhone' | 'driverAddress' | 'driverStreet' | 'driverCity' | 'driverState' | 'driverZip' | 'driverCountry' | 'licenceNumber' | 'licenceExpiry' | 'licenceProvince' | 'driverDob' | 'driverHiredDate' | 'driverLicenceIssueDate'>;
 export type AccidentOwnerInfo = Pick<AccidentRecord, 'ownerName' | 'ownerAddress' | 'ownerStreet' | 'ownerCity' | 'ownerState' | 'ownerZip' | 'ownerCountry' | 'ownerPhone' | 'policyNumber' | 'nscCvor' | 'dotNumber'>;
 
 export const ACCIDENT_STATUS_META: Record<AccidentStatus, { label: string; tone: string; dot: string }> = {
@@ -393,7 +403,7 @@ export const DRIVER_ACCIDENT_DISCLOSURE = {
 
 const KEY = 'accident-records-v2';
 const SEEDED_KEY = 'accident-records-seeded-v3';   // per-account seed version marker: { [acct]: version }
-const SEED_VERSION = 4;                             // bump when the sample set changes → demo rows refresh (user rows kept)
+const SEED_VERSION = 6;                             // bump when the sample set changes → demo rows refresh (user rows kept)
 const EVENT = 'accident-records-change';
 const NO_ACCOUNT = '_noacct';
 
@@ -497,7 +507,8 @@ export function blankAccidentReport(opts: {
 export function driverAccidentInfo(driver: {
     name: string; phone?: string; address?: string; city?: string; state?: string; zip?: string; country?: string;
     licenseNumber?: string; licenseState?: string; licenseExpiry?: string;
-    licenses?: Array<{ province?: string; expiryDate?: string; licenseNumber?: string }>;
+    dob?: string; hiredDate?: string; dateAdded?: string;
+    licenses?: Array<{ province?: string; expiryDate?: string; licenseNumber?: string; issueDate?: string }>;
 }): AccidentDriverInfo {
     const lic = driver.licenses?.[0];
     const addr = [driver.address, driver.city, [driver.state, driver.zip].filter(Boolean).join(' '), driver.country].filter(Boolean).join(', ');
@@ -513,6 +524,64 @@ export function driverAccidentInfo(driver: {
         licenceNumber: driver.licenseNumber ?? lic?.licenseNumber ?? '',
         licenceExpiry: driver.licenseExpiry ?? lic?.expiryDate ?? '',
         licenceProvince: lic?.province ?? driver.licenseState ?? '',
+        driverDob: driver.dob,
+        driverHiredDate: driver.hiredDate ?? driver.dateAdded,
+        driverLicenceIssueDate: lic?.issueDate,
+    };
+}
+
+// ── Auto-calculated driver profile (age band, driving experience, tenure) ──
+
+/** Parse a 'YYYY-MM-DD' (or ISO) date string to a local Date, or null. */
+function parseDateSafe(s?: string): Date | null {
+    if (!s) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/** Whole years between a start date and a reference date (default now), floored, never negative. */
+function wholeYearsBetween(start?: string, asOf?: string): number | null {
+    const s = parseDateSafe(start);
+    if (!s) return null;
+    const ref = parseDateSafe(asOf) ?? new Date();
+    let y = ref.getFullYear() - s.getFullYear();
+    const m = ref.getMonth() - s.getMonth();
+    if (m < 0 || (m === 0 && ref.getDate() < s.getDate())) y--;
+    return y < 0 ? 0 : y;
+}
+
+/** Format a year count as "1 Year" / "4 Years" / "< 1 Year". */
+export function formatYears(n: number | null | undefined): string | undefined {
+    if (n == null) return undefined;
+    if (n <= 0) return '< 1 Year';
+    return `${n} ${n === 1 ? 'Year' : 'Years'}`;
+}
+
+/** 5-year age band ("31 - 35") for a date-of-birth, as of a reference date. */
+export function ageBandFromDob(dob?: string, asOf?: string): string | undefined {
+    const born = parseDateSafe(dob);
+    if (!born) return undefined;
+    const ref = parseDateSafe(asOf) ?? new Date();
+    let age = ref.getFullYear() - born.getFullYear();
+    const m = ref.getMonth() - born.getMonth();
+    if (m < 0 || (m === 0 && ref.getDate() < born.getDate())) age--;
+    if (age < 16 || age > 100) return undefined;
+    const lo = Math.floor((age - 1) / 5) * 5 + 1;
+    return `${lo} - ${lo + 4}`;
+}
+
+export interface DriverProfileStats { ageBand?: string; drivingExperience?: string; lengthOfEmployment?: string; }
+
+/** Auto-calculated driver profile shown in the accident file — computed as of the
+ *  accident date (falls back to today) from the captured driver source dates. */
+export function driverProfileStats(r: Pick<AccidentRecord, 'driverDob' | 'driverLicenceIssueDate' | 'driverHiredDate' | 'dateTime'>): DriverProfileStats {
+    const asOf = r.dateTime;
+    return {
+        ageBand: ageBandFromDob(r.driverDob, asOf),
+        drivingExperience: formatYears(wholeYearsBetween(r.driverLicenceIssueDate, asOf)),
+        lengthOfEmployment: formatYears(wholeYearsBetween(r.driverHiredDate, asOf)),
     };
 }
 
@@ -582,7 +651,8 @@ function qa(p: {
     type: string; sev?: AccidentRiskType | ''; pts?: number | ''; inj?: boolean;
     status: AccidentStatus; source: AccidentSource; by: string; at: string;
     prev?: Preventability; claim?: string; vBy?: string; vAt?: string; cBy?: string; cAt?: string;
-    alert?: AccidentAlert; caseKind?: 'sent' | 'requested' | 'responded'; adjuster?: string; desc: string;
+    alert?: AccidentAlert; caseKind?: 'sent' | 'requested' | 'responded'; adjuster?: string;
+    haz?: boolean; tow?: boolean; fatal?: number; injCount?: number; desc: string;
 }): AccidentRecord {
     const role: ActivityRole = p.source === 'driver-app' ? 'driver' : 'office';
     const activity: AccidentActivity[] = [
@@ -600,13 +670,27 @@ function qa(p: {
         if (p.caseKind === 'responded') activity.push({ id: `${p.id}-crp`, at: `${base}T16:05`, by: 'Kenan Gain', role: 'office', action: 'Responded to adjuster', detail: 'Requested documents sent.' });
     }
     if (p.vBy) activity.push({ id: `${p.id}-av`, at: `${p.vAt ?? p.at}T11:00`, by: p.vBy, role: 'manager', action: 'Verified', detail: 'Reviewed and verified.' });
+    // Deterministic driver profile source-dates (age band, driving experience, tenure) from the id.
+    const h = [...p.driverId].reduce((s, c) => s + c.charCodeAt(0), 0);
+    const accYear = Number(p.dt.slice(0, 4)) || 2026;
+    const mm = (n: number) => String((((n % 12) + 12) % 12) + 1).padStart(2, '0'); // 01..12
+    const dd = (n: number) => String((((n % 27) + 27) % 27) + 1).padStart(2, '0'); // 01..27
+    const age = 26 + (h % 30);            // 26..55 at the time of the accident
+    const experience = 2 + (h % 17);      // 2..18 years holding the licence
+    const tenure = 1 + ((h >> 1) % 12);   // 1..12 years with the carrier
     return {
         id: p.id, driverId: p.driverId, driverName: p.driverName, dateTime: p.dt, location: p.loc,
+        driverDob: `${accYear - age}-${mm(h)}-${dd(h * 3)}`,
+        driverLicenceIssueDate: `${accYear - experience}-${mm(h + 5)}-${dd(h * 7)}`,
+        driverHiredDate: `${accYear - tenure}-${mm(h + 2)}-${dd(h * 5)}`,
         accidentTypeId: p.type, unitId: p.unit, description: p.desc, injuries: !!p.inj, photoCount: 0,
         status: p.status, source: p.source, reportedBy: p.by, reportedAt: p.at,
         severity: p.sev ?? '', points: p.pts ?? '', preventable: p.prev ?? '',
         claimNumber: p.claim ?? '', verifiedBy: p.vBy, verifiedAt: p.vAt, claimedBy: p.cBy, claimedAt: p.cAt,
         adjusterName: p.caseKind ? (p.adjuster ?? 'Priya Nair') : undefined,
+        hazmatSpill: p.haz, towAway: p.tow,
+        numFatalities: p.fatal != null ? String(p.fatal) : undefined,
+        numInjuries: p.injCount != null ? String(p.injCount) : undefined,
         alert: p.alert, case: caseData, activity,
     };
 }
@@ -617,25 +701,25 @@ const MORE_SAMPLES: AccidentRecord[] = [
     // ── Historical (verified) ──
     qa({ id: 'acc-sample-4', driverId: 'DRV-001-0031', driverName: 'Rachel Nguyen', unit: 'ACM-T0102', dt: '2026-07-22T14:10', loc: 'I-70 W, Mile 210 · Columbia, MO', type: 'rear_end', sev: 'Medium', pts: 4, status: 'verified', source: 'office', by: 'Dispatch (office)', at: '2026-07-22', prev: 'Preventable', claim: 'CLM-2026-0488', vBy: 'Kenan Gain', vAt: '2026-07-24', cBy: 'Priya Nair', cAt: '2026-07-23', caseKind: 'responded', adjuster: 'Priya Nair', desc: 'Rear-ended a sedan at a construction slowdown; minor front-bumper damage.' }),
     qa({ id: 'acc-sample-5', driverId: 'DRV-001-0033', driverName: 'Victor Cruz', unit: 'ACM-T0104', dt: '2026-07-05T09:25', loc: 'Hwy 400 NB · Barrie, ON', type: 'side_swipe', sev: 'Low', pts: 3, status: 'verified', source: 'driver-app', by: 'Victor Cruz', at: '2026-07-05', prev: 'Non-preventable', claim: 'CLM-2026-0461', vBy: 'Dana Whitfield', vAt: '2026-07-07', caseKind: 'sent', adjuster: 'Priya Nair', desc: 'Side-swiped by a merging car; scuff on the left fairing.' }),
-    qa({ id: 'acc-sample-6', driverId: 'DRV-001-0035', driverName: 'Amara Okafor', unit: 'ACM-T0107', dt: '2026-06-18T17:40', loc: 'I-35 S, Mile 402 · Waco, TX', type: 'tire_blowout', sev: 'High', pts: 6, status: 'verified', source: 'driver-app', by: 'Amara Okafor', at: '2026-06-18', prev: 'Non-preventable', claim: 'CLM-2026-0432', vBy: 'Kenan Gain', vAt: '2026-06-20', cBy: 'Marcus Webb', cAt: '2026-06-19', caseKind: 'requested', adjuster: 'Marcus Webb', alert: { level: 'warning', message: 'Awaiting third-party COI before the claim can close.', at: '2026-06-20T09:00' }, desc: 'Steer-tire blowout; regained control and stopped on the shoulder.' }),
+    qa({ id: 'acc-sample-6', driverId: 'DRV-001-0035', driverName: 'Amara Okafor', unit: 'ACM-T0107', dt: '2026-06-18T17:40', loc: 'I-35 S, Mile 402 · Waco, TX', type: 'tire_blowout', sev: 'High', pts: 6, status: 'verified', source: 'driver-app', by: 'Amara Okafor', at: '2026-06-18', prev: 'Non-preventable', claim: 'CLM-2026-0432', vBy: 'Kenan Gain', vAt: '2026-06-20', cBy: 'Marcus Webb', cAt: '2026-06-19', caseKind: 'requested', adjuster: 'Marcus Webb', tow: true, alert: { level: 'warning', message: 'Awaiting third-party COI before the claim can close.', at: '2026-06-20T09:00' }, desc: 'Steer-tire blowout; regained control and stopped on the shoulder.' }),
     qa({ id: 'acc-sample-7', driverId: 'DRV-001-0037', driverName: "Liam O'Brien", unit: 'ACM-T0109', dt: '2026-06-02T06:15', loc: 'Trans-Canada Hwy · Kamloops, BC', type: 'animal_strike', sev: 'Low', pts: 2, status: 'verified', source: 'driver-app', by: "Liam O'Brien", at: '2026-06-02', prev: 'Non-preventable', vBy: 'Dana Whitfield', vAt: '2026-06-03', desc: 'Struck a deer at dawn; grille and bumper damage, no injuries.' }),
-    qa({ id: 'acc-sample-8', driverId: 'DRV-001-0039', driverName: 'Priya Patel', unit: 'ACM-T0112', dt: '2026-05-20T13:05', loc: 'I-90 E, Mile 55 · Billings, MT', type: 'rollover', sev: 'High', pts: 8, inj: true, status: 'verified', source: 'driver-app', by: 'Priya Patel', at: '2026-05-20', prev: 'Preventable', claim: 'CLM-2026-0398', vBy: 'Kenan Gain', vAt: '2026-05-23', cBy: 'Priya Nair', cAt: '2026-05-21', caseKind: 'responded', adjuster: 'Priya Nair', alert: { level: 'critical', message: 'Injury rollover — DOT-recordable; claim and review in progress.', at: '2026-05-20T14:00' }, desc: 'Trailer rolled on an off-ramp curve; driver treated and released.' }),
+    qa({ id: 'acc-sample-8', driverId: 'DRV-001-0039', driverName: 'Priya Patel', unit: 'ACM-T0112', dt: '2026-05-20T13:05', loc: 'I-90 E, Mile 55 · Billings, MT', type: 'rollover', sev: 'High', pts: 8, inj: true, status: 'verified', source: 'driver-app', by: 'Priya Patel', at: '2026-05-20', prev: 'Preventable', claim: 'CLM-2026-0398', vBy: 'Kenan Gain', vAt: '2026-05-23', cBy: 'Priya Nair', cAt: '2026-05-21', caseKind: 'responded', adjuster: 'Priya Nair', tow: true, haz: true, injCount: 1, alert: { level: 'critical', message: 'Injury rollover — DOT-recordable; claim and review in progress.', at: '2026-05-20T14:00' }, desc: 'Trailer rolled on an off-ramp curve; driver treated and released.' }),
     qa({ id: 'acc-sample-9', driverId: 'DRV-001-0041', driverName: 'Gary Schultz', unit: 'ACM-T0115', dt: '2026-05-04T11:30', loc: 'US-101 N · Santa Rosa, CA', type: 'property_damage', sev: 'Medium', pts: 4, status: 'verified', source: 'office', by: 'Dispatch (office)', at: '2026-05-04', prev: 'Preventable', claim: 'CLM-2026-0377', vBy: 'Dana Whitfield', vAt: '2026-05-06', cBy: 'Marcus Webb', cAt: '2026-05-05', desc: 'Clipped a parked trailer at a truck stop; mirror and door damage.' }),
     qa({ id: 'acc-sample-10', driverId: 'DRV-001-0043', driverName: 'Elena Duarte', unit: 'ACM-T0118', dt: '2026-04-19T08:50', loc: 'I-10 W, Mile 140 · Tucson, AZ', type: 'backing_accident', sev: 'Low', pts: 3, status: 'verified', source: 'driver-app', by: 'Elena Duarte', at: '2026-04-19', prev: 'Preventable', vBy: 'Kenan Gain', vAt: '2026-04-21', desc: 'Backed into a dock plate; rear door dented. No other party.' }),
     qa({ id: 'acc-sample-11', driverId: 'DRV-001-0045', driverName: 'Devon Clarke', unit: 'ACM-T0120', dt: '2026-04-02T15:20', loc: 'QEW · Hamilton, ON', type: 'rear_end', sev: 'Medium', pts: 4, status: 'verified', source: 'driver-app', by: 'Devon Clarke', at: '2026-04-02', prev: 'Preventable', claim: 'CLM-2026-0321', vBy: 'Dana Whitfield', vAt: '2026-04-04', cBy: 'Dana Whitfield', cAt: '2026-04-03', caseKind: 'requested', adjuster: 'Dana Whitfield', desc: 'Rear-ended a pickup in stop-and-go traffic; hood damage to the other vehicle.' }),
     qa({ id: 'acc-sample-12', driverId: 'DRV-001-0047', driverName: 'Hana Kim', unit: 'ACM-T0122', dt: '2026-03-15T19:10', loc: 'I-5 N, Mile 260 · Redding, CA', type: 'weather_related', sev: 'Medium', pts: 4, status: 'verified', source: 'driver-app', by: 'Hana Kim', at: '2026-03-15', prev: 'Non-preventable', claim: 'CLM-2026-0288', vBy: 'Kenan Gain', vAt: '2026-03-18', desc: 'Hydroplaned in heavy rain into the median; no other vehicle involved.' }),
     qa({ id: 'acc-sample-13', driverId: 'DRV-001-0049', driverName: 'Omar Haddad', unit: 'ACM-T0124', dt: '2026-02-27T22:40', loc: 'I-80 E, Mile 12 · Wendover, UT', type: 'fixed_object', sev: 'Medium', pts: 3, status: 'verified', source: 'driver-app', by: 'Omar Haddad', at: '2026-02-27', prev: 'Preventable', vBy: 'Dana Whitfield', vAt: '2026-03-01', desc: 'Struck a guardrail on an icy curve; fairing and step damage.' }),
-    qa({ id: 'acc-sample-14', driverId: 'DRV-001-0051', driverName: 'Nathan Brooks', unit: 'ACM-T0126', dt: '2026-02-10T07:05', loc: 'I-94 W · Fargo, ND', type: 'single_vehicle', sev: 'Medium', pts: 4, status: 'verified', source: 'office', by: 'Dispatch (office)', at: '2026-02-10', prev: 'Preventable', claim: 'CLM-2026-0233', vBy: 'Kenan Gain', vAt: '2026-02-12', cBy: 'Marcus Webb', cAt: '2026-02-11', desc: 'Trailer jackknifed on black ice; recovered with no other vehicle involved.' }),
-    qa({ id: 'acc-sample-15', driverId: 'DRV-001-0053', driverName: 'Carla Mendez', unit: 'ACM-T0128', dt: '2026-01-22T16:35', loc: 'I-25 N · Pueblo, CO', type: 'multi_vehicle', sev: 'High', pts: 5, inj: true, status: 'verified', source: 'driver-app', by: 'Carla Mendez', at: '2026-01-22', prev: 'Undetermined', claim: 'CLM-2026-0190', vBy: 'Dana Whitfield', vAt: '2026-01-26', cBy: 'Priya Nair', cAt: '2026-01-23', caseKind: 'responded', adjuster: 'Priya Nair', alert: { level: 'warning', message: 'Multi-vehicle with injury — liability split pending.', at: '2026-01-23T09:00' }, desc: 'Chain-reaction collision in fog; three vehicles, one minor injury.' }),
+    qa({ id: 'acc-sample-14', driverId: 'DRV-001-0051', driverName: 'Nathan Brooks', unit: 'ACM-T0126', dt: '2026-02-10T07:05', loc: 'I-94 W · Fargo, ND', type: 'single_vehicle', sev: 'Medium', pts: 4, status: 'verified', source: 'office', by: 'Dispatch (office)', at: '2026-02-10', prev: 'Preventable', claim: 'CLM-2026-0233', vBy: 'Kenan Gain', vAt: '2026-02-12', cBy: 'Marcus Webb', cAt: '2026-02-11', tow: true, desc: 'Trailer jackknifed on black ice; recovered with no other vehicle involved.' }),
+    qa({ id: 'acc-sample-15', driverId: 'DRV-001-0053', driverName: 'Carla Mendez', unit: 'ACM-T0128', dt: '2026-01-22T16:35', loc: 'I-25 N · Pueblo, CO', type: 'multi_vehicle', sev: 'High', pts: 5, inj: true, status: 'verified', source: 'driver-app', by: 'Carla Mendez', at: '2026-01-22', prev: 'Undetermined', claim: 'CLM-2026-0190', vBy: 'Dana Whitfield', vAt: '2026-01-26', cBy: 'Priya Nair', cAt: '2026-01-23', caseKind: 'responded', adjuster: 'Priya Nair', tow: true, fatal: 1, injCount: 2, alert: { level: 'warning', message: 'Multi-vehicle with injury and a fatality — liability split pending.', at: '2026-01-23T09:00' }, desc: 'Chain-reaction collision in fog; three vehicles, injuries and one fatality.' }),
     qa({ id: 'acc-sample-16', driverId: 'DRV-001-0055', driverName: 'Steve Larsson', unit: 'ACM-T0130', dt: '2025-12-30T10:15', loc: 'Hwy 1 · Regina, SK', type: 'parked_vehicle', sev: 'Low', pts: 2, status: 'verified', source: 'office', by: 'Dispatch (office)', at: '2025-12-30', prev: 'Preventable', vBy: 'Kenan Gain', vAt: '2026-01-02', desc: 'Contacted a parked flatbed while maneuvering in a yard; minor scrape.' }),
     qa({ id: 'acc-sample-17', driverId: 'DRV-001-0057', driverName: 'Yvette Rousseau', unit: 'ACM-T0101', dt: '2025-12-11T18:20', loc: 'A-20 E · Montreal, QC', type: 'intersection', sev: 'Medium', pts: 4, status: 'verified', source: 'driver-app', by: 'Yvette Rousseau', at: '2025-12-11', prev: 'Preventable', claim: 'CLM-2025-0912', vBy: 'Dana Whitfield', vAt: '2025-12-14', cBy: 'Dana Whitfield', cAt: '2025-12-12', desc: 'Failed to fully stop at a controlled intersection; low-speed contact.' }),
-    qa({ id: 'acc-sample-18', driverId: 'DRV-001-0059', driverName: 'Ibrahim Ali', unit: 'ACM-T0105', dt: '2025-11-24T05:45', loc: 'I-40 E, Mile 140 · Amarillo, TX', type: 'driver_fatigue', sev: 'High', pts: 7, inj: true, status: 'verified', source: 'driver-app', by: 'Ibrahim Ali', at: '2025-11-24', prev: 'Preventable', claim: 'CLM-2025-0855', vBy: 'Kenan Gain', vAt: '2025-11-27', cBy: 'Priya Nair', cAt: '2025-11-25', caseKind: 'requested', adjuster: 'Priya Nair', alert: { level: 'critical', message: 'Fatigue-related injury crash — safety review required.', at: '2025-11-24T06:30' }, desc: 'Drifted off the roadway near end of shift; struck a sign, minor injury.' }),
+    qa({ id: 'acc-sample-18', driverId: 'DRV-001-0059', driverName: 'Ibrahim Ali', unit: 'ACM-T0105', dt: '2025-11-24T05:45', loc: 'I-40 E, Mile 140 · Amarillo, TX', type: 'driver_fatigue', sev: 'High', pts: 7, inj: true, status: 'verified', source: 'driver-app', by: 'Ibrahim Ali', at: '2025-11-24', prev: 'Preventable', claim: 'CLM-2025-0855', vBy: 'Kenan Gain', vAt: '2025-11-27', cBy: 'Priya Nair', cAt: '2025-11-25', caseKind: 'requested', adjuster: 'Priya Nair', tow: true, fatal: 1, injCount: 1, alert: { level: 'critical', message: 'Fatigue-related crash with a fatality — safety review required.', at: '2025-11-24T06:30' }, desc: 'Drifted off the roadway near end of shift; struck a sign — one fatality.' }),
     qa({ id: 'acc-sample-23', driverId: 'DRV-001-0045', driverName: 'Devon Clarke', unit: 'ACM-T0121', dt: '2026-07-29T11:15', loc: 'Hwy 401 W · Toronto, ON', type: 'distracted_driver', sev: 'High', pts: 6, status: 'verified', source: 'driver-app', by: 'Devon Clarke', at: '2026-07-29', prev: 'Preventable', claim: 'CLM-2026-0555', vBy: 'Kenan Gain', vAt: '2026-08-01', cBy: 'Marcus Webb', cAt: '2026-07-30', caseKind: 'sent', adjuster: 'Marcus Webb', desc: 'Momentary distraction led to a lane-change contact; other vehicle scuffed.' }),
     // ── Recent, still open (review / reported) — some with alerts ──
     qa({ id: 'acc-sample-19', driverId: 'DRV-001-0061', driverName: 'Jenna Frost', unit: 'ACM-T0110', dt: '2026-08-16T12:30', loc: 'I-90 W · Spokane, WA', type: 'rear_end', status: 'review', source: 'driver-app', by: 'Jenna Frost', at: '2026-08-16', prev: 'Undetermined', claim: 'CLM-2026-0611', cBy: 'Dana Whitfield', cAt: '2026-08-16', alert: { level: 'warning', message: 'Third-party insurer not yet contacted.', at: '2026-08-16T13:00' }, caseKind: 'sent', adjuster: 'Dana Whitfield', desc: 'Rear-ended a car at a light; awaiting third-party details.' }),
     qa({ id: 'acc-sample-20', driverId: 'DRV-001-0063', driverName: 'Cody Ramsey', unit: 'ACM-T0113', dt: '2026-08-13T20:05', loc: 'US-59 S · Houston, TX', type: 'construction_zone', inj: true, status: 'review', source: 'driver-app', by: 'Cody Ramsey', at: '2026-08-13', prev: 'Undetermined', alert: { level: 'critical', message: 'Injury reported in a work zone — needs immediate review.', at: '2026-08-13T20:20' }, caseKind: 'requested', adjuster: 'Priya Nair', desc: 'Struck an attenuator in a work zone; one occupant complained of pain.' }),
     qa({ id: 'acc-sample-21', driverId: 'DRV-001-0031', driverName: 'Rachel Nguyen', unit: 'ACM-T0116', dt: '2026-08-10T09:00', loc: 'I-70 E · Denver, CO', type: 'minor_incident', sev: 'Low', status: 'reported', source: 'office', by: 'Dispatch (office)', at: '2026-08-10', alert: { level: 'info', message: 'Low-severity report — pending classification.', at: '2026-08-10T09:15' }, desc: 'Low-speed contact with a bollard at a fuel island.' }),
-    qa({ id: 'acc-sample-22', driverId: 'DRV-001-0049', driverName: 'Omar Haddad', unit: 'ACM-T0119', dt: '2026-08-06T14:50', loc: 'I-15 N · Las Vegas, NV', type: 'cargo_shift', status: 'reported', source: 'driver-app', by: 'Omar Haddad', at: '2026-08-06', desc: 'Load shifted after hard braking; securement re-checked, no crash.' }),
+    qa({ id: 'acc-sample-22', driverId: 'DRV-001-0049', driverName: 'Omar Haddad', unit: 'ACM-T0119', dt: '2026-08-06T14:50', loc: 'I-15 N · Las Vegas, NV', type: 'cargo_shift', status: 'reported', source: 'driver-app', by: 'Omar Haddad', at: '2026-08-06', haz: true, alert: { level: 'warning', message: 'Dangerous-goods load shifted — placarding and securement under review.', at: '2026-08-06T15:10' }, desc: 'Dangerous-goods load shifted after hard braking; drum seepage checked, securement re-done.' }),
 ];
 
 /**
@@ -667,6 +751,7 @@ function buildShowcaseAccident(accountId?: string): AccidentRecord {
         verifiedBy: 'Kenan Gain', verifiedAt: '2026-08-22',
         claimedBy: 'Priya Nair', claimedAt: '2026-08-20',
         driverPhone: '(206) 555-0173', driverStreet: '5120 Rainier Ave S', driverCity: 'Seattle', driverState: 'WA', driverZip: '98118', driverCountry: 'USA',
+        driverDob: '1992-06-18', driverHiredDate: '2025-04-02', driverLicenceIssueDate: '2022-08-11',
         licenceNumber: 'WA-RVMCK-8841', licenceExpiry: '2029-03-14', licenceProvince: 'WA',
         // vehicle & trailer — from the fleet DB (with fallbacks if the fleet is empty)
         vehicleAssetId: truck?.id, vehiclePlate: truck?.plateNumber ?? 'WA-C84512', vehicleJurisdiction: truck?.plateJurisdiction ?? 'WA', vehicleVin: truck?.vin ?? '1FUJGLDR9CLBP1234',
