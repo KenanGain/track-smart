@@ -1276,11 +1276,11 @@ function CaseBubble({ m }: { m: CaseMessage }) {
 /** Send-to-adjuster composer — modelled on the hiring "Ask driver for more data" request modal:
  *  Send to (email) + Send via (Email / In-app) + a grouped "Items to send" checklist with a
  *  selected-count / Clear-all control + Subject + Message + a footer count. */
-function MailComposeModal({ toName, toEmail, subject, body, attachments, requestedItems, mode, claimFormName, onSend, onClose, onRequestLink, onClaimLink }: {
+function MailComposeModal({ toName, toEmail, subject, body, attachments, requestedItems, mode, claimFormName, onSend, onClose, onRequestLink, onClaimLink, onChatLink }: {
     toName: string; toEmail: string; subject: string; body: string; attachments: CaseAttachment[];
     requestedItems?: string[]; mode: 'send' | 'respond'; claimFormName?: string;
     onSend: (email: string, via: 'email' | 'inapp', subject: string, body: string, attachments: CaseAttachment[]) => void; onClose: () => void;
-    onRequestLink?: () => void; onClaimLink?: () => void;
+    onRequestLink?: () => void; onClaimLink?: () => void; onChatLink?: () => void;
 }) {
     const [email, setEmail] = useState(toEmail);
     const [via, setVia] = useState<'email' | 'inapp'>('email');
@@ -1416,7 +1416,16 @@ function MailComposeModal({ toName, toEmail, subject, body, attachments, request
                                             <ExternalLink size={13} className="shrink-0 text-amber-400" />
                                         </button>
                                     )}
-                                    <p className="text-[10px] text-slate-400">In this preview you can click a link to open the form the adjuster would fill.</p>
+                                    {onChatLink && (
+                                        <button type="button" onClick={onChatLink} className="flex w-full items-center gap-2.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-left text-[12px] font-semibold text-violet-700 transition-colors hover:bg-violet-100">
+                                            <MessageSquare size={15} className="shrink-0" />
+                                            <span className="min-w-0 flex-1">Reply in the conversation
+                                                <span className="block truncate text-[11px] font-normal text-violet-600/80">Opens the case chat to message us back</span>
+                                            </span>
+                                            <ExternalLink size={13} className="shrink-0 text-violet-400" />
+                                        </button>
+                                    )}
+                                    <p className="text-[10px] text-slate-400">In this preview you can click a link to open the form or the conversation the adjuster would use.</p>
                                 </div>
 
                                 {selected.length > 0 && (
@@ -1877,6 +1886,7 @@ function CaseTab({ record: r, onUpdate, onEdit, autoCompose, onAutoComposeHandle
                     onClose={() => setCompose(null)}
                     onRequestLink={() => { setCompose(null); setRequestForm(true); }}
                     onClaimLink={() => { setCompose(null); setClaimForm(true); }}
+                    onChatLink={() => { setCompose(null); setMobileView('chat'); }}
                 />
             )}
             {requestForm && (
